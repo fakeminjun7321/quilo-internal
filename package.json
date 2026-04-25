@@ -1,0 +1,22 @@
+{
+  "name": "chem-pre-lab-web",
+  "version": "1.0.0",
+  "description": "DGSHS chemistry pre-lab report generator (web)",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.30.1",
+    "docx": "^9.0.2",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "express-session": "^1.18.1",
+    "multer": "^2.0.0"
+  }
+}

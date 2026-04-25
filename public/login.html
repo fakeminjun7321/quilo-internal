@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>로그인</title>
+  </head>
+  <body>
+    <h1>화학실험 사전보고서 생성기</h1>
+
+    <form id="form">
+      <p>
+        <label>이름: <input id="username" name="username" required maxlength="50" /></label>
+      </p>
+      <p>
+        <label>비밀번호: <input id="password" name="password" type="password" required /></label>
+      </p>
+      <p>
+        <button type="submit" id="btn">로그인</button>
+      </p>
+      <p id="err" style="color: red"></p>
+    </form>
+
+    <script>
+      const form = document.getElementById("form");
+      const btn = document.getElementById("btn");
+      const err = document.getElementById("err");
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        err.textContent = "";
+        btn.disabled = true;
+        btn.textContent = "로그인 중...";
+        try {
+          const res = await fetch("/api/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              username: document.getElementById("username").value,
+              password: document.getElementById("password").value,
+            }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "로그인 실패");
+          location.href = "/";
+        } catch (e) {
+          err.textContent = e.message;
+          btn.disabled = false;
+          btn.textContent = "로그인";
+        }
+      });
+    </script>
+  </body>
+</html>

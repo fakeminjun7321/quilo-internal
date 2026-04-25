@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>화학 사전보고서 생성기</title>
+  </head>
+  <body>
+    <p>
+      <span id="user"></span>
+      <a href="#" id="logout">[로그아웃]</a>
+    </p>
+
+    <h1>화학실험 사전보고서 생성기</h1>
+
+    <form id="form">
+      <p>
+        <label>실험 매뉴얼 PDF:
+          <input id="manual" name="manual" type="file" accept="application/pdf" required />
+        </label>
+      </p>
+      <p>
+        <label>실험 예정일:
+          <input id="date" name="date" type="date" required />
+        </label>
+      </p>
+      <p>
+        <button type="submit" id="btn">사전보고서 생성</button>
+      </p>
+      <p>⏱ 생성에 1~3분 소요됩니다. 페이지를 닫지 마세요.</p>
+    </form>
+
+    <hr />
+
+    <div id="progressArea" style="display: none">
+      <h2 id="statusTitle">생성 중...</h2>
+      <pre id="progress" style="background: #eee; padding: 8px; max-height: 300px; overflow: auto"></pre>
+      <div id="resultArea"></div>
+    </div>
+
+    <script>
+      // Confirm session
+      fetch("/api/me")
+        .then((r) => (r.ok ? r.json() : Promise.reject()))
+        .then((d) => {
+          document.getElementById("user").textContent = d.user + " 님 ";
+        })
+        .catch(() => (location.href = "/login.html"));
+
+      document.getElementById("logout").addEventListener("click", async (e) => {
+        e.preventDefault();
+        await fetch("/api/logout", { method: "POST" });
+        location.href = "/login.html";
+      });
+
+      // Default to today
+      document.getElementById("date").value = new Date().toISOString().slice(0, 10);
+
+      const form = document.getElementById("form");
+      const btn = document.getElementById("btn");
+      const progressArea = document.getElementById("progressArea");
+      const progressEl = document.getElementById("progress");
+      const resultArea = document.getElementById("resultArea");
+      const statusTitle = document.getElementById("statusTitle");
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        btn.disabled = true;
+        btn.textContent = "생성 중...";
+        progressArea.style.display = "block";
+        progressEl.textContent = "";
+        resultArea.innerHTML = "";
+        statusTitle.textContent = "생성 중...";
+
+        const fd = new FormData();
+        fd.append("manual", document.getElementById("manual").files[0]);
+        const dateStr = document.getElementById("date").value;
+        const [y, m, d] = dateStr.split("-");
+        fd.append("date", `${y}/ ${m} / ${d}`);
+
+        try {
+          const res = await fetch("/api/generate", { method: "POST", body: fd });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "요청 실패");
+          streamJob(data.jobId);
+        } catch (err) {
+          appendLine("❌ " + err.message);
+          resetForm();
+        }
+      });
+
+      function appendLine(text) {
+        progressEl.textContent += text + "\n";
+        progressEl.scrollTop = progressEl.scrollHeight;
+      }
+
+      function resetForm() {
+        btn.disabled = false;
+        btn.textContent = "사전보고서 생성";
+      }
+
+      function streamJob(jobId) {
+        const es = new EventSource(`/api/jobs/${jobId}/stream`);
+
+        es.addEventListener("progress", (e) => {
+          appendLine(JSON.parse(e.data));
+        });
+
+        es.addEventListener("done", (e) => {
+          const data = JSON.parse(e.data);
+          appendLine("✅ 완료");
+          statusTitle.textContent = "완료";
+
+          const link = document.createElement("a");
+          link.href = `/api/jobs/${jobId}/download`;
+          link.textContent = `📥 ${data.filename} 다운로드`;
+          link.download = data.filename;
+          resultArea.appendChild(link);
+
+          es.close();
+          resetForm();
+        });
+
+        es.addEventListener("error", (e) => {
+          const msg = e.data ? JSON.parse(e.data) : "스트리밍 오류";
+          appendLine("❌ " + msg);
+          statusTitle.textContent = "오류";
+          es.close();
+          resetForm();
+        });
+      }
+    </script>
+  </body>
+</html>

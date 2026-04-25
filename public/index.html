@@ -28,7 +28,7 @@
       <p>
         <button type="submit" id="btn">사전보고서 생성</button>
       </p>
-      <p>⏱ 생성에 4~6분 소요됩니다. 페이지를 닫지 마세요.</p>
+      <p>⏱ 생성에 3~5분 소요됩니다. 페이지를 닫지 마세요.</p>
       <p><small>※ 그림 자리는 점선 박스 안에 구글 이미지 검색 링크가 들어갑니다. docx 열어서 링크 클릭 → 이미지 복붙으로 채우세요.</small></p>
     </form>
 
@@ -68,8 +68,46 @@
       const resultArea = document.getElementById("resultArea");
       const statusTitle = document.getElementById("statusTitle");
 
+      // PDF 크기 기반 예상 비용 추정
+      // (Claude Opus 기준: 입력 토큰 + 출력 ~12K + 웹검색 평균 3회)
+      function estimateCost(pdfBytes) {
+        const sizeKB = pdfBytes / 1024;
+        // 입력: PDF는 페이지당 ~1500토큰. 1KB ≈ 0.5KB/페이지 가정 → 매우 보수적
+        // 시스템 프롬프트 ~10K + PDF 토큰
+        const inputTokensLo = 15000 + sizeKB * 80;
+        const inputTokensHi = 20000 + sizeKB * 200;
+        const outputTokensLo = 8000;
+        const outputTokensHi = 14000;
+        const webSearchLo = 1;
+        const webSearchHi = 5;
+
+        const lo =
+          (inputTokensLo / 1e6) * 15 +
+          (outputTokensLo / 1e6) * 75 +
+          webSearchLo * 0.01;
+        const hi =
+          (inputTokensHi / 1e6) * 15 +
+          (outputTokensHi / 1e6) * 75 +
+          webSearchHi * 0.01;
+        return { lo, hi, sizeKB: Math.round(sizeKB) };
+      }
+
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
+        const file = document.getElementById("manual").files[0];
+        if (!file) return;
+
+        // 예상 비용 확인
+        const est = estimateCost(file.size);
+        const krwLo = Math.round(est.lo * 1400);
+        const krwHi = Math.round(est.hi * 1400);
+        const msg =
+          `📄 PDF 크기: ${est.sizeKB}KB\n` +
+          `💰 예상 비용: $${est.lo.toFixed(2)} ~ $${est.hi.toFixed(2)} ` +
+          `(약 ₩${krwLo.toLocaleString()} ~ ₩${krwHi.toLocaleString()})\n\n` +
+          `생성하시겠습니까? (실제 비용은 완료 후 표시됩니다)`;
+        if (!confirm(msg)) return;
+
         btn.disabled = true;
         btn.textContent = "생성 중...";
         progressArea.style.display = "block";
@@ -78,7 +116,7 @@
         statusTitle.textContent = "생성 중...";
 
         const fd = new FormData();
-        fd.append("manual", document.getElementById("manual").files[0]);
+        fd.append("manual", file);
         const dateStr = document.getElementById("date").value;
         const [y, m, d] = dateStr.split("-");
         fd.append("date", `${y}/ ${m} / ${d}`);

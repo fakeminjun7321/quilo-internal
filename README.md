@@ -44,12 +44,17 @@ git push -u origin main
    - **Instance Type**: **Free**
 5. 같은 페이지 아래쪽 **Environment Variables** 항목에 다음 4개 추가:
 
-   | Key | Value |
-   |-----|-------|
-   | `ANTHROPIC_API_KEY` | `sk-ant-...` (Anthropic 콘솔에서 발급한 본인 키) |
-   | `SHARED_PASSWORD` | 친구들에게 알려줄 공용 비밀번호 |
-   | `SESSION_SECRET` | 32자 이상 랜덤 문자열 (예: 키보드 마구 두드린 거 아무거나) |
-   | `NODE_ENV` | `production` |
+   | Key | Value | 필수? |
+   |-----|-------|-------|
+   | `ANTHROPIC_API_KEY` | `sk-ant-...` (Anthropic 콘솔) | ✅ |
+   | `SHARED_PASSWORD` | 친구들에게 알려줄 공용 비밀번호 | ✅ |
+   | `SESSION_SECRET` | 32자 이상 랜덤 문자열 | ✅ |
+   | `NODE_ENV` | `production` | ✅ |
+   | `GEMINI_API_KEY` | Google AI Studio 키 (이미지 생성용, 아래 설명) | 🎨 그림 옵션 쓰려면 |
+   | `GOOGLE_CSE_API_KEY` | Google Cloud Custom Search 키 | 🔎 이미지 검색 쓰려면 |
+   | `GOOGLE_CSE_CX` | Custom Search Engine ID | 🔎 이미지 검색 쓰려면 |
+   | `JOB_TIMEOUT_MS` | 작업 타임아웃 (기본 480000 = 8분) | 선택 |
+   | `MAX_TOKENS` | 출력 토큰 상한 (기본 16000) | 선택 |
 
 6. **Create Web Service** 클릭 → 첫 빌드 5분 정도
 
@@ -69,6 +74,43 @@ URL + 공용 비밀번호 알려주면 끝.
 4. 결제 수단 등록 (Settings → Billing) — 키만 발급해서는 호출 못 함, 크레딧 충전 필요
 
 월 사용량 제한 두려면 콘솔의 **Limits** 메뉴에서 spend limit 설정.
+
+---
+
+## 2-1. (선택) 그림 자동 처리 옵션
+
+체크박스 켜면 보고서에 필요한 그림을 **Google 이미지 검색 → 못 찾으면 Google AI Studio (Nano Banana)** 순서로 자동 처리합니다. 화학 그래프·구조도는 부정확할 수 있으니 실험적 기능으로 봐주세요.
+
+### Gemini API 키 (Google AI Studio)
+
+1. https://aistudio.google.com/apikey 접속 (Google 계정 로그인)
+2. **Create API key** 클릭 → 프로젝트 선택/생성 → 키 발급
+3. `GEMINI_API_KEY` 환경변수에 입력
+
+비용: 이미지 1장당 약 **$0.04** (≈56원)
+
+### Google Custom Search 설정 (이미지 검색용)
+
+1. **Custom Search Engine 만들기**
+   - https://programmablesearchengine.google.com/controlpanel/create 접속
+   - **Sites to search**: `*.com` (또는 비워두고 "Search the entire web" 토글 ON)
+   - **Search settings → Image search**: **ON**
+   - 만들기 → 다음 화면에서 **Search engine ID** 복사 → `GOOGLE_CSE_CX`에 입력
+2. **API 키 발급**
+   - https://console.cloud.google.com/apis/credentials 접속
+   - **+ Create Credentials → API key** → 키 복사 → `GOOGLE_CSE_API_KEY`에 입력
+   - 같은 페이지의 **API 라이브러리**에서 "Custom Search API" 검색 → **Enable** 클릭
+
+비용: 무료 100회/일, 이후 $5/1000회 (≈ 6.7원/회)
+
+### 환경변수 조합별 동작
+
+| GOOGLE_CSE_* | GEMINI_API_KEY | 동작 |
+|---|---|---|
+| ⭕ | ⭕ | 검색 → 못찾으면 AI 생성 |
+| ❌ | ⭕ | 항상 AI 생성 |
+| ⭕ | ❌ | 검색만, 못찾으면 placeholder |
+| ❌ | ❌ | 항상 placeholder (체크박스 의미 없음) |
 
 ---
 

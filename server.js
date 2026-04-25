@@ -6,7 +6,7 @@ const path = require("path");
 const crypto = require("crypto");
 const { generateReportContent } = require("./lib/claude");
 const { generateDocx } = require("./lib/docx-generator");
-const { fmtUSD, fmtKRW, fmtTokens } = require("./lib/pricing");
+const { fmtUSD, fmtKRW, fmtTokens, formatImageCostLine } = require("./lib/pricing");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -59,19 +59,31 @@ const totalUsage = {
   cacheReadTokens: 0,
   cacheWriteTokens: 0,
   webSearchCount: 0,
+  textUSD: 0,
+  imageSearchCount: 0,
+  imageGenCount: 0,
+  imageUSD: 0,
   totalUSD: 0,
   startedAt: Date.now(),
 };
 
-function addToTotal(cost) {
-  if (!cost) return;
+function addToTotal(cost, imageCost) {
   totalUsage.jobs += 1;
-  totalUsage.inputTokens += cost.inputTokens || 0;
-  totalUsage.outputTokens += cost.outputTokens || 0;
-  totalUsage.cacheReadTokens += cost.cacheReadTokens || 0;
-  totalUsage.cacheWriteTokens += cost.cacheWriteTokens || 0;
-  totalUsage.webSearchCount += cost.webSearchCount || 0;
-  totalUsage.totalUSD += cost.total || 0;
+  if (cost) {
+    totalUsage.inputTokens += cost.inputTokens || 0;
+    totalUsage.outputTokens += cost.outputTokens || 0;
+    totalUsage.cacheReadTokens += cost.cacheReadTokens || 0;
+    totalUsage.cacheWriteTokens += cost.cacheWriteTokens || 0;
+    totalUsage.webSearchCount += cost.webSearchCount || 0;
+    totalUsage.textUSD += cost.total || 0;
+    totalUsage.totalUSD += cost.total || 0;
+  }
+  if (imageCost) {
+    totalUsage.imageSearchCount += imageCost.searchCount || 0;
+    totalUsage.imageGenCount += imageCost.generationCount || 0;
+    totalUsage.imageUSD += imageCost.total || 0;
+    totalUsage.totalUSD += imageCost.total || 0;
+  }
 }
 
 // ── Job storage (in-memory) ──────────────────────────────────────────────────
@@ -161,12 +173,13 @@ app.post("/api/generate", requireAuth, upload.single("manual"), async (req, res)
   }
 
   const date = (req.body.date || "").trim();
+  const useImages = String(req.body.useImages || "0") === "1";
   const job = createJob(req.session.user);
 
   res.json({ jobId: job.id });
 
   // Run async — don't await here
-  runGeneration(job, req.file.buffer, date).catch((err) => {
+  runGeneration(job, req.file.buffer, date, useImages).catch((err) => {
     job.status = "error";
     job.error = err.message || String(err);
     pushProgress(job, `❌ 오류: ${job.error}`);
@@ -178,10 +191,13 @@ app.post("/api/generate", requireAuth, upload.single("manual"), async (req, res)
   });
 });
 
-async function runGeneration(job, pdfBuffer, date) {
+async function runGeneration(job, pdfBuffer, date, useImages = false) {
   const t0 = Date.now();
   const timeoutMin = Math.round(JOB_TIMEOUT_MS / 60000);
-  pushProgress(job, `🚀 작업 시작 (안전장치: ${timeoutMin}분 timeout)`);
+  pushProgress(
+    job,
+    `🚀 작업 시작 (timeout: ${timeoutMin}분, 이미지: ${useImages ? "ON" : "OFF"})`,
+  );
 
   // ── Hard timeout via AbortController ──
   const ac = new AbortController();
@@ -197,6 +213,7 @@ async function runGeneration(job, pdfBuffer, date) {
       pdfBuffer,
       date,
       signal: ac.signal,
+      useImages,
       onProgress: (msg) => pushProgress(job, msg),
     });
 
@@ -217,15 +234,19 @@ async function runGeneration(job, pdfBuffer, date) {
     const totalSec = Math.floor((Date.now() - t0) / 1000);
     pushProgress(job, `🎉 전체 완료! 총 ${totalSec}초 소요. 다운로드 가능합니다.`);
 
-    // Accumulate cost into server-wide total
-    if (content.__cost) {
-      addToTotal(content.__cost);
-      pushProgress(
-        job,
-        `📊 서버 누적: ${totalUsage.jobs}건 / ${fmtUSD(totalUsage.totalUSD)} ${fmtKRW(totalUsage.totalUSD)} ` +
-          `(입력 ${fmtTokens(totalUsage.inputTokens)}, 출력 ${fmtTokens(totalUsage.outputTokens)}, 웹검색 ${totalUsage.webSearchCount}회)`,
-      );
+    // Per-job image cost line (separate from text cost)
+    if (content.__imageCost) {
+      const imgLine = formatImageCostLine(content.__imageCost);
+      if (imgLine) pushProgress(job, imgLine);
     }
+
+    // Accumulate cost into server-wide total
+    addToTotal(content.__cost, content.__imageCost);
+    pushProgress(
+      job,
+      `📊 서버 누적: ${totalUsage.jobs}건 / 총 ${fmtUSD(totalUsage.totalUSD)} ${fmtKRW(totalUsage.totalUSD)} ` +
+        `(텍스트 ${fmtUSD(totalUsage.textUSD)}, 이미지 ${fmtUSD(totalUsage.imageUSD)})`,
+    );
   } catch (e) {
     if (timedOut) {
       const elapsedMin = Math.floor((Date.now() - t0) / 60000);

@@ -174,12 +174,13 @@ app.post("/api/generate", requireAuth, upload.single("manual"), async (req, res)
 
   const date = (req.body.date || "").trim();
   const useImages = String(req.body.useImages || "0") === "1";
+  const manualFilename = req.file.originalname || "";
   const job = createJob(req.session.user);
 
   res.json({ jobId: job.id });
 
   // Run async — don't await here
-  runGeneration(job, req.file.buffer, date, useImages).catch((err) => {
+  runGeneration(job, req.file.buffer, date, useImages, manualFilename).catch((err) => {
     job.status = "error";
     job.error = err.message || String(err);
     pushProgress(job, `❌ 오류: ${job.error}`);
@@ -191,7 +192,21 @@ app.post("/api/generate", requireAuth, upload.single("manual"), async (req, res)
   });
 });
 
-async function runGeneration(job, pdfBuffer, date, useImages = false) {
+// 매뉴얼 파일명에서 첫 번째 숫자 그룹을 추출 (예: "I-08_Synthe..." -> "08")
+function extractManualNumber(filename) {
+  if (!filename) return "";
+  const m = String(filename).match(/(\d{1,3})/);
+  return m ? m[1] : "";
+}
+
+function sanitizeForFilename(s) {
+  return String(s || "")
+    .replace(/[\\/:*?"<>|]/g, "_")
+    .trim()
+    .slice(0, 30);
+}
+
+async function runGeneration(job, pdfBuffer, date, useImages = false, manualFilename = "") {
   const t0 = Date.now();
   const timeoutMin = Math.round(JOB_TIMEOUT_MS / 60000);
   pushProgress(
@@ -224,11 +239,16 @@ async function runGeneration(job, pdfBuffer, date, useImages = false) {
     const sizeKB = Math.round(buffer.length / 1024);
     pushProgress(job, `✓ .docx 빌드 완료 (${sizeKB}KB, ${docxSec}초)`);
 
-    const safeTitle = (content.title_kr || "사전보고서")
-      .replace(/[\\/:*?"<>|]/g, "_")
-      .slice(0, 80);
+    // 파일명: "08_사전_학번_(이름).docx" 형식
+    // - 숫자: 매뉴얼 파일명에서 추출 (없으면 빈 문자열)
+    // - 학번: placeholder 그대로 (사용자가 다운로드 후 직접 수정)
+    // - 이름: 로그인 시 입력한 사용자명
+    const num = extractManualNumber(manualFilename);
+    const userName = sanitizeForFilename(job.user || "");
+    const prefix = num ? `${num}_` : "";
+    const namePart = userName ? `_(${userName})` : "";
     job.result = buffer;
-    job.filename = `${safeTitle}_사전보고서.docx`;
+    job.filename = `${prefix}사전_학번${namePart}.docx`;
     job.status = "done";
 
     const totalSec = Math.floor((Date.now() - t0) / 1000);

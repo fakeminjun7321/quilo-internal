@@ -6,6 +6,7 @@ const path = require("path");
 const crypto = require("crypto");
 const { generateReportContent } = require("./lib/claude");
 const { generateDocx } = require("./lib/docx-generator");
+const { fmtUSD, fmtKRW, fmtTokens } = require("./lib/pricing");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -45,6 +46,29 @@ function requireAuth(req, res, next) {
     return res.status(401).json({ error: "로그인이 필요합니다." });
   }
   return res.redirect("/login.html");
+}
+
+// ── Cumulative usage tracker (in-memory, reset on server restart) ────────────
+const totalUsage = {
+  jobs: 0,
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheReadTokens: 0,
+  cacheWriteTokens: 0,
+  webSearchCount: 0,
+  totalUSD: 0,
+  startedAt: Date.now(),
+};
+
+function addToTotal(cost) {
+  if (!cost) return;
+  totalUsage.jobs += 1;
+  totalUsage.inputTokens += cost.inputTokens || 0;
+  totalUsage.outputTokens += cost.outputTokens || 0;
+  totalUsage.cacheReadTokens += cost.cacheReadTokens || 0;
+  totalUsage.cacheWriteTokens += cost.cacheWriteTokens || 0;
+  totalUsage.webSearchCount += cost.webSearchCount || 0;
+  totalUsage.totalUSD += cost.total || 0;
 }
 
 // ── Job storage (in-memory) ──────────────────────────────────────────────────
@@ -178,6 +202,16 @@ async function runGeneration(job, pdfBuffer, date) {
   const totalSec = Math.floor((Date.now() - t0) / 1000);
   pushProgress(job, `🎉 전체 완료! 총 ${totalSec}초 소요. 다운로드 가능합니다.`);
 
+  // Accumulate cost into server-wide total
+  if (content.__cost) {
+    addToTotal(content.__cost);
+    pushProgress(
+      job,
+      `📊 서버 누적: ${totalUsage.jobs}건 / ${fmtUSD(totalUsage.totalUSD)} ${fmtKRW(totalUsage.totalUSD)} ` +
+        `(입력 ${fmtTokens(totalUsage.inputTokens)}, 출력 ${fmtTokens(totalUsage.outputTokens)}, 웹검색 ${totalUsage.webSearchCount}회)`,
+    );
+  }
+
   job.listeners.forEach((r) => {
     sendSse(r, "done", { filename: job.filename });
     r.end();
@@ -252,6 +286,17 @@ app.get("/", (req, res) => {
 
 // Health check (Render uses this to keep service awake or detect liveness)
 app.get("/healthz", (req, res) => res.json({ ok: true }));
+
+// Usage stats (logged-in users only)
+app.get("/api/usage", requireAuth, (req, res) => {
+  const uptimeHours = ((Date.now() - totalUsage.startedAt) / 3600000).toFixed(1);
+  res.json({
+    ...totalUsage,
+    uptimeHours,
+    totalUSDFormatted: fmtUSD(totalUsage.totalUSD),
+    totalKRWFormatted: fmtKRW(totalUsage.totalUSD),
+  });
+});
 
 // ── Start ────────────────────────────────────────────────────────────────────
 

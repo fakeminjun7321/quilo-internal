@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>관리자 — 화학 사전보고서</title>
+  </head>
+  <body>
+    <p>
+      <a href="/">← 메인으로</a> |
+      <a href="#" id="logout">로그아웃</a>
+    </p>
+    <h1>관리자 페이지</h1>
+    <p id="rateInfo" style="color: #666; font-size: 0.9em">환율 로딩 중...</p>
+
+    <h2>사용자 추가</h2>
+    <form id="addForm">
+      <p>
+        이름: <input id="name" required maxlength="50" />
+      </p>
+      <p>
+        비밀번호: <input id="password" type="text" required />
+        <small>(평문, 해시되어 저장됨)</small>
+      </p>
+      <p>
+        예산 입력:
+        <input id="budgetKrw" type="number" min="0" step="100" placeholder="원화 (예: 5000)" />
+        원
+        <span style="color: #888"> 또는 </span>
+        <input id="budgetUsd" type="number" min="0" step="0.01" placeholder="USD" />
+        $
+        <br><small>둘 중 하나만 입력. 원화 입력 시 자동으로 USD 환산됨</small>
+      </p>
+      <p>
+        <label><input id="isAdmin" type="checkbox" /> 관리자 권한</label>
+      </p>
+      <p>
+        <button type="submit">추가</button>
+        <span id="addStatus" style="color: green; margin-left: 10px"></span>
+      </p>
+    </form>
+
+    <hr />
+
+    <h2>사용자 목록</h2>
+    <button id="refresh">🔄 새로고침</button>
+    <table id="userTable" border="1" cellpadding="6" cellspacing="0" style="margin-top: 8px; border-collapse: collapse">
+      <thead style="background: #eee">
+        <tr>
+          <th>이름</th>
+          <th>한도</th>
+          <th>사용</th>
+          <th>남음</th>
+          <th>관리자</th>
+          <th>가입일</th>
+          <th>조작</th>
+        </tr>
+      </thead>
+      <tbody id="userTbody"></tbody>
+    </table>
+    <p id="listStatus" style="color: #666; font-size: 0.9em"></p>
+
+    <script>
+      let krwPerUsd = 1400;
+
+      // ── Auth check ────────────────────────────────────────────────────────
+      fetch("/api/me")
+        .then((r) => (r.ok ? r.json() : Promise.reject()))
+        .then((d) => {
+          if (!d.isAdmin) {
+            alert("관리자 권한이 필요합니다");
+            location.href = "/";
+          }
+        })
+        .catch(() => (location.href = "/login.html"));
+
+      document.getElementById("logout").addEventListener("click", async (e) => {
+        e.preventDefault();
+        await fetch("/api/logout", { method: "POST" });
+        location.href = "/login.html";
+      });
+
+      // ── Helpers ───────────────────────────────────────────────────────────
+      const fmtUSD = (n) => "$" + Number(n || 0).toFixed(3);
+      const fmtKRW = (n) =>
+        Math.round(Number(n || 0) * krwPerUsd).toLocaleString() + "원";
+      const fmtBoth = (usd) => `${fmtUSD(usd)} (${fmtKRW(usd)})`;
+
+      async function loadUsers() {
+        const status = document.getElementById("listStatus");
+        status.textContent = "로딩 중...";
+        try {
+          const res = await fetch("/api/admin/users");
+          if (!res.ok) {
+            const e = await res.json();
+            throw new Error(e.error || "fetch failed");
+          }
+          const data = await res.json();
+          krwPerUsd = data.krwPerUsd || krwPerUsd;
+          document.getElementById("rateInfo").textContent =
+            `현재 환율: 1 USD = ${krwPerUsd.toFixed(2)} KRW`;
+          renderUsers(data.users);
+          status.textContent = `${data.users.length}명 로드됨`;
+        } catch (e) {
+          status.textContent = "오류: " + e.message;
+        }
+      }
+
+      function renderUsers(users) {
+        const tbody = document.getElementById("userTbody");
+        tbody.innerHTML = "";
+        for (const u of users) {
+          const remaining = Number(u.budget_usd) - Number(u.spent_usd);
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${escape(u.name)}</td>
+            <td>${fmtBoth(u.budget_usd)}</td>
+            <td>${fmtBoth(u.spent_usd)}</td>
+            <td style="color: ${remaining < 0.5 ? "red" : "black"}">${fmtBoth(remaining)}</td>
+            <td>${u.is_admin ? "✓" : ""}</td>
+            <td>${new Date(u.created_at).toLocaleDateString()}</td>
+            <td>
+              <button data-act="edit" data-id="${u.id}">수정</button>
+              <button data-act="reset" data-id="${u.id}">사용량 0</button>
+              <button data-act="delete" data-id="${u.id}" style="color: red">삭제</button>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        }
+      }
+
+      function escape(s) {
+        return String(s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+
+      document.getElementById("userTbody").addEventListener("click", async (e) => {
+        const btn = e.target.closest("button");
+        if (!btn) return;
+        const id = btn.dataset.id;
+        const act = btn.dataset.act;
+        if (act === "delete") {
+          if (!confirm("정말 삭제할까요?")) return;
+          const res = await fetch(`/api/admin/users/${id}`, { method: "DELETE" });
+          if (!res.ok) {
+            const e = await res.json();
+            return alert("삭제 실패: " + e.error);
+          }
+          loadUsers();
+        } else if (act === "reset") {
+          if (!confirm("이 사용자의 누적 사용량을 0으로 리셋할까요?")) return;
+          const res = await fetch(`/api/admin/users/${id}/reset-spent`, {
+            method: "POST",
+          });
+          if (!res.ok) return alert("실패");
+          loadUsers();
+        } else if (act === "edit") {
+          const action = prompt(
+            "어떤 항목을 수정할까요?\n  1: 비밀번호\n  2: 예산(원화)\n  3: 예산(USD)",
+          );
+          if (action === "1") {
+            const password = prompt("새 비밀번호:");
+            if (!password) return;
+            await patchUser(id, { password });
+          } else if (action === "2") {
+            const krw = prompt("새 예산 (원):");
+            if (krw == null) return;
+            await patchUser(id, { budgetKrw: Number(krw) });
+          } else if (action === "3") {
+            const usd = prompt("새 예산 ($):");
+            if (usd == null) return;
+            await patchUser(id, { budgetUsd: Number(usd) });
+          }
+          loadUsers();
+        }
+      });
+
+      async function patchUser(id, patch) {
+        const res = await fetch(`/api/admin/users/${id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patch),
+        });
+        if (!res.ok) {
+          const e = await res.json();
+          alert("수정 실패: " + e.error);
+        }
+      }
+
+      document.getElementById("refresh").addEventListener("click", loadUsers);
+
+      // ── Add user form ─────────────────────────────────────────────────────
+      document.getElementById("addForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const status = document.getElementById("addStatus");
+        status.textContent = "처리 중...";
+        const body = {
+          name: document.getElementById("name").value,
+          password: document.getElementById("password").value,
+          isAdmin: document.getElementById("isAdmin").checked,
+        };
+        const krw = document.getElementById("budgetKrw").value;
+        const usd = document.getElementById("budgetUsd").value;
+        if (usd) body.budgetUsd = Number(usd);
+        else if (krw) body.budgetKrw = Number(krw);
+        try {
+          const res = await fetch("/api/admin/users", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "실패");
+          status.textContent = `✓ ${data.user.name} 추가됨`;
+          document.getElementById("addForm").reset();
+          loadUsers();
+        } catch (e) {
+          status.textContent = "오류: " + e.message;
+          status.style.color = "red";
+        }
+      });
+
+      // 초기 로드
+      loadUsers();
+    </script>
+  </body>
+</html>

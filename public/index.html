@@ -8,6 +8,7 @@
   <body>
     <p>
       <span id="user"></span>
+      <a href="/admin" id="adminLink" style="display: none">[관리자]</a>
       <a href="#" id="logout">[로그아웃]</a>
     </p>
 
@@ -51,6 +52,9 @@
         .then((r) => (r.ok ? r.json() : Promise.reject()))
         .then((d) => {
           document.getElementById("user").textContent = d.user + " 님 ";
+          if (d.isAdmin) {
+            document.getElementById("adminLink").style.display = "inline";
+          }
         })
         .catch(() => (location.href = "/login.html"));
 

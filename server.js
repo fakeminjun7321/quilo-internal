@@ -6,7 +6,14 @@ const path = require("path");
 const crypto = require("crypto");
 const { generateReportContent } = require("./lib/claude");
 const { generateDocx } = require("./lib/docx-generator");
-const { fmtUSD, fmtKRW, fmtTokens, formatImageCostLine } = require("./lib/pricing");
+const {
+  fmtUSD,
+  fmtKRW,
+  fmtTokens,
+  formatImageCostLine,
+} = require("./lib/pricing");
+const supa = require("./lib/supabase");
+const { krwToUsd, usdToKrw, getKrwPerUsd } = require("./lib/exchange-rate");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -15,7 +22,10 @@ const SESSION_SECRET =
   process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
 
 // Hard timeout for a single generation job (default 8 minutes)
-const JOB_TIMEOUT_MS = parseInt(process.env.JOB_TIMEOUT_MS || String(8 * 60 * 1000), 10);
+const JOB_TIMEOUT_MS = parseInt(
+  process.env.JOB_TIMEOUT_MS || String(8 * 60 * 1000),
+  10,
+);
 
 // ── Middleware ───────────────────────────────────────────────────────────────
 
@@ -38,30 +48,34 @@ app.use(
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024 }, // 25MB
+  limits: { fileSize: 25 * 1024 * 1024 },
 });
 
 // ── Auth helpers ─────────────────────────────────────────────────────────────
 
+function getSessionUser(req) {
+  return req.session && req.session.userInfo ? req.session.userInfo : null;
+}
+
 function requireAuth(req, res, next) {
-  if (req.session && req.session.user) return next();
+  if (getSessionUser(req)) return next();
   if (req.accepts("json") && req.path.startsWith("/api/")) {
     return res.status(401).json({ error: "로그인이 필요합니다." });
   }
   return res.redirect("/login.html");
 }
 
-// ── Cumulative usage tracker (in-memory, reset on server restart) ────────────
+function requireAdmin(req, res, next) {
+  const u = getSessionUser(req);
+  if (!u) return res.status(401).json({ error: "로그인이 필요합니다." });
+  if (!u.isAdmin) return res.status(403).json({ error: "관리자만 접근 가능합니다." });
+  next();
+}
+
+// ── In-memory cumulative usage (server uptime-only; DB는 별도) ──────────────
 const totalUsage = {
   jobs: 0,
-  inputTokens: 0,
-  outputTokens: 0,
-  cacheReadTokens: 0,
-  cacheWriteTokens: 0,
-  webSearchCount: 0,
   textUSD: 0,
-  imageSearchCount: 0,
-  imageGenCount: 0,
   imageUSD: 0,
   totalUSD: 0,
   startedAt: Date.now(),
@@ -70,35 +84,23 @@ const totalUsage = {
 function addToTotal(cost, imageCost) {
   totalUsage.jobs += 1;
   if (cost) {
-    totalUsage.inputTokens += cost.inputTokens || 0;
-    totalUsage.outputTokens += cost.outputTokens || 0;
-    totalUsage.cacheReadTokens += cost.cacheReadTokens || 0;
-    totalUsage.cacheWriteTokens += cost.cacheWriteTokens || 0;
-    totalUsage.webSearchCount += cost.webSearchCount || 0;
     totalUsage.textUSD += cost.total || 0;
     totalUsage.totalUSD += cost.total || 0;
   }
   if (imageCost) {
-    totalUsage.imageSearchCount += imageCost.searchCount || 0;
-    totalUsage.imageGenCount += imageCost.generationCount || 0;
     totalUsage.imageUSD += imageCost.total || 0;
     totalUsage.totalUSD += imageCost.total || 0;
   }
 }
 
 // ── Job storage (in-memory) ──────────────────────────────────────────────────
-//
-// Each job tracks:
-//   { user, status: 'running'|'done'|'error', progress: [str], result?: Buffer,
-//     filename?: str, error?: str, listeners: [res], createdAt }
-//
 const jobs = new Map();
 
-function createJob(user) {
+function createJob(userInfo) {
   const id = crypto.randomBytes(12).toString("hex");
   const job = {
     id,
-    user,
+    userInfo, // { id?, name, isAdmin }
     status: "running",
     progress: [],
     result: null,
@@ -125,7 +127,6 @@ function sendSse(res, event, data) {
   res.write(`data: ${JSON.stringify(data)}\n\n`);
 }
 
-// Cleanup old jobs hourly
 setInterval(
   () => {
     const cutoff = Date.now() - 60 * 60 * 1000;
@@ -136,19 +137,46 @@ setInterval(
   10 * 60 * 1000,
 );
 
-// ── Routes ───────────────────────────────────────────────────────────────────
+// ── Login routes ─────────────────────────────────────────────────────────────
 
-app.post("/api/login", (req, res) => {
+app.post("/api/login", async (req, res) => {
   const { username, password } = req.body || {};
   if (!username || !password) {
     return res.status(400).json({ error: "이름과 비밀번호를 입력하세요." });
   }
-  if (password !== SHARED_PASSWORD) {
-    return res.status(401).json({ error: "비밀번호가 틀렸습니다." });
+  const name = String(username).trim().slice(0, 50);
+
+  try {
+    if (supa.isEnabled()) {
+      // DB 인증 모드
+      const user = await supa.authenticate(name, password);
+      if (!user) {
+        return res.status(401).json({ error: "이름 또는 비밀번호가 틀렸습니다." });
+      }
+      req.session.userInfo = {
+        id: user.id,
+        name: user.name,
+        isAdmin: !!user.is_admin,
+      };
+      console.log(`[login] ${user.name} (admin=${user.is_admin})`);
+      return res.json({
+        ok: true,
+        user: user.name,
+        isAdmin: !!user.is_admin,
+      });
+    } else {
+      // Legacy 공용 비밀번호 모드 (Supabase 미설정 시)
+      if (password !== SHARED_PASSWORD) {
+        return res.status(401).json({ error: "비밀번호가 틀렸습니다." });
+      }
+      req.session.userInfo = { name, isAdmin: false };
+      console.log(`[login] ${name} (legacy)`);
+      return res.json({ ok: true, user: name, isAdmin: false });
+    }
+  } catch (e) {
+    console.error("[login] error:", e);
+    return res.status(500).json({ error: "로그인 처리 중 오류: " + e.message });
   }
-  req.session.user = String(username).trim().slice(0, 50);
-  console.log(`[login] ${req.session.user}`);
-  res.json({ ok: true, user: req.session.user });
 });
 
 app.post("/api/logout", (req, res) => {
@@ -156,41 +184,66 @@ app.post("/api/logout", (req, res) => {
 });
 
 app.get("/api/me", (req, res) => {
-  if (req.session && req.session.user) {
-    res.json({ user: req.session.user });
+  const u = getSessionUser(req);
+  if (u) {
+    res.json({ user: u.name, isAdmin: !!u.isAdmin });
   } else {
     res.status(401).json({ error: "not logged in" });
   }
 });
 
-// Start a generation job. Returns job id immediately, work runs async.
-app.post("/api/generate", requireAuth, upload.single("manual"), async (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: "실험 매뉴얼 PDF를 업로드하세요." });
-  }
-  if (req.file.mimetype !== "application/pdf") {
-    return res.status(400).json({ error: "PDF 파일만 업로드 가능합니다." });
-  }
+// ── Generate route ───────────────────────────────────────────────────────────
 
-  const date = (req.body.date || "").trim();
-  const useImages = String(req.body.useImages || "0") === "1";
-  const manualFilename = req.file.originalname || "";
-  const job = createJob(req.session.user);
+app.post(
+  "/api/generate",
+  requireAuth,
+  upload.single("manual"),
+  async (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({ error: "실험 매뉴얼 PDF를 업로드하세요." });
+    }
+    if (req.file.mimetype !== "application/pdf") {
+      return res.status(400).json({ error: "PDF 파일만 업로드 가능합니다." });
+    }
 
-  res.json({ jobId: job.id });
+    const userInfo = getSessionUser(req);
 
-  // Run async — don't await here
-  runGeneration(job, req.file.buffer, date, useImages, manualFilename).catch((err) => {
-    job.status = "error";
-    job.error = err.message || String(err);
-    pushProgress(job, `❌ 오류: ${job.error}`);
-    job.listeners.forEach((r) => {
-      sendSse(r, "error", job.error);
-      r.end();
-    });
-    job.listeners = [];
-  });
-});
+    // 한도 검증 (Supabase enabled + 일반 사용자)
+    if (supa.isEnabled() && userInfo.id && !userInfo.isAdmin) {
+      try {
+        const check = await supa.checkBudget(userInfo.id);
+        if (!check.ok) {
+          return res
+            .status(402)
+            .json({ error: "🚫 " + (check.reason || "한도 초과") });
+        }
+      } catch (e) {
+        console.error("[budget] error:", e);
+        return res.status(500).json({ error: "한도 확인 실패: " + e.message });
+      }
+    }
+
+    const date = (req.body.date || "").trim();
+    const useImages = String(req.body.useImages || "0") === "1";
+    const manualFilename = req.file.originalname || "";
+    const job = createJob(userInfo);
+
+    res.json({ jobId: job.id });
+
+    runGeneration(job, req.file.buffer, date, useImages, manualFilename).catch(
+      (err) => {
+        job.status = "error";
+        job.error = err.message || String(err);
+        pushProgress(job, `❌ 오류: ${job.error}`);
+        job.listeners.forEach((r) => {
+          sendSse(r, "error", job.error);
+          r.end();
+        });
+        job.listeners = [];
+      },
+    );
+  },
+);
 
 // 매뉴얼 파일명에서 첫 번째 숫자 그룹을 추출 (예: "I-08_Synthe..." -> "08")
 function extractManualNumber(filename) {
@@ -206,7 +259,13 @@ function sanitizeForFilename(s) {
     .slice(0, 30);
 }
 
-async function runGeneration(job, pdfBuffer, date, useImages = false, manualFilename = "") {
+async function runGeneration(
+  job,
+  pdfBuffer,
+  date,
+  useImages = false,
+  manualFilename = "",
+) {
   const t0 = Date.now();
   const timeoutMin = Math.round(JOB_TIMEOUT_MS / 60000);
   pushProgress(
@@ -214,7 +273,6 @@ async function runGeneration(job, pdfBuffer, date, useImages = false, manualFile
     `🚀 작업 시작 (timeout: ${timeoutMin}분, 이미지: ${useImages ? "ON" : "OFF"})`,
   );
 
-  // ── Hard timeout via AbortController ──
   const ac = new AbortController();
   let timedOut = false;
   const timer = setTimeout(() => {
@@ -239,12 +297,8 @@ async function runGeneration(job, pdfBuffer, date, useImages = false, manualFile
     const sizeKB = Math.round(buffer.length / 1024);
     pushProgress(job, `✓ .docx 빌드 완료 (${sizeKB}KB, ${docxSec}초)`);
 
-    // 파일명: "08_사전_학번_(이름).docx" 형식
-    // - 숫자: 매뉴얼 파일명에서 추출 (없으면 빈 문자열)
-    // - 학번: placeholder 그대로 (사용자가 다운로드 후 직접 수정)
-    // - 이름: 로그인 시 입력한 사용자명
     const num = extractManualNumber(manualFilename);
-    const userName = sanitizeForFilename(job.user || "");
+    const userName = sanitizeForFilename(job.userInfo?.name || "");
     const prefix = num ? `${num}_` : "";
     const namePart = userName ? `_${userName}` : "";
     job.result = buffer;
@@ -252,27 +306,61 @@ async function runGeneration(job, pdfBuffer, date, useImages = false, manualFile
     job.status = "done";
 
     const totalSec = Math.floor((Date.now() - t0) / 1000);
-    pushProgress(job, `🎉 전체 완료! 총 ${totalSec}초 소요. 다운로드 가능합니다.`);
+    pushProgress(
+      job,
+      `🎉 전체 완료! 총 ${totalSec}초 소요. 다운로드 가능합니다.`,
+    );
 
-    // Per-job image cost line (separate from text cost)
     if (content.__imageCost) {
       const imgLine = formatImageCostLine(content.__imageCost);
       if (imgLine) pushProgress(job, imgLine);
     }
 
-    // Accumulate cost into server-wide total
+    // Server-wide running total (in-memory)
     addToTotal(content.__cost, content.__imageCost);
-    pushProgress(
-      job,
-      `📊 서버 누적: ${totalUsage.jobs}건 / 총 ${fmtUSD(totalUsage.totalUSD)} ${fmtKRW(totalUsage.totalUSD)} ` +
-        `(텍스트 ${fmtUSD(totalUsage.textUSD)}, 이미지 ${fmtUSD(totalUsage.imageUSD)})`,
-    );
+
+    // DB 누적 (Supabase enabled + 일반 user)
+    if (supa.isEnabled() && job.userInfo?.id) {
+      try {
+        await supa.recordUsage({
+          userId: job.userInfo.id,
+          jobId: job.id,
+          textCostUsd: content.__cost?.total || 0,
+          imageCostUsd: content.__imageCost?.total || 0,
+          meta: {
+            title: content.title_kr,
+            inputTokens: content.__cost?.inputTokens,
+            outputTokens: content.__cost?.outputTokens,
+            webSearchCount: content.__cost?.webSearchCount,
+            imageSearchCount: content.__imageCost?.searchCount,
+            imageGenCount: content.__imageCost?.generationCount,
+          },
+        });
+
+        // Refreshed user spent/budget
+        const fresh = await supa.findUserById(job.userInfo.id);
+        if (fresh) {
+          const spent = Number(fresh.spent_usd) || 0;
+          const budget = Number(fresh.budget_usd) || 0;
+          pushProgress(
+            job,
+            `📊 ${fresh.name}: 누적 ${fmtUSD(spent)} / 한도 ${fmtUSD(budget)} ${fmtKRW(budget - spent)} 남음`,
+          );
+        }
+      } catch (e) {
+        pushProgress(job, `⚠ 사용량 DB 기록 실패: ${e.message}`);
+      }
+    } else {
+      pushProgress(
+        job,
+        `📊 서버 누적 (메모리): ${totalUsage.jobs}건 / 총 ${fmtUSD(totalUsage.totalUSD)} ${fmtKRW(totalUsage.totalUSD)}`,
+      );
+    }
   } catch (e) {
     if (timedOut) {
       const elapsedMin = Math.floor((Date.now() - t0) / 60000);
       throw new Error(
-        `${timeoutMin}분 timeout으로 작업이 강제 종료되었습니다 (실제 ${elapsedMin}분 경과). ` +
-          `매뉴얼이 너무 복잡하거나 Claude API 응답이 느렸을 수 있습니다. 더 짧은 매뉴얼로 다시 시도하거나 재시도해주세요.`,
+        `${timeoutMin}분 timeout으로 작업이 강제 종료되었습니다 (실제 ${elapsedMin}분 경과).`,
       );
     }
     throw e;
@@ -287,11 +375,12 @@ async function runGeneration(job, pdfBuffer, date, useImages = false, manualFile
   job.listeners = [];
 }
 
-// SSE stream for a job
+// SSE stream
 app.get("/api/jobs/:id/stream", requireAuth, (req, res) => {
   const job = jobs.get(req.params.id);
   if (!job) return res.status(404).end();
-  if (job.user !== req.session.user) return res.status(403).end();
+  const u = getSessionUser(req);
+  if (job.userInfo?.name !== u.name) return res.status(403).end();
 
   res.set({
     "Content-Type": "text/event-stream",
@@ -301,7 +390,6 @@ app.get("/api/jobs/:id/stream", requireAuth, (req, res) => {
   });
   res.flushHeaders();
 
-  // Replay buffered progress
   job.progress.forEach((p) => sendSse(res, "progress", p));
 
   if (job.status === "done") {
@@ -319,11 +407,12 @@ app.get("/api/jobs/:id/stream", requireAuth, (req, res) => {
   });
 });
 
-// Download generated docx
+// Download
 app.get("/api/jobs/:id/download", requireAuth, (req, res) => {
   const job = jobs.get(req.params.id);
   if (!job) return res.status(404).send("작업을 찾을 수 없습니다.");
-  if (job.user !== req.session.user) return res.status(403).send("권한 없음");
+  const u = getSessionUser(req);
+  if (job.userInfo?.name !== u.name) return res.status(403).send("권한 없음");
   if (job.status !== "done" || !job.result) {
     return res.status(409).send("아직 완료되지 않았습니다.");
   }
@@ -336,7 +425,104 @@ app.get("/api/jobs/:id/download", requireAuth, (req, res) => {
   res.send(job.result);
 });
 
-// Static files (login.html, index.html)
+// ── Admin routes ─────────────────────────────────────────────────────────────
+
+app.get("/api/admin/users", requireAdmin, async (req, res) => {
+  if (!supa.isEnabled())
+    return res.status(503).json({ error: "Supabase 미설정" });
+  try {
+    const users = await supa.listUsers();
+    const rate = await getKrwPerUsd();
+    res.json({ users, krwPerUsd: rate });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/admin/users", requireAdmin, async (req, res) => {
+  if (!supa.isEnabled())
+    return res.status(503).json({ error: "Supabase 미설정" });
+  const { name, password, budgetUsd, budgetKrw, isAdmin } = req.body || {};
+  if (!name || !password) {
+    return res.status(400).json({ error: "이름·비밀번호 필수" });
+  }
+  let usd = Number(budgetUsd) || 0;
+  if (!usd && budgetKrw) {
+    usd = await krwToUsd(Number(budgetKrw));
+  }
+  try {
+    const user = await supa.createUser({
+      name: String(name).trim(),
+      password,
+      budgetUsd: usd,
+      isAdmin: !!isAdmin,
+    });
+    res.json({ ok: true, user });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.patch("/api/admin/users/:id", requireAdmin, async (req, res) => {
+  if (!supa.isEnabled())
+    return res.status(503).json({ error: "Supabase 미설정" });
+  const { name, password, budgetUsd, budgetKrw, isAdmin, spentUsd } =
+    req.body || {};
+  const patch = {};
+  if (name) patch.name = String(name).trim();
+  if (password) patch.password = password;
+  if (budgetUsd != null) patch.budgetUsd = Number(budgetUsd);
+  else if (budgetKrw != null) {
+    patch.budgetUsd = await krwToUsd(Number(budgetKrw));
+  }
+  if (isAdmin != null) patch.isAdmin = !!isAdmin;
+  if (spentUsd != null) patch.spentUsd = Number(spentUsd);
+  try {
+    const user = await supa.updateUser(req.params.id, patch);
+    res.json({ ok: true, user });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete("/api/admin/users/:id", requireAdmin, async (req, res) => {
+  if (!supa.isEnabled())
+    return res.status(503).json({ error: "Supabase 미설정" });
+  // Don't let admin delete themselves
+  const me = getSessionUser(req);
+  if (me.id === req.params.id) {
+    return res.status(400).json({ error: "본인 계정은 삭제 불가" });
+  }
+  try {
+    await supa.deleteUser(req.params.id);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/admin/users/:id/reset-spent", requireAdmin, async (req, res) => {
+  if (!supa.isEnabled())
+    return res.status(503).json({ error: "Supabase 미설정" });
+  try {
+    const user = await supa.updateUser(req.params.id, { spentUsd: 0 });
+    res.json({ ok: true, user });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get("/api/admin/exchange-rate", requireAdmin, async (req, res) => {
+  try {
+    const rate = await getKrwPerUsd();
+    res.json({ krwPerUsd: rate });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── Static + index ──────────────────────────────────────────────────────────
+
 app.use(
   express.static(path.join(__dirname, "public"), {
     extensions: ["html"],
@@ -344,18 +530,22 @@ app.use(
   }),
 );
 
-// Root → login or main depending on session
+app.get("/admin", (req, res) => {
+  const u = getSessionUser(req);
+  if (!u) return res.redirect("/login.html");
+  if (!u.isAdmin) return res.status(403).send("관리자만 접근 가능합니다.");
+  res.sendFile(path.join(__dirname, "public", "admin.html"));
+});
+
 app.get("/", (req, res) => {
-  if (req.session && req.session.user) {
+  if (getSessionUser(req)) {
     return res.sendFile(path.join(__dirname, "public", "index.html"));
   }
   res.redirect("/login.html");
 });
 
-// Health check (Render uses this to keep service awake or detect liveness)
 app.get("/healthz", (req, res) => res.json({ ok: true }));
 
-// Usage stats (logged-in users only)
 app.get("/api/usage", requireAuth, (req, res) => {
   const uptimeHours = ((Date.now() - totalUsage.startedAt) / 3600000).toFixed(1);
   res.json({
@@ -368,12 +558,23 @@ app.get("/api/usage", requireAuth, (req, res) => {
 
 // ── Start ────────────────────────────────────────────────────────────────────
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`▶ chem-pre-lab-web listening on :${PORT}`);
-  if (SHARED_PASSWORD === "changeme") {
-    console.warn("⚠ SHARED_PASSWORD가 기본값입니다. .env에서 설정하세요.");
+  console.log(`  Supabase: ${supa.isEnabled() ? "ON" : "OFF (legacy mode)"}`);
+  if (!supa.isEnabled() && SHARED_PASSWORD === "changeme") {
+    console.warn("⚠ SHARED_PASSWORD가 기본값입니다.");
   }
   if (!process.env.ANTHROPIC_API_KEY) {
-    console.warn("⚠ ANTHROPIC_API_KEY가 없습니다. .env에서 설정하세요.");
+    console.warn("⚠ ANTHROPIC_API_KEY가 없습니다.");
+  }
+  if (supa.isEnabled()) {
+    try {
+      const admin = await supa.ensureAdminFromEnv();
+      if (admin) {
+        console.log(`  ✓ Admin 사용자 보장: ${admin.name}`);
+      }
+    } catch (e) {
+      console.warn(`  ⚠ Admin bootstrap 실패: ${e.message}`);
+    }
   }
 });

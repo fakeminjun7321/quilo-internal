@@ -152,7 +152,8 @@ app.post("/api/generate", requireAuth, upload.single("manual"), async (req, res)
 });
 
 async function runGeneration(job, pdfBuffer, date) {
-  pushProgress(job, "작업 시작 (PDF 수신 완료)");
+  const t0 = Date.now();
+  pushProgress(job, "🚀 작업 시작");
 
   const content = await generateReportContent({
     pdfBuffer,
@@ -160,11 +161,12 @@ async function runGeneration(job, pdfBuffer, date) {
     onProgress: (msg) => pushProgress(job, msg),
   });
 
-  pushProgress(job, "✓ 콘텐츠 생성 완료, .docx 빌드 시작");
-
+  pushProgress(job, "📄 .docx 파일 빌드 중...");
+  const tDocxStart = Date.now();
   const buffer = await generateDocx(content);
-
-  pushProgress(job, "✓ .docx 빌드 완료");
+  const docxSec = Math.floor((Date.now() - tDocxStart) / 1000);
+  const sizeKB = Math.round(buffer.length / 1024);
+  pushProgress(job, `✓ .docx 빌드 완료 (${sizeKB}KB, ${docxSec}초)`);
 
   const safeTitle = (content.title_kr || "사전보고서")
     .replace(/[\\/:*?"<>|]/g, "_")
@@ -173,7 +175,8 @@ async function runGeneration(job, pdfBuffer, date) {
   job.filename = `${safeTitle}_사전보고서.docx`;
   job.status = "done";
 
-  pushProgress(job, "🎉 완료! 다운로드 가능합니다.");
+  const totalSec = Math.floor((Date.now() - t0) / 1000);
+  pushProgress(job, `🎉 전체 완료! 총 ${totalSec}초 소요. 다운로드 가능합니다.`);
 
   job.listeners.forEach((r) => {
     sendSse(r, "done", { filename: job.filename });

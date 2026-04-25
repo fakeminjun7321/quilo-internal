@@ -14,6 +14,9 @@ const SHARED_PASSWORD = process.env.SHARED_PASSWORD || "changeme";
 const SESSION_SECRET =
   process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
 
+// Hard timeout for a single generation job (default 8 minutes)
+const JOB_TIMEOUT_MS = parseInt(process.env.JOB_TIMEOUT_MS || String(8 * 60 * 1000), 10);
+
 // ── Middleware ───────────────────────────────────────────────────────────────
 
 app.set("trust proxy", 1);
@@ -177,39 +180,63 @@ app.post("/api/generate", requireAuth, upload.single("manual"), async (req, res)
 
 async function runGeneration(job, pdfBuffer, date) {
   const t0 = Date.now();
-  pushProgress(job, "🚀 작업 시작");
+  const timeoutMin = Math.round(JOB_TIMEOUT_MS / 60000);
+  pushProgress(job, `🚀 작업 시작 (안전장치: ${timeoutMin}분 timeout)`);
 
-  const content = await generateReportContent({
-    pdfBuffer,
-    date,
-    onProgress: (msg) => pushProgress(job, msg),
-  });
+  // ── Hard timeout via AbortController ──
+  const ac = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    pushProgress(job, `⏰ ${timeoutMin}분 초과 — 강제 종료 중...`);
+    ac.abort();
+  }, JOB_TIMEOUT_MS);
 
-  pushProgress(job, "📄 .docx 파일 빌드 중...");
-  const tDocxStart = Date.now();
-  const buffer = await generateDocx(content);
-  const docxSec = Math.floor((Date.now() - tDocxStart) / 1000);
-  const sizeKB = Math.round(buffer.length / 1024);
-  pushProgress(job, `✓ .docx 빌드 완료 (${sizeKB}KB, ${docxSec}초)`);
+  try {
+    const content = await generateReportContent({
+      pdfBuffer,
+      date,
+      signal: ac.signal,
+      onProgress: (msg) => pushProgress(job, msg),
+    });
 
-  const safeTitle = (content.title_kr || "사전보고서")
-    .replace(/[\\/:*?"<>|]/g, "_")
-    .slice(0, 80);
-  job.result = buffer;
-  job.filename = `${safeTitle}_사전보고서.docx`;
-  job.status = "done";
+    pushProgress(job, "📄 .docx 파일 빌드 중...");
+    const tDocxStart = Date.now();
+    const buffer = await generateDocx(content);
+    const docxSec = Math.floor((Date.now() - tDocxStart) / 1000);
+    const sizeKB = Math.round(buffer.length / 1024);
+    pushProgress(job, `✓ .docx 빌드 완료 (${sizeKB}KB, ${docxSec}초)`);
 
-  const totalSec = Math.floor((Date.now() - t0) / 1000);
-  pushProgress(job, `🎉 전체 완료! 총 ${totalSec}초 소요. 다운로드 가능합니다.`);
+    const safeTitle = (content.title_kr || "사전보고서")
+      .replace(/[\\/:*?"<>|]/g, "_")
+      .slice(0, 80);
+    job.result = buffer;
+    job.filename = `${safeTitle}_사전보고서.docx`;
+    job.status = "done";
 
-  // Accumulate cost into server-wide total
-  if (content.__cost) {
-    addToTotal(content.__cost);
-    pushProgress(
-      job,
-      `📊 서버 누적: ${totalUsage.jobs}건 / ${fmtUSD(totalUsage.totalUSD)} ${fmtKRW(totalUsage.totalUSD)} ` +
-        `(입력 ${fmtTokens(totalUsage.inputTokens)}, 출력 ${fmtTokens(totalUsage.outputTokens)}, 웹검색 ${totalUsage.webSearchCount}회)`,
-    );
+    const totalSec = Math.floor((Date.now() - t0) / 1000);
+    pushProgress(job, `🎉 전체 완료! 총 ${totalSec}초 소요. 다운로드 가능합니다.`);
+
+    // Accumulate cost into server-wide total
+    if (content.__cost) {
+      addToTotal(content.__cost);
+      pushProgress(
+        job,
+        `📊 서버 누적: ${totalUsage.jobs}건 / ${fmtUSD(totalUsage.totalUSD)} ${fmtKRW(totalUsage.totalUSD)} ` +
+          `(입력 ${fmtTokens(totalUsage.inputTokens)}, 출력 ${fmtTokens(totalUsage.outputTokens)}, 웹검색 ${totalUsage.webSearchCount}회)`,
+      );
+    }
+  } catch (e) {
+    if (timedOut) {
+      const elapsedMin = Math.floor((Date.now() - t0) / 60000);
+      throw new Error(
+        `${timeoutMin}분 timeout으로 작업이 강제 종료되었습니다 (실제 ${elapsedMin}분 경과). ` +
+          `매뉴얼이 너무 복잡하거나 Claude API 응답이 느렸을 수 있습니다. 더 짧은 매뉴얼로 다시 시도하거나 재시도해주세요.`,
+      );
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
   }
 
   job.listeners.forEach((r) => {

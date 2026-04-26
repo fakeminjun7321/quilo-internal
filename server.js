@@ -63,7 +63,42 @@ const PIPELINES = {
       .generateReportContent,
     generateDocx: require("./lib/pipelines/chem-result/docx-gen").generateDocx,
   },
-  // "phys-result": Phase 3에서 추가
+  "phys-result": {
+    label: "물리 결과보고서",
+    filenamePrefix: "물리결과",
+    filenameSourceField: "cap",
+    prepareInput(filesByField, body) {
+      const cap = filesByField.cap?.[0];
+      if (!cap) {
+        throw new Error("PASCO Capstone (.cap) 파일을 업로드하세요.");
+      }
+      const ext = (cap.originalname.split(".").pop() || "").toLowerCase();
+      if (ext !== "cap") {
+        throw new Error(".cap 확장자 파일만 가능합니다.");
+      }
+      const photos = filesByField.photos || [];
+      if (photos.length === 0) {
+        throw new Error("실험 사진을 1장 이상 업로드하세요.");
+      }
+      const form = filesByField.form?.[0] || null;
+      const rubric = filesByField.rubric?.[0] || null;
+      return {
+        capBuffer: cap.buffer,
+        capName: cap.originalname,
+        photos: photos.map((p) => ({
+          buffer: p.buffer,
+          name: p.originalname,
+          mimetype: p.mimetype,
+        })),
+        formBuffer: form?.buffer || null,
+        rubricBuffer: rubric?.buffer || null,
+        rubricName: rubric?.originalname || "",
+      };
+    },
+    generateContent: require("./lib/pipelines/phys-result/generate")
+      .generateReportContent,
+    generateDocx: require("./lib/pipelines/phys-result/docx-gen").generateDocx,
+  },
 };
 const {
   fmtUSD,

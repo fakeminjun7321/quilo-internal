@@ -186,7 +186,9 @@ app.post("/api/login", async (req, res) => {
     }
   } catch (e) {
     console.error("[login] error:", e);
-    return res.status(500).json({ error: "로그인 처리 중 오류: " + e.message });
+    return res
+      .status(500)
+      .json({ error: "로그인 처리 중 오류가 발생했습니다." });
   }
 });
 
@@ -244,7 +246,9 @@ app.post(
         }
       } catch (e) {
         console.error("[budget] error:", e);
-        return res.status(500).json({ error: "한도 확인 실패: " + e.message });
+        return res
+          .status(500)
+          .json({ error: "한도 확인 중 오류가 발생했습니다." });
       }
     }
 
@@ -478,7 +482,8 @@ app.get("/api/admin/users", requireAdmin, async (req, res) => {
     const rate = await getKrwPerUsd();
     res.json({ users: usersWithRate, krwPerUsd: rate });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error("[admin]", req.method, req.path, "error:", e);
+    res.status(500).json({ error: "처리 중 오류가 발생했습니다." });
   }
 });
 
@@ -507,7 +512,8 @@ app.post("/api/admin/users", requireAdmin, async (req, res) => {
     });
     res.json({ ok: true, user });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error("[admin]", req.method, req.path, "error:", e);
+    res.status(500).json({ error: "처리 중 오류가 발생했습니다." });
   }
 });
 
@@ -534,7 +540,8 @@ app.patch("/api/admin/users/:id", requireAdmin, async (req, res) => {
     const user = await supa.updateUser(req.params.id, patch);
     res.json({ ok: true, user });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error("[admin]", req.method, req.path, "error:", e);
+    res.status(500).json({ error: "처리 중 오류가 발생했습니다." });
   }
 });
 
@@ -556,7 +563,8 @@ app.delete("/api/admin/users/:id", requireAdmin, async (req, res) => {
     await supa.deleteUser(req.params.id);
     res.json({ ok: true });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error("[admin]", req.method, req.path, "error:", e);
+    res.status(500).json({ error: "처리 중 오류가 발생했습니다." });
   }
 });
 
@@ -567,7 +575,8 @@ app.post("/api/admin/users/:id/reset-spent", requireAdmin, async (req, res) => {
     const user = await supa.updateUser(req.params.id, { spentUsd: 0 });
     res.json({ ok: true, user });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error("[admin]", req.method, req.path, "error:", e);
+    res.status(500).json({ error: "처리 중 오류가 발생했습니다." });
   }
 });
 
@@ -580,7 +589,8 @@ app.get("/api/admin/usage-logs", requireAdmin, async (req, res) => {
     const rate = await getKrwPerUsd();
     res.json({ logs, krwPerUsd: rate });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error("[admin]", req.method, req.path, "error:", e);
+    res.status(500).json({ error: "처리 중 오류가 발생했습니다." });
   }
 });
 
@@ -589,7 +599,8 @@ app.get("/api/admin/exchange-rate", requireAdmin, async (req, res) => {
     const rate = await getKrwPerUsd();
     res.json({ krwPerUsd: rate });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error("[admin]", req.method, req.path, "error:", e);
+    res.status(500).json({ error: "처리 중 오류가 발생했습니다." });
   }
 });
 

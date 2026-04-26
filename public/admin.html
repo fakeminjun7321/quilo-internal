@@ -19,8 +19,8 @@
         이름: <input id="name" required maxlength="50" />
       </p>
       <p>
-        비밀번호: <input id="password" type="text" required />
-        <small>(평문, 해시되어 저장됨)</small>
+        비밀번호: <input id="password" type="text" required minlength="5" />
+        <small>(평문 입력, 해시되어 저장됨. 최소 5자)</small>
       </p>
       <p>
         예산 입력:
@@ -52,6 +52,7 @@
           <th>사용</th>
           <th>남음</th>
           <th>관리자</th>
+          <th>시간당 사용</th>
           <th>가입일</th>
           <th>조작</th>
         </tr>
@@ -133,15 +134,28 @@
         tbody.innerHTML = "";
         for (const u of users) {
           const remaining = Number(u.budget_usd) - Number(u.spent_usd);
+          const count = u.recent_gen_count || 0;
+          const limit = u.recent_gen_limit || 5;
+          const isAdmin = !!u.is_admin;
+          const isLocked = !isAdmin && count >= limit;
+          // 시간당 사용 표시: admin은 무제한, 일반 사용자는 카운트/제한
+          const rateText = isAdmin
+            ? '<span style="color: #888">무제한</span>'
+            : `<span style="color: ${isLocked ? "red" : count >= limit - 1 ? "orange" : "black"}">${count}/${limit}${isLocked ? " 🔒" : ""}</span>`;
+          const unlockBtn = isLocked
+            ? `<button data-act="unlock" data-id="${u.id}" style="color: blue">잠금 해제</button>`
+            : "";
           const tr = document.createElement("tr");
           tr.innerHTML = `
             <td>${escape(u.name)}</td>
             <td>${fmtBoth(u.budget_usd)}</td>
             <td>${fmtBoth(u.spent_usd)}</td>
             <td style="color: ${remaining < 0.5 ? "red" : "black"}">${fmtBoth(remaining)}</td>
-            <td>${u.is_admin ? "✓" : ""}</td>
+            <td>${isAdmin ? "✓" : ""}</td>
+            <td>${rateText}</td>
             <td>${new Date(u.created_at).toLocaleDateString()}</td>
             <td>
+              ${unlockBtn}
               <button data-act="edit" data-id="${u.id}">수정</button>
               <button data-act="reset" data-id="${u.id}">사용량 0</button>
               <button data-act="delete" data-id="${u.id}" style="color: red">삭제</button>
@@ -163,6 +177,18 @@
         if (!btn) return;
         const id = btn.dataset.id;
         const act = btn.dataset.act;
+        if (act === "unlock") {
+          if (!confirm("이 사용자의 시간당 사용 잠금을 해제할까요?")) return;
+          const res = await fetch(`/api/admin/users/${id}/unlock-rate`, {
+            method: "POST",
+          });
+          if (!res.ok) {
+            const e = await res.json();
+            return alert("실패: " + (e.error || "알 수 없음"));
+          }
+          loadUsers();
+          return;
+        }
         if (act === "delete") {
           if (!confirm("정말 삭제할까요?")) return;
           const res = await fetch(`/api/admin/users/${id}`, { method: "DELETE" });

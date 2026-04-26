@@ -14,6 +14,7 @@ const {
 } = require("./lib/pricing");
 const supa = require("./lib/supabase");
 const { krwToUsd, usdToKrw, getKrwPerUsd } = require("./lib/exchange-rate");
+const rateLimit = require("./lib/rate-limit");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -140,6 +141,16 @@ setInterval(
 // ── Login routes ─────────────────────────────────────────────────────────────
 
 app.post("/api/login", async (req, res) => {
+  // 브루트포스 방어: 동일 IP에서 분당 10회 초과 시 차단
+  const ip = req.ip || "unknown";
+  const limit = rateLimit.checkLoginLimit(ip);
+  if (!limit.allowed) {
+    return res.status(429).json({
+      error: `로그인 시도가 너무 많습니다 (분당 ${rateLimit.LOGIN_LIMIT}회 제한). 1분 후 다시 시도하세요.`,
+    });
+  }
+  rateLimit.recordLoginAttempt(ip);
+
   const { username, password } = req.body || {};
   if (!username || !password) {
     return res.status(400).json({ error: "이름과 비밀번호를 입력하세요." });
@@ -208,6 +219,20 @@ app.post(
 
     const userInfo = getSessionUser(req);
 
+    // 시간당 사용 횟수 제한 (admin 제외, 일반 사용자만)
+    if (!userInfo.isAdmin && userInfo.id) {
+      const limit = rateLimit.checkUserGenLimit(userInfo.id);
+      if (!limit.allowed) {
+        const unlockTime = new Date(limit.unlockAt).toLocaleString("ko-KR", {
+          dateStyle: "short",
+          timeStyle: "short",
+        });
+        return res.status(429).json({
+          error: `🚫 시간당 ${limit.limit}건 제한에 도달했습니다 (현재 ${limit.count}/${limit.limit}). ${unlockTime}부터 다시 사용 가능합니다. 더 필요하시면 관리자에게 잠금 해제를 요청하세요.`,
+        });
+      }
+    }
+
     // 한도 검증 (Supabase enabled + 일반 사용자)
     if (supa.isEnabled() && userInfo.id && !userInfo.isAdmin) {
       try {
@@ -230,6 +255,12 @@ app.post(
     const ALLOWED_MODELS = ["claude-sonnet-4-6", "claude-opus-4-7"];
     const requestedModel = String(req.body.model || "").trim();
     const model = ALLOWED_MODELS.includes(requestedModel) ? requestedModel : null;
+
+    // 모든 검증 통과 — 일반 사용자는 rate limit 카운트 증가
+    if (!userInfo.isAdmin && userInfo.id) {
+      rateLimit.recordUserGenAttempt(userInfo.id);
+    }
+
     const job = createJob(userInfo);
 
     res.json({ jobId: job.id });
@@ -438,8 +469,14 @@ app.get("/api/admin/users", requireAdmin, async (req, res) => {
     return res.status(503).json({ error: "Supabase 미설정" });
   try {
     const users = await supa.listUsers();
+    // 각 사용자별 시간당 보고서 생성 카운트 추가
+    const usersWithRate = users.map((u) => ({
+      ...u,
+      recent_gen_count: rateLimit.getUserGenCount(u.id),
+      recent_gen_limit: rateLimit.GEN_LIMIT,
+    }));
     const rate = await getKrwPerUsd();
-    res.json({ users, krwPerUsd: rate });
+    res.json({ users: usersWithRate, krwPerUsd: rate });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -451,6 +488,11 @@ app.post("/api/admin/users", requireAdmin, async (req, res) => {
   const { name, password, budgetUsd, budgetKrw, isAdmin } = req.body || {};
   if (!name || !password) {
     return res.status(400).json({ error: "이름·비밀번호 필수" });
+  }
+  if (String(password).length < 5) {
+    return res
+      .status(400)
+      .json({ error: "비밀번호는 최소 5자 이상이어야 합니다." });
   }
   let usd = Number(budgetUsd) || 0;
   if (!usd && budgetKrw) {
@@ -474,6 +516,11 @@ app.patch("/api/admin/users/:id", requireAdmin, async (req, res) => {
     return res.status(503).json({ error: "Supabase 미설정" });
   const { name, password, budgetUsd, budgetKrw, isAdmin, spentUsd } =
     req.body || {};
+  if (password != null && password !== "" && String(password).length < 5) {
+    return res
+      .status(400)
+      .json({ error: "비밀번호는 최소 5자 이상이어야 합니다." });
+  }
   const patch = {};
   if (name) patch.name = String(name).trim();
   if (password) patch.password = password;
@@ -489,6 +536,12 @@ app.patch("/api/admin/users/:id", requireAdmin, async (req, res) => {
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
+});
+
+// 관리자가 일반 사용자의 시간당 사용 잠금을 해제 (rate limit 카운터 리셋)
+app.post("/api/admin/users/:id/unlock-rate", requireAdmin, (req, res) => {
+  rateLimit.unlockUser(req.params.id);
+  res.json({ ok: true });
 });
 
 app.delete("/api/admin/users/:id", requireAdmin, async (req, res) => {

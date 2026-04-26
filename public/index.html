@@ -91,9 +91,23 @@
 
     <!-- ── 물리 결과보고서 폼 (Phase 3) ─────────────────────────── -->
     <form id="physResultForm" style="display: none">
+      <p style="background: #eef7ff; padding: 8px; border-radius: 4px; font-size: 13px;">
+        💡 <strong>.cap 또는 엑셀 중 하나는 필수</strong>. 둘 다 있으면 둘 다 사용.<br>
+        엑셀로 측정한 실험은 매뉴얼 PDF도 같이 첨부 권장.
+      </p>
       <p>
-        <label>PASCO Capstone 파일 (.cap) <strong>*</strong>:
-          <input id="prCap" name="cap" type="file" accept=".cap" required />
+        <label>PASCO Capstone 파일 (.cap):
+          <input id="prCap" name="cap" type="file" accept=".cap" />
+        </label>
+      </p>
+      <p>
+        <label>엑셀/CSV 데이터 (.xlsx·.xls·.csv):
+          <input id="prData" name="data" type="file" accept=".xlsx,.xls,.csv" />
+        </label>
+      </p>
+      <p>
+        <label>실험 매뉴얼 PDF (엑셀 사용 시 권장):
+          <input id="prManual" name="manual" type="file" accept="application/pdf" />
         </label>
       </p>
       <p>
@@ -603,12 +617,19 @@
         e.preventDefault();
         if (currentJobId) return;
 
-        const cap = document.getElementById("prCap").files[0];
-        if (!cap) return;
+        const cap = document.getElementById("prCap").files[0] || null;
+        const dataFile = document.getElementById("prData").files[0] || null;
+        const manual = document.getElementById("prManual").files[0] || null;
         const photos = Array.from(document.getElementById("prPhotos").files);
-        if (photos.length === 0) return;
         const formPdf = document.getElementById("prForm").files[0] || null;
         const rubric = document.getElementById("prRubric").files[0] || null;
+
+        // 클라이언트 검증: cap 또는 엑셀 중 하나는 필수
+        if (!cap && !dataFile) {
+          alert("⚠️ PASCO Capstone (.cap) 파일 또는 엑셀/CSV 데이터 중 하나는 업로드해야 합니다.");
+          return;
+        }
+        if (photos.length === 0) return;
 
         const prModel =
           document.querySelector('input[name="prModel"]:checked')?.value ||
@@ -619,19 +640,25 @@
             : "표준 (Sonnet 4.6)";
 
         const photoBytes = photos.reduce((s, p) => s + p.size, 0);
+        // capBytes에 cap 또는 data 크기 합산 — 추정용
+        const dataInputBytes = (cap?.size || 0) + (dataFile?.size || 0);
         const est = estimatePhysResultCost({
-          capBytes: cap.size,
+          capBytes: dataInputBytes,
           photoCount: photos.length,
           photoBytes,
-          formBytes: formPdf?.size || 0,
+          formBytes: (formPdf?.size || 0) + (manual?.size || 0),
           rubricBytes: rubric?.size || 0,
           modelId: prModel,
         });
         const krwLo = Math.round(est.lo * 1400);
         const krwHi = Math.round(est.hi * 1400);
+        const inputLabel =
+          (cap ? `.cap (${Math.round(cap.size / 1024)}KB)` : "") +
+          (cap && dataFile ? " + " : "") +
+          (dataFile ? `엑셀/CSV (${Math.round(dataFile.size / 1024)}KB)` : "");
         const msg =
           `🤖 모델: ${modelLabel}\n` +
-          `📦 .cap (${Math.round(cap.size / 1024)}KB), 사진 ${photos.length}장${formPdf ? ", 양식" : ""}${rubric ? ", 평가기준" : ""}\n` +
+          `📦 ${inputLabel}, 사진 ${photos.length}장${manual ? ", 매뉴얼" : ""}${formPdf ? ", 양식" : ""}${rubric ? ", 평가기준" : ""}\n` +
           `📦 총 크기: ${est.totalKB}KB\n` +
           `💰 예상 비용: $${est.lo.toFixed(2)} ~ $${est.hi.toFixed(2)} ` +
           `(약 ₩${krwLo.toLocaleString()} ~ ₩${krwHi.toLocaleString()})\n\n` +
@@ -648,7 +675,9 @@
 
         const fd = new FormData();
         fd.append("type", "phys-result");
-        fd.append("cap", cap);
+        if (cap) fd.append("cap", cap);
+        if (dataFile) fd.append("data", dataFile);
+        if (manual) fd.append("manual", manual);
         photos.forEach((p) => fd.append("photos", p));
         if (formPdf) fd.append("form", formPdf);
         if (rubric) fd.append("rubric", rubric);

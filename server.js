@@ -65,25 +65,50 @@ const PIPELINES = {
   "phys-result": {
     label: "물리 결과보고서",
     filenamePrefix: "물리결과",
+    // 파일명 번호 추출 우선순위: .cap > 매뉴얼 > 데이터
     filenameSourceField: "cap",
     prepareInput(filesByField, body) {
-      const cap = filesByField.cap?.[0];
-      if (!cap) {
-        throw new Error("PASCO Capstone (.cap) 파일을 업로드하세요.");
+      const cap = filesByField.cap?.[0] || null;
+      const data = filesByField.data?.[0] || null;
+      const manual = filesByField.manual?.[0] || null;
+
+      // .cap 또는 엑셀 데이터 중 하나는 필수
+      if (!cap && !data) {
+        throw new Error(
+          "PASCO Capstone (.cap) 파일 또는 엑셀/CSV 데이터 중 하나는 업로드하세요.",
+        );
       }
-      const ext = (cap.originalname.split(".").pop() || "").toLowerCase();
-      if (ext !== "cap") {
-        throw new Error(".cap 확장자 파일만 가능합니다.");
+
+      // .cap 확장자 검증 (있을 때)
+      if (cap) {
+        const ext = (cap.originalname.split(".").pop() || "").toLowerCase();
+        if (ext !== "cap") {
+          throw new Error(".cap 확장자 파일만 가능합니다.");
+        }
       }
+
+      // 데이터 확장자 검증 (있을 때)
+      if (data) {
+        const dext = (data.originalname.split(".").pop() || "").toLowerCase();
+        if (!["xlsx", "xls", "csv"].includes(dext)) {
+          throw new Error("엑셀/CSV 데이터는 .xlsx, .xls, .csv 형식만 가능합니다.");
+        }
+      }
+
       const photos = filesByField.photos || [];
       if (photos.length === 0) {
         throw new Error("실험 사진을 1장 이상 업로드하세요.");
       }
+
       const form = filesByField.form?.[0] || null;
       const rubric = filesByField.rubric?.[0] || null;
+
       return {
-        capBuffer: cap.buffer,
-        capName: cap.originalname,
+        capBuffer: cap?.buffer || null,
+        capName: cap?.originalname || "",
+        dataBuffer: data?.buffer || null,
+        dataName: data?.originalname || "",
+        manualBuffer: manual?.buffer || null,
         photos: photos.map((p) => ({
           buffer: p.buffer,
           name: p.originalname,

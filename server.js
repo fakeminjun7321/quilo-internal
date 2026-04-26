@@ -96,9 +96,6 @@ const PIPELINES = {
       }
 
       const photos = filesByField.photos || [];
-      if (photos.length === 0) {
-        throw new Error("실험 사진을 1장 이상 업로드하세요.");
-      }
 
       const form = filesByField.form?.[0] || null;
       const rubric = filesByField.rubric?.[0] || null;

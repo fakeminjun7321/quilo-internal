@@ -111,8 +111,8 @@
         </label>
       </p>
       <p>
-        <label>실험 사진 (여러 장 가능) <strong>*</strong>:
-          <input id="prPhotos" name="photos" type="file" accept=".png,.jpg,.jpeg" multiple required />
+        <label>실험 사진 (여러 장 가능, 선택):
+          <input id="prPhotos" name="photos" type="file" accept=".png,.jpg,.jpeg" multiple />
         </label>
       </p>
       <p>
@@ -624,12 +624,11 @@
         const formPdf = document.getElementById("prForm").files[0] || null;
         const rubric = document.getElementById("prRubric").files[0] || null;
 
-        // 클라이언트 검증: cap 또는 엑셀 중 하나는 필수
+        // 클라이언트 검증: cap 또는 엑셀 중 하나는 필수 (사진은 선택)
         if (!cap && !dataFile) {
           alert("⚠️ PASCO Capstone (.cap) 파일 또는 엑셀/CSV 데이터 중 하나는 업로드해야 합니다.");
           return;
         }
-        if (photos.length === 0) return;
 
         const prModel =
           document.querySelector('input[name="prModel"]:checked')?.value ||
@@ -658,7 +657,7 @@
           (dataFile ? `엑셀/CSV (${Math.round(dataFile.size / 1024)}KB)` : "");
         const msg =
           `🤖 모델: ${modelLabel}\n` +
-          `📦 ${inputLabel}, 사진 ${photos.length}장${manual ? ", 매뉴얼" : ""}${formPdf ? ", 양식" : ""}${rubric ? ", 평가기준" : ""}\n` +
+          `📦 ${inputLabel}${photos.length > 0 ? `, 사진 ${photos.length}장` : ""}${manual ? ", 매뉴얼" : ""}${formPdf ? ", 양식" : ""}${rubric ? ", 평가기준" : ""}\n` +
           `📦 총 크기: ${est.totalKB}KB\n` +
           `💰 예상 비용: $${est.lo.toFixed(2)} ~ $${est.hi.toFixed(2)} ` +
           `(약 ₩${krwLo.toLocaleString()} ~ ₩${krwHi.toLocaleString()})\n\n` +

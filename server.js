@@ -226,11 +226,15 @@ app.post(
     const date = (req.body.date || "").trim();
     const useImages = String(req.body.useImages || "0") === "1";
     const manualFilename = req.file.originalname || "";
+    // 사용자가 폼에서 선택한 모델. 화이트리스트 검증으로 임의 모델 주입 차단.
+    const ALLOWED_MODELS = ["claude-sonnet-4-6", "claude-opus-4-7"];
+    const requestedModel = String(req.body.model || "").trim();
+    const model = ALLOWED_MODELS.includes(requestedModel) ? requestedModel : null;
     const job = createJob(userInfo);
 
     res.json({ jobId: job.id });
 
-    runGeneration(job, req.file.buffer, date, useImages, manualFilename).catch(
+    runGeneration(job, req.file.buffer, date, useImages, manualFilename, model).catch(
       (err) => {
         job.status = "error";
         job.error = err.message || String(err);
@@ -265,6 +269,7 @@ async function runGeneration(
   date,
   useImages = false,
   manualFilename = "",
+  model = null,
 ) {
   const t0 = Date.now();
   const timeoutMin = Math.round(JOB_TIMEOUT_MS / 60000);
@@ -287,6 +292,7 @@ async function runGeneration(
       date,
       signal: ac.signal,
       useImages,
+      model,
       onProgress: (msg) => pushProgress(job, msg),
     });
 

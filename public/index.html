@@ -26,6 +26,17 @@
         </label>
       </p>
       <p>
+        <strong>모델 선택:</strong><br />
+        <label>
+          <input type="radio" name="model" value="claude-sonnet-4-6" checked />
+          표준 (Sonnet 4.6) — 약 <span id="costSonnet">₩350</span>/건 ⭐ 가성비
+        </label><br />
+        <label>
+          <input type="radio" name="model" value="claude-opus-4-7" />
+          고품질 (Opus 4.7) — 약 <span id="costOpus">₩1,700</span>/건 (5배 비쌈, 화학 깊이 약간 더 풍부)
+        </label>
+      </p>
+      <p>
         <button type="submit" id="btn">사전보고서 생성</button>
       </p>
       <p>⏱ 생성에 3~5분 소요됩니다. 페이지를 닫지 마세요.</p>
@@ -68,23 +79,30 @@
       const resultArea = document.getElementById("resultArea");
       const statusTitle = document.getElementById("statusTitle");
 
-      // PDF 크기 기반 예상 비용 추정
-      // Claude Sonnet 4.6 기준: input $3/M, output $15/M, cache_read $0.30/M, cache_write $3.75/M
+      // 모델별 가격 (per 1M tokens, USD)
+      const MODEL_PRICING = {
+        "claude-sonnet-4-6": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+        "claude-opus-4-7": { input: 15, output: 75, cacheRead: 1.5, cacheWrite: 18.75 },
+      };
+
+      // PDF 크기 + 선택된 모델 기반 예상 비용 추정
       // 시스템 프롬프트 ~10K 토큰은 ephemeral cache (5분) — 캐시 히트 시 입력 90% 절감
-      function estimateCost(pdfBytes) {
+      function estimateCost(pdfBytes, modelId) {
         const sizeKB = pdfBytes / 1024;
-        // 시스템 프롬프트 비용: 캐시 히트 ~$0.003, 캐시 미스(첫 요청) ~$0.04
-        const sysCostLo = 0.003;
-        const sysCostHi = 0.04;
-        // PDF 입력 토큰: KB당 약 50~150토큰 (페이지 수·텍스트 밀도에 따라 변동)
+        const p = MODEL_PRICING[modelId] || MODEL_PRICING["claude-sonnet-4-6"];
+
+        // 시스템 프롬프트 비용: 캐시 히트(10K × cacheRead) ~ 캐시 미스(10K × cacheWrite)
+        const sysCostLo = (10000 / 1e6) * p.cacheRead;
+        const sysCostHi = (10000 / 1e6) * p.cacheWrite;
+        // PDF 입력 토큰: KB당 약 50~150토큰
         const pdfTokensLo = sizeKB * 50;
         const pdfTokensHi = sizeKB * 150;
-        const pdfCostLo = (pdfTokensLo / 1e6) * 3;
-        const pdfCostHi = (pdfTokensHi / 1e6) * 3;
+        const pdfCostLo = (pdfTokensLo / 1e6) * p.input;
+        const pdfCostHi = (pdfTokensHi / 1e6) * p.input;
         // 출력 토큰: 8K~14K
-        const outputCostLo = (8000 / 1e6) * 15;
-        const outputCostHi = (14000 / 1e6) * 15;
-        // 웹 검색: 1~3회 (Sonnet은 회수율 높아 max 3으로 충분)
+        const outputCostLo = (8000 / 1e6) * p.output;
+        const outputCostHi = (14000 / 1e6) * p.output;
+        // 웹 검색: 1~3회
         const searchCostLo = 1 * 0.01;
         const searchCostHi = 3 * 0.01;
 
@@ -93,16 +111,26 @@
         return { lo, hi, sizeKB: Math.round(sizeKB) };
       }
 
+      function getSelectedModel() {
+        const checked = document.querySelector('input[name="model"]:checked');
+        return checked ? checked.value : "claude-sonnet-4-6";
+      }
+
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
         const file = document.getElementById("manual").files[0];
         if (!file) return;
 
+        const model = getSelectedModel();
+        const modelLabel =
+          model === "claude-opus-4-7" ? "고품질 (Opus 4.7)" : "표준 (Sonnet 4.6)";
+
         // 예상 비용 확인
-        const est = estimateCost(file.size);
+        const est = estimateCost(file.size, model);
         const krwLo = Math.round(est.lo * 1400);
         const krwHi = Math.round(est.hi * 1400);
         const msg =
+          `🤖 모델: ${modelLabel}\n` +
           `📄 PDF 크기: ${est.sizeKB}KB\n` +
           `💰 예상 비용: $${est.lo.toFixed(2)} ~ $${est.hi.toFixed(2)} ` +
           `(약 ₩${krwLo.toLocaleString()} ~ ₩${krwHi.toLocaleString()})\n\n` +
@@ -121,6 +149,7 @@
         const dateStr = document.getElementById("date").value;
         const [y, m, d] = dateStr.split("-");
         fd.append("date", `${y}/ ${m} / ${d}`);
+        fd.append("model", model);
 
         try {
           const res = await fetch("/api/generate", { method: "POST", body: fd });

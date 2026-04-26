@@ -126,6 +126,11 @@
         </label>
       </p>
       <p>
+        <label>학번 <strong>*</strong>:
+          <input id="prStudentId" name="studentId" type="text" placeholder="예: 21030" required maxlength="20" />
+        </label>
+      </p>
+      <p>
         <label>날짜:
           <input id="prDate" name="date" type="date" required />
         </label>
@@ -683,6 +688,7 @@
         const prDateStr = document.getElementById("prDate").value;
         const [y, m, d] = prDateStr.split("-");
         fd.append("date", `${y}/ ${m} / ${d}`);
+        fd.append("studentId", document.getElementById("prStudentId").value.trim());
         fd.append("model", prModel);
 
         try {

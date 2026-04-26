@@ -100,6 +100,8 @@ const PIPELINES = {
       const form = filesByField.form?.[0] || null;
       const rubric = filesByField.rubric?.[0] || null;
 
+      const studentId = String(body.studentId || "").trim().slice(0, 20);
+
       return {
         capBuffer: cap?.buffer || null,
         capName: cap?.originalname || "",
@@ -114,6 +116,7 @@ const PIPELINES = {
         formBuffer: form?.buffer || null,
         rubricBuffer: rubric?.buffer || null,
         rubricName: rubric?.originalname || "",
+        studentId,
       };
     },
     generateContent: require("./lib/pipelines/phys-result/generate")
@@ -550,6 +553,17 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
       onProgress: (msg) => pushProgress(job, msg),
     });
 
+    // 사용자·학번 정보를 docx-gen이 사용할 수 있게 attach (보고서 제목 prefix 등)
+    const studentId = String(pipelineInput.studentId || "").trim();
+    Object.defineProperty(content, "__studentInfo", {
+      value: {
+        studentId,
+        userName: job.userInfo?.name || "",
+      },
+      enumerable: false,
+      writable: false,
+    });
+
     pushProgress(job, "📄 .docx 파일 빌드 중...");
     const tDocxStart = Date.now();
     const buffer = await pipeline.generateDocx(content);
@@ -557,12 +571,15 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
     const sizeKB = Math.round(buffer.length / 1024);
     pushProgress(job, `✓ .docx 빌드 완료 (${sizeKB}KB, ${docxSec}초)`);
 
+    // 파일명: {매뉴얼번호}_{타입}_{학번}_{이름}.docx
+    // 학번이 입력 안 되면 "학번" placeholder 유지 (호환성)
     const num = extractManualNumber(sourceFilename);
     const userName = sanitizeForFilename(job.userInfo?.name || "");
     const prefix = num ? `${num}_` : "";
+    const studentPart = sanitizeForFilename(studentId) || "학번";
     const namePart = userName ? `_${userName}` : "";
     job.result = buffer;
-    job.filename = `${prefix}${pipeline.filenamePrefix}_학번${namePart}.docx`;
+    job.filename = `${prefix}${pipeline.filenamePrefix}_${studentPart}${namePart}.docx`;
     job.status = "done";
 
     const totalSec = Math.floor((Date.now() - t0) / 1000);

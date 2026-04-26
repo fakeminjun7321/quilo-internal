@@ -207,6 +207,64 @@ app.get("/api/me", (req, res) => {
   }
 });
 
+// 본인 비밀번호 변경 (현재 비번 재확인 필수, rate limit 적용)
+app.post("/api/me/password", requireAuth, async (req, res) => {
+  if (!supa.isEnabled()) {
+    return res.status(503).json({ error: "DB 미설정" });
+  }
+
+  const userInfo = getSessionUser(req);
+  if (!userInfo.id) {
+    return res.status(403).json({ error: "사용자 정보 없음" });
+  }
+
+  // Per-user rate limit (10분당 3회) — 현재 비번 brute force 방어
+  const limit = rateLimit.checkPasswordChangeLimit(userInfo.id);
+  if (!limit.allowed) {
+    return res.status(429).json({
+      error: `비밀번호 변경 시도가 너무 많습니다 (10분당 ${rateLimit.PWCHANGE_LIMIT}회 제한). 잠시 후 다시 시도하세요.`,
+    });
+  }
+  rateLimit.recordPasswordChangeAttempt(userInfo.id);
+
+  const { currentPassword, newPassword } = req.body || {};
+  if (!currentPassword || !newPassword) {
+    return res
+      .status(400)
+      .json({ error: "현재 비밀번호와 새 비밀번호를 입력하세요." });
+  }
+  if (String(newPassword).length < 5) {
+    return res
+      .status(400)
+      .json({ error: "새 비밀번호는 최소 5자 이상이어야 합니다." });
+  }
+  if (currentPassword === newPassword) {
+    return res
+      .status(400)
+      .json({ error: "새 비밀번호가 현재 비밀번호와 같습니다." });
+  }
+
+  try {
+    // 현재 비번 검증
+    const verified = await supa.verifyUserPassword(userInfo.id, currentPassword);
+    if (!verified) {
+      return res
+        .status(401)
+        .json({ error: "현재 비밀번호가 일치하지 않습니다." });
+    }
+
+    // 비번 업데이트
+    await supa.updateUser(userInfo.id, { password: newPassword });
+    console.log(`[password-change] user=${verified.name}`);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("[password-change] error:", e);
+    res
+      .status(500)
+      .json({ error: "비밀번호 변경 중 오류가 발생했습니다." });
+  }
+});
+
 // ── Generate route ───────────────────────────────────────────────────────────
 
 app.post(

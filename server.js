@@ -18,7 +18,6 @@ const rateLimit = require("./lib/rate-limit");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const SHARED_PASSWORD = process.env.SHARED_PASSWORD || "changeme";
 const SESSION_SECRET =
   process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
 
@@ -97,6 +96,10 @@ function addToTotal(cost, imageCost) {
 // ── Job storage (in-memory) ──────────────────────────────────────────────────
 const jobs = new Map();
 
+// 사용자별 진행 중인 작업 ID — B1: 같은 사용자가 새 작업 제출 시 이전 작업 자동 중단.
+// curl 등으로 폼 락을 우회한 동시 요청도 1개로 제한됨.
+const activeJobByUser = new Map(); // userId -> jobId
+
 function createJob(userInfo) {
   const id = crypto.randomBytes(12).toString("hex");
   const job = {
@@ -159,33 +162,30 @@ app.post("/api/login", async (req, res) => {
   }
   const name = String(username).trim().slice(0, 50);
 
+  // Supabase 필수 — legacy SHARED_PASSWORD 백도어 제거
+  if (!supa.isEnabled()) {
+    console.error("[login] Supabase 미설정 — 로그인 불가");
+    return res
+      .status(503)
+      .json({ error: "DB가 일시적으로 사용 불가합니다. 관리자에게 문의하세요." });
+  }
+
   try {
-    if (supa.isEnabled()) {
-      // DB 인증 모드
-      const user = await supa.authenticate(name, password);
-      if (!user) {
-        return res.status(401).json({ error: "이름 또는 비밀번호가 틀렸습니다." });
-      }
-      req.session.userInfo = {
-        id: user.id,
-        name: user.name,
-        isAdmin: !!user.is_admin,
-      };
-      console.log(`[login] ${user.name} (admin=${user.is_admin})`);
-      return res.json({
-        ok: true,
-        user: user.name,
-        isAdmin: !!user.is_admin,
-      });
-    } else {
-      // Legacy 공용 비밀번호 모드 (Supabase 미설정 시)
-      if (password !== SHARED_PASSWORD) {
-        return res.status(401).json({ error: "비밀번호가 틀렸습니다." });
-      }
-      req.session.userInfo = { name, isAdmin: false };
-      console.log(`[login] ${name} (legacy)`);
-      return res.json({ ok: true, user: name, isAdmin: false });
+    const user = await supa.authenticate(name, password);
+    if (!user) {
+      return res.status(401).json({ error: "이름 또는 비밀번호가 틀렸습니다." });
     }
+    req.session.userInfo = {
+      id: user.id,
+      name: user.name,
+      isAdmin: !!user.is_admin,
+    };
+    console.log(`[login] ${user.name} (admin=${user.is_admin})`);
+    return res.json({
+      ok: true,
+      user: user.name,
+      isAdmin: !!user.is_admin,
+    });
   } catch (e) {
     console.error("[login] error:", e);
     return res
@@ -325,7 +325,27 @@ app.post(
       rateLimit.recordUserGenAttempt(userInfo.id);
     }
 
+    // B1: 이미 진행 중인 작업이 있으면 자동 중단 (탭 닫기·동시 요청 시나리오)
+    if (userInfo.id) {
+      const prevJobId = activeJobByUser.get(userInfo.id);
+      if (prevJobId) {
+        const prevJob = jobs.get(prevJobId);
+        if (
+          prevJob &&
+          prevJob.status === "running" &&
+          prevJob.abortController
+        ) {
+          prevJob.autoAborted = true;
+          pushProgress(prevJob, "🔄 새 작업 시작 — 이전 작업 자동 중단");
+          prevJob.abortController.abort();
+        }
+      }
+    }
+
     const job = createJob(userInfo);
+    if (userInfo.id) {
+      activeJobByUser.set(userInfo.id, job.id);
+    }
 
     res.json({ jobId: job.id });
 
@@ -460,6 +480,9 @@ async function runGeneration(
       );
     }
   } catch (e) {
+    if (job.autoAborted) {
+      throw new Error("새 작업 시작으로 자동 중단되었습니다.");
+    }
     if (job.userAborted) {
       throw new Error("사용자가 작업을 중지했습니다.");
     }
@@ -472,6 +495,13 @@ async function runGeneration(
     throw e;
   } finally {
     clearTimeout(timer);
+    // 사용자별 active job 매핑에서 제거 (현재 매핑이 이 작업을 가리키고 있을 때만)
+    if (
+      job.userInfo?.id &&
+      activeJobByUser.get(job.userInfo.id) === job.id
+    ) {
+      activeJobByUser.delete(job.userInfo.id);
+    }
   }
 
   job.listeners.forEach((r) => {
@@ -727,9 +757,11 @@ app.get("/api/usage", requireAdmin, (req, res) => {
 
 app.listen(PORT, async () => {
   console.log(`▶ chem-pre-lab-web listening on :${PORT}`);
-  console.log(`  Supabase: ${supa.isEnabled() ? "ON" : "OFF (legacy mode)"}`);
-  if (!supa.isEnabled() && SHARED_PASSWORD === "changeme") {
-    console.warn("⚠ SHARED_PASSWORD가 기본값입니다.");
+  console.log(`  Supabase: ${supa.isEnabled() ? "ON" : "OFF (로그인 불가!)"}`);
+  if (!supa.isEnabled()) {
+    console.error(
+      "🚨 Supabase 미설정 — 로그인이 작동하지 않습니다. SUPABASE_URL과 SUPABASE_SERVICE_KEY를 설정하세요.",
+    );
   }
   if (!process.env.ANTHROPIC_API_KEY) {
     console.warn("⚠ ANTHROPIC_API_KEY가 없습니다.");

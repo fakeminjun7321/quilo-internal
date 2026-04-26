@@ -1,4 +1,4 @@
-/* 화학실험 사전보고서 — 공통 스타일 (모바일 최우선) */
+/* 보고서 작성 툴 — 공통 스타일 (모바일 최우선) */
 
 *,
 *::before,
@@ -106,7 +106,85 @@ table td {
   min-width: 100%;
 }
 
-/* 모바일 화면 (≤600px) */
+/* ── 보고서 종류 라디오 fieldset ──────────────────────────────── */
+fieldset {
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 12px 14px;
+  margin: 12px 0;
+}
+fieldset legend {
+  padding: 0 6px;
+  font-weight: bold;
+}
+fieldset label {
+  display: block;
+  margin: 6px 0;
+  cursor: pointer;
+  min-height: 28px;
+  line-height: 1.5;
+}
+fieldset input[type="radio"] {
+  margin-right: 6px;
+  transform: scale(1.1);
+  vertical-align: middle;
+}
+
+/* ── 폼 안 라벨·입력 정렬 ─────────────────────────────────────── */
+form p {
+  margin: 10px 0;
+}
+form label {
+  display: inline-block;
+  line-height: 1.7;
+}
+/* 데스크톱: 작은 인라인 number 입력은 크기 유지 (style.html에서 inline width 지정) */
+
+/* ── 진행 영역 ────────────────────────────────────────────────── */
+#progressArea pre {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  background: #f4f4f4;
+  padding: 10px;
+  max-height: 320px;
+  overflow: auto;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
+}
+#resultArea {
+  margin-top: 12px;
+}
+#resultArea a {
+  display: inline-block;
+  padding: 10px 14px;
+  background: #0066cc;
+  color: #fff !important;
+  border-radius: 6px;
+  text-decoration: none;
+  font-weight: bold;
+}
+#resultArea a:active {
+  background: #0055aa;
+}
+
+/* 중지 버튼 */
+.stop-btn {
+  background: #fee;
+  color: #c00;
+  border-color: #c00;
+}
+.stop-btn:active {
+  background: #fdd;
+}
+
+/* ── coming soon / 안내 박스 ──────────────────────────────────── */
+#comingSoon {
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* ── 모바일 화면 (≤600px) ─────────────────────────────────────── */
 @media (max-width: 600px) {
   body {
     padding: 12px;
@@ -130,6 +208,35 @@ table td {
   input[type="email"] {
     width: 100%;
   }
+  /* chem-result/phys-result 폼의 inline-style 좁은 number(온도/기압) 모바일에선 자동 너비 */
+  #chemResultForm input[type="number"],
+  #physResultForm input[type="number"] {
+    width: 100% !important;
+  }
+  /* file input — 모바일에서 너무 넓지 않게, 줄바꿈 자연스럽게 */
+  input[type="file"] {
+    display: block;
+    margin-top: 4px;
+    max-width: 100%;
+  }
+  /* form의 label 안에 file input이 있을 때 줄 분리 */
+  form label {
+    display: block;
+    margin-bottom: 8px;
+  }
+  /* fieldset 라디오 - 터치 영역 더 크게 */
+  fieldset label {
+    padding: 6px 4px;
+    min-height: 36px;
+    border-radius: 4px;
+  }
+  fieldset label:active {
+    background: #f0f0f0;
+  }
+  fieldset input[type="radio"] {
+    transform: scale(1.3);
+    margin-right: 10px;
+  }
   button {
     padding: 11px 16px;
     min-height: 44px;
@@ -140,5 +247,10 @@ table td {
     padding: 6px 10px;
     min-height: 36px;
     font-size: 13px;
+  }
+  /* progress 폰트 너무 작아지지 않게 */
+  #progressArea pre {
+    font-size: 11px;
+    max-height: 240px;
   }
 }

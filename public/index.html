@@ -15,17 +15,17 @@
 
     <h1>보고서 작성 툴</h1>
 
-    <fieldset id="reportTypeFieldset" style="margin: 12px 0; padding: 12px; border: 1px solid #ccc; border-radius: 6px;">
-      <legend><strong>보고서 종류</strong></legend>
-      <label style="display: block; margin: 4px 0;">
+    <fieldset id="reportTypeFieldset">
+      <legend>보고서 종류</legend>
+      <label>
         <input type="radio" name="reportType" value="chem-pre" checked />
         🧪 화학 사전보고서
       </label>
-      <label style="display: block; margin: 4px 0;">
+      <label>
         <input type="radio" name="reportType" value="chem-result" />
         🔬 화학 결과보고서
       </label>
-      <label style="display: block; margin: 4px 0;">
+      <label>
         <input type="radio" name="reportType" value="phys-result" />
         ⚛️ 물리 결과보고서
       </label>
@@ -204,9 +204,9 @@
     <div id="progressArea" style="display: none">
       <h2 id="statusTitle">생성 중...</h2>
       <p>
-        <button type="button" id="stopBtn" style="display: none; background: #fee; color: #c00; border-color: #c00">🛑 중지</button>
+        <button type="button" id="stopBtn" class="stop-btn" style="display: none">🛑 중지</button>
       </p>
-      <pre id="progress" style="background: #eee; padding: 8px; max-height: 300px; overflow: auto"></pre>
+      <pre id="progress"></pre>
       <div id="resultArea"></div>
     </div>
 

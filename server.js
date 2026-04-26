@@ -314,6 +314,7 @@ async function runGeneration(
   );
 
   const ac = new AbortController();
+  job.abortController = ac; // 사용자 중지 요청용
   let timedOut = false;
   const timer = setTimeout(() => {
     timedOut = true;
@@ -398,6 +399,9 @@ async function runGeneration(
       );
     }
   } catch (e) {
+    if (job.userAborted) {
+      throw new Error("사용자가 작업을 중지했습니다.");
+    }
     if (timedOut) {
       const elapsedMin = Math.floor((Date.now() - t0) / 60000);
       throw new Error(
@@ -415,6 +419,25 @@ async function runGeneration(
   });
   job.listeners = [];
 }
+
+// 사용자가 진행 중인 작업을 중지
+app.post("/api/jobs/:id/abort", requireAuth, (req, res) => {
+  const job = jobs.get(req.params.id);
+  if (!job) return res.status(404).json({ error: "작업을 찾을 수 없습니다." });
+  const u = getSessionUser(req);
+  if (job.userInfo?.name !== u.name) {
+    return res.status(403).json({ error: "권한 없음" });
+  }
+  if (job.status !== "running") {
+    return res.status(409).json({ error: "이미 완료된 작업입니다." });
+  }
+  if (job.abortController) {
+    job.userAborted = true;
+    pushProgress(job, "🛑 사용자 중지 요청 — 작업 중단 중...");
+    job.abortController.abort();
+  }
+  res.json({ ok: true });
+});
 
 // SSE stream
 app.get("/api/jobs/:id/stream", requireAuth, (req, res) => {

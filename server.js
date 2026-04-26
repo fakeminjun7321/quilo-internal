@@ -860,6 +860,18 @@ app.get("/", (req, res) => {
 
 app.get("/healthz", (req, res) => res.json({ ok: true }));
 
+// Supabase 7일 무활동 자동 pause 방지용 keepalive.
+// UptimeRobot 등 외부 모니터가 주기적으로 호출 → Supabase에 가벼운 쿼리 실행.
+// 인증 없음 (외부 모니터가 공개 endpoint로 호출).
+app.get("/api/keepalive", async (req, res) => {
+  const result = await supa.ping();
+  if (result.ok) {
+    res.json({ ok: true, ts: new Date().toISOString() });
+  } else {
+    res.status(503).json({ ok: false, reason: result.reason });
+  }
+});
+
 // multer 업로드 에러 핸들러 (파일 크기·개수 초과 등)
 app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {

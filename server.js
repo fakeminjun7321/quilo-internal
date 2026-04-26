@@ -11,7 +11,7 @@ const PIPELINES = {
     label: "화학 사전보고서",
     filenamePrefix: "사전",
     filenameSourceField: "manual", // 이 fieldname의 파일명에서 번호 추출
-    prepareInput(filesByField, body) {
+    prepareInput(filesByField, _body) {
       const manual = filesByField.manual?.[0];
       if (!manual) {
         throw new Error("실험 매뉴얼 PDF를 업로드하세요.");
@@ -21,7 +21,6 @@ const PIPELINES = {
       }
       return {
         pdfBuffer: manual.buffer,
-        useImages: String(body.useImages || "0") === "1",
       };
     },
     generateContent: require("./lib/pipelines/chem-pre/generate")

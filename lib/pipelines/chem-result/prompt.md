@@ -168,7 +168,8 @@ JSON 스키마:
           { "label": "기구1 표준편차", "value": "0.0094 mL" },
           { "label": "기구1 백분율 오차", "value": "0.09%" }
         ],
-        "photo_caption": "실험 A 진행 모습"
+        "photo_indices": [0, 1],
+        "photo_caption": "실험 A 진행 모습 — 피펫으로 정량 분취"
       }
     ],
     "summary_table": {
@@ -217,6 +218,16 @@ JSON 스키마:
   }
 }
 ```
+
+## 실험 사진 매칭 (data.experiments[].photo_indices)
+
+사용자가 실험 사진을 첨부하면 첨부된 순서대로 0번, 1번, ... 인덱스가 부여됨. 사진을 vision으로 직접 보고 어느 실험에 적합한지 판단해서 `photo_indices` 배열에 인덱스를 넣어라.
+
+- 예: `photo_indices: [0, 2]` → 첨부된 0번·2번 사진을 이 실험 섹션에 삽입
+- 사진이 어느 실험에도 매칭 안 되면 비워둠 (`[]` 또는 생략)
+- 같은 사진이 여러 실험에 들어가도 OK (중복 사용 가능)
+- `photo_caption`에는 사진들에 대한 통합 설명 (한 줄~두 줄)
+- 사진을 `photo_indices`에 넣지 않으면 보고서에 표시되지 않음
 
 ## 그래프 (data.charts)
 

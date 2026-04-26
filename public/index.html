@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>화학 사전보고서 생성기</title>
+    <title>보고서 작성 툴</title>
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
@@ -13,7 +13,28 @@
       <a href="#" id="logout">[로그아웃]</a>
     </p>
 
-    <h1>화학실험 사전보고서 생성기</h1>
+    <h1>보고서 작성 툴</h1>
+
+    <fieldset id="reportTypeFieldset" style="margin: 12px 0; padding: 12px; border: 1px solid #ccc; border-radius: 6px;">
+      <legend><strong>보고서 종류</strong></legend>
+      <label style="display: block; margin: 4px 0;">
+        <input type="radio" name="reportType" value="chem-pre" checked />
+        🧪 화학 사전보고서
+      </label>
+      <label style="display: block; margin: 4px 0; color: #999;">
+        <input type="radio" name="reportType" value="chem-result" disabled />
+        🔬 화학 결과보고서 <small>🚧 준비 중</small>
+      </label>
+      <label style="display: block; margin: 4px 0; color: #999;">
+        <input type="radio" name="reportType" value="phys-result" disabled />
+        ⚛️ 물리 결과보고서 <small>🚧 준비 중</small>
+      </label>
+    </fieldset>
+
+    <div id="comingSoon" style="display: none; padding: 20px; background: #fffbe6; border: 1px solid #ffd966; border-radius: 6px; margin: 12px 0;">
+      🚧 이 보고서 종류는 아직 준비 중입니다.<br>
+      <small>곧 사용 가능해질 예정입니다.</small>
+    </div>
 
     <form id="form">
       <p>
@@ -110,6 +131,23 @@
 
       // Default to today
       document.getElementById("date").value = new Date().toISOString().slice(0, 10);
+
+      // 보고서 종류 라디오 → 폼 전환
+      const reportTypeRadios = document.querySelectorAll('input[name="reportType"]');
+      const comingSoon = document.getElementById("comingSoon");
+      const mainForm = document.getElementById("form");
+      function updateReportTypeView() {
+        const selected = document.querySelector('input[name="reportType"]:checked').value;
+        if (selected === "chem-pre") {
+          mainForm.style.display = "";
+          comingSoon.style.display = "none";
+        } else {
+          mainForm.style.display = "none";
+          comingSoon.style.display = "block";
+        }
+      }
+      reportTypeRadios.forEach((r) => r.addEventListener("change", updateReportTypeView));
+      updateReportTypeView();
 
       const form = document.getElementById("form");
       const btn = document.getElementById("btn");
@@ -263,6 +301,7 @@
         statusTitle.textContent = "생성 중...";
 
         const fd = new FormData();
+        fd.append("type", document.querySelector('input[name="reportType"]:checked').value);
         fd.append("manual", file);
         const dateStr = document.getElementById("date").value;
         const [y, m, d] = dateStr.split("-");

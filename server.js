@@ -4,8 +4,19 @@ const session = require("express-session");
 const multer = require("multer");
 const path = require("path");
 const crypto = require("crypto");
-const { generateReportContent } = require("./lib/claude");
-const { generateDocx } = require("./lib/docx-generator");
+// Pipeline registry — 보고서 종류별로 generate/docx 함수를 묶어둠.
+// 새 보고서 종류 추가 시 여기 한 줄만 등록하면 됨.
+const PIPELINES = {
+  "chem-pre": {
+    label: "화학 사전보고서",
+    generateContent: require("./lib/pipelines/chem-pre/generate")
+      .generateReportContent,
+    generateDocx: require("./lib/pipelines/chem-pre/docx-gen").generateDocx,
+    filenamePrefix: "사전",
+  },
+  // "chem-result": 준비 중 — Phase 2에서 추가
+  // "phys-result": 준비 중 — Phase 3에서 추가
+};
 const {
   fmtUSD,
   fmtKRW,
@@ -272,6 +283,15 @@ app.post(
   requireAuth,
   upload.single("manual"),
   async (req, res) => {
+    // 보고서 종류 결정 (없으면 화학 사전 = 기존 동작 보존)
+    const reportType = String(req.body.type || "chem-pre").trim();
+    const pipeline = PIPELINES[reportType];
+    if (!pipeline) {
+      return res.status(400).json({
+        error: `🚧 '${reportType}' 보고서 종류는 아직 준비 중입니다. 화학 사전보고서만 사용 가능합니다.`,
+      });
+    }
+
     if (!req.file) {
       return res.status(400).json({ error: "실험 매뉴얼 PDF를 업로드하세요." });
     }
@@ -343,13 +363,22 @@ app.post(
     }
 
     const job = createJob(userInfo);
+    job.reportType = reportType;
     if (userInfo.id) {
       activeJobByUser.set(userInfo.id, job.id);
     }
 
     res.json({ jobId: job.id });
 
-    runGeneration(job, req.file.buffer, date, useImages, manualFilename, model).catch(
+    runGeneration(
+      job,
+      pipeline,
+      req.file.buffer,
+      date,
+      useImages,
+      manualFilename,
+      model,
+    ).catch(
       (err) => {
         job.status = "error";
         job.error = err.message || String(err);
@@ -380,6 +409,7 @@ function sanitizeForFilename(s) {
 
 async function runGeneration(
   job,
+  pipeline,
   pdfBuffer,
   date,
   useImages = false,
@@ -403,7 +433,7 @@ async function runGeneration(
   }, JOB_TIMEOUT_MS);
 
   try {
-    const content = await generateReportContent({
+    const content = await pipeline.generateContent({
       pdfBuffer,
       date,
       signal: ac.signal,
@@ -414,7 +444,7 @@ async function runGeneration(
 
     pushProgress(job, "📄 .docx 파일 빌드 중...");
     const tDocxStart = Date.now();
-    const buffer = await generateDocx(content);
+    const buffer = await pipeline.generateDocx(content);
     const docxSec = Math.floor((Date.now() - tDocxStart) / 1000);
     const sizeKB = Math.round(buffer.length / 1024);
     pushProgress(job, `✓ .docx 빌드 완료 (${sizeKB}KB, ${docxSec}초)`);
@@ -424,7 +454,7 @@ async function runGeneration(
     const prefix = num ? `${num}_` : "";
     const namePart = userName ? `_${userName}` : "";
     job.result = buffer;
-    job.filename = `${prefix}사전_학번${namePart}.docx`;
+    job.filename = `${prefix}${pipeline.filenamePrefix}_학번${namePart}.docx`;
     job.status = "done";
 
     const totalSec = Math.floor((Date.now() - t0) / 1000);

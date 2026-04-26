@@ -69,26 +69,27 @@
       const statusTitle = document.getElementById("statusTitle");
 
       // PDF 크기 기반 예상 비용 추정
-      // (Claude Opus 기준: 입력 토큰 + 출력 ~12K + 웹검색 평균 3회)
+      // Claude Sonnet 4.6 기준: input $3/M, output $15/M, cache_read $0.30/M, cache_write $3.75/M
+      // 시스템 프롬프트 ~10K 토큰은 ephemeral cache (5분) — 캐시 히트 시 입력 90% 절감
       function estimateCost(pdfBytes) {
         const sizeKB = pdfBytes / 1024;
-        // 입력: PDF는 페이지당 ~1500토큰. 1KB ≈ 0.5KB/페이지 가정 → 매우 보수적
-        // 시스템 프롬프트 ~10K + PDF 토큰
-        const inputTokensLo = 15000 + sizeKB * 80;
-        const inputTokensHi = 20000 + sizeKB * 200;
-        const outputTokensLo = 8000;
-        const outputTokensHi = 14000;
-        const webSearchLo = 1;
-        const webSearchHi = 5;
+        // 시스템 프롬프트 비용: 캐시 히트 ~$0.003, 캐시 미스(첫 요청) ~$0.04
+        const sysCostLo = 0.003;
+        const sysCostHi = 0.04;
+        // PDF 입력 토큰: KB당 약 50~150토큰 (페이지 수·텍스트 밀도에 따라 변동)
+        const pdfTokensLo = sizeKB * 50;
+        const pdfTokensHi = sizeKB * 150;
+        const pdfCostLo = (pdfTokensLo / 1e6) * 3;
+        const pdfCostHi = (pdfTokensHi / 1e6) * 3;
+        // 출력 토큰: 8K~14K
+        const outputCostLo = (8000 / 1e6) * 15;
+        const outputCostHi = (14000 / 1e6) * 15;
+        // 웹 검색: 1~3회 (Sonnet은 회수율 높아 max 3으로 충분)
+        const searchCostLo = 1 * 0.01;
+        const searchCostHi = 3 * 0.01;
 
-        const lo =
-          (inputTokensLo / 1e6) * 15 +
-          (outputTokensLo / 1e6) * 75 +
-          webSearchLo * 0.01;
-        const hi =
-          (inputTokensHi / 1e6) * 15 +
-          (outputTokensHi / 1e6) * 75 +
-          webSearchHi * 0.01;
+        const lo = sysCostLo + pdfCostLo + outputCostLo + searchCostLo;
+        const hi = sysCostHi + pdfCostHi + outputCostHi + searchCostHi;
         return { lo, hi, sizeKB: Math.round(sizeKB) };
       }
 

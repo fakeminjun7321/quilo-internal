@@ -124,8 +124,10 @@ const JOB_TIMEOUT_MS = parseInt(
 // ── Middleware ───────────────────────────────────────────────────────────────
 
 app.set("trust proxy", 1);
-app.use(express.json({ limit: "30mb" }));
-app.use(express.urlencoded({ extended: true, limit: "30mb" }));
+// JSON/URL-encoded body는 비번 변경 등 작은 요청만 — 1MB로 충분
+// (파일 업로드는 multer가 별도로 25MB 한도 처리)
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use(
   session({
     secret: SESSION_SECRET,
@@ -633,7 +635,8 @@ app.post("/api/jobs/:id/abort", requireAuth, (req, res) => {
   const job = jobs.get(req.params.id);
   if (!job) return res.status(404).json({ error: "작업을 찾을 수 없습니다." });
   const u = getSessionUser(req);
-  if (job.userInfo?.name !== u.name) {
+  // id 기반 권한 체크 (admin이 사용자 이름 변경 시에도 안전)
+  if (!u.id || job.userInfo?.id !== u.id) {
     return res.status(403).json({ error: "권한 없음" });
   }
   if (job.status !== "running") {
@@ -652,7 +655,7 @@ app.get("/api/jobs/:id/stream", requireAuth, (req, res) => {
   const job = jobs.get(req.params.id);
   if (!job) return res.status(404).end();
   const u = getSessionUser(req);
-  if (job.userInfo?.name !== u.name) return res.status(403).end();
+  if (!u.id || job.userInfo?.id !== u.id) return res.status(403).end();
 
   res.set({
     "Content-Type": "text/event-stream",
@@ -684,7 +687,7 @@ app.get("/api/jobs/:id/download", requireAuth, (req, res) => {
   const job = jobs.get(req.params.id);
   if (!job) return res.status(404).send("작업을 찾을 수 없습니다.");
   const u = getSessionUser(req);
-  if (job.userInfo?.name !== u.name) return res.status(403).send("권한 없음");
+  if (!u.id || job.userInfo?.id !== u.id) return res.status(403).send("권한 없음");
   if (job.status !== "done" || !job.result) {
     return res.status(409).send("아직 완료되지 않았습니다.");
   }

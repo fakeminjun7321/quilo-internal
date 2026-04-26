@@ -60,6 +60,28 @@
     </table>
     <p id="listStatus" style="color: #666; font-size: 0.9em"></p>
 
+    <hr />
+
+    <h2>📜 보고서 생성 로그</h2>
+    <p style="color: #666; font-size: 0.9em">
+      누가 언제 어떤 보고서를 만들었는지 기록. 최근 100건 표시.
+      <button id="refreshLogs">🔄 새로고침</button>
+    </p>
+    <table id="logTable" border="1" cellpadding="6" cellspacing="0" style="margin-top: 8px; border-collapse: collapse; font-size: 13px">
+      <thead style="background: #eee">
+        <tr>
+          <th>시각</th>
+          <th>사용자</th>
+          <th>보고서 제목</th>
+          <th>비용</th>
+          <th>토큰</th>
+          <th>웹검색</th>
+        </tr>
+      </thead>
+      <tbody id="logTbody"></tbody>
+    </table>
+    <p id="logStatus" style="color: #666; font-size: 0.9em"></p>
+
     <script>
       let krwPerUsd = 1400;
 
@@ -222,8 +244,74 @@
         }
       });
 
+      // ── Usage logs ────────────────────────────────────────────────────────
+      async function loadLogs() {
+        const status = document.getElementById("logStatus");
+        status.textContent = "로딩 중...";
+        try {
+          const res = await fetch("/api/admin/usage-logs?limit=100");
+          if (!res.ok) {
+            const e = await res.json();
+            throw new Error(e.error || "fetch failed");
+          }
+          const data = await res.json();
+          renderLogs(data.logs);
+          status.textContent = `${data.logs.length}건 로드됨`;
+        } catch (e) {
+          status.textContent = "오류: " + e.message;
+        }
+      }
+
+      function renderLogs(logs) {
+        const tbody = document.getElementById("logTbody");
+        tbody.innerHTML = "";
+        if (!logs || logs.length === 0) {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `<td colspan="6" style="color: #888; text-align: center">아직 생성된 보고서가 없습니다.</td>`;
+          tbody.appendChild(tr);
+          return;
+        }
+        for (const log of logs) {
+          const meta = log.meta || {};
+          const inputT = meta.inputTokens || 0;
+          const outputT = meta.outputTokens || 0;
+          const tokenStr =
+            inputT || outputT ? `입 ${fmtTok(inputT)} / 출 ${fmtTok(outputT)}` : "—";
+          const webStr = meta.webSearchCount != null ? `${meta.webSearchCount}회` : "—";
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${formatTime(log.created_at)}</td>
+            <td>${escape(log.user_name)}</td>
+            <td>${escape(meta.title || "(제목 없음)")}</td>
+            <td>${fmtBoth(log.total_usd)}</td>
+            <td style="font-size: 11px; color: #555">${tokenStr}</td>
+            <td style="text-align: center">${webStr}</td>
+          `;
+          tbody.appendChild(tr);
+        }
+      }
+
+      function fmtTok(n) {
+        const num = Number(n) || 0;
+        if (num >= 1000) return (num / 1000).toFixed(1) + "K";
+        return String(num);
+      }
+
+      function formatTime(iso) {
+        const d = new Date(iso);
+        const yy = d.getFullYear();
+        const mm = String(d.getMonth() + 1).padStart(2, "0");
+        const dd = String(d.getDate()).padStart(2, "0");
+        const hh = String(d.getHours()).padStart(2, "0");
+        const mi = String(d.getMinutes()).padStart(2, "0");
+        return `${yy}-${mm}-${dd} ${hh}:${mi}`;
+      }
+
+      document.getElementById("refreshLogs").addEventListener("click", loadLogs);
+
       // 초기 로드
       loadUsers();
+      loadLogs();
     </script>
   </body>
 </html>

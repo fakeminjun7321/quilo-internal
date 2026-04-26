@@ -518,6 +518,19 @@ app.post("/api/admin/users/:id/reset-spent", requireAdmin, async (req, res) => {
   }
 });
 
+app.get("/api/admin/usage-logs", requireAdmin, async (req, res) => {
+  if (!supa.isEnabled())
+    return res.status(503).json({ error: "Supabase 미설정" });
+  const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
+  try {
+    const logs = await supa.listUsageLogs(limit);
+    const rate = await getKrwPerUsd();
+    res.json({ logs, krwPerUsd: rate });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get("/api/admin/exchange-rate", requireAdmin, async (req, res) => {
   try {
     const rate = await getKrwPerUsd();

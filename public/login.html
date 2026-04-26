@@ -15,6 +15,22 @@
       <p>
         <label>비밀번호: <input id="password" name="password" type="password" required /></label>
       </p>
+
+      <div style="border: 1px solid #ccc; padding: 12px; margin: 16px 0; background: #fafafa; font-size: 13px; line-height: 1.6;">
+        <strong>⚠️ 사용 전 반드시 읽으세요 — 면책 조항</strong>
+        <ol style="margin: 8px 0 8px 18px; padding: 0;">
+          <li>본 서비스는 개인이 학습 보조용으로 만든 <strong>비공식 도구</strong>입니다. 학교·기관과 무관합니다.</li>
+          <li>AI가 작성한 보고서는 <strong>사실 오류·출처 부정확·누락</strong> 등이 있을 수 있습니다. 사용자가 반드시 직접 검증·수정 후 사용해야 합니다.</li>
+          <li>본 서비스의 출력물을 학교 과제로 제출하는 행위와 그로 인해 발생하는 <strong>모든 결과(학칙 위반·표절·성적 불이익 등)에 대한 책임은 전적으로 사용자 본인</strong>에게 있습니다.</li>
+          <li>업로드한 PDF 내용은 AI 분석을 위해 외부 서버(Anthropic)로 전송됩니다. 민감 정보는 업로드하지 마세요.</li>
+          <li>운영자는 보고서의 정확성, 서비스의 가용성, 사용으로 인한 어떠한 손해에 대해서도 책임을 지지 않습니다.</li>
+        </ol>
+        <label>
+          <input type="checkbox" id="agree" required />
+          <strong>위 모든 사항을 이해했고 동의합니다 (필수)</strong>
+        </label>
+      </div>
+
       <p>
         <button type="submit" id="btn">로그인</button>
       </p>
@@ -28,6 +44,10 @@
 
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
+        if (!document.getElementById("agree").checked) {
+          err.textContent = "면책 조항에 동의해야 로그인할 수 있습니다.";
+          return;
+        }
         err.textContent = "";
         btn.disabled = true;
         btn.textContent = "로그인 중...";

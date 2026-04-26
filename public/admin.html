@@ -77,6 +77,7 @@
           <tr>
             <th>시각</th>
             <th>사용자</th>
+            <th>모델</th>
             <th>보고서 제목</th>
             <th>비용</th>
             <th>토큰</th>
@@ -298,7 +299,7 @@
         tbody.innerHTML = "";
         if (!logs || logs.length === 0) {
           const tr = document.createElement("tr");
-          tr.innerHTML = `<td colspan="6" style="color: #888; text-align: center">아직 생성된 보고서가 없습니다.</td>`;
+          tr.innerHTML = `<td colspan="7" style="color: #888; text-align: center">아직 생성된 보고서가 없습니다.</td>`;
           tbody.appendChild(tr);
           return;
         }
@@ -309,10 +310,12 @@
           const tokenStr =
             inputT || outputT ? `입 ${fmtTok(inputT)} / 출 ${fmtTok(outputT)}` : "—";
           const webStr = meta.webSearchCount != null ? `${meta.webSearchCount}회` : "—";
+          const modelStr = shortModel(meta.model);
           const tr = document.createElement("tr");
           tr.innerHTML = `
             <td>${formatTime(log.created_at)}</td>
             <td>${escape(log.user_name)}</td>
+            <td style="font-size: 11px; color: #555">${modelStr}</td>
             <td>${escape(meta.title || "(제목 없음)")}</td>
             <td>${fmtBoth(log.total_usd)}</td>
             <td style="font-size: 11px; color: #555">${tokenStr}</td>
@@ -320,6 +323,15 @@
           `;
           tbody.appendChild(tr);
         }
+      }
+
+      function shortModel(m) {
+        if (!m) return "—";
+        const s = String(m).toLowerCase();
+        if (s.includes("opus")) return "Opus";
+        if (s.includes("sonnet")) return "Sonnet";
+        if (s.includes("haiku")) return "Haiku";
+        return m;
       }
 
       function fmtTok(n) {

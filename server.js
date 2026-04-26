@@ -128,14 +128,16 @@ function sendSse(res, event, data) {
   res.write(`data: ${JSON.stringify(data)}\n\n`);
 }
 
+// 작업 결과는 24시간 보관 (사용자가 핸드폰→컴퓨터 이동 등의 시나리오 지원).
+// rate limit으로 사용자당 시간당 5건이라 24시간 누적 최대 ~120건 × 100KB = ~12MB 안전.
 setInterval(
   () => {
-    const cutoff = Date.now() - 60 * 60 * 1000;
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
     for (const [id, job] of jobs.entries()) {
       if (job.createdAt < cutoff) jobs.delete(id);
     }
   },
-  10 * 60 * 1000,
+  60 * 60 * 1000,
 );
 
 // ── Login routes ─────────────────────────────────────────────────────────────
@@ -371,11 +373,12 @@ async function runGeneration(
           imageCostUsd: content.__imageCost?.total || 0,
           meta: {
             title: content.title_kr,
+            model: content.__cost?.model,
             inputTokens: content.__cost?.inputTokens,
             outputTokens: content.__cost?.outputTokens,
+            cacheReadTokens: content.__cost?.cacheReadTokens,
+            cacheWriteTokens: content.__cost?.cacheWriteTokens,
             webSearchCount: content.__cost?.webSearchCount,
-            imageSearchCount: content.__imageCost?.searchCount,
-            imageGenCount: content.__imageCost?.generationCount,
           },
         });
 
@@ -652,7 +655,7 @@ app.get("/", (req, res) => {
 
 app.get("/healthz", (req, res) => res.json({ ok: true }));
 
-app.get("/api/usage", requireAuth, (req, res) => {
+app.get("/api/usage", requireAdmin, (req, res) => {
   const uptimeHours = ((Date.now() - totalUsage.startedAt) / 3600000).toFixed(1);
   res.json({
     ...totalUsage,

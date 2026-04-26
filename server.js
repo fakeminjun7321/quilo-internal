@@ -4,18 +4,66 @@ const session = require("express-session");
 const multer = require("multer");
 const path = require("path");
 const crypto = require("crypto");
-// Pipeline registry — 보고서 종류별로 generate/docx 함수를 묶어둠.
-// 새 보고서 종류 추가 시 여기 한 줄만 등록하면 됨.
+// Pipeline registry — 보고서 종류별로 입력 처리 + 생성 함수 묶음.
+// 각 파이프라인은 prepareInput(filesByField, body) → generateContent에 전달할 인자 객체 반환.
 const PIPELINES = {
   "chem-pre": {
     label: "화학 사전보고서",
+    filenamePrefix: "사전",
+    filenameSourceField: "manual", // 이 fieldname의 파일명에서 번호 추출
+    prepareInput(filesByField, body) {
+      const manual = filesByField.manual?.[0];
+      if (!manual) {
+        throw new Error("실험 매뉴얼 PDF를 업로드하세요.");
+      }
+      if (manual.mimetype !== "application/pdf") {
+        throw new Error("PDF 파일만 업로드 가능합니다.");
+      }
+      return {
+        pdfBuffer: manual.buffer,
+        useImages: String(body.useImages || "0") === "1",
+      };
+    },
     generateContent: require("./lib/pipelines/chem-pre/generate")
       .generateReportContent,
     generateDocx: require("./lib/pipelines/chem-pre/docx-gen").generateDocx,
-    filenamePrefix: "사전",
   },
-  // "chem-result": 준비 중 — Phase 2에서 추가
-  // "phys-result": 준비 중 — Phase 3에서 추가
+  "chem-result": {
+    label: "화학 결과보고서",
+    filenamePrefix: "결과",
+    filenameSourceField: "preReport",
+    prepareInput(filesByField, body) {
+      const preReport = filesByField.preReport?.[0];
+      if (!preReport) {
+        throw new Error("사전보고서 파일을 업로드하세요.");
+      }
+      const ext = (preReport.originalname.split(".").pop() || "").toLowerCase();
+      if (!["pdf", "docx"].includes(ext)) {
+        throw new Error("사전보고서는 PDF 또는 docx만 가능합니다.");
+      }
+      const data = filesByField.data?.[0] || null;
+      const photos = filesByField.photos || [];
+      const manual = filesByField.manual?.[0] || null;
+      return {
+        preReportBuffer: preReport.buffer,
+        preReportName: preReport.originalname,
+        dataBuffer: data?.buffer || null,
+        dataName: data?.originalname || "",
+        photos: photos.map((p) => ({
+          buffer: p.buffer,
+          name: p.originalname,
+          mimetype: p.mimetype,
+        })),
+        manualBuffer: manual?.buffer || null,
+        temperature: String(body.temperature || "").trim(),
+        pressure: String(body.pressure || "").trim(),
+      };
+    },
+    generateContent: require("./lib/pipelines/chem-result/generate")
+      .generateReportContent,
+    generateDocx: require("./lib/pipelines/chem-result/docx-gen").generateDocx,
+  },
+  // "phys-result": Phase 3에서 추가
 };
 const {
   fmtUSD,
@@ -281,22 +329,30 @@ app.post("/api/me/password", requireAuth, async (req, res) => {
 app.post(
   "/api/generate",
   requireAuth,
-  upload.single("manual"),
+  upload.any(),
   async (req, res) => {
     // 보고서 종류 결정 (없으면 화학 사전 = 기존 동작 보존)
     const reportType = String(req.body.type || "chem-pre").trim();
     const pipeline = PIPELINES[reportType];
     if (!pipeline) {
       return res.status(400).json({
-        error: `🚧 '${reportType}' 보고서 종류는 아직 준비 중입니다. 화학 사전보고서만 사용 가능합니다.`,
+        error: `🚧 '${reportType}' 보고서 종류는 아직 준비 중입니다.`,
       });
     }
 
-    if (!req.file) {
-      return res.status(400).json({ error: "실험 매뉴얼 PDF를 업로드하세요." });
+    // fieldname별 파일 그룹핑 (chem-result는 photos 같이 multi 파일이 들어옴)
+    const filesByField = {};
+    for (const f of req.files || []) {
+      filesByField[f.fieldname] = filesByField[f.fieldname] || [];
+      filesByField[f.fieldname].push(f);
     }
-    if (req.file.mimetype !== "application/pdf") {
-      return res.status(400).json({ error: "PDF 파일만 업로드 가능합니다." });
+
+    // 파이프라인별 입력 검증·준비
+    let pipelineInput;
+    try {
+      pipelineInput = pipeline.prepareInput(filesByField, req.body);
+    } catch (e) {
+      return res.status(400).json({ error: e.message });
     }
 
     const userInfo = getSessionUser(req);
@@ -333,8 +389,10 @@ app.post(
     }
 
     const date = (req.body.date || "").trim();
-    const useImages = String(req.body.useImages || "0") === "1";
-    const manualFilename = req.file.originalname || "";
+    // 파일명 기반 보고서 번호 추출용 — pipeline이 지정한 fieldname 사용
+    const sourceFile =
+      filesByField[pipeline.filenameSourceField]?.[0];
+    const sourceFilename = sourceFile?.originalname || "";
     // 사용자가 폼에서 선택한 모델. 화이트리스트 검증으로 임의 모델 주입 차단.
     const ALLOWED_MODELS = ["claude-sonnet-4-6", "claude-opus-4-7"];
     const requestedModel = String(req.body.model || "").trim();
@@ -370,15 +428,11 @@ app.post(
 
     res.json({ jobId: job.id });
 
-    runGeneration(
-      job,
-      pipeline,
-      req.file.buffer,
+    runGeneration(job, pipeline, pipelineInput, {
       date,
-      useImages,
-      manualFilename,
+      sourceFilename,
       model,
-    ).catch(
+    }).catch(
       (err) => {
         job.status = "error";
         job.error = err.message || String(err);
@@ -407,20 +461,13 @@ function sanitizeForFilename(s) {
     .slice(0, 30);
 }
 
-async function runGeneration(
-  job,
-  pipeline,
-  pdfBuffer,
-  date,
-  useImages = false,
-  manualFilename = "",
-  model = null,
-) {
+async function runGeneration(job, pipeline, pipelineInput, meta) {
+  const { date, sourceFilename, model } = meta;
   const t0 = Date.now();
   const timeoutMin = Math.round(JOB_TIMEOUT_MS / 60000);
   pushProgress(
     job,
-    `🚀 작업 시작 (timeout: ${timeoutMin}분, 이미지: ${useImages ? "ON" : "OFF"})`,
+    `🚀 작업 시작 (${pipeline.label}, timeout: ${timeoutMin}분)`,
   );
 
   const ac = new AbortController();
@@ -434,10 +481,9 @@ async function runGeneration(
 
   try {
     const content = await pipeline.generateContent({
-      pdfBuffer,
+      ...pipelineInput,
       date,
       signal: ac.signal,
-      useImages,
       model,
       onProgress: (msg) => pushProgress(job, msg),
     });
@@ -449,7 +495,7 @@ async function runGeneration(
     const sizeKB = Math.round(buffer.length / 1024);
     pushProgress(job, `✓ .docx 빌드 완료 (${sizeKB}KB, ${docxSec}초)`);
 
-    const num = extractManualNumber(manualFilename);
+    const num = extractManualNumber(sourceFilename);
     const userName = sanitizeForFilename(job.userInfo?.name || "");
     const prefix = num ? `${num}_` : "";
     const namePart = userName ? `_${userName}` : "";

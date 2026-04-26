@@ -1,11 +1,18 @@
-# 화학실험 사전보고서 자동 생성 (웹)
+# 보고서 작성 툴 (웹)
 
-대구과학고 화학실험 사전보고서를 PDF 매뉴얼만 올리면 Claude Opus가 자동으로 .docx로 만들어주는 웹사이트.
+대구과학고 학생용 자동 보고서 생성 사이트. 보고서 종류별로 입력 폼이 다름.
 
+**지원 보고서:**
+- 🧪 **화학 사전보고서** — 매뉴얼 PDF만 올리면 사전보고서 .docx 자동 생성
+- 🔬 **화학 결과보고서** — 사전보고서 + 엑셀 데이터 + 사진 → 표/차트/사진이 들어간 결과보고서
+- ⚛️ 물리 결과보고서 — 준비 중
+
+**스택:**
 - 백엔드: Node.js + Express
-- AI: Claude Opus API + 웹 검색
+- AI: Claude API (Sonnet 4.6 또는 Opus 4.7 선택) + 웹 검색
+- 데이터: xlsx (엑셀 파싱), chartjs-node-canvas (차트 PNG)
 - 출력: HWP 호환 .docx
-- 인증: 공용 비밀번호
+- DB·인증: Supabase + 사용자별 비밀번호·예산
 
 ---
 
@@ -144,21 +151,29 @@ GitHub repo에서 `skills/chem-pre-lab-report.md` 파일을 직접 수정하고 
 
 ```
 chem-pre-lab-web/
-├── server.js              # Express 서버 (라우트, SSE, 인증)
+├── server.js                    # Express + PIPELINES 레지스트리
 ├── lib/
-│   ├── claude.js          # Anthropic API 호출
-│   ├── docx-generator.js  # JSON → .docx 빌드
-│   └── parser.js          # 화학식 마커 파서
-├── skills/
-│   └── chem-pre-lab-report.md  # 시스템 프롬프트
+│   ├── parser.js                # 화학식 마커 (_{}, ^{}, *italic*) 공통
+│   ├── pricing.js, supabase.js, rate-limit.js, exchange-rate.js, auth.js
+│   ├── json-sanitize.js         # JSON 응답 안의 raw 제어문자 자동 escape
+│   └── pipelines/
+│       ├── chem-pre/            # 화학 사전보고서
+│       │   ├── prompt.md, generate.js, docx-gen.js
+│       │   └── image-pipeline.js, image-search.js, nano-banana.js (미사용)
+│       ├── chem-result/         # 화학 결과보고서
+│       │   ├── prompt.md, generate.js, docx-gen.js
+│       │   ├── excel-parser.js  # xlsx/csv → markdown table
+│       │   └── chart-gen.js     # chart spec → PNG (chartjs-node-canvas)
+│       └── phys-result/         # 준비 중
 ├── public/
-│   ├── login.html
-│   └── index.html
+│   ├── login.html, index.html, admin.html, style.css
 ├── package.json
-├── .env.example           # (배포 시에는 Render 환경변수 사용)
+├── .env.example                 # (배포 시에는 Render 환경변수 사용)
 ├── .gitignore
 └── README.md
 ```
+
+새 보고서 종류 추가하려면: `lib/pipelines/<type>/` 폴더에 `prompt.md`, `generate.js`, `docx-gen.js` 작성 + `server.js`의 `PIPELINES` 객체에 한 줄 등록.
 
 ---
 

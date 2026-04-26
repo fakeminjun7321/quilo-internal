@@ -316,30 +316,70 @@
         "claude-opus-4-7": { input: 15, output: 75, cacheRead: 1.5, cacheWrite: 18.75 },
       };
 
-      // PDF 크기 + 선택된 모델 기반 예상 비용 추정
-      // 시스템 프롬프트 ~10K 토큰은 ephemeral cache (5분) — 캐시 히트 시 입력 90% 절감
+      // chem-pre 비용 추정 (PDF 1개 + 시스템 프롬프트 ~10K 토큰 + 출력 8~14K)
       function estimateCost(pdfBytes, modelId) {
         const sizeKB = pdfBytes / 1024;
         const p = MODEL_PRICING[modelId] || MODEL_PRICING["claude-sonnet-4-6"];
 
-        // 시스템 프롬프트 비용: 캐시 히트(10K × cacheRead) ~ 캐시 미스(10K × cacheWrite)
         const sysCostLo = (10000 / 1e6) * p.cacheRead;
         const sysCostHi = (10000 / 1e6) * p.cacheWrite;
-        // PDF 입력 토큰: KB당 약 50~150토큰
         const pdfTokensLo = sizeKB * 50;
         const pdfTokensHi = sizeKB * 150;
         const pdfCostLo = (pdfTokensLo / 1e6) * p.input;
         const pdfCostHi = (pdfTokensHi / 1e6) * p.input;
-        // 출력 토큰: 8K~14K
         const outputCostLo = (8000 / 1e6) * p.output;
         const outputCostHi = (14000 / 1e6) * p.output;
-        // 웹 검색: 1~3회
         const searchCostLo = 1 * 0.01;
         const searchCostHi = 3 * 0.01;
 
         const lo = sysCostLo + pdfCostLo + outputCostLo + searchCostLo;
         const hi = sysCostHi + pdfCostHi + outputCostHi + searchCostHi;
         return { lo, hi, sizeKB: Math.round(sizeKB) };
+      }
+
+      // chem-result 비용 추정 (다중 파일 + 사진 N장 + 더 긴 출력)
+      // - 시스템 프롬프트 ~6K 토큰 (chem-result prompt.md는 짧은 편)
+      // - 사진 1장 ≈ 1500 입력 토큰 (Claude vision 표준)
+      // - 출력 12K~22K (결과보고서가 사전보고서보다 긺)
+      function estimateChemResultCost({
+        preReportBytes,
+        manualBytes,
+        dataBytes,
+        photoBytes,
+        photoCount,
+        modelId,
+      }) {
+        const p = MODEL_PRICING[modelId] || MODEL_PRICING["claude-sonnet-4-6"];
+
+        const sysCostLo = (6000 / 1e6) * p.cacheRead;
+        const sysCostHi = (6000 / 1e6) * p.cacheWrite;
+
+        // PDF/docx 텍스트 입력: KB당 50~150 토큰
+        const docKB = (preReportBytes + manualBytes) / 1024;
+        const docTokensLo = docKB * 50;
+        const docTokensHi = docKB * 150;
+        const docCostLo = (docTokensLo / 1e6) * p.input;
+        const docCostHi = (docTokensHi / 1e6) * p.input;
+
+        // 데이터 파일: 엑셀이면 markdown table로 변환되어 ~2배 토큰. 최대 50KB
+        const dataKB = Math.min(dataBytes / 1024, 50);
+        const dataTokens = dataKB * 100; // markdown 변환 후 평균
+        const dataCost = (dataTokens / 1e6) * p.input;
+
+        // 사진: 1장당 ~1500 토큰 (Claude vision)
+        const photoTokens = (photoCount || 0) * 1500;
+        const photoCost = (photoTokens / 1e6) * p.input;
+
+        // 출력: 12K~22K (결과보고서)
+        const outputCostLo = (12000 / 1e6) * p.output;
+        const outputCostHi = (22000 / 1e6) * p.output;
+
+        const lo = sysCostLo + docCostLo + dataCost + photoCost + outputCostLo;
+        const hi = sysCostHi + docCostHi + dataCost + photoCost + outputCostHi;
+        const totalKB = Math.round(
+          (preReportBytes + manualBytes + dataBytes + photoBytes) / 1024,
+        );
+        return { lo, hi, totalKB };
       }
 
       function getSelectedModel() {
@@ -416,23 +456,24 @@
             ? "고품질 (Opus 4.7)"
             : "표준 (Sonnet 4.6)";
 
-        // 예상 비용 — 사전보고서 + 매뉴얼 + 데이터 합계
-        const totalBytes =
-          preReport.size +
-          dataFile.size +
-          photos.reduce((s, p) => s + p.size, 0) +
-          (manual?.size || 0);
-        const est = estimateCost(totalBytes, crModel);
+        const photoBytes = photos.reduce((s, p) => s + p.size, 0);
+        const est = estimateChemResultCost({
+          preReportBytes: preReport.size,
+          manualBytes: manual?.size || 0,
+          dataBytes: dataFile.size,
+          photoBytes,
+          photoCount: photos.length,
+          modelId: crModel,
+        });
         const krwLo = Math.round(est.lo * 1400);
         const krwHi = Math.round(est.hi * 1400);
         const msg =
           `🤖 모델: ${modelLabel}\n` +
           `📄 첨부: 사전보고서, 데이터, 사진 ${photos.length}장${manual ? ", 매뉴얼" : ""}\n` +
-          `📦 총 크기: ${Math.round(totalBytes / 1024)}KB\n` +
-          `💰 예상 비용 (대략): $${est.lo.toFixed(2)} ~ $${est.hi.toFixed(2)} ` +
+          `📦 총 크기: ${est.totalKB}KB\n` +
+          `💰 예상 비용: $${est.lo.toFixed(2)} ~ $${est.hi.toFixed(2)} ` +
           `(약 ₩${krwLo.toLocaleString()} ~ ₩${krwHi.toLocaleString()})\n\n` +
-          `⚠️ Phase 2-2: 결과/논의 섹션은 데이터 파싱(Phase 2-3) · 그래프(Phase 2-4) 추가 후 완성됩니다.\n\n` +
-          `생성하시겠습니까?`;
+          `생성하시겠습니까? (실제 비용은 완료 후 표시됩니다)`;
         if (!confirm(msg)) return;
 
         lockForm(crForm);

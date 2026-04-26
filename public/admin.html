@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>관리자 — 화학 사전보고서</title>
+    <title>관리자 — 보고서 작성 툴</title>
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
@@ -77,6 +77,7 @@
           <tr>
             <th>시각</th>
             <th>사용자</th>
+            <th>종류</th>
             <th>모델</th>
             <th>보고서 제목</th>
             <th>비용</th>
@@ -299,7 +300,7 @@
         tbody.innerHTML = "";
         if (!logs || logs.length === 0) {
           const tr = document.createElement("tr");
-          tr.innerHTML = `<td colspan="7" style="color: #888; text-align: center">아직 생성된 보고서가 없습니다.</td>`;
+          tr.innerHTML = `<td colspan="8" style="color: #888; text-align: center">아직 생성된 보고서가 없습니다.</td>`;
           tbody.appendChild(tr);
           return;
         }
@@ -311,10 +312,12 @@
             inputT || outputT ? `입 ${fmtTok(inputT)} / 출 ${fmtTok(outputT)}` : "—";
           const webStr = meta.webSearchCount != null ? `${meta.webSearchCount}회` : "—";
           const modelStr = shortModel(meta.model);
+          const typeStr = shortType(meta.reportType, meta.reportLabel);
           const tr = document.createElement("tr");
           tr.innerHTML = `
             <td>${formatTime(log.created_at)}</td>
             <td>${escape(log.user_name)}</td>
+            <td style="font-size: 11px">${typeStr}</td>
             <td style="font-size: 11px; color: #555">${modelStr}</td>
             <td>${escape(meta.title || "(제목 없음)")}</td>
             <td>${fmtBoth(log.total_usd)}</td>
@@ -323,6 +326,14 @@
           `;
           tbody.appendChild(tr);
         }
+      }
+
+      function shortType(type, label) {
+        if (!type) return '<span style="color:#aaa">사전*</span>'; // legacy 데이터
+        if (type === "chem-pre") return "🧪 사전";
+        if (type === "chem-result") return "🔬 결과";
+        if (type === "phys-result") return "⚛️ 물리";
+        return escape(label || type);
       }
 
       function shortModel(m) {

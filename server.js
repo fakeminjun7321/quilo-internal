@@ -105,9 +105,13 @@ app.use(
   }),
 );
 
+// 단일 파일 25MB, 전체 파일 개수 12개 (사진 multi 대비) — Render 무료 512MB 메모리 보호
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024 },
+  limits: {
+    fileSize: 25 * 1024 * 1024,
+    files: 12,
+  },
 });
 
 // ── Auth helpers ─────────────────────────────────────────────────────────────
@@ -526,6 +530,8 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
           textCostUsd: content.__cost?.total || 0,
           imageCostUsd: content.__imageCost?.total || 0,
           meta: {
+            reportType: job.reportType,
+            reportLabel: pipeline.label,
             title: content.title_kr,
             model: content.__cost?.model,
             inputTokens: content.__cost?.inputTokens,
@@ -818,6 +824,22 @@ app.get("/", (req, res) => {
 });
 
 app.get("/healthz", (req, res) => res.json({ ok: true }));
+
+// multer 업로드 에러 핸들러 (파일 크기·개수 초과 등)
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    let msg = "파일 업로드 오류: " + err.code;
+    if (err.code === "LIMIT_FILE_SIZE") {
+      msg = "파일이 너무 큽니다 (단일 파일 최대 25MB).";
+    } else if (err.code === "LIMIT_FILE_COUNT") {
+      msg = "파일이 너무 많습니다 (최대 12개). 사진 수를 줄여보세요.";
+    } else if (err.code === "LIMIT_UNEXPECTED_FILE") {
+      msg = `예상치 못한 파일 필드: ${err.field}`;
+    }
+    return res.status(400).json({ error: msg });
+  }
+  next(err);
+});
 
 app.get("/api/usage", requireAdmin, (req, res) => {
   const uptimeHours = ((Date.now() - totalUsage.startedAt) / 3600000).toFixed(1);

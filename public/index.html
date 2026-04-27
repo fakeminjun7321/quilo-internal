@@ -116,16 +116,6 @@
         </label>
       </p>
       <p>
-        <label>결과보고서 양식 PDF (선택):
-          <input id="prForm" name="form" type="file" accept="application/pdf" />
-        </label>
-      </p>
-      <p>
-        <label>평가기준 (PDF·이미지, 선택):
-          <input id="prRubric" name="rubric" type="file" accept=".pdf,.png,.jpg,.jpeg" />
-        </label>
-      </p>
-      <p>
         <label>학번 <strong>*</strong>:
           <input id="prStudentId" name="studentId" type="text" placeholder="예: 2402" required maxlength="20" />
         </label>
@@ -626,8 +616,6 @@
         const dataFile = document.getElementById("prData").files[0] || null;
         const manual = document.getElementById("prManual").files[0] || null;
         const photos = Array.from(document.getElementById("prPhotos").files);
-        const formPdf = document.getElementById("prForm").files[0] || null;
-        const rubric = document.getElementById("prRubric").files[0] || null;
 
         // 클라이언트 검증: cap 또는 엑셀 중 하나는 필수 (사진은 선택)
         if (!cap && !dataFile) {
@@ -644,14 +632,13 @@
             : "표준 (Sonnet 4.6)";
 
         const photoBytes = photos.reduce((s, p) => s + p.size, 0);
-        // capBytes에 cap 또는 data 크기 합산 — 추정용
         const dataInputBytes = (cap?.size || 0) + (dataFile?.size || 0);
         const est = estimatePhysResultCost({
           capBytes: dataInputBytes,
           photoCount: photos.length,
           photoBytes,
-          formBytes: (formPdf?.size || 0) + (manual?.size || 0),
-          rubricBytes: rubric?.size || 0,
+          formBytes: manual?.size || 0,
+          rubricBytes: 0,
           modelId: prModel,
         });
         const krwLo = Math.round(est.lo * 1400);
@@ -662,11 +649,11 @@
           (dataFile ? `엑셀/CSV (${Math.round(dataFile.size / 1024)}KB)` : "");
         const msg =
           `🤖 모델: ${modelLabel}\n` +
-          `📦 ${inputLabel}${photos.length > 0 ? `, 사진 ${photos.length}장` : ""}${manual ? ", 매뉴얼" : ""}${formPdf ? ", 양식" : ""}${rubric ? ", 평가기준" : ""}\n` +
-          `📦 총 크기: ${est.totalKB}KB\n` +
+          `📦 ${inputLabel}${photos.length > 0 ? `, 사진 ${photos.length}장` : ""}${manual ? ", 매뉴얼" : ""}\n` +
+          `📦 총 크기: ${est.totalKB}KB (양식·평가기준은 코드 내장)\n` +
           `💰 예상 비용: $${est.lo.toFixed(2)} ~ $${est.hi.toFixed(2)} ` +
           `(약 ₩${krwLo.toLocaleString()} ~ ₩${krwHi.toLocaleString()})\n\n` +
-          `⚡ 5페이지 강제 + 65점 평가 최적화 적용\n\n` +
+          `⚡ 5페이지 채우기 + 65점 평가 최적화 적용\n\n` +
           `생성하시겠습니까?`;
         if (!confirm(msg)) return;
 
@@ -683,8 +670,6 @@
         if (dataFile) fd.append("data", dataFile);
         if (manual) fd.append("manual", manual);
         photos.forEach((p) => fd.append("photos", p));
-        if (formPdf) fd.append("form", formPdf);
-        if (rubric) fd.append("rubric", rubric);
         const prDateStr = document.getElementById("prDate").value;
         const [y, m, d] = prDateStr.split("-");
         fd.append("date", `${y}/ ${m} / ${d}`);

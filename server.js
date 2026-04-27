@@ -97,9 +97,6 @@ const PIPELINES = {
 
       const photos = filesByField.photos || [];
 
-      const form = filesByField.form?.[0] || null;
-      const rubric = filesByField.rubric?.[0] || null;
-
       const studentId = String(body.studentId || "").trim().slice(0, 20);
 
       return {
@@ -113,9 +110,6 @@ const PIPELINES = {
           name: p.originalname,
           mimetype: p.mimetype,
         })),
-        formBuffer: form?.buffer || null,
-        rubricBuffer: rubric?.buffer || null,
-        rubricName: rubric?.originalname || "",
         studentId,
       };
     },

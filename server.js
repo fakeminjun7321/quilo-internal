@@ -11,6 +11,7 @@ const PIPELINES = {
     label: "화학 사전보고서",
     filenamePrefix: "사전",
     filenameSourceField: "manual", // 이 fieldname의 파일명에서 번호 추출
+    creditField: "pre", // pre_credits_usd 차감
     prepareInput(filesByField, _body) {
       const manual = filesByField.manual?.[0];
       if (!manual) {
@@ -31,6 +32,7 @@ const PIPELINES = {
     label: "화학 결과보고서",
     filenamePrefix: "결과",
     filenameSourceField: "preReport",
+    creditField: "result", // result_credits_usd 차감
     prepareInput(filesByField, body) {
       const preReport = filesByField.preReport?.[0];
       if (!preReport) {
@@ -67,6 +69,7 @@ const PIPELINES = {
     filenamePrefix: "물리결과",
     // 파일명 번호 추출 우선순위: .cap > 매뉴얼 > 데이터
     filenameSourceField: "cap",
+    creditField: "result", // result_credits_usd 차감
     prepareInput(filesByField, body) {
       const cap = filesByField.cap?.[0] || null;
       const data = filesByField.data?.[0] || null;
@@ -128,12 +131,13 @@ const PIPELINES = {
     generateDocx: require("./lib/pipelines/phys-result/docx-gen").generateDocx,
   },
 };
+const pricing = require("./lib/pricing");
 const {
   fmtUSD,
   fmtKRW,
   fmtTokens,
   formatImageCostLine,
-} = require("./lib/pricing");
+} = pricing;
 const supa = require("./lib/supabase");
 const { krwToUsd, usdToKrw, getKrwPerUsd } = require("./lib/exchange-rate");
 const rateLimit = require("./lib/rate-limit");
@@ -440,20 +444,26 @@ app.post(
       }
     }
 
-    // 한도 검증 (Supabase enabled + 일반 사용자)
+    // 종류별 잔액 검증 (Supabase enabled + 일반 사용자)
+    // 사전 보고서는 pre_credits_usd, 결과 보고서는 result_credits_usd 사용
+    const reportPrice = pricing.getReportPrice(reportType);
     if (supa.isEnabled() && userInfo.id && !userInfo.isAdmin) {
       try {
-        const check = await supa.checkBudget(userInfo.id);
+        const check = await supa.checkCreditBalance(
+          userInfo.id,
+          pipeline.creditField,
+          reportPrice,
+        );
         if (!check.ok) {
           return res
             .status(402)
-            .json({ error: "🚫 " + (check.reason || "한도 초과") });
+            .json({ error: "🚫 " + (check.reason || "잔액 부족") });
         }
       } catch (e) {
-        console.error("[budget] error:", e);
+        console.error("[credit] error:", e);
         return res
           .status(500)
-          .json({ error: "한도 확인 중 오류가 발생했습니다." });
+          .json({ error: "잔액 확인 중 오류가 발생했습니다." });
       }
     }
 
@@ -612,6 +622,7 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
     // DB 누적 (Supabase enabled + 일반 user)
     if (supa.isEnabled() && job.userInfo?.id) {
       try {
+        // 1) 실제 Anthropic 비용 누적 (admin 통계용)
         await supa.recordUsage({
           userId: job.userInfo.id,
           jobId: job.id,
@@ -620,24 +631,34 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
           meta: {
             reportType: job.reportType,
             reportLabel: pipeline.label,
-            title: content.title_kr,
+            title: content.title_kr || content.title,
             model: content.__cost?.model,
             inputTokens: content.__cost?.inputTokens,
             outputTokens: content.__cost?.outputTokens,
             cacheReadTokens: content.__cost?.cacheReadTokens,
             cacheWriteTokens: content.__cost?.cacheWriteTokens,
             webSearchCount: content.__cost?.webSearchCount,
+            chargedUsd: pricing.getReportPrice(job.reportType), // 실제 차감된 고정 가격
           },
         });
 
-        // Refreshed user spent/budget
-        const fresh = await supa.findUserById(job.userInfo.id);
-        if (fresh) {
-          const spent = Number(fresh.spent_usd) || 0;
-          const budget = Number(fresh.budget_usd) || 0;
+        // 2) 종류별 잔액 차감 (admin이 아닌 일반 사용자만)
+        const userIsAdmin = !!job.userInfo.isAdmin;
+        if (!userIsAdmin && pipeline.creditField) {
+          const price = pricing.getReportPrice(job.reportType);
+          const { newBalance } = await supa.deductCredit(
+            job.userInfo.id,
+            pipeline.creditField,
+            price,
+          );
+          const krwRate = await getKrwPerUsd();
+          const krw = Math.round(newBalance * krwRate);
+          const remainingCount = Math.floor(newBalance / price);
+          const label =
+            pipeline.creditField === "pre" ? "사전" : "결과";
           pushProgress(
             job,
-            `📊 ${fresh.name}: 누적 ${fmtUSD(spent)} / 한도 ${fmtUSD(budget)} ${fmtKRW(budget - spent)} 남음`,
+            `💳 ${label} 잔액: $${newBalance.toFixed(3)} ≈ ₩${krw.toLocaleString()} (약 ${remainingCount}건 남음)`,
           );
         }
       } catch (e) {
@@ -850,6 +871,64 @@ app.delete("/api/admin/users/:id", requireAdmin, async (req, res) => {
   } catch (e) {
     console.error("[admin]", req.method, req.path, "error:", e);
     res.status(500).json({ error: "처리 중 오류가 발생했습니다." });
+  }
+});
+
+// 종류별 잔액 충전 (admin만)
+// body: { field: "pre"|"result", count?: N, usd?: X }
+//   - count 우선: count × 단가만큼 USD 추가
+//   - usd: 직접 USD 액수 추가
+app.post("/api/admin/users/:id/topup", requireAdmin, async (req, res) => {
+  if (!supa.isEnabled())
+    return res.status(503).json({ error: "Supabase 미설정" });
+  const { field, count, usd } = req.body || {};
+  if (field !== "pre" && field !== "result") {
+    return res.status(400).json({ error: "field는 'pre' 또는 'result'여야 합니다." });
+  }
+  let addUsd = 0;
+  if (count != null) {
+    const reportType = field === "pre" ? "chem-pre" : "chem-result";
+    const price = pricing.getReportPrice(reportType);
+    addUsd = Number(count) * price;
+  } else if (usd != null) {
+    addUsd = Number(usd);
+  } else {
+    return res.status(400).json({ error: "count 또는 usd 중 하나 필수" });
+  }
+  if (!Number.isFinite(addUsd) || addUsd <= 0) {
+    return res.status(400).json({ error: "충전 금액이 유효하지 않습니다." });
+  }
+  try {
+    const result = await supa.topupCredit(req.params.id, field, addUsd);
+    res.json({ ok: true, addedUsd: addUsd, ...result });
+  } catch (e) {
+    console.error("[admin]", req.method, req.path, "error:", e);
+    res.status(500).json({ error: "처리 중 오류가 발생했습니다." });
+  }
+});
+
+// 사용자 본인 잔액 조회 (메인 화면 잔액 박스용)
+app.get("/api/me/balance", requireAuth, async (req, res) => {
+  const u = getSessionUser(req);
+  if (u.isAdmin) {
+    return res.json({ isAdmin: true });
+  }
+  if (!supa.isEnabled() || !u.id) {
+    return res.json({ preUsd: 0, resultUsd: 0, krwPerUsd: 1400 });
+  }
+  try {
+    const user = await supa.findUserById(u.id);
+    const rate = await getKrwPerUsd();
+    res.json({
+      preUsd: Number(user?.pre_credits_usd) || 0,
+      resultUsd: Number(user?.result_credits_usd) || 0,
+      krwPerUsd: rate,
+      preUnitUsd: pricing.getReportPrice("chem-pre"),
+      resultUnitUsd: pricing.getReportPrice("chem-result"),
+    });
+  } catch (e) {
+    console.error("[me/balance] error:", e);
+    res.status(500).json({ error: "잔액 조회 실패" });
   }
 });
 

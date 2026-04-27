@@ -15,6 +15,12 @@
 
     <h1>보고서 작성 툴</h1>
 
+    <div id="balanceBox" style="display: none; padding: 10px 12px; background: #f0f7ff; border: 1px solid #b8d4f0; border-radius: 6px; margin: 10px 0; font-size: 13px;">
+      <strong>💳 내 잔액</strong> &nbsp;
+      <span id="balPre">🧪 사전: ...</span> &nbsp;|&nbsp;
+      <span id="balResult">🔬⚛️ 결과: ...</span>
+    </div>
+
     <fieldset id="reportTypeFieldset">
       <legend>보고서 종류</legend>
       <label>
@@ -237,8 +243,31 @@
           if (d.isAdmin) {
             document.getElementById("adminLink").style.display = "inline";
           }
+          // 일반 사용자: 잔액 박스 표시
+          if (!d.isAdmin) loadBalance();
         })
         .catch(() => (location.href = "/login.html"));
+
+      async function loadBalance() {
+        try {
+          const r = await fetch("/api/me/balance");
+          if (!r.ok) return;
+          const b = await r.json();
+          if (b.isAdmin) return; // admin은 잔액 X
+          const rate = b.krwPerUsd || 1400;
+          const preCount = b.preUnitUsd > 0 ? Math.floor(b.preUsd / b.preUnitUsd) : 0;
+          const resultCount = b.resultUnitUsd > 0 ? Math.floor(b.resultUsd / b.resultUnitUsd) : 0;
+          const preKrw = Math.round(b.preUsd * rate).toLocaleString();
+          const resultKrw = Math.round(b.resultUsd * rate).toLocaleString();
+          document.getElementById("balPre").textContent =
+            `🧪 사전: ${preCount}건 (₩${preKrw})`;
+          document.getElementById("balResult").textContent =
+            `🔬⚛️ 결과: ${resultCount}건 (₩${resultKrw})`;
+          document.getElementById("balanceBox").style.display = "block";
+        } catch (_) {
+          /* graceful: 잔액 박스 숨김 */
+        }
+      }
 
       document.getElementById("logout").addEventListener("click", async (e) => {
         e.preventDefault();
@@ -733,6 +762,8 @@
 
           es.close();
           resetForm();
+          // 작업 후 잔액 자동 새로고침
+          if (typeof loadBalance === "function") loadBalance();
         });
 
         es.addEventListener("error", (e) => {

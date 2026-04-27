@@ -463,7 +463,8 @@ app.post(
       filesByField[pipeline.filenameSourceField]?.[0];
     const sourceFilename = sourceFile?.originalname || "";
     // 사용자가 폼에서 선택한 모델. 화이트리스트 검증으로 임의 모델 주입 차단.
-    const ALLOWED_MODELS = ["claude-sonnet-4-6", "claude-opus-4-7"];
+    // Sonnet 비활성화 — Opus 4.7만 허용. 복구 시 "claude-sonnet-4-6" 추가.
+    const ALLOWED_MODELS = ["claude-opus-4-7"];
     const requestedModel = String(req.body.model || "").trim();
     const model = ALLOWED_MODELS.includes(requestedModel) ? requestedModel : null;
 

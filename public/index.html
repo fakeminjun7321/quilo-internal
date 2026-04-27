@@ -72,6 +72,7 @@
           <input id="crPressure" name="pressure" type="number" step="0.1" placeholder="예: 1013.2" style="width: 110px" />
         </label>
       </p>
+      <!-- Sonnet 비활성화 — Opus 고정. 복구 시 주석 해제.
       <p>
         <strong>모델 선택:</strong><br />
         <label>
@@ -83,6 +84,8 @@
           고품질 (Opus 4.7) — 5배 비쌈
         </label>
       </p>
+      -->
+      <input type="hidden" name="crModel" value="claude-opus-4-7" />
       <p>
         <button type="submit" id="crBtn">결과보고서 생성</button>
       </p>
@@ -125,6 +128,7 @@
           <input id="prDate" name="date" type="date" required />
         </label>
       </p>
+      <!-- Sonnet 비활성화 — Opus 고정. 복구 시 주석 해제.
       <p>
         <strong>모델 선택:</strong><br />
         <label>
@@ -136,6 +140,8 @@
           고품질 (Opus 4.7) — 5배 비쌈
         </label>
       </p>
+      -->
+      <input type="hidden" name="prModel" value="claude-opus-4-7" />
       <p>
         <button type="submit" id="prBtn">물리 결과보고서 생성</button>
       </p>
@@ -153,6 +159,7 @@
           <input id="date" name="date" type="date" required />
         </label>
       </p>
+      <!-- Sonnet 모델 비활성화 — Opus 4.7 고정 사용. 복구하려면 아래 주석 해제하고 hidden input 제거.
       <p>
         <strong>모델 선택:</strong><br />
         <label>
@@ -164,6 +171,8 @@
           고품질 (Opus 4.7) — 약 <span id="costOpus">₩1,700</span>/건 (5배 비쌈, 화학 깊이 약간 더 풍부)
         </label>
       </p>
+      -->
+      <input type="hidden" name="model" value="claude-opus-4-7" />
       <p>
         <button type="submit" id="btn">사전보고서 생성</button>
       </p>
@@ -376,7 +385,7 @@
       // chem-pre 비용 추정 (PDF 1개 + 시스템 프롬프트 ~10K 토큰 + 출력 8~14K)
       function estimateCost(pdfBytes, modelId) {
         const sizeKB = pdfBytes / 1024;
-        const p = MODEL_PRICING[modelId] || MODEL_PRICING["claude-sonnet-4-6"];
+        const p = MODEL_PRICING[modelId] || MODEL_PRICING["claude-opus-4-7"];
 
         const sysCostLo = (10000 / 1e6) * p.cacheRead;
         const sysCostHi = (10000 / 1e6) * p.cacheWrite;
@@ -407,7 +416,7 @@
         rubricBytes,
         modelId,
       }) {
-        const p = MODEL_PRICING[modelId] || MODEL_PRICING["claude-sonnet-4-6"];
+        const p = MODEL_PRICING[modelId] || MODEL_PRICING["claude-opus-4-7"];
         const sysCostLo = (8000 / 1e6) * p.cacheRead;
         const sysCostHi = (8000 / 1e6) * p.cacheWrite;
 
@@ -448,7 +457,7 @@
         photoCount,
         modelId,
       }) {
-        const p = MODEL_PRICING[modelId] || MODEL_PRICING["claude-sonnet-4-6"];
+        const p = MODEL_PRICING[modelId] || MODEL_PRICING["claude-opus-4-7"];
 
         const sysCostLo = (6000 / 1e6) * p.cacheRead;
         const sysCostHi = (6000 / 1e6) * p.cacheWrite;
@@ -482,8 +491,10 @@
       }
 
       function getSelectedModel() {
-        const checked = document.querySelector('input[name="model"]:checked');
-        return checked ? checked.value : "claude-sonnet-4-6";
+        // Sonnet 비활성화 — 항상 Opus 4.7 사용.
+        // 복구 시: 아래 hidden input 대응 로직과 함께 라디오 버튼 형태로 변경.
+        const el = document.querySelector('input[name="model"]');
+        return el ? el.value : "claude-opus-4-7";
       }
 
       form.addEventListener("submit", async (e) => {

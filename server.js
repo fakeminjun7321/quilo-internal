@@ -113,6 +113,16 @@ const PIPELINES = {
         studentId,
       };
     },
+    // 파일명 형식: {학번}{이름}_{실험제목}.docx
+    buildFilename(content, ctx) {
+      const id = sanitizeForFilename(ctx.studentId || "");
+      const name = sanitizeForFilename(ctx.userName || "");
+      const title = sanitizeForFilename(content.title || "보고서");
+      const prefix = `${id}${name}`;
+      return prefix
+        ? `${prefix}_${title}.docx`
+        : `물리결과_${title}.docx`;
+    },
     generateContent: require("./lib/pipelines/phys-result/generate")
       .generateReportContent,
     generateDocx: require("./lib/pipelines/phys-result/docx-gen").generateDocx,
@@ -565,15 +575,23 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
     const sizeKB = Math.round(buffer.length / 1024);
     pushProgress(job, `✓ .docx 빌드 완료 (${sizeKB}KB, ${docxSec}초)`);
 
-    // 파일명: {매뉴얼번호}_{타입}_{학번}_{이름}.docx
-    // 학번이 입력 안 되면 "학번" placeholder 유지 (호환성)
-    const num = extractManualNumber(sourceFilename);
-    const userName = sanitizeForFilename(job.userInfo?.name || "");
-    const prefix = num ? `${num}_` : "";
-    const studentPart = sanitizeForFilename(studentId) || "학번";
-    const namePart = userName ? `_${userName}` : "";
+    // 파일명 결정: pipeline에 buildFilename이 있으면 그걸 사용 (커스텀 형식)
+    // 없으면 기존 형식 ({번호}_{타입}_{학번}_{이름}.docx)
     job.result = buffer;
-    job.filename = `${prefix}${pipeline.filenamePrefix}_${studentPart}${namePart}.docx`;
+    if (typeof pipeline.buildFilename === "function") {
+      job.filename = pipeline.buildFilename(content, {
+        studentId,
+        userName: job.userInfo?.name || "",
+        sourceFilename,
+      });
+    } else {
+      const num = extractManualNumber(sourceFilename);
+      const userName = sanitizeForFilename(job.userInfo?.name || "");
+      const prefix = num ? `${num}_` : "";
+      const studentPart = sanitizeForFilename(studentId) || "학번";
+      const namePart = userName ? `_${userName}` : "";
+      job.filename = `${prefix}${pipeline.filenamePrefix}_${studentPart}${namePart}.docx`;
+    }
     job.status = "done";
 
     const totalSec = Math.floor((Date.now() - t0) / 1000);

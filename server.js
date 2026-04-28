@@ -12,7 +12,7 @@ const PIPELINES = {
     filenamePrefix: "사전",
     filenameSourceField: "manual", // 이 fieldname의 파일명에서 번호 추출
     creditField: "pre", // pre_credits_usd 차감
-    prepareInput(filesByField, _body) {
+    prepareInput(filesByField, body) {
       const manual = filesByField.manual?.[0];
       if (!manual) {
         throw new Error("실험 매뉴얼 PDF를 업로드하세요.");
@@ -22,11 +22,16 @@ const PIPELINES = {
       }
       return {
         pdfBuffer: manual.buffer,
+        studentId: String(body.studentId || "").trim(),
+        studentName: String(body.studentName || "").trim(),
+        temperature: String(body.temperature || "").trim(),
+        pressure: String(body.pressure || "").trim(),
       };
     },
     generateContent: require("./lib/pipelines/chem-pre/generate")
       .generateReportContent,
     generateDocx: require("./lib/pipelines/chem-pre/docx-gen").generateDocx,
+    generateHwpx: require("./lib/pipelines/chem-pre/hwpx-gen").generateHwpx,
   },
   "chem-result": {
     label: "화학 결과보고서",
@@ -468,6 +473,12 @@ app.post(
     }
 
     const date = (req.body.date || "").trim();
+    // 출력 형식: docx (default) 또는 hwpx — pipeline이 hwpx generator를 가진 경우에만 hwpx 허용
+    const requestedFormat = String(req.body.format || "docx").trim().toLowerCase();
+    const format =
+      requestedFormat === "hwpx" && typeof pipeline.generateHwpx === "function"
+        ? "hwpx"
+        : "docx";
     // 파일명 기반 보고서 번호 추출용 — pipeline이 지정한 fieldname 사용
     const sourceFile =
       filesByField[pipeline.filenameSourceField]?.[0];
@@ -512,6 +523,7 @@ app.post(
       date,
       sourceFilename,
       model,
+      format,
     }).catch(
       (err) => {
         job.status = "error";
@@ -534,6 +546,15 @@ function extractManualNumber(filename) {
   return m ? m[1] : "";
 }
 
+// 표지 노출용 실험 번호 — 로마자 prefix까지 같이 살림 (예: "I-23_산염기..." -> "I-23")
+function extractReportLabel(filename) {
+  if (!filename) return "";
+  const s = String(filename);
+  const labeled = s.match(/([IVX]{1,3})[- ]?(\d{1,3})/i);
+  if (labeled) return `${labeled[1].toUpperCase()}-${labeled[2]}`;
+  return extractManualNumber(s);
+}
+
 function sanitizeForFilename(s) {
   return String(s || "")
     .replace(/[\\/:*?"<>|]/g, "_")
@@ -542,7 +563,7 @@ function sanitizeForFilename(s) {
 }
 
 async function runGeneration(job, pipeline, pipelineInput, meta) {
-  const { date, sourceFilename, model } = meta;
+  const { date, sourceFilename, model, format = "docx" } = meta;
   const t0 = Date.now();
   const timeoutMin = Math.round(JOB_TIMEOUT_MS / 60000);
   pushProgress(
@@ -579,29 +600,49 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
       writable: false,
     });
 
-    pushProgress(job, "📄 .docx 파일 빌드 중...");
-    const tDocxStart = Date.now();
-    const buffer = await pipeline.generateDocx(content);
-    const docxSec = Math.floor((Date.now() - tDocxStart) / 1000);
+    // hwpx 표지에서 사용할 사용자 입력값 (chem-pre 폼에서만 채워짐, 다른
+    // 파이프라인은 빈 문자열). enumerable 키라 generator가 직접 읽음.
+    content.student_id = studentId;
+    content.student_name = String(
+      pipelineInput.studentName || job.userInfo?.name || "",
+    ).trim();
+    content.temperature = String(pipelineInput.temperature || "").trim();
+    content.pressure = String(pipelineInput.pressure || "").trim();
+    content.report_number = extractReportLabel(sourceFilename);
+
+    const ext = format === "hwpx" ? "hwpx" : "docx";
+    pushProgress(job, `📄 .${ext} 파일 빌드 중...`);
+    const tBuildStart = Date.now();
+    const buffer =
+      format === "hwpx"
+        ? await pipeline.generateHwpx(content)
+        : await pipeline.generateDocx(content);
+    const buildSec = Math.floor((Date.now() - tBuildStart) / 1000);
     const sizeKB = Math.round(buffer.length / 1024);
-    pushProgress(job, `✓ .docx 빌드 완료 (${sizeKB}KB, ${docxSec}초)`);
+    pushProgress(job, `✓ .${ext} 빌드 완료 (${sizeKB}KB, ${buildSec}초)`);
 
     // 파일명 결정: pipeline에 buildFilename이 있으면 그걸 사용 (커스텀 형식)
-    // 없으면 기존 형식 ({번호}_{타입}_{학번}_{이름}.docx)
+    // 없으면 기존 형식 ({번호}_{타입}_{학번}_{이름}.{ext})
     job.result = buffer;
+    job.mimeType =
+      format === "hwpx"
+        ? "application/hwp+zip"
+        : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     if (typeof pipeline.buildFilename === "function") {
-      job.filename = pipeline.buildFilename(content, {
+      const baseName = pipeline.buildFilename(content, {
         studentId,
         userName: job.userInfo?.name || "",
         sourceFilename,
       });
+      // buildFilename이 .docx로 끝나는 경우 ext로 교체
+      job.filename = baseName.replace(/\.docx$/i, `.${ext}`);
     } else {
       const num = extractManualNumber(sourceFilename);
       const userName = sanitizeForFilename(job.userInfo?.name || "");
       const prefix = num ? `${num}_` : "";
       const studentPart = sanitizeForFilename(studentId) || "학번";
       const namePart = userName ? `_${userName}` : "";
-      job.filename = `${prefix}${pipeline.filenamePrefix}_${studentPart}${namePart}.docx`;
+      job.filename = `${prefix}${pipeline.filenamePrefix}_${studentPart}${namePart}.${ext}`;
     }
     job.status = "done";
 
@@ -765,6 +806,7 @@ app.get("/api/jobs/:id/download", requireAuth, (req, res) => {
   }
   res.set({
     "Content-Type":
+      job.mimeType ||
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(job.filename)}`,
     "Content-Length": job.result.length,

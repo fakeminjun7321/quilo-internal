@@ -745,10 +745,16 @@ def build_apparatus_and_chemicals(doc, content):
         add_para(doc, line, indent_left=INDENT_5MM)
 
     add_heading(doc, "나. 시약", size=SIZE_HEADING, space_after=SPACE_BODY)
+    # build URL→[N] index so duplicate sources share the same number
+    ref_index = _ref_url_index(content)
     for idx, ch in enumerate(content.get("chemicals", []), 1):
+        ref_marker = ""
+        src = (ch.get("source_url") or "").strip()
+        if src and src in ref_index:
+            ref_marker = f" [{ref_index[src]}]"
         head = (
             f"({idx}) **{ch.get('name', '')}** "
-            f"({ch.get('iupac', '')}, {ch.get('formula', '')})"
+            f"({ch.get('iupac', '')}, {ch.get('formula', '')}){ref_marker}"
         )
         add_para(doc, head, indent_left=INDENT_5MM)
 
@@ -770,6 +776,112 @@ def build_apparatus_and_chemicals(doc, content):
     if summary:
         add_heading(doc, "[표 1] 시약 요약", size=SIZE_BODY)
         build_chemicals_summary_table(doc, summary)
+
+
+def build_table_of_contents(doc, content):
+    """short TOC after the title page. Built from content (theory topics,
+    procedure titles), not from headings already in the doc, since hwpx
+    doesn't expose page numbers from Python.
+    """
+    has_refs = bool(_ref_url_index(content))
+    has_chemicals = bool(content.get("chemicals_summary_table"))
+
+    add_heading(doc, "목차", size=SIZE_TITLE,
+                space_before=SPACE_HEADING_LV1, space_after=SPACE_HEADING_LV2)
+
+    def lv1(text):
+        add_para(doc, text, base_size=SIZE_BODY, bold=True,
+                 indent_left=INDENT_5MM)
+
+    def lv2(text):
+        add_para(doc, text, base_size=SIZE_BODY, indent_left=INDENT_10MM)
+
+    lv1("1. 실험목표")
+    lv2("가. 실험목표")
+
+    lv1("2. 이론적 배경과 원리")
+    for s_idx, section in enumerate(content.get("theory", [])):
+        kr = KR_NUM[s_idx] if s_idx < len(KR_NUM) else str(s_idx + 1)
+        topic = section.get("topic", "")
+        lv2(f"{kr}. {topic}")
+
+    lv1("3. 실험 기구 및 시약")
+    lv2("가. 실험 기구")
+    lv2("나. 시약")
+    if has_chemicals:
+        lv2("[표 1] 시약 요약")
+
+    lv1("4. 실험 과정")
+    for sec_idx, sec in enumerate(content.get("procedure", [])):
+        kr = KR_NUM[sec_idx] if sec_idx < len(KR_NUM) else str(sec_idx + 1)
+        lv2(f"{kr}. {sec.get('title', '')}")
+
+    if has_refs:
+        lv1("참고문헌")
+
+
+def _ref_url_index(content):
+    """build a dict mapping each URL to its 1-based reference index.
+    Sources are gathered from chemicals[].source_url and references[].url
+    (deduped, in first-seen order). Returns {} when there are no sources.
+    """
+    out = {}
+    n = 0
+    for ch in content.get("chemicals", []) or []:
+        url = (ch.get("source_url") or "").strip()
+        if url and url not in out:
+            n += 1
+            out[url] = n
+    for ref in content.get("references", []) or []:
+        url = (ref.get("url") or "").strip()
+        if url and url not in out:
+            n += 1
+            out[url] = n
+    return out
+
+
+def _ref_label_for(url, content):
+    """find a human label for a URL (from references[] or chemicals[])."""
+    for ref in content.get("references", []) or []:
+        if (ref.get("url") or "").strip() == url:
+            return (ref.get("label") or url).strip()
+    for ch in content.get("chemicals", []) or []:
+        if (ch.get("source_url") or "").strip() == url:
+            return (ch.get("name") or url).strip()
+    return url
+
+
+def build_references(doc, content):
+    """append a "참고문헌" heading + numbered list of clickable URLs at the
+    end of the document. Skips entirely if there are no sources.
+    """
+    ref_index = _ref_url_index(content)
+    if not ref_index:
+        return
+
+    add_heading(doc, "참고문헌", size=SIZE_TITLE,
+                space_before=SPACE_HEADING_LV1, space_after=SPACE_HEADING_LV2)
+
+    # ordered by index
+    for url in sorted(ref_index.keys(), key=lambda u: ref_index[u]):
+        idx = ref_index[url]
+        label = _ref_label_for(url, content)
+
+        # Render as: "[1] PubChem — Water (CID 962): https://..."
+        para_pr = make_para_pr(
+            doc, indent_left=INDENT_5MM, line_spacing=LINE_SPACING_PERCENT
+        )
+        p = doc.add_paragraph(
+            "", para_pr_id_ref=para_pr, inherit_style=False
+        )
+        cp = make_char_pr(doc, size=SIZE_BODY)
+        p.add_run(f"[{idx}] {label}: ", char_pr_id_ref=cp)
+
+        cp_link = make_char_pr(doc, size=SIZE_BODY, color=LINK_COLOR)
+        try:
+            p.add_hyperlink(url, url, char_pr_id_ref=cp_link)
+        except Exception:
+            p.add_run(url, char_pr_id_ref=cp_link)
 
 
 def build_procedure(doc, procedure):
@@ -831,10 +943,12 @@ def generate_hwpx(content):
     apply_default_font(doc)
 
     build_title_page(doc, content)
+    build_table_of_contents(doc, content)
     build_purpose(doc, content.get("purpose", []))
     build_theory(doc, content.get("theory", []), content.get("figures_needed", []))
     build_apparatus_and_chemicals(doc, content)
     build_procedure(doc, content.get("procedure", []))
+    build_references(doc, content)
 
     try:
         doc.set_footer_text("- 사전보고서 -")

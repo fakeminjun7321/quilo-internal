@@ -197,6 +197,10 @@
       </p>
       -->
       <input type="hidden" name="model" value="claude-opus-4-7" />
+      <!--
+      hwpx 옵션은 백엔드까지 다 들어가 있지만, 사용자 검증이 끝날 때까지
+      UI에서 숨겨둠. 활성화하려면 아래 라디오 묶음 주석 해제 + 아래 submit
+      handler 의 format 하드코딩 부분도 같이 풀 것.
       <p>
         <strong>출력 형식:</strong>
         <label style="margin-left: 8px;">
@@ -208,6 +212,8 @@
           .hwpx (한글) <small style="color:#c66;">실험 중</small>
         </label>
       </p>
+      -->
+      <input type="hidden" name="format" value="docx" />
       <p>
         <button type="submit" id="btn">사전보고서 생성</button>
       </p>
@@ -600,7 +606,11 @@
         const [y, m, d] = dateStr.split("-");
         fd.append("date", `${y}/ ${m} / ${d}`);
         fd.append("model", model);
-        const formatEl = document.querySelector('#form input[name="format"]:checked');
+        // selector also catches the hidden hwpx-disabled fallback so UI
+        // gating doesn't accidentally break this submit path.
+        const formatEl = document.querySelector(
+          '#form input[name="format"]:checked, #form input[name="format"][type="hidden"]'
+        );
         fd.append("format", formatEl ? formatEl.value : "docx");
 
         // 표지에 들어갈 사용자 입력 (선택). 입력값은 localStorage에 캐시해

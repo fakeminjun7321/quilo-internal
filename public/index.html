@@ -165,6 +165,24 @@
           <input id="date" name="date" type="date" required />
         </label>
       </p>
+      <p>
+        <label>학번 (선택):
+          <input id="studentId" name="studentId" type="text" maxlength="20" placeholder="예: 2402" style="width: 110px" />
+        </label>
+        &nbsp;
+        <label>이름 (선택):
+          <input id="studentName" name="studentName" type="text" maxlength="20" placeholder="예: 구민준" style="width: 130px" />
+        </label>
+      </p>
+      <p>
+        <label>실험 온도 (°C, 선택):
+          <input id="temperature" name="temperature" type="text" placeholder="22.5" style="width: 90px" />
+        </label>
+        &nbsp;
+        <label>기압 (hPa, 선택):
+          <input id="pressure" name="pressure" type="text" placeholder="1013.2" style="width: 110px" />
+        </label>
+      </p>
       <!-- Sonnet 모델 비활성화 — Opus 4.7 고정 사용. 복구하려면 아래 주석 해제하고 hidden input 제거.
       <p>
         <strong>모델 선택:</strong><br />
@@ -180,10 +198,21 @@
       -->
       <input type="hidden" name="model" value="claude-opus-4-7" />
       <p>
+        <strong>출력 형식:</strong>
+        <label style="margin-left: 8px;">
+          <input type="radio" name="format" value="docx" checked />
+          .docx (MS Word)
+        </label>
+        <label style="margin-left: 8px;">
+          <input type="radio" name="format" value="hwpx" />
+          .hwpx (한글) <small style="color:#c66;">실험 중</small>
+        </label>
+      </p>
+      <p>
         <button type="submit" id="btn">사전보고서 생성</button>
       </p>
       <p>⏱ 생성에 3~5분 소요됩니다. 페이지를 닫지 마세요.</p>
-      <p><small>※ 그림 자리는 점선 박스 안에 구글 이미지 검색 링크가 들어갑니다. docx 열어서 링크 클릭 → 이미지 복붙으로 채우세요.</small></p>
+      <p><small>※ 그림 자리는 점선 박스 안에 구글 이미지 검색 링크가 들어갑니다. 파일 열어서 링크 클릭 → 이미지 복붙으로 채우세요.</small></p>
     </form>
 
     <hr />
@@ -277,6 +306,15 @@
 
       // Default to today
       document.getElementById("date").value = new Date().toISOString().slice(0, 10);
+
+      // chem-pre 폼: 학번/이름은 마지막 입력값을 localStorage에서 복원
+      try {
+        const cached = JSON.parse(localStorage.getItem("chemPreUserDefaults") || "{}");
+        const idEl = document.getElementById("studentId");
+        const nameEl = document.getElementById("studentName");
+        if (idEl && cached.studentId) idEl.value = cached.studentId;
+        if (nameEl && cached.studentName) nameEl.value = cached.studentName;
+      } catch (_) { /* ignore */ }
 
       // 보고서 종류 라디오 → 폼 전환
       const reportTypeRadios = document.querySelectorAll('input[name="reportType"]');
@@ -562,6 +600,29 @@
         const [y, m, d] = dateStr.split("-");
         fd.append("date", `${y}/ ${m} / ${d}`);
         fd.append("model", model);
+        const formatEl = document.querySelector('#form input[name="format"]:checked');
+        fd.append("format", formatEl ? formatEl.value : "docx");
+
+        // 표지에 들어갈 사용자 입력 (선택). 입력값은 localStorage에 캐시해
+        // 다음 방문 시 자동 채움.
+        const idEl = document.getElementById("studentId");
+        const nameEl = document.getElementById("studentName");
+        const tempEl = document.getElementById("temperature");
+        const presEl = document.getElementById("pressure");
+        const studentId = idEl?.value.trim() || "";
+        const studentName = nameEl?.value.trim() || "";
+        const temperature = tempEl?.value.trim() || "";
+        const pressure = presEl?.value.trim() || "";
+        fd.append("studentId", studentId);
+        fd.append("studentName", studentName);
+        fd.append("temperature", temperature);
+        fd.append("pressure", pressure);
+        try {
+          localStorage.setItem(
+            "chemPreUserDefaults",
+            JSON.stringify({ studentId, studentName }),
+          );
+        } catch (_) { /* private mode etc. */ }
 
         try {
           const res = await fetch("/api/generate", { method: "POST", body: fd });

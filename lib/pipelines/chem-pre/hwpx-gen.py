@@ -32,6 +32,21 @@ from hwpx import HwpxDocument
 KR_NUM = ["가", "나", "다", "라", "마", "바", "사", "아",
           "자", "차", "카", "타", "파", "하"]
 
+# 사용자 양식과 일치하는 검은 동그라미 안 흰색 숫자 (Unicode dingbat).
+# (1)~(20) 형태의 일반 괄호 숫자 대신 본문 항목 카운터로 사용한다.
+CIRCLED_NUM = [
+    "❶", "❷", "❸", "❹", "❺", "❻", "❼", "❽", "❾", "❿",
+    "⓫", "⓬", "⓭", "⓮", "⓯", "⓰", "⓱", "⓲", "⓳", "⓴",
+]
+
+
+def numbered_marker(idx):
+    """1-based index → ❶❷❸... (사용자 보고서 양식). 20 초과는 (N) 폴백."""
+    if 1 <= idx <= len(CIRCLED_NUM):
+        return CIRCLED_NUM[idx - 1]
+    return f"({idx})"
+
+
 # A4 page is 59528 HWPUNIT wide with 8504 left/right margins → 42520 usable.
 TABLE_WIDTH = 42000
 
@@ -43,8 +58,9 @@ NS_HP = "{http://www.hancom.co.kr/hwpml/2011/paragraph}"
 NS_HC = "{http://www.hancom.co.kr/hwpml/2011/core}"
 
 # OWPML char height is in 1/100 pt (so 1100 == 11 pt).
-SIZE_TITLE_BIG = 2000     # 실험 보고서 (20 pt)
-SIZE_TITLE = 1600         # 영문 (한글) 제목 (16 pt)  → also "1." headings
+SIZE_TITLE_BIG = 1800     # 실험 보고서 (18 pt) — 사용자 양식과 일치
+SIZE_TITLE = 1500         # 영문 (한글) 제목 (15 pt) — 한 줄에 들어가게
+                          # 1./2./3./4. 헤딩에도 같은 크기 사용
 SIZE_HEADING = 1300       # 가./나. 한글 단계 헤딩 (13 pt)
 SIZE_BODY = 1100          # 본문 (11 pt)
 SIZE_CAPTION = 1000       # 그림 캡션 (10 pt)
@@ -453,6 +469,22 @@ def tokens_plain(text):
 # ── Paragraph builder ──────────────────────────────────────────────────────
 
 
+def _is_equation_only(text):
+    """text 전체가 단일 {{EQ:...}}, {{EQN:...}}, {{EQ-LATEX:...}}, 또는
+    {{EQN-LATEX:...}} placeholder로만 구성되어 있는지 (앞뒤 공백 제외).
+    그 경우 사용자 보고서 양식(가운데 정렬된 단독 식 줄)을 따라가도록
+    automatic CENTER 정렬을 적용한다.
+    """
+    s = (text or "").strip()
+    if not s.startswith("{{") or not s.endswith("}}"):
+        return False
+    inner = s[2:-2]
+    if "}}" in inner or "{{" in inner:
+        return False  # 여러 placeholder 또는 텍스트 섞임
+    head = inner.split(":", 1)[0]
+    return head in ("EQ", "EQN", "EQ-LATEX", "EQN-LATEX")
+
+
 def add_para(doc, text, *, base_size=SIZE_BODY, bold=False, align="LEFT",
              indent_left=0, keep_with_next=False, color=None,
              space_after=0, space_before=0):
@@ -460,7 +492,15 @@ def add_para(doc, text, *, base_size=SIZE_BODY, bold=False, align="LEFT",
     ^{sup}. The paragraph itself takes alignment + indent + line spacing
     + optional vertical breathing room (space_after / space_before in
     HWPUNIT — 283 ≈ 1mm ≈ 2.83pt).
+
+    단독 수식 placeholder(`{{EQ:...}}` 등)만 담은 단락은 자동으로 가운데
+    정렬 + 들여쓰기 0으로 보정하여 사용자 보고서 양식(검은 박스 안 식)에
+    가깝게 표시한다.
     """
+    if _is_equation_only(text):
+        align = "CENTER"
+        indent_left = 0
+
     para_pr = make_para_pr(
         doc,
         align=align,
@@ -556,7 +596,12 @@ def build_title_page(doc, content):
         add_para(doc, identity, align="RIGHT")
 
     add_para(doc, f"날짜 : {date}", align="RIGHT")
-    tp_line = f"온도/기압 : {temperature or ''} / {pressure or ''}"
+    # 빈 값일 때는 슬래시만 남기지 말고 사용자 양식대로 "/"  형태 유지
+    # (사용자가 직접 채워 넣음). 둘 다 입력했으면 실제값 표시.
+    if temperature or pressure:
+        tp_line = f"온도/기압 : {temperature or ''} / {pressure or ''}"
+    else:
+        tp_line = "온도/기압 : /"
     add_para(doc, tp_line, align="RIGHT", space_after=SPACE_HEADING_LV1)
 
 
@@ -566,7 +611,7 @@ def build_purpose(doc, items):
     add_heading(doc, "가. 실험목표", size=SIZE_HEADING,
                 space_after=SPACE_BODY)
     for idx, item in enumerate(items, 1):
-        add_para(doc, f"({idx}) {item}", indent_left=INDENT_5MM)
+        add_para(doc, f"{numbered_marker(idx)} {item}", indent_left=INDENT_5MM)
 
 
 def build_theory(doc, theory, figures_needed):
@@ -591,7 +636,11 @@ def build_theory(doc, theory, figures_needed):
                     add_para(doc, f"[그림 {fig_num}] (메타데이터 없음)")
             elif isinstance(item, str):
                 text_counter += 1
-                add_para(doc, f"({text_counter}) {item}", indent_left=INDENT_5MM)
+                add_para(
+                    doc,
+                    f"{numbered_marker(text_counter)} {item}",
+                    indent_left=INDENT_5MM,
+                )
 
         for fig_ref in section.get("figures", []):
             full = fig_map.get(fig_ref.get("number")) or fig_ref
@@ -611,31 +660,21 @@ def add_figure_placeholder(doc, fig):
 
     dashed_id = make_dashed_border_fill(doc)
 
+    # 사용자 보고서 양식: 그림이 위, 캡션이 아래.
     table = doc.add_table(rows=2, cols=1, width=TABLE_WIDTH,
                           border_fill_id_ref=dashed_id)
-
-    # apply dashed borderFill to every cell in the table
     for r in range(2):
         cell = table.cell(r, 0)
         cell.element.set("borderFillIDRef", str(dashed_id))
 
-    # caption: italic, size 20, center-aligned
-    cap_cell = table.cell(0, 0)
-    _replace_cell_with_styled(
-        doc, cap_cell, head,
-        size=SIZE_CAPTION, italic=True, align="CENTER",
-    )
-
-    # image area: prompt text + Google search hyperlink
-    img_cell = table.cell(1, 0)
+    # row 0: 이미지 자리 + Google 검색 링크 (사용자가 채워넣음)
+    img_cell = table.cell(0, 0)
     _replace_cell_with_styled(
         doc, img_cell,
         "  ↓ 여기에 이미지를 붙여넣으세요",
         size=SIZE_LINK, align="CENTER",
     )
     img_cell.set_size(height=18000)
-
-    # add hyperlink as a second paragraph in the image cell
     link_para_pr = make_para_pr(
         doc, align="CENTER", line_spacing=LINE_SPACING_PERCENT
     )
@@ -651,6 +690,13 @@ def add_figure_placeholder(doc, fig):
         link_p.add_hyperlink(link_url, f'"{search_query}"', char_pr_id_ref=cp_link)
     except Exception:
         link_p.add_run(f'"{search_query}"', char_pr_id_ref=cp_link)
+
+    # row 1: 캡션 (가운데 + 이탤릭) — 그림 아래
+    cap_cell = table.cell(1, 0)
+    _replace_cell_with_styled(
+        doc, cap_cell, head,
+        size=SIZE_CAPTION, italic=True, align="CENTER",
+    )
 
 
 def _url_encode(s):
@@ -708,6 +754,16 @@ def build_chemicals_summary_table(doc, rows):
         border_fill_id_ref=solid_id,
     )
 
+    # 컬럼 너비 비율: 시약명·화학식·주요특성을 넓게, 몰질량·녹는점은 좁게.
+    # 합 = TABLE_WIDTH (42000). 시약 9000 / 화학식 8500 / 몰질량 6000 / 녹는점 6500 / 주요 특성 12000
+    col_widths = [9000, 8500, 6000, 6500, 12000]
+    for c, w in enumerate(col_widths):
+        for r in range(len(rows) + 1):
+            try:
+                table.cell(r, c).set_size(width=w)
+            except Exception:
+                pass
+
     # header row: shaded + bold + center
     for c, h in enumerate(headers):
         cell = table.cell(0, c)
@@ -741,7 +797,10 @@ def build_apparatus_and_chemicals(doc, content):
                 space_after=SPACE_BODY)
     for idx, ap in enumerate(content.get("apparatus", []), 1):
         en = f" ({ap.get('name_en')})" if ap.get("name_en") else ""
-        line = f"({idx}) **{ap.get('name', '')}**{en}: {ap.get('description', '')}"
+        line = (
+            f"{numbered_marker(idx)} **{ap.get('name', '')}**{en}: "
+            f"{ap.get('description', '')}"
+        )
         add_para(doc, line, indent_left=INDENT_5MM)
 
     add_heading(doc, "나. 시약", size=SIZE_HEADING, space_after=SPACE_BODY)
@@ -753,7 +812,7 @@ def build_apparatus_and_chemicals(doc, content):
         if src and src in ref_index:
             ref_marker = f" [{ref_index[src]}]"
         head = (
-            f"({idx}) **{ch.get('name', '')}** "
+            f"{numbered_marker(idx)} **{ch.get('name', '')}** "
             f"({ch.get('iupac', '')}, {ch.get('formula', '')}){ref_marker}"
         )
         add_para(doc, head, indent_left=INDENT_5MM)
@@ -892,12 +951,13 @@ def build_procedure(doc, procedure):
         add_heading(doc, f"{kr}. {sec.get('title', '')}", size=SIZE_HEADING,
                     space_after=SPACE_BODY)
         for st_idx, step in enumerate(sec.get("steps", []), 1):
+            marker = numbered_marker(st_idx)
             if isinstance(step, str):
-                add_para(doc, f"({st_idx}) {step}", indent_left=INDENT_5MM)
+                add_para(doc, f"{marker} {step}", indent_left=INDENT_5MM)
             elif isinstance(step, dict):
                 add_para(
                     doc,
-                    f"({st_idx}) {step.get('text', '')}",
+                    f"{marker} {step.get('text', '')}",
                     indent_left=INDENT_5MM,
                 )
                 for note in step.get("notes", []):

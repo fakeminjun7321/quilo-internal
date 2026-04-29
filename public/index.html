@@ -652,9 +652,13 @@
         const photos = Array.from(document.getElementById("crPhotos").files);
         const manual = document.getElementById("crManual").files[0] || null;
 
+        // :checked 셀렉터는 hidden input을 매칭 못하므로,
+        // 라디오가 비활성(주석 처리)된 현재는 hidden input value를 fallback으로.
+        // Sonnet 복구 시: 라디오 주석 해제 + fallback을 "claude-sonnet-4-6"로.
         const crModel =
           document.querySelector('input[name="crModel"]:checked')?.value ||
-          "claude-sonnet-4-6";
+          document.querySelector('input[name="crModel"]')?.value ||
+          "claude-opus-4-7";
         const modelLabel =
           crModel === "claude-opus-4-7"
             ? "고품질 (Opus 4.7)"
@@ -728,9 +732,13 @@
           return;
         }
 
+        // :checked 셀렉터는 hidden input을 매칭 못하므로,
+        // 라디오가 비활성(주석 처리)된 현재는 hidden input value를 fallback으로.
+        // Sonnet 복구 시: 라디오 주석 해제 + fallback을 "claude-sonnet-4-6"로.
         const prModel =
           document.querySelector('input[name="prModel"]:checked')?.value ||
-          "claude-sonnet-4-6";
+          document.querySelector('input[name="prModel"]')?.value ||
+          "claude-opus-4-7";
         const modelLabel =
           prModel === "claude-opus-4-7"
             ? "고품질 (Opus 4.7)"

@@ -790,7 +790,16 @@ app.get("/api/jobs/:id/stream", requireAuth, (req, res) => {
   }
 
   job.listeners.push(res);
+
+  // SSE keep-alive: Render·CDN의 idle timeout(보통 60s+)으로 connection이
+  // 끊기지 않도록 15초마다 comment line(`: ping`)을 보낸다. SSE 스펙상
+  // `:`로 시작하는 줄은 클라이언트가 무시 → 트래픽 미미 + 안정성 개선.
+  const keepAlive = setInterval(() => {
+    if (res.writableEnded) return;
+    try { res.write(": ping\n\n"); } catch { /* ignore */ }
+  }, 15000);
   req.on("close", () => {
+    clearInterval(keepAlive);
     job.listeners = job.listeners.filter((r) => r !== res);
   });
 });

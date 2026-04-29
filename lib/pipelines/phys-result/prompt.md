@@ -153,14 +153,20 @@ PASCO Capstone (.cap) 파일과 실험 사진을 바탕으로 일반물리학실
 
 **최종 출력은 반드시 단 하나의 JSON 코드 블록 (```json ... ```)입니다.** 그 외 텍스트 일체 금지.
 
-### `title` 필드 — 짧고 명확하게 (가장 중요)
+### `title` 필드 — 실험명을 그대로 (가장 중요)
 
-- **영문 또는 한글 1~3단어**, 콜론·부제목·설명 일체 금지
-- ✅ 좋은 예: `"Energy Conservation"`, `"Projectile Motion"`, `"포물선 운동"`, `"Free Fall"`
+- **`.cap` 파일명에서 학번·이름 부분(예: "2402구민준_") 다음에 오는 실험명을 그대로** 추출하세요. 단어를 임의로 빼거나 줄이지 마세요.
+  - 예: `2402구민준_Physical_Pendulum_Inertia.cap` → `"Physical Pendulum Inertia"` (3단어 그대로)
+  - 예: `2305홍길동_Atwood's Machine(Newton's Law).cap` → `"Atwood's Machine"` 또는 `"Newton's Second Law"`
+  - 파일명의 underscore(`_`)는 공백으로 변환.
+- 파일명에 실험명이 없거나 캡스톤 워크북에 명확한 실험 제목이 있으면 그걸 사용.
+- 영문 또는 한글 1~5단어. **콜론·부제목·설명 금지**.
+- ✅ 좋은 예: `"Physical Pendulum Inertia"`, `"Energy Conservation"`, `"Projectile Motion"`, `"포물선 운동"`, `"Free Fall"`, `"Driven Damped Harmonic Oscillations"`
 - ❌ 나쁜 예:
+  - `"Physical Pendulum"` (.cap 이름에 "Inertia"가 있는데 누락)
   - `"포물선 운동: 수평·경사 발사에서의 도달거리와 비행시간 분석"` (너무 김, 콜론, 부제)
   - `"실험 보고서 - 에너지 보존"` (불필요한 prefix)
-- 학교 양식의 "실험 주제 :" 칸에 들어감 → "실험 주제 : Energy Conservation" 형태로 자동 표시
+- 학교 양식의 "실험 주제 :" 칸에 들어감 → "실험 주제 : Physical Pendulum Inertia" 형태로 자동 표시
 
 ### JSON 스키마
 

@@ -254,10 +254,22 @@ function createJob(userInfo) {
   return job;
 }
 
+// 메시지 1개의 최대 길이 (예외 메시지가 매우 긴 경우 SSE 버퍼·로그 폭증 방지)
+const MAX_PROGRESS_LINE = 500;
+// job.progress에 보관하는 최근 메시지 개수 (재연결 시 history replay 분량)
+const MAX_PROGRESS_HISTORY = 200;
+
 function pushProgress(job, msg) {
   const stamp = new Date().toISOString().slice(11, 19);
-  const line = `[${stamp}] ${msg}`;
+  let line = `[${stamp}] ${msg}`;
+  if (line.length > MAX_PROGRESS_LINE) {
+    line = line.slice(0, MAX_PROGRESS_LINE) + "…(truncated)";
+  }
   job.progress.push(line);
+  // ring buffer: 너무 많이 쌓이면 SSE 재연결 시 history replay가 폭증.
+  if (job.progress.length > MAX_PROGRESS_HISTORY) {
+    job.progress.splice(0, job.progress.length - MAX_PROGRESS_HISTORY);
+  }
   console.log(`[job ${job.id}] ${line}`);
   job.listeners.forEach((res) => sendSse(res, "progress", line));
 }

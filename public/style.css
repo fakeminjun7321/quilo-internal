@@ -111,6 +111,8 @@ hr {
 
 body > form,
 body > details,
+.tab-panel > form,
+.settings-card,
 #progressArea,
 .balance-box,
 .notice,
@@ -123,9 +125,67 @@ fieldset {
 
 body > form,
 body > details,
+.tab-panel > form,
+.settings-card,
 #progressArea {
   padding: 22px;
   margin: 16px 0;
+}
+
+.page-tabs {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  margin: 0 0 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.page-tabs button {
+  min-height: 36px;
+  margin: 0;
+  padding: 7px 14px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+}
+
+.page-tabs button:hover {
+  background: var(--surface-soft);
+}
+
+.page-tabs button.active {
+  background: var(--primary);
+  color: #fff;
+}
+
+.tab-panel[hidden] {
+  display: none !important;
+}
+
+.settings-card h2 {
+  margin-top: 0;
+}
+
+.settings-summary {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr);
+  gap: 8px 14px;
+  margin: 16px 0 0;
+  padding: 14px 0 0;
+  border-top: 1px solid var(--border);
+}
+
+.settings-summary dt {
+  color: var(--muted);
+  font-weight: 750;
+}
+
+.settings-summary dd {
+  margin: 0;
+  font-weight: 750;
 }
 
 .compact-form {
@@ -497,6 +557,8 @@ th button {
 
   body > form,
   body > details,
+  .tab-panel > form,
+  .settings-card,
   #progressArea {
     padding: 16px;
   }
@@ -520,6 +582,16 @@ th button {
   button {
     min-height: 44px;
     padding: 10px 14px;
+  }
+
+  .page-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+
+  .page-tabs button {
+    width: 100%;
   }
 
   .confirm-card {

@@ -346,6 +346,7 @@ app.post("/api/login", async (req, res) => {
     req.session.userInfo = {
       id: user.id,
       name: user.name,
+      studentId: normalizeStudentId(user.student_id),
       isAdmin: !!user.is_admin,
     };
     console.log(`[login] ${user.name} (admin=${user.is_admin})`);
@@ -366,12 +367,47 @@ app.post("/api/logout", (req, res) => {
   req.session.destroy(() => res.json({ ok: true }));
 });
 
-app.get("/api/me", (req, res) => {
+app.get("/api/me", async (req, res) => {
   const u = getSessionUser(req);
-  if (u) {
-    res.json({ user: u.name, isAdmin: !!u.isAdmin });
-  } else {
-    res.status(401).json({ error: "not logged in" });
+  if (!u) {
+    return res.status(401).json({ error: "not logged in" });
+  }
+
+  let studentId = normalizeStudentId(u.studentId);
+  if (supa.isEnabled() && u.id) {
+    try {
+      const freshUser = await supa.findUserById(u.id);
+      if (freshUser) {
+        studentId = normalizeStudentId(freshUser.student_id);
+        req.session.userInfo.studentId = studentId;
+      }
+    } catch (e) {
+      console.warn("[me] profile lookup failed:", e.message);
+    }
+  }
+  return res.json({ user: u.name, isAdmin: !!u.isAdmin, studentId });
+});
+
+app.patch("/api/me/profile", requireAuth, async (req, res) => {
+  if (!supa.isEnabled()) {
+    return res.status(503).json({ error: "DB 미설정" });
+  }
+
+  const userInfo = getSessionUser(req);
+  if (!userInfo.id) {
+    return res.status(403).json({ error: "사용자 정보 없음" });
+  }
+
+  const studentId = normalizeStudentId(req.body?.studentId);
+  try {
+    await supa.updateUser(userInfo.id, { studentId });
+    req.session.userInfo.studentId = studentId;
+    return res.json({ ok: true, studentId });
+  } catch (e) {
+    console.error("[profile] error:", e);
+    return res.status(500).json({
+      error: "학번 저장 중 오류가 발생했습니다. Supabase 스키마가 최신인지 확인하세요.",
+    });
   }
 });
 
@@ -465,6 +501,24 @@ app.post(
     }
 
     const userInfo = getSessionUser(req);
+    const postedStudentId = normalizeStudentId(req.body.studentId);
+    let savedStudentId = normalizeStudentId(userInfo.studentId);
+    if (supa.isEnabled() && userInfo.id) {
+      try {
+        const freshUser = await supa.findUserById(userInfo.id);
+        savedStudentId = normalizeStudentId(freshUser?.student_id) || savedStudentId;
+        req.session.userInfo.studentId = savedStudentId;
+      } catch (e) {
+        console.warn("[generate] profile lookup failed:", e.message);
+      }
+    }
+    pipelineInput.studentId =
+      normalizeStudentId(pipelineInput.studentId) || postedStudentId || savedStudentId;
+    if (reportType === "phys-result" && !pipelineInput.studentId) {
+      return res
+        .status(400)
+        .json({ error: "개인 설정에서 학번을 저장한 뒤 생성하세요." });
+    }
 
     // 시간당 사용 횟수 제한 (admin 제외, 일반 사용자만)
     if (!userInfo.isAdmin && userInfo.id) {
@@ -591,6 +645,10 @@ function sanitizeForFilename(s) {
     .replace(/[\\/:*?"<>|]/g, "_")
     .trim()
     .slice(0, 30);
+}
+
+function normalizeStudentId(value) {
+  return String(value || "").trim().slice(0, 20);
 }
 
 async function runGeneration(job, pipeline, pipelineInput, meta) {

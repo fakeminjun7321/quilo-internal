@@ -142,11 +142,6 @@
         </label>
       </p>
       <p>
-        <label>학번 <strong>*</strong>:
-          <input id="prStudentId" name="studentId" type="text" placeholder="예: 2402" required maxlength="20" />
-        </label>
-      </p>
-      <p>
         <label>날짜:
           <input id="prDate" name="date" type="date" required />
         </label>
@@ -194,10 +189,6 @@
         </label>
       </p>
       <p>
-        <label>학번 (선택):
-          <input id="studentId" name="studentId" type="text" maxlength="20" placeholder="예: 2402" style="width: 110px" />
-        </label>
-        &nbsp;
         <label>이름 (선택):
           <input id="studentName" name="studentName" type="text" maxlength="20" placeholder="예: 구민준" style="width: 130px" />
         </label>
@@ -277,9 +268,29 @@
         <dl class="settings-summary">
           <dt>이름</dt>
           <dd id="settingsUserName">-</dd>
+          <dt>학번</dt>
+          <dd id="settingsStudentId">-</dd>
           <dt>권한</dt>
           <dd id="settingsUserRole">일반 사용자</dd>
         </dl>
+      </div>
+
+      <div class="settings-card">
+        <h2>학번</h2>
+        <form id="profileForm" class="compact-form">
+          <p>
+            <label>학번:<br>
+              <input id="settingsStudentIdInput" type="text" maxlength="20" placeholder="예: 2402" autocomplete="off" />
+            </label>
+          </p>
+          <p>
+            <button type="submit" id="profileBtn">저장</button>
+            <span id="profileStatus" style="margin-left: 10px;"></span>
+          </p>
+          <p class="hint">
+            저장한 학번은 보고서 표지와 파일명에 자동으로 들어갑니다.
+          </p>
+        </form>
       </div>
 
       <div class="settings-card">
@@ -313,12 +324,40 @@
     </section>
 
     <script>
+      let currentStudentId = "";
+
+      function normalizeStudentId(value) {
+        return String(value || "").trim().slice(0, 20);
+      }
+
+      function setStudentIdUi(value) {
+        currentStudentId = normalizeStudentId(value);
+        document.getElementById("settingsStudentId").textContent =
+          currentStudentId || "미설정";
+        document.getElementById("settingsStudentIdInput").value = currentStudentId;
+      }
+
+      function getLocalStudentId() {
+        try {
+          return normalizeStudentId(localStorage.getItem("studentId") || "");
+        } catch (_) {
+          return "";
+        }
+      }
+
+      function saveLocalStudentId(value) {
+        try {
+          localStorage.setItem("studentId", normalizeStudentId(value));
+        } catch (_) { /* private mode etc. */ }
+      }
+
       // Confirm session
       fetch("/api/me")
         .then((r) => (r.ok ? r.json() : Promise.reject()))
         .then((d) => {
           document.getElementById("user").textContent = d.user + " 님 ";
           document.getElementById("settingsUserName").textContent = d.user;
+          setStudentIdUi(d.studentId || getLocalStudentId());
           document.getElementById("settingsUserRole").textContent = d.isAdmin
             ? "관리자"
             : "일반 사용자";
@@ -379,12 +418,10 @@
       // Default to today
       document.getElementById("date").value = new Date().toISOString().slice(0, 10);
 
-      // chem-pre 폼: 학번/이름은 마지막 입력값을 localStorage에서 복원
+      // chem-pre 폼: 이름은 마지막 입력값을 localStorage에서 복원
       try {
         const cached = JSON.parse(localStorage.getItem("chemPreUserDefaults") || "{}");
-        const idEl = document.getElementById("studentId");
         const nameEl = document.getElementById("studentName");
-        if (idEl && cached.studentId) idEl.value = cached.studentId;
         if (nameEl && cached.studentName) nameEl.value = cached.studentName;
       } catch (_) { /* ignore */ }
 
@@ -482,6 +519,42 @@
           await fetch(`/api/jobs/${currentJobId}/abort`, { method: "POST" });
         } catch (_) {}
         // SSE는 서버가 done/error 이벤트로 닫아줌
+      });
+
+      // ── 개인 설정: 학번 저장 ────────────────────────────────────────────
+      const profileForm = document.getElementById("profileForm");
+      const profileBtn = document.getElementById("profileBtn");
+      const profileStatus = document.getElementById("profileStatus");
+
+      profileForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const nextStudentId = normalizeStudentId(
+          document.getElementById("settingsStudentIdInput").value,
+        );
+        profileBtn.disabled = true;
+        profileStatus.style.color = "#666";
+        profileStatus.textContent = "저장 중...";
+
+        try {
+          const res = await fetch("/api/me/profile", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ studentId: nextStudentId }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "저장 실패");
+          setStudentIdUi(data.studentId || nextStudentId);
+          saveLocalStudentId(currentStudentId);
+          profileStatus.style.color = "green";
+          profileStatus.textContent = "저장 완료";
+        } catch (err) {
+          setStudentIdUi(nextStudentId);
+          saveLocalStudentId(nextStudentId);
+          profileStatus.style.color = "#9a6700";
+          profileStatus.textContent = "이 브라우저에 저장됨";
+        } finally {
+          profileBtn.disabled = false;
+        }
       });
 
       // ── 비밀번호 변경 ────────────────────────────────────────────────────
@@ -778,13 +851,11 @@
         const styleValue = styleEl ? styleEl.value : "default";
         fd.append("style", styleValue);
 
-        // 표지에 들어갈 사용자 입력 (선택). 입력값은 localStorage에 캐시해
-        // 다음 방문 시 자동 채움.
-        const idEl = document.getElementById("studentId");
+        // 표지에 들어갈 사용자 입력. 학번은 개인 설정값을 자동 사용한다.
         const nameEl = document.getElementById("studentName");
         const tempEl = document.getElementById("temperature");
         const presEl = document.getElementById("pressure");
-        const studentId = idEl?.value.trim() || "";
+        const studentId = currentStudentId;
         const studentName = nameEl?.value.trim() || "";
         const temperature = tempEl?.value.trim() || "";
         const pressure = presEl?.value.trim() || "";
@@ -795,7 +866,7 @@
         try {
           localStorage.setItem(
             "chemPreUserDefaults",
-            JSON.stringify({ studentId, studentName }),
+            JSON.stringify({ studentName }),
           );
         } catch (_) { /* private mode etc. */ }
 
@@ -908,6 +979,12 @@
           alert("PASCO Capstone (.cap) 파일 또는 엑셀/CSV 데이터 중 하나는 업로드해야 합니다.");
           return;
         }
+        if (!currentStudentId) {
+          alert("개인 설정에서 학번을 저장한 뒤 생성하세요.");
+          showTab("settings");
+          document.getElementById("settingsStudentIdInput").focus();
+          return;
+        }
 
         // :checked 셀렉터는 hidden input을 매칭 못하므로,
         // 라디오가 비활성(주석 처리)된 현재는 hidden input value를 fallback으로.
@@ -967,7 +1044,7 @@
         const prDateStr = document.getElementById("prDate").value;
         const [y, m, d] = prDateStr.split("-");
         fd.append("date", `${y}/ ${m} / ${d}`);
-        fd.append("studentId", document.getElementById("prStudentId").value.trim());
+        fd.append("studentId", currentStudentId);
         fd.append("model", prModel);
         fd.append("style", prStyle);
 

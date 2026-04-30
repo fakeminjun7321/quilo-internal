@@ -5,6 +5,7 @@
 create table if not exists users (
   id uuid primary key default gen_random_uuid(),
   name text not null unique,
+  student_id text not null default '',
   password_hash text not null,
   budget_usd numeric(10, 4) not null default 0,
   spent_usd numeric(10, 4) not null default 0,

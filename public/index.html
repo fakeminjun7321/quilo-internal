@@ -7,38 +7,38 @@
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
-    <p>
+    <p class="topbar">
       <span id="user"></span>
-      <a href="/admin" id="adminLink" style="display: none">[관리자]</a>
-      <a href="#" id="logout">[로그아웃]</a>
+      <a href="/admin" id="adminLink" style="display: none">관리자</a>
+      <a href="#" id="logout">로그아웃</a>
     </p>
 
     <h1>보고서 작성 툴</h1>
 
-    <div id="balanceBox" style="display: none; padding: 10px 12px; background: #f0f7ff; border: 1px solid #b8d4f0; border-radius: 6px; margin: 10px 0; font-size: 13px;">
-      <strong>💳 내 잔액</strong> &nbsp;
-      <span id="balPre">🧪 사전: ...</span> &nbsp;|&nbsp;
-      <span id="balResult">🔬⚛️ 결과: ...</span>
+    <div id="balanceBox" class="balance-box" style="display: none">
+      <strong>내 잔액</strong>
+      <span id="balPre">사전: ...</span>
+      <span id="balResult">결과: ...</span>
     </div>
 
     <fieldset id="reportTypeFieldset">
       <legend>보고서 종류</legend>
       <label>
         <input type="radio" name="reportType" value="chem-pre" checked />
-        🧪 화학 사전보고서
+        화학 사전보고서
       </label>
       <label>
         <input type="radio" name="reportType" value="chem-result" />
-        🔬 화학 결과보고서
+        화학 결과보고서
       </label>
       <label>
         <input type="radio" name="reportType" value="phys-result" />
-        ⚛️ 물리 결과보고서
+        물리 결과보고서
       </label>
     </fieldset>
 
-    <div id="comingSoon" style="display: none; padding: 20px; background: #fffbe6; border: 1px solid #ffd966; border-radius: 6px; margin: 12px 0;">
-      🚧 이 보고서 종류는 아직 준비 중입니다.<br>
+    <div id="comingSoon" class="notice" style="display: none;">
+      이 보고서 종류는 아직 준비 중입니다.<br>
       <small>곧 사용 가능해질 예정입니다.</small>
     </div>
 
@@ -83,25 +83,36 @@
         <strong>모델 선택:</strong><br />
         <label>
           <input type="radio" name="crModel" value="claude-sonnet-4-6" checked />
-          표준 (Sonnet 4.6) — 가성비
+          Sonnet 4.6
         </label><br />
         <label>
           <input type="radio" name="crModel" value="claude-opus-4-7" />
-          고품질 (Opus 4.7) — 5배 비쌈
+          Opus 4.7
         </label>
       </p>
       -->
       <input type="hidden" name="crModel" value="claude-opus-4-7" />
       <p>
+        <strong>보고서 스타일:</strong><br />
+        <label>
+          <input type="radio" name="crStyle" value="default" checked />
+          기본 양식
+        </label><br />
+        <label>
+          <input type="radio" name="crStyle" value="minimal" />
+          간단 양식
+        </label>
+      </p>
+      <p>
         <button type="submit" id="crBtn">결과보고서 생성</button>
       </p>
-      <p>⏱ 생성에 5~7분 소요됩니다. 페이지를 닫지 마세요.</p>
+      <p class="hint">생성에는 보통 2~4분 정도 걸립니다.</p>
     </form>
 
     <!-- ── 물리 결과보고서 폼 (Phase 3) ─────────────────────────── -->
     <form id="physResultForm" style="display: none">
-      <p style="background: #eef7ff; padding: 8px; border-radius: 4px; font-size: 13px;">
-        💡 <strong>.cap 또는 엑셀 중 하나는 필수</strong>. 둘 다 있으면 둘 다 사용.<br>
+      <p class="notice">
+        <strong>.cap 또는 엑셀 중 하나는 필수</strong>. 둘 다 있으면 둘 다 사용합니다.<br>
         엑셀로 측정한 실험은 매뉴얼 PDF도 같이 첨부 권장.
       </p>
       <p>
@@ -139,19 +150,30 @@
         <strong>모델 선택:</strong><br />
         <label>
           <input type="radio" name="prModel" value="claude-sonnet-4-6" checked />
-          표준 (Sonnet 4.6) — 가성비
+          Sonnet 4.6
         </label><br />
         <label>
           <input type="radio" name="prModel" value="claude-opus-4-7" />
-          고품질 (Opus 4.7) — 5배 비쌈
+          Opus 4.7
         </label>
       </p>
       -->
       <input type="hidden" name="prModel" value="claude-opus-4-7" />
       <p>
+        <strong>보고서 스타일:</strong><br />
+        <label>
+          <input type="radio" name="prStyle" value="default" checked />
+          기본 양식
+        </label><br />
+        <label>
+          <input type="radio" name="prStyle" value="minimal" />
+          간단 양식
+        </label>
+      </p>
+      <p>
         <button type="submit" id="prBtn">물리 결과보고서 생성</button>
       </p>
-      <p>⏱ 생성에 5~8분 소요. 5페이지 강제·65점 평가 최적화 적용.</p>
+      <p class="hint">생성에는 보통 2~3분 정도 걸립니다. 첨부가 많으면 조금 더 걸릴 수 있습니다.</p>
     </form>
 
     <form id="form">
@@ -188,11 +210,11 @@
         <strong>모델 선택:</strong><br />
         <label>
           <input type="radio" name="model" value="claude-sonnet-4-6" checked />
-          표준 (Sonnet 4.6) — 약 <span id="costSonnet">₩350</span>/건 ⭐ 가성비
+          Sonnet 4.6
         </label><br />
         <label>
           <input type="radio" name="model" value="claude-opus-4-7" />
-          고품질 (Opus 4.7) — 약 <span id="costOpus">₩1,700</span>/건 (5배 비쌈, 화학 깊이 약간 더 풍부)
+          Opus 4.7
         </label>
       </p>
       -->
@@ -205,21 +227,21 @@
         </label>
         <label style="margin-left: 8px;">
           <input type="radio" name="format" value="hwpx" />
-          .hwpx (한글) <small style="color:#080;">신규</small>
+          .hwpx (한글)
         </label>
       </p>
       <p>
         <button type="submit" id="btn">사전보고서 생성</button>
       </p>
-      <p>⏱ 생성에 3~5분 소요됩니다. 페이지를 닫지 마세요.</p>
-      <p><small>※ 그림 자리는 점선 박스 안에 구글 이미지 검색 링크가 들어갑니다. 파일 열어서 링크 클릭 → 이미지 복붙으로 채우세요.</small></p>
+      <p class="hint">생성에는 보통 2~3분 정도 걸립니다.</p>
+      <p class="hint">그림 자리는 문서 안의 링크를 열어 직접 채울 수 있습니다.</p>
     </form>
 
     <hr />
 
-    <details style="margin: 12px 0;">
-      <summary style="cursor: pointer; color: #0066cc;">🔑 비밀번호 변경</summary>
-      <form id="pwForm" style="margin-top: 12px; padding: 12px; border: 1px solid #ddd; border-radius: 6px; background: #f9f9f9; max-width: 420px;">
+    <details>
+      <summary>비밀번호 변경</summary>
+      <form id="pwForm" class="compact-form">
         <p>
           <label>현재 비밀번호:<br>
             <input id="currentPw" type="password" required autocomplete="current-password" />
@@ -228,7 +250,7 @@
         <p>
           <label>새 비밀번호:<br>
             <input id="newPw" type="password" required minlength="5" autocomplete="new-password" />
-            <small style="color: #666;">(최소 5자)</small>
+            <small>(최소 5자)</small>
           </label>
         </p>
         <p>
@@ -240,16 +262,16 @@
           <button type="submit" id="pwBtn">변경</button>
           <span id="pwStatus" style="margin-left: 10px;"></span>
         </p>
-        <p style="font-size: 11px; color: #888; margin-top: 6px;">
-          ※ 보안: 10분당 3회 변경 시도 제한. 현재 비밀번호 재확인 필수.
+        <p class="hint">
+          10분당 3회까지 변경을 시도할 수 있습니다.
         </p>
       </form>
     </details>
 
     <hr />
 
-    <p style="font-size: 11px; color: #666; line-height: 1.5;">
-      ⚠️ 본 서비스는 개인이 만든 비공식 학습 보조 도구입니다. AI 생성물은 부정확할 수 있으니 반드시 직접 검증·수정 후 사용하세요.
+    <p class="disclaimer">
+      본 서비스는 개인이 만든 비공식 학습 보조 도구입니다. AI 생성물은 부정확할 수 있으니 반드시 직접 검증·수정 후 사용하세요.
       출력물을 학교 과제로 제출하는 행위와 그로 인한 학칙 위반·표절·성적 불이익 등 일체의 책임은 사용자 본인에게 있으며,
       운영자는 결과의 정확성·서비스 가용성·사용으로 인한 손해에 대해 어떠한 책임도 지지 않습니다.
     </p>
@@ -257,7 +279,7 @@
     <div id="progressArea" style="display: none">
       <h2 id="statusTitle">생성 중...</h2>
       <p>
-        <button type="button" id="stopBtn" class="stop-btn" style="display: none">🛑 중지</button>
+        <button type="button" id="stopBtn" class="stop-btn" style="display: none">중지</button>
       </p>
       <pre id="progress"></pre>
       <div id="resultArea"></div>
@@ -289,9 +311,9 @@
           const preKrw = Math.round(b.preUsd * rate).toLocaleString();
           const resultKrw = Math.round(b.resultUsd * rate).toLocaleString();
           document.getElementById("balPre").textContent =
-            `🧪 사전: ${preCount}건 (₩${preKrw})`;
+            `사전 ${preCount}건 (₩${preKrw})`;
           document.getElementById("balResult").textContent =
-            `🔬⚛️ 결과: ${resultCount}건 (₩${resultKrw})`;
+            `결과 ${resultCount}건 (₩${resultKrw})`;
           document.getElementById("balanceBox").style.display = "block";
         } catch (_) {
           /* graceful: 잔액 박스 숨김 */
@@ -389,7 +411,13 @@
 
       stopBtn.addEventListener("click", async () => {
         if (!currentJobId) return;
-        if (!confirm("작업을 중지할까요? 지금까지 사용한 토큰 비용은 발생합니다.")) return;
+        const ok = await showConfirmDialog({
+          title: "작업 중지",
+          rows: [["상태", "진행 중인 작업을 중단합니다."]],
+          note: "이미 사용된 토큰 비용은 발생할 수 있습니다.",
+          okLabel: "중지",
+        });
+        if (!ok) return;
         stopBtn.disabled = true;
         stopBtn.textContent = "중지 중...";
         try {
@@ -411,12 +439,12 @@
 
         if (newP !== confirmP) {
           pwStatus.style.color = "red";
-          pwStatus.textContent = "❌ 새 비밀번호가 일치하지 않습니다.";
+          pwStatus.textContent = "새 비밀번호가 일치하지 않습니다.";
           return;
         }
         if (newP === cur) {
           pwStatus.style.color = "red";
-          pwStatus.textContent = "❌ 새 비밀번호가 현재와 같습니다.";
+          pwStatus.textContent = "새 비밀번호가 현재와 같습니다.";
           return;
         }
 
@@ -433,11 +461,11 @@
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || "변경 실패");
           pwStatus.style.color = "green";
-          pwStatus.textContent = "✅ 변경 완료";
+          pwStatus.textContent = "변경 완료";
           pwForm.reset();
         } catch (err) {
           pwStatus.style.color = "red";
-          pwStatus.textContent = "❌ " + err.message;
+          pwStatus.textContent = err.message;
         } finally {
           pwBtn.disabled = false;
         }
@@ -449,19 +477,20 @@
         "claude-opus-4-7": { input: 15, output: 75, cacheRead: 1.5, cacheWrite: 18.75 },
       };
 
-      // chem-pre 비용 추정 (PDF 1개 + 시스템 프롬프트 ~10K 토큰 + 출력 8~14K)
+      // chem-pre 비용 추정 (PDF 1개 + 시스템 프롬프트 ~10K 토큰 + 출력 6~10K)
+      // 실제 사용자 경험치 (3~5분 → 2~3분 단축, 출력 토큰도 그에 맞춰 축소).
       function estimateCost(pdfBytes, modelId) {
         const sizeKB = pdfBytes / 1024;
         const p = MODEL_PRICING[modelId] || MODEL_PRICING["claude-opus-4-7"];
 
         const sysCostLo = (10000 / 1e6) * p.cacheRead;
         const sysCostHi = (10000 / 1e6) * p.cacheWrite;
-        const pdfTokensLo = sizeKB * 50;
-        const pdfTokensHi = sizeKB * 150;
+        const pdfTokensLo = sizeKB * 30;
+        const pdfTokensHi = sizeKB * 100;
         const pdfCostLo = (pdfTokensLo / 1e6) * p.input;
         const pdfCostHi = (pdfTokensHi / 1e6) * p.input;
-        const outputCostLo = (8000 / 1e6) * p.output;
-        const outputCostHi = (14000 / 1e6) * p.output;
+        const outputCostLo = (6000 / 1e6) * p.output;
+        const outputCostHi = (10000 / 1e6) * p.output;
         const searchCostLo = 1 * 0.01;
         const searchCostHi = 3 * 0.01;
 
@@ -471,10 +500,10 @@
       }
 
       // phys-result 비용 추정
-      // - .cap 파일은 서버에서 파싱되어 ~10K 토큰의 텍스트가 됨
+      // - .cap 파일은 서버에서 파싱되어 ~5K 토큰의 텍스트가 됨 (binary → 텍스트 변환 후 매우 작음)
       // - 사진 1장 ≈ 1500 토큰
       // - 양식·평가기준 PDF (선택): 추가 입력
-      // - 출력 8K~16K (5p 강제로 더 짧음)
+      // - 출력 6K~10K (5p 강제 + 실제 사용자 경험상 2~3분 작성)
       function estimatePhysResultCost({
         capBytes,
         photoCount,
@@ -487,22 +516,23 @@
         const sysCostLo = (8000 / 1e6) * p.cacheRead;
         const sysCostHi = (8000 / 1e6) * p.cacheWrite;
 
-        // .cap 파싱 결과 텍스트 (대략 .cap 크기 기반 추정)
-        const capTextTokens = Math.min((capBytes / 1024) * 30, 20000);
+        // .cap 파싱 결과 텍스트 — binary 파일이 텍스트로 변환되면 매우 작음.
+        // 실측: 20MB cap → ~5K 토큰. KB당 0.3 토큰 정도가 적정.
+        const capTextTokens = Math.min((capBytes / 1024) * 0.3, 8000);
         const capCost = (capTextTokens / 1e6) * p.input;
 
         // 양식·평가기준 PDF
         const extraDocKB = (formBytes + rubricBytes) / 1024;
-        const extraDocTokens = extraDocKB * 100;
+        const extraDocTokens = extraDocKB * 80;
         const extraDocCost = (extraDocTokens / 1e6) * p.input;
 
         // 사진
         const photoTokens = (photoCount || 0) * 1500;
         const photoCost = (photoTokens / 1e6) * p.input;
 
-        // 출력 (5p 강제로 짧음)
-        const outputCostLo = (8000 / 1e6) * p.output;
-        const outputCostHi = (16000 / 1e6) * p.output;
+        // 출력 (5p 강제 + 2~3분 작성 기준)
+        const outputCostLo = (6000 / 1e6) * p.output;
+        const outputCostHi = (10000 / 1e6) * p.output;
 
         const lo = sysCostLo + capCost + extraDocCost + photoCost + outputCostLo;
         const hi = sysCostHi + capCost + extraDocCost + photoCost + outputCostHi;
@@ -512,10 +542,10 @@
         return { lo, hi, totalKB };
       }
 
-      // chem-result 비용 추정 (다중 파일 + 사진 N장 + 더 긴 출력)
-      // - 시스템 프롬프트 ~6K 토큰 (chem-result prompt.md는 짧은 편)
+      // chem-result 비용 추정 (다중 파일 + 사진 N장)
+      // - 시스템 프롬프트 ~6K 토큰
       // - 사진 1장 ≈ 1500 입력 토큰 (Claude vision 표준)
-      // - 출력 12K~22K (결과보고서가 사전보고서보다 긺)
+      // - 출력 8K~13K (실제 사용자 경험상 2~4분 작성)
       function estimateChemResultCost({
         preReportBytes,
         manualBytes,
@@ -529,25 +559,25 @@
         const sysCostLo = (6000 / 1e6) * p.cacheRead;
         const sysCostHi = (6000 / 1e6) * p.cacheWrite;
 
-        // PDF/docx 텍스트 입력: KB당 50~150 토큰
+        // PDF/docx 텍스트 입력: KB당 30~100 토큰 (실측치에 맞춤)
         const docKB = (preReportBytes + manualBytes) / 1024;
-        const docTokensLo = docKB * 50;
-        const docTokensHi = docKB * 150;
+        const docTokensLo = docKB * 30;
+        const docTokensHi = docKB * 100;
         const docCostLo = (docTokensLo / 1e6) * p.input;
         const docCostHi = (docTokensHi / 1e6) * p.input;
 
-        // 데이터 파일: 엑셀이면 markdown table로 변환되어 ~2배 토큰. 최대 50KB
-        const dataKB = Math.min(dataBytes / 1024, 50);
-        const dataTokens = dataKB * 100; // markdown 변환 후 평균
+        // 데이터 파일: 엑셀이면 markdown table로 변환. 최대 30KB.
+        const dataKB = Math.min(dataBytes / 1024, 30);
+        const dataTokens = dataKB * 80;
         const dataCost = (dataTokens / 1e6) * p.input;
 
         // 사진: 1장당 ~1500 토큰 (Claude vision)
         const photoTokens = (photoCount || 0) * 1500;
         const photoCost = (photoTokens / 1e6) * p.input;
 
-        // 출력: 12K~22K (결과보고서)
-        const outputCostLo = (12000 / 1e6) * p.output;
-        const outputCostHi = (22000 / 1e6) * p.output;
+        // 출력: 8K~13K (2~4분 작성 기준)
+        const outputCostLo = (8000 / 1e6) * p.output;
+        const outputCostHi = (13000 / 1e6) * p.output;
 
         const lo = sysCostLo + docCostLo + dataCost + photoCost + outputCostLo;
         const hi = sysCostHi + docCostHi + dataCost + photoCost + outputCostHi;
@@ -564,6 +594,81 @@
         return el ? el.value : "claude-opus-4-7";
       }
 
+      function getModelLabel(modelId) {
+        if (modelId === "claude-opus-4-7") return "Opus 4.7";
+        if (modelId === "claude-sonnet-4-6") return "Sonnet 4.6";
+        return modelId || "Opus 4.7";
+      }
+
+      function costRangeText(est, krwLo, krwHi) {
+        return `$${est.lo.toFixed(2)} ~ $${est.hi.toFixed(2)} (약 ₩${krwLo.toLocaleString()} ~ ₩${krwHi.toLocaleString()})`;
+      }
+
+      function showConfirmDialog({ title, rows, note, okLabel = "생성" }) {
+        return new Promise((resolve) => {
+          const overlay = document.createElement("div");
+          overlay.className = "confirm-overlay";
+
+          const dialog = document.createElement("section");
+          dialog.className = "confirm-card";
+          dialog.setAttribute("role", "dialog");
+          dialog.setAttribute("aria-modal", "true");
+          dialog.setAttribute("aria-labelledby", "confirmTitle");
+
+          const heading = document.createElement("h2");
+          heading.id = "confirmTitle";
+          heading.textContent = title || "보고서 생성";
+
+          const list = document.createElement("dl");
+          list.className = "confirm-list";
+          for (const [label, value] of rows) {
+            const dt = document.createElement("dt");
+            dt.textContent = label;
+            const dd = document.createElement("dd");
+            dd.textContent = value;
+            list.append(dt, dd);
+          }
+
+          const noteEl = document.createElement("p");
+          noteEl.className = "confirm-note";
+          noteEl.textContent = note || "생성하시겠습니까?";
+
+          const actions = document.createElement("div");
+          actions.className = "confirm-actions";
+          const cancelBtn = document.createElement("button");
+          cancelBtn.type = "button";
+          cancelBtn.className = "secondary";
+          cancelBtn.textContent = "취소";
+          const okBtn = document.createElement("button");
+          okBtn.type = "button";
+          okBtn.className = "primary";
+          okBtn.textContent = okLabel;
+          actions.append(cancelBtn, okBtn);
+
+          dialog.append(heading, list, noteEl, actions);
+          overlay.appendChild(dialog);
+          document.body.appendChild(overlay);
+          document.body.classList.add("modal-open");
+
+          const close = (result) => {
+            document.removeEventListener("keydown", onKeydown);
+            document.body.classList.remove("modal-open");
+            overlay.remove();
+            resolve(result);
+          };
+          const onKeydown = (event) => {
+            if (event.key === "Escape") close(false);
+          };
+          document.addEventListener("keydown", onKeydown);
+          overlay.addEventListener("click", (event) => {
+            if (event.target === overlay) close(false);
+          });
+          cancelBtn.addEventListener("click", () => close(false));
+          okBtn.addEventListener("click", () => close(true));
+          okBtn.focus();
+        });
+      }
+
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
         if (currentJobId) return; // 안전장치: 진행 중이면 무시
@@ -571,20 +676,22 @@
         if (!file) return;
 
         const model = getSelectedModel();
-        const modelLabel =
-          model === "claude-opus-4-7" ? "고품질 (Opus 4.7)" : "표준 (Sonnet 4.6)";
+        const modelLabel = getModelLabel(model);
 
         // 예상 비용 확인
         const est = estimateCost(file.size, model);
         const krwLo = Math.round(est.lo * 1400);
         const krwHi = Math.round(est.hi * 1400);
-        const msg =
-          `🤖 모델: ${modelLabel}\n` +
-          `📄 PDF 크기: ${est.sizeKB}KB\n` +
-          `💰 예상 비용: $${est.lo.toFixed(2)} ~ $${est.hi.toFixed(2)} ` +
-          `(약 ₩${krwLo.toLocaleString()} ~ ₩${krwHi.toLocaleString()})\n\n` +
-          `생성하시겠습니까? (실제 비용은 완료 후 표시됩니다)`;
-        if (!confirm(msg)) return;
+        const ok = await showConfirmDialog({
+          title: "사전보고서 생성",
+          rows: [
+            ["모델", modelLabel],
+            ["PDF", `${est.sizeKB}KB`],
+            ["예상 비용", costRangeText(est, krwLo, krwHi)],
+          ],
+          note: "실제 비용은 완료 후 표시됩니다.",
+        });
+        if (!ok) return;
 
         lockForm(form);
         btn.textContent = "생성 중...";
@@ -635,7 +742,7 @@
           currentJobId = data.jobId;
           streamJob(data.jobId);
         } catch (err) {
-          appendLine("❌ " + err.message);
+          appendLine("오류: " + err.message);
           resetForm();
         }
       });
@@ -659,10 +766,11 @@
           document.querySelector('input[name="crModel"]:checked')?.value ||
           document.querySelector('input[name="crModel"]')?.value ||
           "claude-opus-4-7";
-        const modelLabel =
-          crModel === "claude-opus-4-7"
-            ? "고품질 (Opus 4.7)"
-            : "표준 (Sonnet 4.6)";
+        const modelLabel = getModelLabel(crModel);
+        const crStyle =
+          document.querySelector('input[name="crStyle"]:checked')?.value ||
+          "default";
+        const crStyleLabel = crStyle === "minimal" ? "간단 양식" : "기본 양식";
 
         const photoBytes = photos.reduce((s, p) => s + p.size, 0);
         const est = estimateChemResultCost({
@@ -675,14 +783,18 @@
         });
         const krwLo = Math.round(est.lo * 1400);
         const krwHi = Math.round(est.hi * 1400);
-        const msg =
-          `🤖 모델: ${modelLabel}\n` +
-          `📄 첨부: 사전보고서, 데이터, 사진 ${photos.length}장${manual ? ", 매뉴얼" : ""}\n` +
-          `📦 총 크기: ${est.totalKB}KB\n` +
-          `💰 예상 비용: $${est.lo.toFixed(2)} ~ $${est.hi.toFixed(2)} ` +
-          `(약 ₩${krwLo.toLocaleString()} ~ ₩${krwHi.toLocaleString()})\n\n` +
-          `생성하시겠습니까? (실제 비용은 완료 후 표시됩니다)`;
-        if (!confirm(msg)) return;
+        const ok = await showConfirmDialog({
+          title: "화학 결과보고서 생성",
+          rows: [
+            ["모델", modelLabel],
+            ["스타일", crStyleLabel],
+            ["첨부", `사전보고서, 데이터, 사진 ${photos.length}장${manual ? ", 매뉴얼" : ""}`],
+            ["총 크기", `${est.totalKB}KB`],
+            ["예상 비용", costRangeText(est, krwLo, krwHi)],
+          ],
+          note: "실제 비용은 완료 후 표시됩니다.",
+        });
+        if (!ok) return;
 
         lockForm(crForm);
         crBtn.textContent = "생성 중...";
@@ -703,6 +815,7 @@
         fd.append("temperature", document.getElementById("crTemp").value || "");
         fd.append("pressure", document.getElementById("crPressure").value || "");
         fd.append("model", crModel);
+        fd.append("style", crStyle);
 
         try {
           const res = await fetch("/api/generate", { method: "POST", body: fd });
@@ -711,7 +824,7 @@
           currentJobId = data.jobId;
           streamJob(data.jobId);
         } catch (err) {
-          appendLine("❌ " + err.message);
+          appendLine("오류: " + err.message);
           resetForm();
         }
       });
@@ -728,7 +841,7 @@
 
         // 클라이언트 검증: cap 또는 엑셀 중 하나는 필수 (사진은 선택)
         if (!cap && !dataFile) {
-          alert("⚠️ PASCO Capstone (.cap) 파일 또는 엑셀/CSV 데이터 중 하나는 업로드해야 합니다.");
+          alert("PASCO Capstone (.cap) 파일 또는 엑셀/CSV 데이터 중 하나는 업로드해야 합니다.");
           return;
         }
 
@@ -739,10 +852,11 @@
           document.querySelector('input[name="prModel"]:checked')?.value ||
           document.querySelector('input[name="prModel"]')?.value ||
           "claude-opus-4-7";
-        const modelLabel =
-          prModel === "claude-opus-4-7"
-            ? "고품질 (Opus 4.7)"
-            : "표준 (Sonnet 4.6)";
+        const modelLabel = getModelLabel(prModel);
+        const prStyle =
+          document.querySelector('input[name="prStyle"]:checked')?.value ||
+          "default";
+        const prStyleLabel = prStyle === "minimal" ? "간단 양식" : "기본 양식";
 
         const photoBytes = photos.reduce((s, p) => s + p.size, 0);
         const dataInputBytes = (cap?.size || 0) + (dataFile?.size || 0);
@@ -760,15 +874,18 @@
           (cap ? `.cap (${Math.round(cap.size / 1024)}KB)` : "") +
           (cap && dataFile ? " + " : "") +
           (dataFile ? `엑셀/CSV (${Math.round(dataFile.size / 1024)}KB)` : "");
-        const msg =
-          `🤖 모델: ${modelLabel}\n` +
-          `📦 ${inputLabel}${photos.length > 0 ? `, 사진 ${photos.length}장` : ""}${manual ? ", 매뉴얼" : ""}\n` +
-          `📦 총 크기: ${est.totalKB}KB (양식·평가기준은 코드 내장)\n` +
-          `💰 예상 비용: $${est.lo.toFixed(2)} ~ $${est.hi.toFixed(2)} ` +
-          `(약 ₩${krwLo.toLocaleString()} ~ ₩${krwHi.toLocaleString()})\n\n` +
-          `⚡ 5페이지 채우기 + 65점 평가 최적화 적용\n\n` +
-          `생성하시겠습니까?`;
-        if (!confirm(msg)) return;
+        const ok = await showConfirmDialog({
+          title: "물리 결과보고서 생성",
+          rows: [
+            ["모델", modelLabel],
+            ["스타일", prStyleLabel],
+            ["입력", `${inputLabel}${photos.length > 0 ? `, 사진 ${photos.length}장` : ""}${manual ? ", 매뉴얼" : ""}`],
+            ["총 크기", `${est.totalKB}KB`],
+            ["예상 비용", costRangeText(est, krwLo, krwHi)],
+          ],
+          note: prStyle === "minimal" ? "간단 양식으로 생성합니다." : "기본 평가 기준을 적용합니다.",
+        });
+        if (!ok) return;
 
         lockForm(prForm);
         prBtn.textContent = "생성 중...";
@@ -788,6 +905,7 @@
         fd.append("date", `${y}/ ${m} / ${d}`);
         fd.append("studentId", document.getElementById("prStudentId").value.trim());
         fd.append("model", prModel);
+        fd.append("style", prStyle);
 
         try {
           const res = await fetch("/api/generate", { method: "POST", body: fd });
@@ -796,7 +914,7 @@
           currentJobId = data.jobId;
           streamJob(data.jobId);
         } catch (err) {
-          appendLine("❌ " + err.message);
+          appendLine("오류: " + err.message);
           resetForm();
         }
       });
@@ -811,7 +929,7 @@
         btn.textContent = "사전보고서 생성";
         if (crBtn) crBtn.textContent = "결과보고서 생성";
         if (prBtn) prBtn.textContent = "물리 결과보고서 생성";
-        stopBtn.textContent = "🛑 중지";
+        stopBtn.textContent = "중지";
       }
 
       function streamJob(jobId) {
@@ -824,12 +942,12 @@
 
         es.addEventListener("done", (e) => {
           const data = JSON.parse(e.data);
-          appendLine("✅ 완료");
+          appendLine("완료");
           statusTitle.textContent = "완료";
 
           const link = document.createElement("a");
           link.href = `/api/jobs/${jobId}/download`;
-          link.textContent = `📥 ${data.filename} 다운로드`;
+          link.textContent = `${data.filename} 다운로드`;
           link.download = data.filename;
           resultArea.appendChild(link);
 
@@ -843,7 +961,7 @@
           const msg = e.data
             ? JSON.parse(e.data)
             : "서버 연결이 끊겼습니다. 보통 (1) 서버 재배포로 컨테이너가 재시작되었거나 (2) 무료 플랜 일시 sleep 진입 시 발생합니다. 1~2분 기다린 뒤 보고서 생성을 다시 시도하세요. (이전 작업은 복구 불가 — 새로 만들어집니다)";
-          appendLine("❌ " + msg);
+          appendLine("오류: " + msg);
           statusTitle.textContent = "오류";
           es.close();
           resetForm();

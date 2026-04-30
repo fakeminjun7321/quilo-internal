@@ -7,8 +7,8 @@
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
-    <p>
-      <a href="/">← 메인으로</a> |
+    <p class="topbar">
+      <a href="/">메인으로</a>
       <a href="#" id="logout">로그아웃</a>
     </p>
     <h1>관리자 페이지</h1>
@@ -44,14 +44,14 @@
     <hr />
 
     <h2>사용자 목록</h2>
-    <button id="refresh">🔄 새로고침</button>
+    <button id="refresh" class="secondary">새로고침</button>
     <div class="table-wrapper">
       <table id="userTable" border="1" cellpadding="6" cellspacing="0" style="margin-top: 8px; border-collapse: collapse; font-size: 13px">
         <thead style="background: #eee">
           <tr>
             <th>이름</th>
-            <th>🧪 사전 잔액</th>
-            <th>🔬⚛️ 결과 잔액</th>
+            <th>사전 잔액</th>
+            <th>결과 잔액</th>
             <th>누적 사용</th>
             <th>관리자</th>
             <th>시간당</th>
@@ -66,10 +66,10 @@
 
     <hr />
 
-    <h2>📜 보고서 생성 로그</h2>
+    <h2>보고서 생성 로그</h2>
     <p style="color: #666; font-size: 0.9em">
       누가 언제 어떤 보고서를 만들었는지 기록. 최근 100건 표시.
-      <button id="refreshLogs">🔄 새로고침</button>
+      <button id="refreshLogs" class="secondary">새로고침</button>
     </p>
     <div class="table-wrapper">
       <table id="logTable" border="1" cellpadding="6" cellspacing="0" style="margin-top: 8px; border-collapse: collapse; font-size: 13px">
@@ -379,9 +379,9 @@
 
       function shortType(type, label) {
         if (!type) return '<span style="color:#aaa">사전*</span>'; // legacy 데이터
-        if (type === "chem-pre") return "🧪 사전";
-        if (type === "chem-result") return "🔬 결과";
-        if (type === "phys-result") return "⚛️ 물리";
+        if (type === "chem-pre") return "사전";
+        if (type === "chem-result") return "결과";
+        if (type === "phys-result") return "물리";
         return escape(label || type);
       }
 

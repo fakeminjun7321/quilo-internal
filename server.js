@@ -50,6 +50,10 @@ const PIPELINES = {
       const data = filesByField.data?.[0] || null;
       const photos = filesByField.photos || [];
       const manual = filesByField.manual?.[0] || null;
+      // 스타일 모드: "default" (학교 공식 양식) | "minimal" (필요한 내용만)
+      const style = String(body.style || "default").trim() === "minimal"
+        ? "minimal"
+        : "default";
       return {
         preReportBuffer: preReport.buffer,
         preReportName: preReport.originalname,
@@ -63,6 +67,7 @@ const PIPELINES = {
         manualBuffer: manual?.buffer || null,
         temperature: String(body.temperature || "").trim(),
         pressure: String(body.pressure || "").trim(),
+        style,
       };
     },
     generateContent: require("./lib/pipelines/chem-result/generate")
@@ -106,6 +111,10 @@ const PIPELINES = {
       const photos = filesByField.photos || [];
 
       const studentId = String(body.studentId || "").trim().slice(0, 20);
+      // 스타일 모드: "default" (학교 양식 5p 강제) | "minimal" (필요한 내용만 7~9p)
+      const style = String(body.style || "default").trim() === "minimal"
+        ? "minimal"
+        : "default";
 
       return {
         capBuffer: cap?.buffer || null,
@@ -119,6 +128,7 @@ const PIPELINES = {
           mimetype: p.mimetype,
         })),
         studentId,
+        style,
       };
     },
     // 파일명 형식: {학번}{이름}_{실험제목}.docx

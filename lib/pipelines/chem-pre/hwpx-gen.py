@@ -487,7 +487,7 @@ def _is_equation_only(text):
 
 def add_para(doc, text, *, base_size=SIZE_BODY, bold=False, align="LEFT",
              indent_left=0, keep_with_next=False, color=None,
-             space_after=0, space_before=0):
+             space_after=None, space_before=0):
     """add a paragraph with mixed runs honoring **bold**, *italic*, _{sub},
     ^{sup}. The paragraph itself takes alignment + indent + line spacing
     + optional vertical breathing room (space_after / space_before in
@@ -500,6 +500,7 @@ def add_para(doc, text, *, base_size=SIZE_BODY, bold=False, align="LEFT",
     if _is_equation_only(text):
         align = "CENTER"
         indent_left = 0
+    effective_space_after = SPACE_BODY if space_after is None else space_after
 
     para_pr = make_para_pr(
         doc,
@@ -507,7 +508,7 @@ def add_para(doc, text, *, base_size=SIZE_BODY, bold=False, align="LEFT",
         indent_left=indent_left,
         line_spacing=LINE_SPACING_PERCENT,
         keep_with_next=keep_with_next,
-        space_after=space_after,
+        space_after=effective_space_after,
         space_before=space_before,
     )
     p = doc.add_paragraph(
@@ -534,11 +535,11 @@ def add_para(doc, text, *, base_size=SIZE_BODY, bold=False, align="LEFT",
     return p
 
 
-# spacing constants (HWPUNIT). docx-gen used spaceAfter 80 (~4pt) for body
-# paragraphs and 120~200 (~6~10pt) for headings. We mirror that scale.
-SPACE_BODY = 200          # small breathing room after each body paragraph
-SPACE_HEADING_LV1 = 600   # 1./2. headings: bigger gap before to separate sections
-SPACE_HEADING_LV2 = 300   # 가./나. headings
+# spacing constants (HWPUNIT, 283 ≈ 1 mm). HWPX looked too dense after
+# converting to PDF, so body paragraphs now get visible breathing room by default.
+SPACE_BODY = 360          # paragraph separation after numbered/body paragraphs
+SPACE_HEADING_LV1 = 900   # 1./2. headings: clear gap before major sections
+SPACE_HEADING_LV2 = 480   # 가./나. headings
 
 
 def add_heading(doc, text, *, size=SIZE_TITLE, align="LEFT", indent_left=0,
@@ -1003,7 +1004,6 @@ def generate_hwpx(content):
     apply_default_font(doc)
 
     build_title_page(doc, content)
-    build_table_of_contents(doc, content)
     build_purpose(doc, content.get("purpose", []))
     build_theory(doc, content.get("theory", []), content.get("figures_needed", []))
     build_apparatus_and_chemicals(doc, content)

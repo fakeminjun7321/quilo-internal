@@ -20,12 +20,18 @@ const PIPELINES = {
       if (manual.mimetype !== "application/pdf") {
         throw new Error("PDF 파일만 업로드 가능합니다.");
       }
+      // 스타일 모드: "default" (학교 작성요령 풀버전) | "minimal" (필요한 내용만)
+      // hwpx 출력은 default 모드만 지원 — generate.js는 style을 받지만 hwpx-gen.js는 무시.
+      const style = String(body.style || "default").trim() === "minimal"
+        ? "minimal"
+        : "default";
       return {
         pdfBuffer: manual.buffer,
         studentId: String(body.studentId || "").trim(),
         studentName: String(body.studentName || "").trim(),
         temperature: String(body.temperature || "").trim(),
         pressure: String(body.pressure || "").trim(),
+        style,
       };
     },
     generateContent: require("./lib/pipelines/chem-pre/generate")

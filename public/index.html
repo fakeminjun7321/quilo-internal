@@ -237,10 +237,21 @@
         </label>
       </p>
       <p>
+        <strong>보고서 스타일:</strong><br />
+        <label>
+          <input type="radio" name="style" value="default" checked />
+          기본 양식
+        </label><br />
+        <label>
+          <input type="radio" name="style" value="minimal" />
+          간단 양식 (.docx 전용)
+        </label>
+      </p>
+      <p>
         <button type="submit" id="btn">사전보고서 생성</button>
       </p>
       <p class="hint">생성에는 보통 2~3분 정도 걸립니다.</p>
-      <p class="hint">그림 자리는 문서 안의 링크를 열어 직접 채울 수 있습니다.</p>
+      <p class="hint">그림 자리는 문서 안의 링크를 열어 직접 채울 수 있습니다 (기본 양식).</p>
     </form>
 
     <p class="disclaimer">
@@ -751,7 +762,13 @@
         const formatEl = document.querySelector(
           '#form input[name="format"]:checked, #form input[name="format"][type="hidden"]'
         );
-        fd.append("format", formatEl ? formatEl.value : "docx");
+        const formatValue = formatEl ? formatEl.value : "docx";
+        fd.append("format", formatValue);
+        // 스타일 모드 (default | minimal). hwpx-gen.js는 default만 지원하므로
+        // hwpx 출력을 고른 경우 서버 쪽에서 minimal을 무시하고 default로 렌더한다.
+        const styleEl = document.querySelector('#form input[name="style"]:checked');
+        const styleValue = styleEl ? styleEl.value : "default";
+        fd.append("style", styleValue);
 
         // 표지에 들어갈 사용자 입력 (선택). 입력값은 localStorage에 캐시해
         // 다음 방문 시 자동 채움.

@@ -570,9 +570,6 @@ def build_title_page(doc, content):
     date = content.get("date", "")
     student_id = (content.get("student_id") or "").strip()
     student_name = (content.get("student_name") or "").strip()
-    temperature = (content.get("temperature") or "").strip()
-    pressure = (content.get("pressure") or "").strip()
-    report_number = (content.get("report_number") or "").strip()
 
     add_heading(
         doc, "실험 보고서", size=SIZE_TITLE_BIG, align="CENTER",
@@ -583,27 +580,11 @@ def build_title_page(doc, content):
         space_after=SPACE_HEADING_LV1,
     )
 
-    # 보고서 번호 — 매뉴얼 파일명에서 추출 (예: "I-23")
-    if report_number:
-        add_para(doc, f"보고서 번호 : {report_number}", align="RIGHT")
-
     if student_id or student_name:
-        identity = " / ".join(
-            x for x in [
-                f"학번 : {student_id}" if student_id else "",
-                f"이름 : {student_name}" if student_name else "",
-            ] if x
-        )
+        identity = " ".join(x for x in [student_id, student_name] if x)
         add_para(doc, identity, align="RIGHT")
 
-    add_para(doc, f"날짜 : {date}", align="RIGHT")
-    # 빈 값일 때는 슬래시만 남기지 말고 사용자 양식대로 "/"  형태 유지
-    # (사용자가 직접 채워 넣음). 둘 다 입력했으면 실제값 표시.
-    if temperature or pressure:
-        tp_line = f"온도/기압 : {temperature or ''} / {pressure or ''}"
-    else:
-        tp_line = "온도/기압 : /"
-    add_para(doc, tp_line, align="RIGHT", space_after=SPACE_HEADING_LV1)
+    add_para(doc, f"날짜 : {date}", align="RIGHT", space_after=SPACE_HEADING_LV1)
 
 
 def build_purpose(doc, items):
@@ -820,17 +801,22 @@ def build_apparatus_and_chemicals(doc, content):
 
         details = []
         if ch.get("molar_mass"):
-            details.append(f"몰질량: {ch['molar_mass']}")
+            details.append(f"· 몰질량: {ch['molar_mass']}")
         if ch.get("mp_bp"):
-            details.append(f"녹는점/끓는점: {ch['mp_bp']}")
+            details.append(f"· 녹는점/끓는점: {ch['mp_bp']}")
         if ch.get("density"):
-            details.append(f"밀도: {ch['density']}")
+            details.append(f"· 밀도: {ch['density']}")
         if ch.get("properties"):
-            details.append(f"주요 특성: {ch['properties']}")
+            details.append(f"· 주요 특성: {ch['properties']}")
         if ch.get("toxicity"):
-            details.append(f"독성/취급: {ch['toxicity']}")
-        if details:
-            add_para(doc, " / ".join(details), indent_left=INDENT_10MM)
+            details.append(f"· 독성/취급: {ch['toxicity']}")
+        for i, line in enumerate(details):
+            add_para(
+                doc,
+                line,
+                indent_left=INDENT_10MM,
+                space_after=SPACE_BODY if i == len(details) - 1 else 120,
+            )
 
     summary = content.get("chemicals_summary_table") or []
     if summary:

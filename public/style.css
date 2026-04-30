@@ -161,7 +161,9 @@ body > details,
   color: #fff;
 }
 
-.tab-panel[hidden] {
+.tab-panel[hidden],
+.report-form[hidden],
+.notice[hidden] {
   display: none !important;
 }
 

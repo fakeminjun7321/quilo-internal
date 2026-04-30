@@ -255,22 +255,10 @@
           if (!res.ok) return alert("실패");
           loadUsers();
         } else if (act === "edit") {
-          const action = prompt(
-            "어떤 항목을 수정할까요?\n  1: 비밀번호\n  2: 예산(원화)\n  3: 예산(USD)",
-          );
-          if (action === "1") {
-            const password = prompt("새 비밀번호:");
-            if (!password) return;
-            await patchUser(id, { password });
-          } else if (action === "2") {
-            const krw = prompt("새 예산 (원):");
-            if (krw == null) return;
-            await patchUser(id, { budgetKrw: Number(krw) });
-          } else if (action === "3") {
-            const usd = prompt("새 예산 ($):");
-            if (usd == null) return;
-            await patchUser(id, { budgetUsd: Number(usd) });
-          }
+          // 충전은 +충전(쿠폰) 방식만 쓰므로 수정은 비밀번호 변경 1개로 단순화.
+          const password = prompt("새 비밀번호:");
+          if (!password) return;
+          await patchUser(id, { password });
           loadUsers();
         }
       });

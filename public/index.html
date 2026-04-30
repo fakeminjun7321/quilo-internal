@@ -110,6 +110,15 @@
         </label>
       </p>
       <p>
+        <label>글꼴:
+          <select id="crFontFace" name="fontFace">
+            <option value="hamchorom-batang">함초롬바탕</option>
+            <option value="malgun-gothic" selected>맑은 고딕</option>
+            <option value="nanum-myeongjo">나눔명조</option>
+          </select>
+        </label>
+      </p>
+      <p>
         <button type="submit" id="crBtn">결과보고서 생성</button>
       </p>
       <p class="hint">생성에는 보통 2~4분 정도 걸립니다.</p>
@@ -169,6 +178,15 @@
         <label>
           <input type="radio" name="prStyle" value="minimal" />
           간단 양식
+        </label>
+      </p>
+      <p>
+        <label>글꼴:
+          <select id="prFontFace" name="fontFace">
+            <option value="hamchorom-batang">함초롬바탕</option>
+            <option value="malgun-gothic" selected>맑은 고딕</option>
+            <option value="nanum-myeongjo">나눔명조</option>
+          </select>
         </label>
       </p>
       <p>
@@ -236,6 +254,15 @@
         <label>
           <input type="radio" name="style" value="minimal" />
           간단 양식 (.docx 전용)
+        </label>
+      </p>
+      <p>
+        <label>글꼴:
+          <select id="fontFace" name="fontFace">
+            <option value="hamchorom-batang">함초롬바탕</option>
+            <option value="malgun-gothic" selected>맑은 고딕</option>
+            <option value="nanum-myeongjo">나눔명조</option>
+          </select>
         </label>
       </p>
       <p>
@@ -731,6 +758,12 @@
         return modelId || "Opus 4.7";
       }
 
+      function getFontLabel(fontId) {
+        if (fontId === "hamchorom-batang") return "함초롬바탕";
+        if (fontId === "nanum-myeongjo") return "나눔명조";
+        return "맑은 고딕";
+      }
+
       function costRangeText(est, krwLo, krwHi) {
         return `$${est.lo.toFixed(2)} ~ $${est.hi.toFixed(2)} (약 ₩${krwLo.toLocaleString()} ~ ₩${krwHi.toLocaleString()})`;
       }
@@ -808,6 +841,7 @@
 
         const model = getSelectedModel();
         const modelLabel = getModelLabel(model);
+        const fontFace = document.getElementById("fontFace").value;
 
         // 예상 비용 확인
         const est = estimateCost(file.size, model);
@@ -817,6 +851,7 @@
           title: "사전보고서 생성",
           rows: [
             ["모델", modelLabel],
+            ["글꼴", getFontLabel(fontFace)],
             ["PDF", `${est.sizeKB}KB`],
             ["예상 비용", costRangeText(est, krwLo, krwHi)],
           ],
@@ -850,6 +885,7 @@
         const styleEl = document.querySelector('#form input[name="style"]:checked');
         const styleValue = styleEl ? styleEl.value : "default";
         fd.append("style", styleValue);
+        fd.append("fontFace", fontFace);
 
         // 표지에 들어갈 사용자 입력. 학번은 개인 설정값을 자동 사용한다.
         const nameEl = document.getElementById("studentName");
@@ -906,6 +942,7 @@
           document.querySelector('input[name="crStyle"]:checked')?.value ||
           "default";
         const crStyleLabel = crStyle === "minimal" ? "간단 양식" : "기본 양식";
+        const crFontFace = document.getElementById("crFontFace").value;
 
         const photoBytes = photos.reduce((s, p) => s + p.size, 0);
         const est = estimateChemResultCost({
@@ -923,6 +960,7 @@
           rows: [
             ["모델", modelLabel],
             ["스타일", crStyleLabel],
+            ["글꼴", getFontLabel(crFontFace)],
             ["첨부", `사전보고서, 데이터, 사진 ${photos.length}장${manual ? ", 매뉴얼" : ""}`],
             ["총 크기", `${est.totalKB}KB`],
             ["예상 비용", costRangeText(est, krwLo, krwHi)],
@@ -952,6 +990,7 @@
         fd.append("studentId", currentStudentId);
         fd.append("model", crModel);
         fd.append("style", crStyle);
+        fd.append("fontFace", crFontFace);
 
         try {
           const res = await fetch("/api/generate", { method: "POST", body: fd });
@@ -999,6 +1038,7 @@
           document.querySelector('input[name="prStyle"]:checked')?.value ||
           "default";
         const prStyleLabel = prStyle === "minimal" ? "간단 양식" : "기본 양식";
+        const prFontFace = document.getElementById("prFontFace").value;
 
         const photoBytes = photos.reduce((s, p) => s + p.size, 0);
         const dataInputBytes = (cap?.size || 0) + (dataFile?.size || 0);
@@ -1021,6 +1061,7 @@
           rows: [
             ["모델", modelLabel],
             ["스타일", prStyleLabel],
+            ["글꼴", getFontLabel(prFontFace)],
             ["입력", `${inputLabel}${photos.length > 0 ? `, 사진 ${photos.length}장` : ""}${manual ? ", 매뉴얼" : ""}`],
             ["총 크기", `${est.totalKB}KB`],
             ["예상 비용", costRangeText(est, krwLo, krwHi)],
@@ -1048,6 +1089,7 @@
         fd.append("studentId", currentStudentId);
         fd.append("model", prModel);
         fd.append("style", prStyle);
+        fd.append("fontFace", prFontFace);
 
         try {
           const res = await fetch("/api/generate", { method: "POST", body: fd });

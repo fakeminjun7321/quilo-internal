@@ -82,6 +82,21 @@ LINK_COLOR = "#0563C1"
 # Match docx-gen.js FONT constant. Hangul auto-substitutes if Malgun Gothic
 # isn't installed (the user's actual font might be 함초롬바탕 etc.).
 DEFAULT_FONT_FACE = "Malgun Gothic"
+ALLOWED_FONT_FACES = {
+    "함초롬바탕",
+    "함초롱바탕",
+    "Malgun Gothic",
+    "Nanum Myeongjo",
+}
+
+
+def normalize_font_face(face):
+    face = str(face or "").strip()
+    if face == "함초롱바탕":
+        return "함초롬바탕"
+    if face in ALLOWED_FONT_FACES:
+        return face
+    return DEFAULT_FONT_FACE
 
 
 # ── Unicode super/subscript ────────────────────────────────────────────────
@@ -987,7 +1002,7 @@ def add_page_number_to_footer(doc):
 
 def generate_hwpx(content):
     doc = HwpxDocument.new()
-    apply_default_font(doc)
+    apply_default_font(doc, normalize_font_face(content.get("font_face")))
 
     build_title_page(doc, content)
     build_purpose(doc, content.get("purpose", []))

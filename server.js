@@ -4,6 +4,7 @@ const session = require("express-session");
 const multer = require("multer");
 const path = require("path");
 const crypto = require("crypto");
+const { normalizeFontFace } = require("./lib/document-fonts");
 // Pipeline registry — 보고서 종류별로 입력 처리 + 생성 함수 묶음.
 // 각 파이프라인은 prepareInput(filesByField, body) → generateContent에 전달할 인자 객체 반환.
 const PIPELINES = {
@@ -31,6 +32,7 @@ const PIPELINES = {
         studentName: String(body.studentName || "").trim(),
         temperature: String(body.temperature || "").trim(),
         pressure: String(body.pressure || "").trim(),
+        fontFace: normalizeFontFace(body.fontFace),
         style,
       };
     },
@@ -73,6 +75,7 @@ const PIPELINES = {
         manualBuffer: manual?.buffer || null,
         temperature: String(body.temperature || "").trim(),
         pressure: String(body.pressure || "").trim(),
+        fontFace: normalizeFontFace(body.fontFace),
         style,
       };
     },
@@ -134,6 +137,7 @@ const PIPELINES = {
           mimetype: p.mimetype,
         })),
         studentId,
+        fontFace: normalizeFontFace(body.fontFace),
         style,
       };
     },
@@ -677,6 +681,13 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
       model,
       onProgress: (msg) => pushProgress(job, msg),
     });
+    const fontFace = normalizeFontFace(pipelineInput.fontFace);
+    Object.defineProperty(content, "__fontFace", {
+      value: fontFace,
+      enumerable: false,
+      writable: false,
+    });
+    content.font_face = fontFace;
 
     // 사용자·학번 정보를 docx-gen이 사용할 수 있게 attach (보고서 제목 prefix 등)
     const studentId = String(pipelineInput.studentId || "").trim();

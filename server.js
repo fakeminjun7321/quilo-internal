@@ -936,7 +936,15 @@ app.get("/api/admin/users", requireAdmin, async (req, res) => {
 app.post("/api/admin/users", requireAdmin, async (req, res) => {
   if (!supa.isEnabled())
     return res.status(503).json({ error: "Supabase 미설정" });
-  const { name, password, budgetUsd, budgetKrw, isAdmin } = req.body || {};
+  const {
+    name,
+    password,
+    budgetUsd,
+    budgetKrw,
+    isAdmin,
+    preCreditsUsd,
+    resultCreditsUsd,
+  } = req.body || {};
   if (!name || !password) {
     return res.status(400).json({ error: "이름·비밀번호 필수" });
   }
@@ -945,15 +953,23 @@ app.post("/api/admin/users", requireAdmin, async (req, res) => {
       .status(400)
       .json({ error: "비밀번호는 최소 5자 이상이어야 합니다." });
   }
+  // legacy budgetUsd/budgetKrw도 받지만 새 폼은 preCreditsUsd/resultCreditsUsd 사용 (충전 N건 → USD).
   let usd = Number(budgetUsd) || 0;
   if (!usd && budgetKrw) {
     usd = await krwToUsd(Number(budgetKrw));
+  }
+  const preUsd = Number(preCreditsUsd) || 0;
+  const resultUsd = Number(resultCreditsUsd) || 0;
+  if (preUsd < 0 || resultUsd < 0) {
+    return res.status(400).json({ error: "충전 금액은 음수일 수 없습니다." });
   }
   try {
     const user = await supa.createUser({
       name: String(name).trim(),
       password,
       budgetUsd: usd,
+      preCreditsUsd: preUsd,
+      resultCreditsUsd: resultUsd,
       isAdmin: !!isAdmin,
     });
     res.json({ ok: true, user });

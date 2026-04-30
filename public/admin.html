@@ -24,13 +24,11 @@
         <small>(평문 입력, 해시되어 저장됨. 최소 5자)</small>
       </p>
       <p>
-        예산 입력:
-        <input id="budgetKrw" type="number" min="0" step="100" placeholder="원화 (예: 5000)" />
-        원
-        <span style="color: #888"> 또는 </span>
-        <input id="budgetUsd" type="number" min="0" step="0.01" placeholder="USD" />
-        $
-        <br><small>둘 중 하나만 입력. 원화 입력 시 자동으로 USD 환산됨</small>
+        초기 충전:
+        <input id="initPreCount" type="number" min="0" step="1" placeholder="0" style="width: 70px" /> 건 (사전)
+        &nbsp;
+        <input id="initResultCount" type="number" min="0" step="1" placeholder="0" style="width: 70px" /> 건 (결과)
+        <br><small id="initChargeHint" style="color: #888">충전 안 하려면 둘 다 0 또는 비워두세요. 단가는 사용자 목록의 ‘+ 충전’과 동일.</small>
       </p>
       <p>
         <label><input id="isAdmin" type="checkbox" /> 관리자 권한</label>
@@ -137,8 +135,8 @@
       }
 
       // 단가 (server lib/pricing.js와 동기화). 충전 시 N건 → N×단가 USD로 변환.
-      const PRE_PRICE_USD = 1.7;
-      const RESULT_PRICE_USD = 2.38;
+      const PRE_PRICE_USD = 1.02;
+      const RESULT_PRICE_USD = 1.35;
 
       function balanceCell(usd, unitUsd) {
         const v = Number(usd) || 0;
@@ -296,19 +294,46 @@
       document.getElementById("refresh").addEventListener("click", loadUsers);
 
       // ── Add user form ─────────────────────────────────────────────────────
+      // 충전 건수 입력 시 사용자에게 환산값 미리 보여주기.
+      function updateInitChargeHint() {
+        const pre = parseInt(document.getElementById("initPreCount").value, 10) || 0;
+        const result = parseInt(document.getElementById("initResultCount").value, 10) || 0;
+        const hint = document.getElementById("initChargeHint");
+        if (pre === 0 && result === 0) {
+          hint.textContent = "충전 안 하려면 둘 다 0 또는 비워두세요. 단가는 사용자 목록의 ‘+ 충전’과 동일.";
+          hint.style.color = "#888";
+          return;
+        }
+        const preUsd = pre * PRE_PRICE_USD;
+        const resultUsd = result * RESULT_PRICE_USD;
+        const totalKrw = Math.round((preUsd + resultUsd) * krwPerUsd).toLocaleString();
+        hint.textContent =
+          `사전 ${pre}건 ($${preUsd.toFixed(2)}) + 결과 ${result}건 ($${resultUsd.toFixed(2)})` +
+          ` = $${(preUsd + resultUsd).toFixed(2)} ≈ ₩${totalKrw}`;
+        hint.style.color = "#080";
+      }
+      document.getElementById("initPreCount").addEventListener("input", updateInitChargeHint);
+      document.getElementById("initResultCount").addEventListener("input", updateInitChargeHint);
+
       document.getElementById("addForm").addEventListener("submit", async (e) => {
         e.preventDefault();
         const status = document.getElementById("addStatus");
         status.textContent = "처리 중...";
+        const preCount = parseInt(document.getElementById("initPreCount").value, 10) || 0;
+        const resultCount = parseInt(document.getElementById("initResultCount").value, 10) || 0;
+        if (preCount < 0 || resultCount < 0) {
+          status.textContent = "오류: 음수는 입력할 수 없습니다.";
+          status.style.color = "red";
+          return;
+        }
         const body = {
           name: document.getElementById("name").value,
           password: document.getElementById("password").value,
           isAdmin: document.getElementById("isAdmin").checked,
+          // 사용자 목록의 ‘+ 충전’과 동일한 단위. 0이면 잔액 0으로 시작.
+          preCreditsUsd: preCount * PRE_PRICE_USD,
+          resultCreditsUsd: resultCount * RESULT_PRICE_USD,
         };
-        const krw = document.getElementById("budgetKrw").value;
-        const usd = document.getElementById("budgetUsd").value;
-        if (usd) body.budgetUsd = Number(usd);
-        else if (krw) body.budgetKrw = Number(krw);
         try {
           const res = await fetch("/api/admin/users", {
             method: "POST",
@@ -317,8 +342,10 @@
           });
           const data = await res.json();
           if (!res.ok) throw new Error(data.error || "실패");
-          status.textContent = `✓ ${data.user.name} 추가됨`;
+          status.textContent = `✓ ${data.user.name} 추가됨 (사전 ${preCount}건, 결과 ${resultCount}건)`;
+          status.style.color = "green";
           document.getElementById("addForm").reset();
+          updateInitChargeHint();
           loadUsers();
         } catch (e) {
           status.textContent = "오류: " + e.message;

@@ -138,10 +138,13 @@ const PIPELINES = {
       };
     },
     // 파일명 형식: {학번}{이름}_{실험제목}.docx
+    // minimal 모드는 title 대신 title_en/title_kr로 응답하므로 양쪽 모두 fallback.
     buildFilename(content, ctx) {
       const id = sanitizeForFilename(ctx.studentId || "");
       const name = sanitizeForFilename(ctx.userName || "");
-      const title = sanitizeForFilename(content.title || "보고서");
+      const title = sanitizeForFilename(
+        content.title || content.title_en || content.title_kr || "보고서",
+      );
       const prefix = `${id}${name}`;
       return prefix
         ? `${prefix}_${title}.docx`

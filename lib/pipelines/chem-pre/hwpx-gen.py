@@ -113,8 +113,9 @@ def normalize_font_face(face):
 
 
 # ── Unicode super/subscript ────────────────────────────────────────────────
-# Used as the primary path because Hangul renders these as native subscripts
-# without any charPr trickery. Letters fall back to charPr offset+relSz.
+# Digits/signs render cleanly as Unicode glyphs. Alphabetic subscripts such as
+# m_{exp} use real charPr offset+relSz runs instead; Unicode letter subscripts
+# have uneven metrics in Hangul/PDF exports.
 SUPERSCRIPT_MAP = {
     "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴",
     "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹",
@@ -137,6 +138,8 @@ SUBSCRIPT_MAP = {
 
 
 def _try_unicode_map(s, table):
+    if re.search(r"[A-Za-z]", s):
+        return None
     out = []
     for ch in s:
         if ch in table:
@@ -538,6 +541,24 @@ def strip_manual_numbering(text):
     return MANUAL_NUMBER_RE.sub("", str(text or "")).strip()
 
 
+def brace_unbraced_scripts(script):
+    s = str(script or "")
+    s = re.sub(r"([_^])(?!\{)([+\-])", r"\1{\2}", s)
+    s = re.sub(r"([_^])(?!\{)(\d+(?:\.\d+)?)", r"\1{\2}", s)
+    s = re.sub(r"([_^])(?!\{)([A-Za-z]+)", r"\1{\2}", s)
+    return s
+
+
+def compact_chemical_spacing(script):
+    token = r"(?:[A-Z][a-z]?|\)(?:_\{[^}]+\})?)(?:_\{[^}]+\})?"
+    command = r"(?:BUILDREL|TIMES|DIV|APPROX|INF|DELTA|SIGMA|GAMMA|THETA|LAMBDA|XI|PI|OMEGA|PHI|PSI)\b"
+    return re.sub(
+        rf"({token})\s+(?!{command})(?=[A-Z][a-z]?|\()",
+        r"\1",
+        str(script or ""),
+    )
+
+
 def normalize_equation_script(script):
     s = str(script or "").strip()
     s = (
@@ -562,6 +583,8 @@ def normalize_equation_script(script):
     s = s.replace("<=>", "<->")
     s = s.replace("×", " times ").replace("·", " cdot ")
     s = re.sub(r"\s+([_^])\s*", r"\1", s)
+    s = brace_unbraced_scripts(s)
+    s = compact_chemical_spacing(s)
     s = re.sub(r"\s{2,}", " ", s)
     return s.strip()
 

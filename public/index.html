@@ -17,6 +17,7 @@
 
     <nav class="page-tabs" aria-label="화면 전환">
       <button type="button" class="active" data-tab="reports">보고서 작성</button>
+      <button type="button" data-tab="files">내 파일</button>
       <button type="button" data-tab="settings">개인 설정</button>
     </nav>
 
@@ -298,6 +299,15 @@
     </div>
     </section>
 
+    <section id="filesPanel" class="tab-panel" data-tab-panel="files" hidden>
+      <div class="settings-card">
+        <h2>내 파일</h2>
+        <p class="hint">생성된 보고서는 24시간만 보관됩니다.</p>
+        <div id="filesStatus" class="hint">불러오는 중...</div>
+        <div id="filesList" class="file-list" aria-live="polite"></div>
+      </div>
+    </section>
+
     <section id="settingsPanel" class="tab-panel" data-tab-panel="settings" hidden>
       <div class="settings-card">
         <h2>개인 설정</h2>
@@ -403,6 +413,7 @@
           }
           // 일반 사용자: 잔액 박스 표시
           if (!d.isAdmin) loadBalance();
+          loadFiles();
         })
         .catch(() => (location.href = "/login.html"));
 
@@ -427,6 +438,94 @@
         }
       }
 
+      function formatBytes(bytes) {
+        const n = Number(bytes) || 0;
+        if (n < 1024) return `${n}B`;
+        if (n < 1024 * 1024) return `${Math.round(n / 1024)}KB`;
+        return `${(n / 1024 / 1024).toFixed(1)}MB`;
+      }
+
+      function formatDateTime(value) {
+        if (!value) return "-";
+        return new Date(value).toLocaleString("ko-KR", {
+          dateStyle: "short",
+          timeStyle: "short",
+        });
+      }
+
+      async function loadFiles() {
+        const status = document.getElementById("filesStatus");
+        const list = document.getElementById("filesList");
+        if (!status || !list) return;
+        status.textContent = "불러오는 중...";
+        list.innerHTML = "";
+        try {
+          const res = await fetch("/api/me/files");
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || "파일 목록 오류");
+          if (!data.storage) {
+            status.textContent = "파일 저장소가 아직 설정되지 않았습니다.";
+            return;
+          }
+          const files = data.files || [];
+          if (files.length === 0) {
+            status.textContent = "보관 중인 파일이 없습니다.";
+            return;
+          }
+          status.textContent = `${files.length}개 보관 중`;
+          for (const file of files) {
+            const item = document.createElement("div");
+            item.className = "file-item";
+
+            const meta = document.createElement("div");
+            meta.className = "file-meta";
+
+            const name = document.createElement("strong");
+            name.textContent = file.filename || "보고서";
+
+            const detail = document.createElement("span");
+            detail.textContent =
+              `${formatBytes(file.size_bytes)} · ${formatDateTime(file.created_at)} 생성 · ${formatDateTime(file.expires_at)} 만료`;
+
+            meta.append(name, detail);
+
+            const actions = document.createElement("div");
+            actions.className = "file-actions";
+
+            const download = document.createElement("a");
+            download.href = `/api/me/files/${file.id}/download`;
+            download.textContent = "다운로드";
+            download.download = file.filename || "";
+
+            const del = document.createElement("button");
+            del.type = "button";
+            del.className = "secondary compact";
+            del.textContent = "삭제";
+            del.addEventListener("click", async () => {
+              const ok = await showConfirmDialog({
+                title: "파일 삭제",
+                rows: [["파일", file.filename || "보고서"]],
+                note: "파일함에서 바로 삭제합니다.",
+                okLabel: "삭제",
+              });
+              if (!ok) return;
+              const r = await fetch(`/api/me/files/${file.id}`, { method: "DELETE" });
+              if (!r.ok) {
+                const body = await r.json().catch(() => ({}));
+                alert(body.error || "삭제 실패");
+              }
+              loadFiles();
+            });
+
+            actions.append(download, del);
+            item.append(meta, actions);
+            list.appendChild(item);
+          }
+        } catch (err) {
+          status.textContent = err.message || "파일 목록을 불러오지 못했습니다.";
+        }
+      }
+
       document.getElementById("logout").addEventListener("click", async (e) => {
         e.preventDefault();
         await fetch("/api/logout", { method: "POST" });
@@ -447,6 +546,7 @@
           panel.classList.toggle("active", active);
           panel.hidden = !active;
         });
+        if (tabName === "files") loadFiles();
       }
       tabButtons.forEach((btn) => {
         btn.addEventListener("click", () => showTab(btn.dataset.tab));
@@ -1195,6 +1295,7 @@
           resetForm();
           // 작업 후 잔액 자동 새로고침
           if (typeof loadBalance === "function") loadBalance();
+          if (typeof loadFiles === "function") loadFiles();
         });
 
         es.addEventListener("error", (e) => {

@@ -259,6 +259,7 @@ function addToTotal(cost, imageCost) {
 
 // ── Job storage (in-memory) ──────────────────────────────────────────────────
 const jobs = new Map();
+const JOB_RETENTION_MS = 24 * 60 * 60 * 1000;
 
 // 사용자별 진행 중인 작업 ID — B1: 같은 사용자가 새 작업 제출 시 이전 작업 자동 중단.
 // curl 등으로 폼 락을 우회한 동시 요청도 1개로 제한됨.
@@ -274,12 +275,24 @@ function createJob(userInfo) {
     result: null,
     filename: null,
     error: null,
+    fileId: null,
     listeners: [],
     createdAt: Date.now(),
   };
   jobs.set(id, job);
   return job;
 }
+
+function cleanupOldJobs() {
+  const cutoff = Date.now() - JOB_RETENTION_MS;
+  for (const [id, job] of jobs.entries()) {
+    if (job.status === "running") continue;
+    if ((job.createdAt || 0) < cutoff) jobs.delete(id);
+  }
+}
+
+const jobCleanupTimer = setInterval(cleanupOldJobs, 60 * 60 * 1000);
+if (typeof jobCleanupTimer.unref === "function") jobCleanupTimer.unref();
 
 // 메시지 1개의 최대 길이 (예외 메시지가 매우 긴 경우 SSE 버퍼·로그 폭증 방지)
 const MAX_PROGRESS_LINE = 500;
@@ -753,6 +766,34 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
       const namePart = userName ? `_${userName}` : "";
       job.filename = `${prefix}${pipeline.filenamePrefix}_${studentPart}${namePart}.${ext}`;
     }
+
+    if (supa.isEnabled() && job.userInfo?.id) {
+      try {
+        const savedFile = await supa.saveReportFile({
+          userId: job.userInfo.id,
+          jobId: job.id,
+          reportType: job.reportType,
+          filename: job.filename,
+          mimeType: job.mimeType,
+          buffer,
+          meta: {
+            title: content.title_kr || content.title || "",
+            reportLabel: pipeline.label,
+            format,
+          },
+        });
+        if (savedFile?.id) {
+          job.fileId = savedFile.id;
+          const expires = new Date(savedFile.expires_at).toLocaleString("ko-KR", {
+            dateStyle: "short",
+            timeStyle: "short",
+          });
+          pushProgress(job, `☁ 파일함에 24시간 보관됨 (${expires}까지)`);
+        }
+      } catch (e) {
+        pushProgress(job, `⚠ 파일함 저장 실패: ${e.message}`);
+      }
+    }
     job.status = "done";
 
     const totalSec = Math.floor((Date.now() - t0) / 1000);
@@ -846,7 +887,7 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
   }
 
   job.listeners.forEach((r) => {
-    sendSse(r, "done", { filename: job.filename });
+    sendSse(r, "done", { filename: job.filename, fileId: job.fileId });
     r.end();
   });
   job.listeners = [];
@@ -890,7 +931,7 @@ app.get("/api/jobs/:id/stream", requireAuth, (req, res) => {
   job.progress.forEach((p) => sendSse(res, "progress", p));
 
   if (job.status === "done") {
-    sendSse(res, "done", { filename: job.filename });
+    sendSse(res, "done", { filename: job.filename, fileId: job.fileId });
     return res.end();
   }
   if (job.status === "error") {
@@ -930,6 +971,64 @@ app.get("/api/jobs/:id/download", requireAuth, (req, res) => {
     "Content-Length": job.result.length,
   });
   res.send(job.result);
+});
+
+// Stored files (24h)
+app.get("/api/me/files", requireAuth, async (req, res) => {
+  if (!supa.isEnabled()) {
+    return res.json({ files: [], retentionHours: 24, storage: false });
+  }
+  const u = getSessionUser(req);
+  if (!u.id) return res.status(403).json({ error: "권한 없음" });
+  try {
+    const cfg = supa.reportStorageConfig();
+    const files = await supa.listReportFiles(u.id);
+    res.json({
+      files,
+      retentionHours: cfg.retentionHours,
+      storage: true,
+    });
+  } catch (e) {
+    console.error("[files] list error:", e);
+    res.status(500).json({ error: "파일 목록을 불러오지 못했습니다." });
+  }
+});
+
+app.get("/api/me/files/:id/download", requireAuth, async (req, res) => {
+  if (!supa.isEnabled()) {
+    return res.status(503).send("파일 저장소가 설정되지 않았습니다.");
+  }
+  const u = getSessionUser(req);
+  if (!u.id) return res.status(403).send("권한 없음");
+  try {
+    const saved = await supa.downloadReportFile(u.id, req.params.id);
+    if (!saved) return res.status(404).send("파일이 없거나 만료되었습니다.");
+    res.set({
+      "Content-Type": saved.row.mime_type || "application/octet-stream",
+      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(saved.row.filename)}`,
+      "Content-Length": saved.buffer.length,
+    });
+    res.send(saved.buffer);
+  } catch (e) {
+    console.error("[files] download error:", e);
+    res.status(500).send("파일 다운로드 중 오류가 발생했습니다.");
+  }
+});
+
+app.delete("/api/me/files/:id", requireAuth, async (req, res) => {
+  if (!supa.isEnabled()) {
+    return res.status(503).json({ error: "파일 저장소가 설정되지 않았습니다." });
+  }
+  const u = getSessionUser(req);
+  if (!u.id) return res.status(403).json({ error: "권한 없음" });
+  try {
+    const ok = await supa.deleteReportFile(u.id, req.params.id);
+    if (!ok) return res.status(404).json({ error: "파일이 없거나 만료되었습니다." });
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("[files] delete error:", e);
+    res.status(500).json({ error: "파일 삭제 중 오류가 발생했습니다." });
+  }
 });
 
 // ── Admin routes ─────────────────────────────────────────────────────────────
@@ -1229,5 +1328,19 @@ app.listen(PORT, async () => {
     } catch (e) {
       console.warn(`  ⚠ Admin bootstrap 실패: ${e.message}`);
     }
+    try {
+      const result = await supa.cleanupExpiredReportFiles(200);
+      if (result.deleted) {
+        console.log(`  ✓ 만료 파일 정리: ${result.deleted}개`);
+      }
+    } catch (e) {
+      console.warn(`  ⚠ 만료 파일 정리 실패: ${e.message}`);
+    }
+    const cleanupTimer = setInterval(() => {
+      supa.cleanupExpiredReportFiles(200).catch((e) => {
+        console.warn(`  ⚠ 만료 파일 정리 실패: ${e.message}`);
+      });
+    }, 6 * 60 * 60 * 1000);
+    if (typeof cleanupTimer.unref === "function") cleanupTimer.unref();
   }
 });

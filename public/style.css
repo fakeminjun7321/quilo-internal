@@ -190,6 +190,43 @@ body > details,
   font-weight: 750;
 }
 
+.file-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.file-item {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
+.file-meta {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.file-meta strong {
+  overflow-wrap: anywhere;
+}
+
+.file-meta span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.file-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+  align-items: center;
+}
+
 .compact-form {
   max-width: 460px;
   padding: 0;
@@ -340,6 +377,12 @@ button.secondary,
 .confirm-actions button.secondary {
   background: #fff;
   color: #344054;
+}
+
+button.compact {
+  min-height: 34px;
+  padding: 6px 10px;
+  font-size: 14px;
 }
 
 .stop-btn {
@@ -594,6 +637,15 @@ th button {
 
   .page-tabs button {
     width: 100%;
+  }
+
+  .file-item {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .file-actions {
+    justify-content: flex-start;
   }
 
   .confirm-card {

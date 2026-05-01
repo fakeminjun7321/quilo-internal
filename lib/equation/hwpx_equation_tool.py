@@ -510,6 +510,24 @@ class LatexToHwpConverter:
         return pos
 
 
+def brace_unbraced_scripts(script: str) -> str:
+    text = str(script or "")
+    text = re.sub(r"([_^])(?!\{)([+\-])", r"\1{\2}", text)
+    text = re.sub(r"([_^])(?!\{)(\d+(?:\.\d+)?)", r"\1{\2}", text)
+    text = re.sub(r"([_^])(?!\{)([A-Za-z]+)", r"\1{\2}", text)
+    return text
+
+
+def compact_chemical_spacing(script: str) -> str:
+    token = r"(?:[A-Z][a-z]?|\)(?:_\{[^}]+\})?)(?:_\{[^}]+\})?"
+    command = r"(?:BUILDREL|TIMES|DIV|APPROX|INF|DELTA|SIGMA|GAMMA|THETA|LAMBDA|XI|PI|OMEGA|PHI|PSI)\b"
+    return re.sub(
+        rf"({token})\s+(?!{command})(?=[A-Z][a-z]?|\()",
+        r"\1",
+        str(script or ""),
+    )
+
+
 def normalize_hwp_script(script: str) -> str:
     text = str(script or "").strip()
     text = (
@@ -533,6 +551,8 @@ def normalize_hwp_script(script: str) -> str:
     )
     text = text.replace("<=>", "<->")
     text = re.sub(r"\s+([_^])\s*", r"\1", text)
+    text = brace_unbraced_scripts(text)
+    text = compact_chemical_spacing(text)
     text = re.sub(r"\s{2,}", " ", text)
     return text.strip()
 

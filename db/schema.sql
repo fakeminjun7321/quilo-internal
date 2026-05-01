@@ -9,6 +9,8 @@ create table if not exists users (
   password_hash text not null,
   budget_usd numeric(10, 4) not null default 0,
   spent_usd numeric(10, 4) not null default 0,
+  pre_credits_usd numeric(10, 4) not null default 0,
+  result_credits_usd numeric(10, 4) not null default 0,
   is_admin boolean not null default false,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -30,6 +32,44 @@ create table if not exists usage_logs (
 
 create index if not exists usage_logs_user_id_idx on usage_logs (user_id, created_at desc);
 
+-- ── 생성 파일 메타데이터 (파일 본문은 Supabase Storage에 24시간 보관) ───────
+create table if not exists report_files (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  job_id text,
+  report_type text,
+  filename text not null,
+  bucket text not null default 'generated-reports',
+  object_path text not null,
+  mime_type text not null,
+  size_bytes bigint not null default 0,
+  meta jsonb,
+  expires_at timestamptz not null default (now() + interval '24 hours'),
+  created_at timestamptz not null default now()
+);
+
+create index if not exists report_files_user_created_idx
+  on report_files (user_id, created_at desc);
+create index if not exists report_files_expires_idx
+  on report_files (expires_at);
+
+-- private bucket. 서버(service_role)가 사용자 권한 확인 후 대리 다운로드한다.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'generated-reports',
+  'generated-reports',
+  false,
+  52428800,
+  array[
+    'application/hwp+zip',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  ]
+)
+on conflict (id) do update set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
 -- ── updated_at 자동 갱신 트리거 ─────────────────────────────────────────────
 create or replace function set_updated_at()
 returns trigger as $$
@@ -49,5 +89,6 @@ create trigger trg_users_updated_at
 -- RLS는 켜두고 공개 정책을 만들지 않음.
 alter table users enable row level security;
 alter table usage_logs enable row level security;
+alter table report_files enable row level security;
 
 -- ── 끝 ─────────────────────────────────────────────────────────────────────

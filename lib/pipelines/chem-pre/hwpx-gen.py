@@ -85,7 +85,6 @@ LINE_SPACING_PERCENT = 160
 TABLE_LINE_SPACING_PERCENT = 130
 TABLE_CELL_MARGIN_X = 180
 TABLE_CELL_MARGIN_Y = 100
-APPARATUS_DESC_LIMIT = 58
 
 # Figure box border color (gray, matches docx generator)
 FIGURE_BORDER_COLOR = "#888888"
@@ -1120,51 +1119,18 @@ def build_chemicals_summary_table(doc, rows):
             )
 
 
-def compact_apparatus_description(description):
-    s = re.sub(r"\s+", " ", str(description or "")).strip()
-    if not s:
-        return ""
-
-    s = re.sub(r"\s*\([^)]{32,}\)", "", s)
-    s = re.sub(r"\s*\([A-Za-z][^)]{10,}\)", "", s)
-    s = re.sub(
-        r"^[A-Za-z0-9 .·()/_-]+(?:와|과|,)\s*[A-Za-z0-9 .·()/_-]+\s+등\s*",
-        "",
-        s,
-    )
-    first = re.split(r"(?<=[.!?。])\s+", s, maxsplit=1)[0].strip()
-
-    if len(first) > APPARATUS_DESC_LIMIT:
-        parts = re.split(
-            r"[;；。]|,\s*|이며|하고|하여|므로|때문에| 경우| 함께| 또는",
-            first,
-            maxsplit=1,
-        )
-        if parts and len(parts[0].strip()) >= 10:
-            first = parts[0].strip()
-
-    if len(first) > APPARATUS_DESC_LIMIT:
-        cut = first.rfind(" ", 0, APPARATUS_DESC_LIMIT)
-        first = first[: cut if cut >= 24 else APPARATUS_DESC_LIMIT].strip()
-
-    first = first.rstrip(" .。;；,，")
-    if first.endswith(" 때"):
-        first = f"{first} 사용"
-    return f"{first}." if first else ""
-
-
 def build_apparatus_and_chemicals(doc, content):
     add_heading(doc, "3. 실험 기구 및 시약", size=SIZE_TITLE,
                 space_before=SPACE_HEADING_LV1, space_after=SPACE_HEADING_LV2)
     add_heading(doc, "가. 실험 기구", size=SIZE_HEADING,
                 space_after=SPACE_BODY)
     for idx, ap in enumerate(content.get("apparatus", []), 1):
-        description = compact_apparatus_description(ap.get("description", ""))
+        en = f" ({ap.get('name_en')})" if ap.get("name_en") else ""
         line = (
-            f"{numbered_marker(idx)} **{ap.get('name', '')}**: "
-            f"{description}"
+            f"{numbered_marker(idx)} **{ap.get('name', '')}**{en}: "
+            f"{ap.get('description', '')}"
         )
-        add_para(doc, line, indent_left=INDENT_5MM, space_after=420)
+        add_para(doc, line, indent_left=INDENT_5MM)
 
     add_heading(doc, "나. 시약", size=SIZE_HEADING, space_after=SPACE_BODY)
     # build URL→[N] index so duplicate sources share the same number
@@ -1403,9 +1369,10 @@ def build_minimal_apparatus_and_chemicals(doc, content):
     if not apps:
         add_para(doc, "(기구 데이터 부족)")
     for ap in apps:
-        description = compact_apparatus_description(ap.get("description", ""))
+        en = f" ({ap.get('name_en')})" if ap.get("name_en") else ""
+        description = ap.get("description", "")
         detail = f": {description}" if description else ""
-        add_para(doc, f"{ap.get('name', '')}{detail}", indent_left=INDENT_5MM)
+        add_para(doc, f"{ap.get('name', '')}{en}{detail}", indent_left=INDENT_5MM)
 
     add_heading(doc, "(2) 시약", size=SIZE_HEADING,
                 space_before=SPACE_HEADING_LV2, space_after=SPACE_BODY)

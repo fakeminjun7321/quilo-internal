@@ -344,12 +344,38 @@ class LatexToHwpConverter:
         current = text
         while previous != current:
             previous = current
+            current = self._replace_labeled_arrows(current)
             current = self._replace_environments(current)
             current = self._replace_frac(current)
             current = self._replace_sqrt(current)
             current = self._replace_binom(current)
             current = self._replace_one_arg_commands(current)
         return current
+
+    def _replace_labeled_arrows(self, text: str) -> str:
+        arrows = (
+            (r"\xleftrightarrow", "<->"),
+            (r"\xrightarrow", "->"),
+            (r"\xleftarrow", "<-"),
+        )
+        for marker, arrow in arrows:
+            idx = text.find(marker)
+            while idx >= 0:
+                pos = self._skip_spaces(text, idx + len(marker))
+                below = ""
+                if pos < len(text) and text[pos] == "[":
+                    below, pos = self._read_balanced(text, pos, "[", "]")
+                    pos = self._skip_spaces(text, pos)
+                if pos >= len(text) or text[pos] != "{":
+                    idx = text.find(marker, idx + len(marker))
+                    continue
+                above, end = self._read_balanced(text, pos, "{", "}")
+                label = above.strip() or below.strip()
+                converted_label = self._convert_structures(label)
+                replacement = f"BUILDREL {arrow} {{{converted_label}}}"
+                text = text[:idx] + replacement + text[end:]
+                idx = text.find(marker, idx + len(replacement))
+        return text
 
     def _replace_frac(self, text: str) -> str:
         for marker in (r"\dfrac", r"\tfrac", r"\frac"):
@@ -484,11 +510,38 @@ class LatexToHwpConverter:
         return pos
 
 
+def normalize_hwp_script(script: str) -> str:
+    text = str(script or "").strip()
+    text = (
+        text.replace("→", "->")
+        .replace("⟶", "->")
+        .replace("⇒", "=>")
+        .replace("←", "<-")
+        .replace("⇌", "<->")
+        .replace("↔", "<->")
+        .replace("⇄", "<->")
+    )
+    text = re.sub(
+        r"--\s*\[\s*(?P<label>[^\]]+?)\s*\]\s*(?P<arrow><->|<=>|->|<-|=>)",
+        r"BUILDREL \g<arrow> {\g<label>}",
+        text,
+    )
+    text = re.sub(
+        r"(?P<arrow><->|<=>|->|<-|=>)\s*\[\s*(?P<label>[^\]]+?)\s*\]",
+        r"BUILDREL \g<arrow> {\g<label>}",
+        text,
+    )
+    text = text.replace("<=>", "<->")
+    text = re.sub(r"\s+([_^])\s*", r"\1", text)
+    text = re.sub(r"\s{2,}", " ", text)
+    return text.strip()
+
+
 def placeholder_to_script(kind: str, raw_script: str) -> str:
     raw_script = raw_script.strip()
     if kind.endswith("-LATEX"):
-        return LatexToHwpConverter().convert(raw_script)
-    return raw_script
+        return normalize_hwp_script(LatexToHwpConverter().convert(raw_script))
+    return normalize_hwp_script(raw_script)
 
 
 def is_numbered_placeholder(kind: str) -> bool:

@@ -288,7 +288,7 @@
         </label><br />
         <label>
           <input type="radio" name="style" value="minimal" />
-          간단 양식 (.docx 전용)
+          간단 양식
         </label>
       </p>
       <p>
@@ -1064,8 +1064,7 @@
         fd.append("date", `${y}/ ${m} / ${d}`);
         fd.append("model", model);
         fd.append("format", formatValue);
-        // 스타일 모드 (default | minimal). hwpx-gen.js는 default만 지원하므로
-        // hwpx 출력을 고른 경우 서버 쪽에서 minimal을 무시하고 default로 렌더한다.
+        // 스타일 모드 (default | minimal). docx/hwpx 모두 지원한다.
         const styleEl = document.querySelector('#form input[name="style"]:checked');
         const styleValue = styleEl ? styleEl.value : "default";
         fd.append("style", styleValue);

@@ -1260,6 +1260,8 @@ def _ref_url_index(content):
             n += 1
             out[url] = n
     for ref in content.get("references", []) or []:
+        if not isinstance(ref, dict):
+            continue
         url = (ref.get("url") or "").strip()
         if url and url not in out:
             n += 1
@@ -1270,12 +1272,33 @@ def _ref_url_index(content):
 def _ref_label_for(url, content):
     """find a human label for a URL (from references[] or chemicals[])."""
     for ref in content.get("references", []) or []:
+        if not isinstance(ref, dict):
+            continue
         if (ref.get("url") or "").strip() == url:
             return (ref.get("label") or url).strip()
     for ch in content.get("chemicals", []) or []:
         if (ch.get("source_url") or "").strip() == url:
             return (ch.get("name") or url).strip()
     return url
+
+
+def ref_to_string(ref):
+    if isinstance(ref, str):
+        return ref
+    if isinstance(ref, dict):
+        parts = [
+            ref.get("author") or ref.get("authors"),
+            ref.get("year") or ref.get("date"),
+            ref.get("title"),
+            ref.get("journal"),
+            ref.get("publisher"),
+            ref.get("url"),
+        ]
+        values = [str(p).strip() for p in parts if str(p or "").strip()]
+        if values:
+            return ", ".join(values)
+        return json.dumps(ref, ensure_ascii=False)
+    return str(ref or "")
 
 
 def build_references(doc, content):
@@ -1309,6 +1332,146 @@ def build_references(doc, content):
             p.add_hyperlink(url, url, char_pr_id_ref=cp_link)
         except Exception:
             p.add_run(url, char_pr_id_ref=cp_link)
+
+
+def is_minimal_style(content):
+    return str(content.get("__style") or content.get("style") or "").strip() == "minimal"
+
+
+def build_minimal_header(doc, content):
+    title_kr = content.get("title_kr", "")
+    title_en = content.get("title_en", "")
+    date = content.get("date", "")
+    student_id = (content.get("student_id") or "").strip()
+    student_name = (content.get("student_name") or "").strip()
+    title_line = title_en if title_en else title_kr
+    if title_en and title_kr:
+        title_line = f"{title_en} ({title_kr})"
+    if title_line:
+        add_heading(
+            doc, title_line, size=SIZE_TITLE, align="CENTER",
+            space_after=SPACE_HEADING_LV2,
+        )
+    header_bits = []
+    identity = " ".join(x for x in [student_id, student_name] if x)
+    if identity:
+        header_bits.append(identity)
+    if date:
+        header_bits.append(date)
+    if header_bits:
+        add_para(
+            doc, " | ".join(header_bits), align="RIGHT",
+            space_after=SPACE_HEADING_LV1,
+        )
+
+
+def build_minimal_purpose(doc, items):
+    add_heading(doc, "1. 실험 목표", size=SIZE_TITLE,
+                space_before=SPACE_HEADING_LV2, space_after=SPACE_HEADING_LV2)
+    values = [str(x).strip() for x in (items or []) if str(x or "").strip()]
+    if values:
+        add_para(doc, " ".join(values), indent_left=0)
+    else:
+        add_para(doc, "(데이터 부족)")
+
+
+def build_minimal_theory(doc, theory):
+    add_heading(doc, "2. 이론적 배경", size=SIZE_TITLE,
+                space_before=SPACE_HEADING_LV1, space_after=SPACE_HEADING_LV2)
+    if not theory:
+        add_para(doc, "(이론 데이터 부족)")
+        return
+    for idx, section in enumerate(theory, 1):
+        add_heading(
+            doc, f"({idx}) {section.get('topic', '')}",
+            size=SIZE_HEADING, space_after=SPACE_BODY,
+        )
+        items = section.get("items") or section.get("paragraphs") or []
+        for item in items:
+            if isinstance(item, str):
+                add_para(doc, item, indent_left=INDENT_5MM)
+            elif isinstance(item, dict) and item.get("text"):
+                add_para(doc, item.get("text", ""), indent_left=INDENT_5MM)
+
+
+def build_minimal_apparatus_and_chemicals(doc, content):
+    add_heading(doc, "3. 실험 기구 및 시약", size=SIZE_TITLE,
+                space_before=SPACE_HEADING_LV1, space_after=SPACE_HEADING_LV2)
+
+    add_heading(doc, "(1) 실험 기구", size=SIZE_HEADING, space_after=SPACE_BODY)
+    apps = content.get("apparatus") or []
+    if not apps:
+        add_para(doc, "(기구 데이터 부족)")
+    for ap in apps:
+        description = compact_apparatus_description(ap.get("description", ""))
+        detail = f": {description}" if description else ""
+        add_para(doc, f"{ap.get('name', '')}{detail}", indent_left=INDENT_5MM)
+
+    add_heading(doc, "(2) 시약", size=SIZE_HEADING,
+                space_before=SPACE_HEADING_LV2, space_after=SPACE_BODY)
+    chems = content.get("chemicals") or []
+    if not chems:
+        add_para(doc, "(시약 데이터 부족)")
+    for ch in chems:
+        head_parts = [ch.get("formula"), ch.get("molar_mass")]
+        head_parts = [str(x).strip() for x in head_parts if str(x or "").strip()]
+        name = ch.get("name") or ch.get("iupac") or ""
+        head = f"{name} ({', '.join(head_parts)})" if head_parts else name
+        details = []
+        if ch.get("mp_bp"):
+            details.append(f"녹는점/끓는점: {ch['mp_bp']}")
+        if ch.get("density"):
+            details.append(f"밀도: {ch['density']}")
+        if ch.get("properties"):
+            details.append(f"주요 특성: {ch['properties']}")
+        if ch.get("toxicity"):
+            details.append(f"독성/취급: {ch['toxicity']}")
+        suffix = f": {' / '.join(details)}" if details else ""
+        add_para(doc, f"{head}{suffix}", indent_left=INDENT_5MM)
+
+    summary = content.get("chemicals_summary_table") or []
+    if summary:
+        add_heading(doc, "[표 1] 시약 요약", size=SIZE_BODY,
+                    space_before=SPACE_HEADING_LV2, space_after=SPACE_BODY)
+        build_chemicals_summary_table(doc, summary)
+
+
+def build_minimal_procedure(doc, procedure):
+    add_heading(doc, "4. 실험 과정", size=SIZE_TITLE,
+                space_before=SPACE_HEADING_LV1, space_after=SPACE_HEADING_LV2)
+    if not procedure:
+        add_para(doc, "(실험 과정 데이터 부족)")
+        return
+    for sec_idx, sec in enumerate(procedure, 1):
+        if len(procedure) > 1:
+            add_heading(
+                doc, f"({sec_idx}) {sec.get('title', '')}",
+                size=SIZE_HEADING, space_after=SPACE_BODY,
+            )
+        for step_idx, step in enumerate(sec.get("steps", []) or [], 1):
+            if isinstance(step, str):
+                text = step
+                notes = []
+            else:
+                text = step.get("text", "")
+                notes = step.get("notes", []) or []
+            add_para(doc, f"{numbered_marker(step_idx)} {text}", indent_left=INDENT_5MM)
+            for note in notes:
+                add_para(
+                    doc, f"- {strip_manual_numbering(note)}",
+                    indent_left=INDENT_10MM,
+                )
+
+
+def build_minimal_references(doc, refs):
+    if not refs:
+        return
+    add_heading(doc, "5. 참고 문헌", size=SIZE_TITLE,
+                space_before=SPACE_HEADING_LV1, space_after=SPACE_HEADING_LV2)
+    for ref in refs:
+        text = ref_to_string(ref)
+        if text:
+            add_para(doc, text, indent_left=INDENT_5MM)
 
 
 def build_procedure(doc, procedure):
@@ -1373,20 +1536,31 @@ def add_page_number_to_footer(doc):
 def generate_hwpx(content):
     doc = HwpxDocument.new()
     apply_page_layout(doc)
-    apply_default_font(doc, normalize_font_face(content.get("font_face")))
+    apply_default_font(
+        doc,
+        normalize_font_face(content.get("font_face") or content.get("__fontFace")),
+    )
 
-    build_title_page(doc, content)
-    build_purpose(doc, content.get("purpose", []))
-    build_theory(doc, content.get("theory", []), content.get("figures_needed", []))
-    build_apparatus_and_chemicals(doc, content)
-    build_procedure(doc, content.get("procedure", []))
-    build_references(doc, content)
+    if is_minimal_style(content):
+        build_minimal_header(doc, content)
+        build_minimal_purpose(doc, content.get("purpose", []))
+        build_minimal_theory(doc, content.get("theory", []))
+        build_minimal_apparatus_and_chemicals(doc, content)
+        build_minimal_procedure(doc, content.get("procedure", []))
+        build_minimal_references(doc, content.get("references", []))
+    else:
+        build_title_page(doc, content)
+        build_purpose(doc, content.get("purpose", []))
+        build_theory(doc, content.get("theory", []), content.get("figures_needed", []))
+        build_apparatus_and_chemicals(doc, content)
+        build_procedure(doc, content.get("procedure", []))
+        build_references(doc, content)
 
-    try:
-        doc.set_footer_text("- 사전보고서 -")
-        add_page_number_to_footer(doc)
-    except Exception:
-        pass
+        try:
+            doc.set_footer_text("- 사전보고서 -")
+            add_page_number_to_footer(doc)
+        except Exception:
+            pass
 
     return doc
 

@@ -1380,11 +1380,10 @@ def build_minimal_apparatus_and_chemicals(doc, content):
     if not apps:
         add_para(doc, "(기구 데이터 부족)")
     for ap in apps:
-        en = f" ({ap.get('name_en')})" if ap.get("name_en") else ""
         description = ap.get("description", "")
         detail = f": {description}" if description else ""
         name = strip_manual_numbering(ap.get("name", ""))
-        add_para(doc, f"{name}{en}{detail}", indent_left=INDENT_5MM)
+        add_para(doc, f"{name}{detail}", indent_left=INDENT_5MM)
 
     add_heading(doc, "(2) 시약", size=SIZE_HEADING,
                 space_before=SPACE_HEADING_LV2, space_after=SPACE_BODY)
@@ -1405,14 +1404,9 @@ def build_minimal_apparatus_and_chemicals(doc, content):
             details.append(f"주요 특성: {ch['properties']}")
         if ch.get("toxicity"):
             details.append(f"독성/취급: {ch['toxicity']}")
-        suffix = f": {' / '.join(details)}" if details else ""
-        add_para(doc, f"{head}{suffix}", indent_left=INDENT_5MM)
-
-    summary = content.get("chemicals_summary_table") or []
-    if summary:
-        add_heading(doc, "[표 1] 시약 요약", size=SIZE_BODY,
-                    space_before=SPACE_HEADING_LV2, space_after=SPACE_BODY)
-        build_chemicals_summary_table(doc, summary)
+        add_para(doc, head, indent_left=INDENT_5MM, bold=True)
+        for detail in details:
+            add_para(doc, f"- {detail}", indent_left=INDENT_10MM)
 
 
 def build_minimal_procedure(doc, procedure):

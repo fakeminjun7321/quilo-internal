@@ -112,7 +112,6 @@
       <p>
         <label>글꼴:
           <select id="crFontFace" name="fontFace">
-            <option value="hamchorom-batang">함초롬바탕</option>
             <option value="malgun-gothic" selected>맑은 고딕</option>
             <option value="nanum-myeongjo">나눔명조</option>
           </select>
@@ -183,7 +182,6 @@
       <p>
         <label>글꼴:
           <select id="prFontFace" name="fontFace">
-            <option value="hamchorom-batang">함초롬바탕</option>
             <option value="malgun-gothic" selected>맑은 고딕</option>
             <option value="nanum-myeongjo">나눔명조</option>
           </select>
@@ -259,9 +257,9 @@
       <p>
         <label>글꼴:
           <select id="fontFace" name="fontFace">
-            <option value="hamchorom-batang">함초롬바탕</option>
             <option value="malgun-gothic" selected>맑은 고딕</option>
             <option value="nanum-myeongjo">나눔명조</option>
+            <option value="hamchorom-batang" data-hwpx-only="true" hidden disabled>함초롬바탕</option>
           </select>
         </label>
       </p>
@@ -504,6 +502,11 @@
       const crBtn = document.getElementById("crBtn");
       const prForm = document.getElementById("physResultForm");
       const prBtn = document.getElementById("prBtn");
+
+      document
+        .querySelectorAll('#form input[name="format"]')
+        .forEach((el) => el.addEventListener("change", updateChemPreFontOptions));
+      updateChemPreFontOptions();
 
       // 진행 중인 작업 추적용 (중지·재시도 방지)
       let currentJobId = null;
@@ -764,6 +767,28 @@
         return "맑은 고딕";
       }
 
+      function getChemPreFormat() {
+        const formatEl = document.querySelector(
+          '#form input[name="format"]:checked, #form input[name="format"][type="hidden"]'
+        );
+        return formatEl ? formatEl.value : "docx";
+      }
+
+      function updateChemPreFontOptions() {
+        const fontSelect = document.getElementById("fontFace");
+        if (!fontSelect) return;
+        const allowHwpxOnly = getChemPreFormat() === "hwpx";
+        fontSelect
+          .querySelectorAll('option[data-hwpx-only="true"]')
+          .forEach((option) => {
+            option.hidden = !allowHwpxOnly;
+            option.disabled = !allowHwpxOnly;
+          });
+        if (!allowHwpxOnly && fontSelect.value === "hamchorom-batang") {
+          fontSelect.value = "malgun-gothic";
+        }
+      }
+
       function costRangeText(est, krwLo, krwHi) {
         return `$${est.lo.toFixed(2)} ~ $${est.hi.toFixed(2)} (약 ₩${krwLo.toLocaleString()} ~ ₩${krwHi.toLocaleString()})`;
       }
@@ -841,6 +866,8 @@
 
         const model = getSelectedModel();
         const modelLabel = getModelLabel(model);
+        const formatValue = getChemPreFormat();
+        updateChemPreFontOptions();
         const fontFace = document.getElementById("fontFace").value;
 
         // 예상 비용 확인
@@ -873,12 +900,6 @@
         const [y, m, d] = dateStr.split("-");
         fd.append("date", `${y}/ ${m} / ${d}`);
         fd.append("model", model);
-        // selector also catches the hidden hwpx-disabled fallback so UI
-        // gating doesn't accidentally break this submit path.
-        const formatEl = document.querySelector(
-          '#form input[name="format"]:checked, #form input[name="format"][type="hidden"]'
-        );
-        const formatValue = formatEl ? formatEl.value : "docx";
         fd.append("format", formatValue);
         // 스타일 모드 (default | minimal). hwpx-gen.js는 default만 지원하므로
         // hwpx 출력을 고른 경우 서버 쪽에서 minimal을 무시하고 default로 렌더한다.

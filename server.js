@@ -4,7 +4,10 @@ const session = require("express-session");
 const multer = require("multer");
 const path = require("path");
 const crypto = require("crypto");
-const { normalizeFontFace } = require("./lib/document-fonts");
+const {
+  normalizeFontFace,
+  normalizeFontFaceForFormat,
+} = require("./lib/document-fonts");
 // Pipeline registry — 보고서 종류별로 입력 처리 + 생성 함수 묶음.
 // 각 파이프라인은 prepareInput(filesByField, body) → generateContent에 전달할 인자 객체 반환.
 const PIPELINES = {
@@ -568,6 +571,10 @@ app.post(
       requestedFormat === "hwpx" && typeof pipeline.generateHwpx === "function"
         ? "hwpx"
         : "docx";
+    pipelineInput.fontFace = normalizeFontFaceForFormat(
+      pipelineInput.fontFace,
+      format,
+    );
     // 파일명 기반 보고서 번호 추출용 — pipeline이 지정한 fieldname 사용
     const sourceFile =
       filesByField[pipeline.filenameSourceField]?.[0];

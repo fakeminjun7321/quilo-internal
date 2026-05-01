@@ -479,6 +479,7 @@ def build_pcei(doc, content):
 
 def generate_hwpx(content):
     doc = HwpxDocument.new()
+    pre.apply_page_layout(doc)
     pre.apply_default_font(doc, pre.normalize_font_face(content.get("font_face") or content.get("__fontFace")))
     build_header(doc, content)
     build_purpose(doc, content)

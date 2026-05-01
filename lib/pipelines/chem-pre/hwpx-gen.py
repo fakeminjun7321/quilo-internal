@@ -47,8 +47,15 @@ def numbered_marker(idx):
     return f"({idx})"
 
 
-# A4 page is 59528 HWPUNIT wide with 8504 left/right margins → 42520 usable.
-TABLE_WIDTH = 42000
+# A4 page is 59528 HWPUNIT wide. The skeleton template used 30 mm left/right
+# margins, which made generated reports feel cramped. Use 20 mm margins and
+# size tables to the wider usable line length.
+PAGE_WIDTH = 59528
+PAGE_MARGIN_LR = 5668       # 20 mm
+PAGE_MARGIN_TOP = 5668      # 20 mm
+PAGE_MARGIN_BOTTOM = 5668   # 20 mm
+PAGE_HEADER_FOOTER = 4252   # 15 mm
+TABLE_WIDTH = 47600
 
 NS_HH = "{http://www.hancom.co.kr/hwpml/2011/head}"
 NS_HP = "{http://www.hancom.co.kr/hwpml/2011/paragraph}"
@@ -171,6 +178,33 @@ def apply_default_font(doc, face=DEFAULT_FONT_FACE):
             changed = True
     if changed:
         hdr.mark_dirty()
+
+
+def apply_page_layout(doc):
+    """Widen the writing area and normalize page margins.
+
+    The blank HWPX template ships with 30 mm side margins. That leaves only
+    ~15 cm of text width on A4 and makes Korean report paragraphs feel boxed in.
+    """
+    changed = False
+    for sec in getattr(doc.oxml, "sections", []):
+        for page_pr in sec.element.iter(f"{NS_HP}pagePr"):
+            page_pr.set("width", str(PAGE_WIDTH))
+            page_pr.set("height", "84186")
+            margin = page_pr.find(f"{NS_HP}margin")
+            if margin is not None:
+                margin.set("left", str(PAGE_MARGIN_LR))
+                margin.set("right", str(PAGE_MARGIN_LR))
+                margin.set("top", str(PAGE_MARGIN_TOP))
+                margin.set("bottom", str(PAGE_MARGIN_BOTTOM))
+                margin.set("header", str(PAGE_HEADER_FOOTER))
+                margin.set("footer", str(PAGE_HEADER_FOOTER))
+                margin.set("gutter", "0")
+                changed = True
+    if changed:
+        for sec in getattr(doc.oxml, "sections", []):
+            if hasattr(sec, "mark_dirty"):
+                sec.mark_dirty()
 
 
 def _next_id(container):
@@ -552,9 +586,9 @@ def add_para(doc, text, *, base_size=SIZE_BODY, bold=False, align="LEFT",
 
 # spacing constants (HWPUNIT, 283 ≈ 1 mm). HWPX looked too dense after
 # converting to PDF, so body paragraphs now get visible breathing room by default.
-SPACE_BODY = 360          # paragraph separation after numbered/body paragraphs
-SPACE_HEADING_LV1 = 900   # 1./2. headings: clear gap before major sections
-SPACE_HEADING_LV2 = 480   # 가./나. headings
+SPACE_BODY = 700          # paragraph separation after numbered/body paragraphs
+SPACE_HEADING_LV1 = 1100  # 1./2. headings: clear gap before major sections
+SPACE_HEADING_LV2 = 650   # 가./나. headings
 
 
 def add_heading(doc, text, *, size=SIZE_TITLE, align="LEFT", indent_left=0,
@@ -752,8 +786,8 @@ def build_chemicals_summary_table(doc, rows):
     )
 
     # 컬럼 너비 비율: 시약명·화학식·주요특성을 넓게, 몰질량·녹는점은 좁게.
-    # 합 = TABLE_WIDTH (42000). 시약 9000 / 화학식 8500 / 몰질량 6000 / 녹는점 6500 / 주요 특성 12000
-    col_widths = [9000, 8500, 6000, 6500, 12000]
+    # 합 = TABLE_WIDTH. 시약 10200 / 화학식 9500 / 몰질량 6800 / 녹는점 7300 / 주요 특성 13800
+    col_widths = [10200, 9500, 6800, 7300, 13800]
     for c, w in enumerate(col_widths):
         for r in range(len(rows) + 1):
             try:
@@ -1002,6 +1036,7 @@ def add_page_number_to_footer(doc):
 
 def generate_hwpx(content):
     doc = HwpxDocument.new()
+    apply_page_layout(doc)
     apply_default_font(doc, normalize_font_face(content.get("font_face")))
 
     build_title_page(doc, content)

@@ -70,6 +70,8 @@ SIZE_TITLE = 1500         # 영문 (한글) 제목 (15 pt) — 한 줄에 들어
                           # 1./2./3./4. 헤딩에도 같은 크기 사용
 SIZE_HEADING = 1300       # 가./나. 한글 단계 헤딩 (13 pt)
 SIZE_BODY = 1100          # 본문 (11 pt)
+SIZE_TABLE_HEADER = 1000  # 표 머리글 (10 pt)
+SIZE_TABLE_BODY = 950     # 표 본문 (9.5 pt) — 11 pt는 좁은 셀에서 답답함
 SIZE_CAPTION = 1000       # 그림 캡션 (10 pt)
 SIZE_LINK = 900           # Google 검색 링크 (9 pt)
 
@@ -80,6 +82,9 @@ INDENT_10MM = 2835
 # 1.6 line spacing — Hangul default. 130 (docx 1.3) was too tight and made
 # adjacent lines look cramped (user reported "자간이 이상함").
 LINE_SPACING_PERCENT = 160
+TABLE_LINE_SPACING_PERCENT = 130
+TABLE_CELL_MARGIN_X = 180
+TABLE_CELL_MARGIN_Y = 100
 
 # Figure box border color (gray, matches docx generator)
 FIGURE_BORDER_COLOR = "#888888"
@@ -548,7 +553,7 @@ def looks_like_standalone_equation(text):
     outside_braces = re.sub(r"\{[^{}]*\}", "", s)
     # If Korean prose exists outside numerator/denominator labels, keep it as a
     # normal paragraph. Formula-only lines may still contain Korean inside {...}.
-    if len(re.findall(r"[가-힣]", outside_braces)) > 4:
+    if re.search(r"[가-힣]", outside_braces):
         return False
     has_operator = bool(
         re.search(
@@ -573,8 +578,11 @@ def normalize_equation_markers(text):
         return s
 
     stripped = strip_manual_numbering(s)
-    if looks_like_standalone_equation(stripped):
-        return f"{{{{EQ:{normalize_equation_script(stripped)}}}}}"
+    if (
+        re.search(r"https?://|www\.", stripped, re.I)
+        or re.match(r"^\s*\[\d+\]", stripped)
+    ):
+        return s
 
     labeled = re.match(
         r"^(.{0,60}?(?:반응식|수득률|계산식|공식|formula|equation|yield)[^:：]*[:：]\s*)(.+)$",
@@ -583,6 +591,9 @@ def normalize_equation_markers(text):
     )
     if labeled and looks_like_standalone_equation(labeled.group(2)):
         return f"{labeled.group(1)}{{{{EQ:{normalize_equation_script(labeled.group(2))}}}}}"
+
+    if looks_like_standalone_equation(stripped):
+        return f"{{{{EQ:{normalize_equation_script(stripped)}}}}}"
 
     return s
 
@@ -903,9 +914,29 @@ def _url_encode(s):
     return quote(s, safe="")
 
 
+def set_cell_margins(cell, left=TABLE_CELL_MARGIN_X, right=TABLE_CELL_MARGIN_X,
+                     top=TABLE_CELL_MARGIN_Y, bottom=TABLE_CELL_MARGIN_Y):
+    cell.element.set("hasMargin", "1")
+    margin = cell.element.find(f"{NS_HP}cellMargin")
+    if margin is None:
+        margin = etree.SubElement(cell.element, f"{NS_HP}cellMargin")
+    margin.set("left", str(left))
+    margin.set("right", str(right))
+    margin.set("top", str(top))
+    margin.set("bottom", str(bottom))
+    try:
+        cell.table.mark_dirty()
+    except Exception:
+        pass
+
+
 def _replace_cell_with_styled(doc, cell, text, *, size=SIZE_BODY, bold=False,
-                              italic=False, align="LEFT", color=None):
+                              italic=False, align="LEFT", color=None,
+                              line_spacing=LINE_SPACING_PERCENT,
+                              cell_margin=True):
     """erase any existing paragraphs in `cell` and add a single styled one."""
+    if cell_margin:
+        set_cell_margins(cell)
     # remove pre-existing paragraphs (set_cell_text leaves an empty one)
     parent = cell.element
     for p in parent.findall(f"{NS_HP}subList/{NS_HP}p"):
@@ -915,7 +946,7 @@ def _replace_cell_with_styled(doc, cell, text, *, size=SIZE_BODY, bold=False,
         p.getparent().remove(p)
 
     para_pr = make_para_pr(
-        doc, align=align, line_spacing=LINE_SPACING_PERCENT
+        doc, align=align, line_spacing=line_spacing
     )
     p = cell.add_paragraph("", para_pr_id_ref=para_pr)
     tokens = tokenize(text)
@@ -942,7 +973,7 @@ def _replace_cell_with_styled(doc, cell, text, *, size=SIZE_BODY, bold=False,
 def build_chemicals_summary_table(doc, rows):
     if not rows:
         return
-    headers = ["시약", "화학식", "몰질량(g/mol)", "녹는점/끓는점", "주요 특성"]
+    headers = ["시약", "화학식", "몰질량 (g/mol)", "녹는점/끓는점", "주요 특성"]
     solid_id = make_solid_border_fill(doc)
     shaded_id = make_shaded_border_fill(doc)
 
@@ -953,9 +984,9 @@ def build_chemicals_summary_table(doc, rows):
         border_fill_id_ref=solid_id,
     )
 
-    # 컬럼 너비 비율: 시약명·화학식·주요특성을 넓게, 몰질량·녹는점은 좁게.
-    # 합 = TABLE_WIDTH. 시약 10200 / 화학식 9500 / 몰질량 6800 / 녹는점 7300 / 주요 특성 13800
-    col_widths = [10200, 9500, 6800, 7300, 13800]
+    # 합 = TABLE_WIDTH. 표 전용 작은 글자와 함께 헤더가 어색하게 쪼개지지
+    # 않도록 몰질량/녹는점 열을 조금 넓히고, 셀 안쪽 여백을 둔다.
+    col_widths = [9400, 7900, 8200, 8600, 13500]
     for c, w in enumerate(col_widths):
         for r in range(len(rows) + 1):
             try:
@@ -968,7 +999,13 @@ def build_chemicals_summary_table(doc, rows):
         cell = table.cell(0, c)
         cell.element.set("borderFillIDRef", str(shaded_id))
         _replace_cell_with_styled(
-            doc, cell, h, size=SIZE_BODY, bold=True, align="CENTER",
+            doc,
+            cell,
+            h,
+            size=SIZE_TABLE_HEADER,
+            bold=True,
+            align="CENTER",
+            line_spacing=TABLE_LINE_SPACING_PERCENT,
         )
 
     # data rows
@@ -983,9 +1020,14 @@ def build_chemicals_summary_table(doc, rows):
         for c_idx, val in enumerate(cells):
             cell = table.cell(r_idx, c_idx)
             cell.element.set("borderFillIDRef", str(solid_id))
-            align = "CENTER" if c_idx in (2, 3) else "LEFT"
+            align = "CENTER" if c_idx in (1, 2, 3) else "LEFT"
             _replace_cell_with_styled(
-                doc, cell, val, size=SIZE_BODY, align=align,
+                doc,
+                cell,
+                val,
+                size=SIZE_TABLE_BODY,
+                align=align,
+                line_spacing=TABLE_LINE_SPACING_PERCENT,
             )
 
 
@@ -1237,7 +1279,8 @@ def _postprocess_equations(hwpx_path):
     input on the first call). So we write to a sibling temp file, then
     atomically replace the original.
 
-    Failures are non-fatal: we leave the original hwpx in place.
+    Failures are fatal for HWPX output. Otherwise users can receive a document
+    with raw `{{EQ:...}}` placeholders or equation scripts exposed as text.
     """
     try:
         from pathlib import Path
@@ -1283,12 +1326,16 @@ def _postprocess_equations(hwpx_path):
                     )
             else:
                 tmp_out.unlink()
+            issues = hwpx_equation_tool.validate_hwpx_equations(src)
+            if issues:
+                joined = "; ".join(issues[:5])
+                raise RuntimeError(f"equation validation failed: {joined}")
         except Exception:
             if tmp_out.exists():
                 tmp_out.unlink()
             raise
     except Exception as e:
-        print(f"[hwpx-gen] equation post-process skipped: {e}", file=sys.stderr)
+        raise RuntimeError(f"HWPX equation post-process failed: {e}") from e
 
 
 def main():

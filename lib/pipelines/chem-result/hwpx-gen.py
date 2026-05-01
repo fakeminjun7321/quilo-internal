@@ -261,7 +261,13 @@ def add_table(doc, headers, rows, caption=None):
         cell = table.cell(0, c)
         cell.element.set("borderFillIDRef", str(shaded_id))
         pre._replace_cell_with_styled(
-            doc, cell, text, size=pre.SIZE_BODY, bold=True, align="CENTER",
+            doc,
+            cell,
+            text,
+            size=pre.SIZE_TABLE_HEADER,
+            bold=True,
+            align="CENTER",
+            line_spacing=pre.TABLE_LINE_SPACING_PERCENT,
         )
 
     for r_idx, row in enumerate(rows, 1):
@@ -272,8 +278,9 @@ def add_table(doc, headers, rows, caption=None):
                 doc,
                 cell,
                 row[c_idx] if c_idx < len(row) else "",
-                size=pre.SIZE_BODY,
+                size=pre.SIZE_TABLE_BODY,
                 align="CENTER",
+                line_spacing=pre.TABLE_LINE_SPACING_PERCENT,
             )
     if caption:
         pre.add_para(

@@ -26,9 +26,20 @@
           <li>업로드한 PDF 내용은 AI 분석을 위해 외부 서버(Anthropic)로 전송됩니다. 민감 정보는 업로드하지 마세요.</li>
           <li>운영자는 보고서의 정확성, 서비스의 가용성, 사용으로 인한 어떠한 손해에 대해서도 책임을 지지 않습니다.</li>
         </ol>
+        <p class="hint">
+          서비스 이용 전
+          <a href="/terms.html" target="_blank" rel="noopener">이용약관</a>,
+          <a href="/privacy.html" target="_blank" rel="noopener">개인정보처리방침</a>,
+          <a href="/refund.html" target="_blank" rel="noopener">환불정책</a>을 확인하세요.
+        </p>
+        <label>
+          <input type="checkbox" id="age14" required />
+          <strong>만 14세 이상입니다 (필수)</strong>
+        </label>
+        <br />
         <label>
           <input type="checkbox" id="agree" required />
-          <strong>위 모든 사항을 이해했고 동의합니다 (필수)</strong>
+          <strong>위 내용과 약관·개인정보처리방침·환불정책을 이해했고 동의합니다 (필수)</strong>
         </label>
       </div>
 
@@ -45,8 +56,12 @@
 
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
+        if (!document.getElementById("age14").checked) {
+          err.textContent = "만 14세 이상인 경우에만 이용할 수 있습니다.";
+          return;
+        }
         if (!document.getElementById("agree").checked) {
-          err.textContent = "면책 조항에 동의해야 로그인할 수 있습니다.";
+          err.textContent = "약관과 고지 사항에 동의해야 로그인할 수 있습니다.";
           return;
         }
         err.textContent = "";
@@ -59,6 +74,8 @@
             body: JSON.stringify({
               username: document.getElementById("username").value,
               password: document.getElementById("password").value,
+              age14Confirmed: document.getElementById("age14").checked,
+              termsAccepted: document.getElementById("agree").checked,
             }),
           });
           const data = await res.json();
@@ -71,5 +88,10 @@
         }
       });
     </script>
+    <footer class="site-footer">
+      <a href="/terms.html">이용약관</a>
+      <a href="/privacy.html">개인정보처리방침</a>
+      <a href="/refund.html">환불정책</a>
+    </footer>
   </body>
 </html>

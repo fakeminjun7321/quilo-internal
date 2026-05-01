@@ -15,6 +15,12 @@
 
     <h1>보고서 작성 툴</h1>
 
+    <div class="notice compliance-notice">
+      <strong>학습 보조 초안 생성 도구입니다.</strong>
+      본인이 이용 권한을 가진 파일만 업로드하고, 생성 결과는 반드시 직접 검토·수정 후 사용하세요.
+      업로드 파일은 AI 처리 과정에서 외부 처리업체로 전송될 수 있으며, 생성 파일은 24시간만 보관됩니다.
+    </div>
+
     <nav class="page-tabs" aria-label="화면 전환">
       <button type="button" class="active" data-tab="reports">보고서 작성</button>
       <button type="button" data-tab="files">내 파일</button>
@@ -69,6 +75,12 @@
       <p>
         <label>실험 매뉴얼 PDF (선택):
           <input id="crManual" name="manual" type="file" accept="application/pdf" />
+        </label>
+      </p>
+      <p class="policy-check">
+        <label>
+          <input type="checkbox" required />
+          본인이 이용 권한을 가진 파일만 업로드하며, 생성물은 학습 보조 초안으로 직접 검토·수정 후 사용합니다.
         </label>
       </p>
       <p>
@@ -162,6 +174,12 @@
           <input id="prPhotos" name="photos" type="file" accept=".png,.jpg,.jpeg" multiple />
         </label>
       </p>
+      <p class="policy-check">
+        <label>
+          <input type="checkbox" required />
+          본인이 이용 권한을 가진 파일만 업로드하며, 생성물은 학습 보조 초안으로 직접 검토·수정 후 사용합니다.
+        </label>
+      </p>
       <p>
         <label>날짜:
           <input id="prDate" name="date" type="date" required />
@@ -210,6 +228,12 @@
       <p>
         <label>실험 매뉴얼 PDF:
           <input id="manual" name="manual" type="file" accept="application/pdf" required />
+        </label>
+      </p>
+      <p class="policy-check">
+        <label>
+          <input type="checkbox" required />
+          본인이 이용 권한을 가진 파일만 업로드하며, 생성물은 학습 보조 초안으로 직접 검토·수정 후 사용합니다.
         </label>
       </p>
       <p>
@@ -370,8 +394,16 @@
       </div>
     </section>
 
+    <footer class="site-footer">
+      <a href="/terms.html">이용약관</a>
+      <a href="/privacy.html">개인정보처리방침</a>
+      <a href="/refund.html">환불정책</a>
+    </footer>
+
     <script>
       let currentStudentId = "";
+      const USE_POLICY_NOTE =
+        "학습 보조 초안입니다. 본인이 이용 권한을 가진 파일만 업로드하고, 반드시 직접 검토·수정 후 사용하세요.";
 
       function normalizeStudentId(value) {
         return String(value || "").trim().slice(0, 20);
@@ -1013,7 +1045,7 @@
             ["PDF", `${est.sizeKB}KB`],
             ["예상 비용", costRangeText(est, krwLo, krwHi)],
           ],
-          note: "실제 비용은 완료 후 표시됩니다.",
+          note: `실제 비용은 완료 후 표시됩니다. ${USE_POLICY_NOTE}`,
         });
         if (!ok) return;
 
@@ -1120,7 +1152,7 @@
             ["총 크기", `${est.totalKB}KB`],
             ["예상 비용", costRangeText(est, krwLo, krwHi)],
           ],
-          note: "실제 비용은 완료 후 표시됩니다.",
+          note: `실제 비용은 완료 후 표시됩니다. ${USE_POLICY_NOTE}`,
         });
         if (!ok) return;
 
@@ -1222,7 +1254,7 @@
             ["총 크기", `${est.totalKB}KB`],
             ["예상 비용", costRangeText(est, krwLo, krwHi)],
           ],
-          note: prStyle === "minimal" ? "간단 양식으로 생성합니다." : "기본 평가 기준을 적용합니다.",
+          note: `${prStyle === "minimal" ? "간단 양식으로 생성합니다." : "기본 평가 기준을 적용합니다."} ${USE_POLICY_NOTE}`,
         });
         if (!ok) return;
 

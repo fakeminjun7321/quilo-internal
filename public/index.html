@@ -203,17 +203,6 @@
       -->
       <input type="hidden" name="prModel" value="claude-opus-4-7" />
       <p>
-        <strong>보고서 스타일:</strong><br />
-        <label>
-          <input type="radio" name="prStyle" value="default" checked />
-          기본 양식
-        </label><br />
-        <label>
-          <input type="radio" name="prStyle" value="minimal" />
-          간단 양식
-        </label>
-      </p>
-      <p>
         <label>글꼴:
           <select id="prFontFace" name="fontFace">
             <option value="malgun-gothic" selected>맑은 고딕</option>
@@ -1234,10 +1223,6 @@
           document.querySelector('input[name="prModel"]')?.value ||
           "claude-opus-4-7";
         const modelLabel = getModelLabel(prModel);
-        const prStyle =
-          document.querySelector('input[name="prStyle"]:checked')?.value ||
-          "default";
-        const prStyleLabel = prStyle === "minimal" ? "간단 양식" : "기본 양식";
         const prFontFace = document.getElementById("prFontFace").value;
 
         const photoBytes = photos.reduce((s, p) => s + p.size, 0);
@@ -1260,13 +1245,13 @@
           title: "물리 결과보고서 생성",
           rows: [
             ["모델", modelLabel],
-            ["스타일", prStyleLabel],
+            ["양식", "기본 양식"],
             ["글꼴", getFontLabel(prFontFace)],
             ["입력", `${inputLabel}${photos.length > 0 ? `, 사진 ${photos.length}장` : ""}${manual ? ", 매뉴얼" : ""}`],
             ["총 크기", `${est.totalKB}KB`],
             ["예상 비용", costRangeText(est, krwLo, krwHi)],
           ],
-          note: `${prStyle === "minimal" ? "간단 양식으로 생성합니다." : "기본 평가 기준을 적용합니다."} ${USE_POLICY_NOTE}`,
+          note: `기본 평가 기준을 적용합니다. ${USE_POLICY_NOTE}`,
         });
         if (!ok) return;
 
@@ -1288,7 +1273,6 @@
         fd.append("date", `${y}/ ${m} / ${d}`);
         fd.append("studentId", currentStudentId);
         fd.append("model", prModel);
-        fd.append("style", prStyle);
         fd.append("fontFace", prFontFace);
         appendPolicyAcknowledgements(fd);
 

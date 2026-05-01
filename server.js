@@ -123,10 +123,6 @@ const PIPELINES = {
       const photos = filesByField.photos || [];
 
       const studentId = String(body.studentId || "").trim().slice(0, 20);
-      // 스타일 모드: "default" (학교 양식 5p 강제) | "minimal" (필요한 내용만 7~9p)
-      const style = String(body.style || "default").trim() === "minimal"
-        ? "minimal"
-        : "default";
 
       return {
         capBuffer: cap?.buffer || null,
@@ -141,11 +137,10 @@ const PIPELINES = {
         })),
         studentId,
         fontFace: normalizeFontFace(body.fontFace),
-        style,
+        style: "default",
       };
     },
     // 파일명 형식: {학번}{이름}_{실험제목}.docx
-    // minimal 모드는 title 대신 title_en/title_kr로 응답하므로 양쪽 모두 fallback.
     buildFilename(content, ctx) {
       const id = sanitizeForFilename(ctx.studentId || "");
       const name = sanitizeForFilename(ctx.userName || "");

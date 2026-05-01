@@ -687,6 +687,7 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
       date,
       signal: ac.signal,
       model,
+      outputFormat: format,
       onProgress: (msg) => pushProgress(job, msg),
     });
     const fontFace = normalizeFontFace(pipelineInput.fontFace);

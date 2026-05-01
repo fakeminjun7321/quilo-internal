@@ -309,8 +309,11 @@ def build_header(doc, content):
 def build_purpose(doc, content):
     pre.add_heading(doc, "1. 실험목표", size=pre.SIZE_TITLE, space_before=pre.SPACE_HEADING_LV1, space_after=pre.SPACE_HEADING_LV2)
     pre.add_heading(doc, "가. 실험목표", size=pre.SIZE_HEADING, space_after=pre.SPACE_BODY)
-    for idx, item in enumerate(as_list(content.get("purpose")), 1):
-        pre.add_para(doc, f"{pre.numbered_marker(idx)} {item}", indent_left=pre.INDENT_5MM)
+    counter = 0
+    for item in as_list(content.get("purpose")):
+        counter += 1
+        if not pre.add_numbered_item(doc, counter, item):
+            counter -= 1
 
 
 def build_theory(doc, content):
@@ -318,23 +321,30 @@ def build_theory(doc, content):
     for s_idx, section in enumerate(as_list(content.get("theory"))):
         kr = pre.KR_NUM[s_idx] if s_idx < len(pre.KR_NUM) else str(s_idx + 1)
         pre.add_heading(doc, f"{kr}. {section.get('topic', '')}", size=pre.SIZE_HEADING, space_after=pre.SPACE_BODY)
-        for idx, item in enumerate(as_list(section.get("items") or section.get("paragraphs")), 1):
+        counter = 0
+        for item in as_list(section.get("items") or section.get("paragraphs")):
             if isinstance(item, str):
-                pre.add_para(doc, f"{pre.numbered_marker(idx)} {item}", indent_left=pre.INDENT_5MM)
+                counter += 1
+                if not pre.add_numbered_item(doc, counter, item):
+                    counter -= 1
 
 
 def build_apparatus(doc, content):
     pre.add_heading(doc, "3. 실험 기구 및 시약", size=pre.SIZE_TITLE, space_before=pre.SPACE_HEADING_LV1, space_after=pre.SPACE_HEADING_LV2)
     pre.add_heading(doc, "가. 실험 기구", size=pre.SIZE_HEADING, space_after=pre.SPACE_BODY)
-    for idx, item in enumerate(as_list(content.get("apparatus")), 1):
+    counter = 0
+    for item in as_list(content.get("apparatus")):
         if isinstance(item, dict):
             text = f"{item.get('name', '')}: {item.get('description', '')}"
         else:
             text = str(item)
-        pre.add_para(doc, f"{pre.numbered_marker(idx)} {text}", indent_left=pre.INDENT_5MM)
+        counter += 1
+        if not pre.add_numbered_item(doc, counter, text):
+            counter -= 1
 
     pre.add_heading(doc, "나. 시약", size=pre.SIZE_HEADING, space_after=pre.SPACE_BODY)
-    for idx, item in enumerate(as_list(content.get("chemicals")), 1):
+    counter = 0
+    for item in as_list(content.get("chemicals")):
         if isinstance(item, dict):
             title = item.get("name") or item.get("iupac") or ""
             formula = item.get("formula") or ""
@@ -348,7 +358,9 @@ def build_apparatus(doc, content):
             text = f"{title} ({formula}) {desc}".strip()
         else:
             text = str(item)
-        pre.add_para(doc, f"{pre.numbered_marker(idx)} {text}", indent_left=pre.INDENT_5MM)
+        counter += 1
+        if not pre.add_numbered_item(doc, counter, text):
+            counter -= 1
 
 
 def build_procedure(doc, content):
@@ -356,9 +368,12 @@ def build_procedure(doc, content):
     for sec_idx, section in enumerate(as_list(content.get("procedure"))):
         kr = pre.KR_NUM[sec_idx] if sec_idx < len(pre.KR_NUM) else str(sec_idx + 1)
         pre.add_heading(doc, f"{kr}. {section.get('title', '')}", size=pre.SIZE_HEADING, space_after=pre.SPACE_BODY)
-        for idx, step in enumerate(as_list(section.get("steps")), 1):
+        counter = 0
+        for step in as_list(section.get("steps")):
             text = step if isinstance(step, str) else step.get("text", "")
-            pre.add_para(doc, f"{pre.numbered_marker(idx)} {text}", indent_left=pre.INDENT_5MM)
+            counter += 1
+            if not pre.add_numbered_item(doc, counter, text):
+                counter -= 1
 
 
 def build_data(doc, content):
@@ -386,12 +401,15 @@ def build_data(doc, content):
             )
 
         stats = as_list(exp.get("stats"))
-        for idx, stat in enumerate(stats, 1):
+        counter = 0
+        for stat in stats:
             if isinstance(stat, dict):
                 text = f"{stat.get('label', '')}: {stat.get('value', '')}"
             else:
                 text = str(stat)
-            pre.add_para(doc, f"{pre.numbered_marker(idx)} {text}", indent_left=pre.INDENT_5MM)
+            counter += 1
+            if not pre.add_numbered_item(doc, counter, text):
+                counter -= 1
 
         for photo_idx in as_list(exp.get("photo_indices")):
             try:
@@ -446,8 +464,11 @@ def build_discussion(doc, content):
         if not values:
             continue
         pre.add_heading(doc, title, size=pre.SIZE_HEADING, space_after=pre.SPACE_BODY)
-        for idx, item in enumerate(values, 1):
-            pre.add_para(doc, f"{pre.numbered_marker(idx)} {item}", indent_left=pre.INDENT_5MM)
+        counter = 0
+        for item in values:
+            counter += 1
+            if not pre.add_numbered_item(doc, counter, item):
+                counter -= 1
 
 
 def build_references(doc, content):
@@ -499,11 +520,24 @@ def main():
     else:
         content = json.loads(sys.stdin.read())
     doc = generate_hwpx(content)
-    data = doc.to_bytes()
     if len(sys.argv) >= 3:
-        Path(sys.argv[2]).write_bytes(data)
+        target = Path(sys.argv[2])
+        doc.save_to_path(str(target))
+        pre._postprocess_equations(target)
     else:
-        sys.stdout.buffer.write(data)
+        import os
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix=".hwpx", delete=False) as tf:
+            tmp_path = Path(tf.name)
+        try:
+            doc.save_to_path(str(tmp_path))
+            pre._postprocess_equations(tmp_path)
+            sys.stdout.buffer.write(tmp_path.read_bytes())
+        finally:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
 
 
 if __name__ == "__main__":

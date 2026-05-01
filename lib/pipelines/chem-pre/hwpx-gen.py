@@ -466,8 +466,132 @@ _MARKER_RE = re.compile(
     r"\^\{[^}]+\})"              # ^{sup}
 )
 
+EQ_PREFIXES = ("{{EQN-LATEX:", "{{EQ-LATEX:", "{{EQN:", "{{EQ:")
+MANUAL_NUMBER_RE = re.compile(
+    r"^\s*(?:(?:\(\s*\d{1,2}\s*\))|(?:\d{1,2}[.)])|[①-⑳❶-❿])\s*"
+)
 
-def tokenize(text):
+
+def find_equation_spans(text):
+    """Return (start, end, kind, body) spans for approved equation markers.
+
+    This mirrors lib/equation/hwpx_equation_tool.py enough for generation-time
+    tokenization. It is intentionally local so HWPX text styling does not parse
+    `_{} / ^{}` markers inside equation scripts before the post-processor runs.
+    """
+    spans = []
+    pos = 0
+    while True:
+        starts = [
+            (text.find(prefix, pos), prefix)
+            for prefix in EQ_PREFIXES
+            if text.find(prefix, pos) >= 0
+        ]
+        if not starts:
+            return spans
+
+        start, prefix = min(starts, key=lambda item: item[0])
+        body_start = start + len(prefix)
+        kind = prefix[2:-1]
+        depth = 0
+        i = body_start
+        while i < len(text):
+            char = text[i]
+            if char == "\\":
+                i += 2
+                continue
+            if char == "{":
+                depth += 1
+                i += 1
+                continue
+            if char == "}":
+                if depth == 0 and i + 1 < len(text) and text[i + 1] == "}":
+                    spans.append((start, i + 2, kind, text[body_start:i]))
+                    pos = i + 2
+                    break
+                if depth > 0:
+                    depth -= 1
+                i += 1
+                continue
+            i += 1
+        else:
+            return spans
+
+
+def has_equation_placeholder(text):
+    return bool(find_equation_spans(text or ""))
+
+
+def is_equation_placeholder_only(text):
+    s = (text or "").strip()
+    spans = find_equation_spans(s)
+    return len(spans) == 1 and spans[0][0] == 0 and spans[0][1] == len(s)
+
+
+def strip_manual_numbering(text):
+    return MANUAL_NUMBER_RE.sub("", str(text or "")).strip()
+
+
+def normalize_equation_script(script):
+    s = str(script or "").strip()
+    s = s.replace("→", "->").replace("⟶", "->").replace("⇌", "<->")
+    s = s.replace("×", " times ").replace("·", " cdot ")
+    s = re.sub(r"\s+([_^])\s*", r"\1", s)
+    s = re.sub(r"\s{2,}", " ", s)
+    return s.strip()
+
+
+def looks_like_standalone_equation(text):
+    s = normalize_equation_script(strip_manual_numbering(text))
+    if not s or has_equation_placeholder(s):
+        return False
+    outside_braces = re.sub(r"\{[^{}]*\}", "", s)
+    # If Korean prose exists outside numerator/denominator labels, keep it as a
+    # normal paragraph. Formula-only lines may still contain Korean inside {...}.
+    if len(re.findall(r"[가-힣]", outside_braces)) > 4:
+        return False
+    has_operator = bool(
+        re.search(
+            r"\s(over|sqrt|sum|int|times)\s|->|<->|=|≈|~|\+",
+            s,
+            re.I,
+        )
+    )
+    has_formula_bits = bool(
+        re.search(r"[A-Za-z][A-Za-z0-9]*[_^]\{?[-+A-Za-z0-9]+", s)
+        or re.search(r"\{[^{}]+\}\s+over\s+\{[^{}]+\}", s, re.I)
+        or re.search(r"[A-Za-z%][A-Za-z0-9_{}% ]*\s*=\s*[-+A-Za-z0-9{(%]", s)
+        or re.search(r"\d", s)
+    )
+    return has_operator and has_formula_bits
+
+
+def normalize_equation_markers(text):
+    """Promote raw equation-script lines to approved HWPX equation markers."""
+    s = str(text or "")
+    if has_equation_placeholder(s):
+        return s
+
+    stripped = strip_manual_numbering(s)
+    if looks_like_standalone_equation(stripped):
+        return f"{{{{EQ:{normalize_equation_script(stripped)}}}}}"
+
+    labeled = re.match(
+        r"^(.{0,60}?(?:반응식|수득률|계산식|공식|formula|equation|yield)[^:：]*[:：]\s*)(.+)$",
+        stripped,
+        re.I,
+    )
+    if labeled and looks_like_standalone_equation(labeled.group(2)):
+        return f"{labeled.group(1)}{{{{EQ:{normalize_equation_script(labeled.group(2))}}}}}"
+
+    return s
+
+
+def is_equation_only_text(text):
+    return is_equation_placeholder_only(normalize_equation_markers(text))
+
+
+def tokenize_marker_text(text):
     """convert text into [(plain, bold, italic, sub, sup), ...] tokens.
 
     sub/sup precedence:
@@ -508,6 +632,27 @@ def tokenize(text):
     return [t for t in out if t[0]]
 
 
+def tokenize(text):
+    """Tokenize rich text while preserving HWPX equation placeholders intact."""
+    if not text:
+        return []
+
+    spans = find_equation_spans(text)
+    if not spans:
+        return tokenize_marker_text(text)
+
+    out = []
+    pos = 0
+    for start, end, _kind, _body in spans:
+        if start > pos:
+            out.extend(tokenize_marker_text(text[pos:start]))
+        out.append((text[start:end], False, False, False, False))
+        pos = end
+    if pos < len(text):
+        out.extend(tokenize_marker_text(text[pos:]))
+    return [t for t in out if t[0]]
+
+
 def tokens_plain(text):
     """fully strip every marker — for table cells / footers / captions that
     can't carry inline runs.
@@ -524,14 +669,7 @@ def _is_equation_only(text):
     그 경우 사용자 보고서 양식(가운데 정렬된 단독 식 줄)을 따라가도록
     automatic CENTER 정렬을 적용한다.
     """
-    s = (text or "").strip()
-    if not s.startswith("{{") or not s.endswith("}}"):
-        return False
-    inner = s[2:-2]
-    if "}}" in inner or "{{" in inner:
-        return False  # 여러 placeholder 또는 텍스트 섞임
-    head = inner.split(":", 1)[0]
-    return head in ("EQ", "EQN", "EQ-LATEX", "EQN-LATEX")
+    return is_equation_placeholder_only(text)
 
 
 def add_para(doc, text, *, base_size=SIZE_BODY, bold=False, align="LEFT",
@@ -546,6 +684,7 @@ def add_para(doc, text, *, base_size=SIZE_BODY, bold=False, align="LEFT",
     정렬 + 들여쓰기 0으로 보정하여 사용자 보고서 양식(검은 박스 안 식)에
     가깝게 표시한다.
     """
+    text = normalize_equation_markers(text)
     if _is_equation_only(text):
         align = "CENTER"
         indent_left = 0
@@ -606,6 +745,35 @@ def add_heading(doc, text, *, size=SIZE_TITLE, align="LEFT", indent_left=0,
     )
 
 
+def add_numbered_item(doc, idx, text, *, indent_left=INDENT_5MM,
+                      base_size=SIZE_BODY, space_after=None):
+    """Add a numbered prose item, but keep formula-only rows unnumbered.
+
+    Claude sometimes emits a reaction or formula as its own list item. Numbering
+    those rows creates the awkward `② C_6 ...` / `⑥ {m over n}` look. For HWPX,
+    formula-only rows are promoted to centered equation objects and do not
+    consume a paragraph number.
+    """
+    clean = normalize_equation_markers(strip_manual_numbering(text))
+    if is_equation_placeholder_only(clean):
+        add_para(
+            doc,
+            clean,
+            base_size=base_size,
+            space_after=SPACE_BODY if space_after is None else space_after,
+        )
+        return False
+
+    add_para(
+        doc,
+        f"{numbered_marker(idx)} {clean}",
+        base_size=base_size,
+        indent_left=indent_left,
+        space_after=space_after,
+    )
+    return True
+
+
 def add_blank(doc):
     doc.add_paragraph("")
 
@@ -641,8 +809,11 @@ def build_purpose(doc, items):
                 space_before=SPACE_HEADING_LV1, space_after=SPACE_HEADING_LV2)
     add_heading(doc, "가. 실험목표", size=SIZE_HEADING,
                 space_after=SPACE_BODY)
-    for idx, item in enumerate(items, 1):
-        add_para(doc, f"{numbered_marker(idx)} {item}", indent_left=INDENT_5MM)
+    text_counter = 0
+    for item in items:
+        text_counter += 1
+        if not add_numbered_item(doc, text_counter, item):
+            text_counter -= 1
 
 
 def build_theory(doc, theory, figures_needed):
@@ -667,11 +838,8 @@ def build_theory(doc, theory, figures_needed):
                     add_para(doc, f"[그림 {fig_num}] (메타데이터 없음)")
             elif isinstance(item, str):
                 text_counter += 1
-                add_para(
-                    doc,
-                    f"{numbered_marker(text_counter)} {item}",
-                    indent_left=INDENT_5MM,
-                )
+                if not add_numbered_item(doc, text_counter, item):
+                    text_counter -= 1
 
         for fig_ref in section.get("figures", []):
             full = fig_map.get(fig_ref.get("number")) or fig_ref
@@ -986,18 +1154,22 @@ def build_procedure(doc, procedure):
         kr = KR_NUM[sec_idx] if sec_idx < len(KR_NUM) else str(sec_idx + 1)
         add_heading(doc, f"{kr}. {sec.get('title', '')}", size=SIZE_HEADING,
                     space_after=SPACE_BODY)
-        for st_idx, step in enumerate(sec.get("steps", []), 1):
-            marker = numbered_marker(st_idx)
+        step_counter = 0
+        for step in sec.get("steps", []):
             if isinstance(step, str):
-                add_para(doc, f"{marker} {step}", indent_left=INDENT_5MM)
+                step_counter += 1
+                if not add_numbered_item(doc, step_counter, step):
+                    step_counter -= 1
             elif isinstance(step, dict):
-                add_para(
-                    doc,
-                    f"{marker} {step.get('text', '')}",
-                    indent_left=INDENT_5MM,
-                )
+                step_counter += 1
+                if not add_numbered_item(doc, step_counter, step.get("text", "")):
+                    step_counter -= 1
                 for note in step.get("notes", []):
-                    add_para(doc, f"- {note}", indent_left=INDENT_10MM)
+                    add_para(
+                        doc,
+                        f"- {strip_manual_numbering(note)}",
+                        indent_left=INDENT_10MM,
+                    )
 
 
 # ── Footer with auto page number ───────────────────────────────────────────

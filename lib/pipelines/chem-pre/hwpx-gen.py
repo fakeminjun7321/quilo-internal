@@ -476,7 +476,7 @@ _MARKER_RE = re.compile(
 
 EQ_PREFIXES = ("{{EQN-LATEX:", "{{EQ-LATEX:", "{{EQN:", "{{EQ:")
 MANUAL_NUMBER_RE = re.compile(
-    r"^\s*(?:(?:\(\s*\d{1,2}\s*\))|(?:\d{1,2}[.)])|[①-⑳❶-❿])\s*"
+    r"^\s*(?:(?:\(\s*\d{1,2}\s*\)|[①-⑳❶-❿])\s*|(?:\d{1,2}[.)])\s+)+"
 )
 
 
@@ -538,6 +538,10 @@ def is_equation_placeholder_only(text):
 
 def strip_manual_numbering(text):
     return MANUAL_NUMBER_RE.sub("", str(text or "")).strip()
+
+
+def strip_manual_bullet(text):
+    return re.sub(r"^\s*[-•]\s+", "", str(text or "")).strip()
 
 
 def brace_unbraced_scripts(script):
@@ -922,8 +926,12 @@ def build_theory(doc, theory, figures_needed):
 
     for s_idx, section in enumerate(theory):
         kr = KR_NUM[s_idx] if s_idx < len(KR_NUM) else str(s_idx + 1)
-        add_heading(doc, f"{kr}. {section.get('topic', '')}", size=SIZE_HEADING,
-                    space_after=SPACE_BODY)
+        add_heading(
+            doc,
+            f"{kr}. {strip_manual_numbering(section.get('topic', ''))}",
+            size=SIZE_HEADING,
+            space_after=SPACE_BODY,
+        )
 
         items = section.get("items") or section.get("paragraphs") or []
         text_counter = 0
@@ -1126,8 +1134,9 @@ def build_apparatus_and_chemicals(doc, content):
                 space_after=SPACE_BODY)
     for idx, ap in enumerate(content.get("apparatus", []), 1):
         en = f" ({ap.get('name_en')})" if ap.get("name_en") else ""
+        name = strip_manual_numbering(ap.get("name", ""))
         line = (
-            f"{numbered_marker(idx)} **{ap.get('name', '')}**{en}: "
+            f"{numbered_marker(idx)} **{name}**{en}: "
             f"{ap.get('description', '')}"
         )
         add_para(doc, line, indent_left=INDENT_5MM)
@@ -1140,8 +1149,9 @@ def build_apparatus_and_chemicals(doc, content):
         src = (ch.get("source_url") or "").strip()
         if src and src in ref_index:
             ref_marker = f" [{ref_index[src]}]"
+        name = strip_manual_numbering(ch.get("name", ""))
         head = (
-            f"{numbered_marker(idx)} **{ch.get('name', '')}** "
+            f"{numbered_marker(idx)} **{name}** "
             f"({ch.get('iupac', '')}, {ch.get('formula', '')}){ref_marker}"
         )
         add_para(doc, head, indent_left=INDENT_5MM)
@@ -1196,7 +1206,7 @@ def build_table_of_contents(doc, content):
     for s_idx, section in enumerate(content.get("theory", [])):
         kr = KR_NUM[s_idx] if s_idx < len(KR_NUM) else str(s_idx + 1)
         topic = section.get("topic", "")
-        lv2(f"{kr}. {topic}")
+        lv2(f"{kr}. {strip_manual_numbering(topic)}")
 
     lv1("3. 실험 기구 및 시약")
     lv2("가. 실험 기구")
@@ -1207,7 +1217,7 @@ def build_table_of_contents(doc, content):
     lv1("4. 실험 과정")
     for sec_idx, sec in enumerate(content.get("procedure", [])):
         kr = KR_NUM[sec_idx] if sec_idx < len(KR_NUM) else str(sec_idx + 1)
-        lv2(f"{kr}. {sec.get('title', '')}")
+        lv2(f"{kr}. {strip_manual_numbering(sec.get('title', ''))}")
 
     if has_refs:
         lv1("참고문헌")
@@ -1349,7 +1359,8 @@ def build_minimal_theory(doc, theory):
         return
     for idx, section in enumerate(theory, 1):
         add_heading(
-            doc, f"({idx}) {section.get('topic', '')}",
+            doc,
+            f"({idx}) {strip_manual_numbering(section.get('topic', ''))}",
             size=SIZE_HEADING, space_after=SPACE_BODY,
         )
         items = section.get("items") or section.get("paragraphs") or []
@@ -1372,7 +1383,8 @@ def build_minimal_apparatus_and_chemicals(doc, content):
         en = f" ({ap.get('name_en')})" if ap.get("name_en") else ""
         description = ap.get("description", "")
         detail = f": {description}" if description else ""
-        add_para(doc, f"{ap.get('name', '')}{en}{detail}", indent_left=INDENT_5MM)
+        name = strip_manual_numbering(ap.get("name", ""))
+        add_para(doc, f"{name}{en}{detail}", indent_left=INDENT_5MM)
 
     add_heading(doc, "(2) 시약", size=SIZE_HEADING,
                 space_before=SPACE_HEADING_LV2, space_after=SPACE_BODY)
@@ -1382,7 +1394,7 @@ def build_minimal_apparatus_and_chemicals(doc, content):
     for ch in chems:
         head_parts = [ch.get("formula"), ch.get("molar_mass")]
         head_parts = [str(x).strip() for x in head_parts if str(x or "").strip()]
-        name = ch.get("name") or ch.get("iupac") or ""
+        name = strip_manual_numbering(ch.get("name") or ch.get("iupac") or "")
         head = f"{name} ({', '.join(head_parts)})" if head_parts else name
         details = []
         if ch.get("mp_bp"):
@@ -1412,7 +1424,8 @@ def build_minimal_procedure(doc, procedure):
     for sec_idx, sec in enumerate(procedure, 1):
         if len(procedure) > 1:
             add_heading(
-                doc, f"({sec_idx}) {sec.get('title', '')}",
+                doc,
+                f"({sec_idx}) {strip_manual_numbering(sec.get('title', ''))}",
                 size=SIZE_HEADING, space_after=SPACE_BODY,
             )
         for step_idx, step in enumerate(sec.get("steps", []) or [], 1):
@@ -1422,10 +1435,15 @@ def build_minimal_procedure(doc, procedure):
             else:
                 text = step.get("text", "")
                 notes = step.get("notes", []) or []
-            add_para(doc, f"{numbered_marker(step_idx)} {text}", indent_left=INDENT_5MM)
+            add_para(
+                doc,
+                f"{numbered_marker(step_idx)} {strip_manual_numbering(text)}",
+                indent_left=INDENT_5MM,
+            )
             for note in notes:
                 add_para(
-                    doc, f"- {strip_manual_numbering(note)}",
+                    doc,
+                    f"- {strip_manual_numbering(strip_manual_bullet(note))}",
                     indent_left=INDENT_10MM,
                 )
 
@@ -1446,8 +1464,12 @@ def build_procedure(doc, procedure):
                 space_before=SPACE_HEADING_LV1, space_after=SPACE_HEADING_LV2)
     for sec_idx, sec in enumerate(procedure):
         kr = KR_NUM[sec_idx] if sec_idx < len(KR_NUM) else str(sec_idx + 1)
-        add_heading(doc, f"{kr}. {sec.get('title', '')}", size=SIZE_HEADING,
-                    space_after=SPACE_BODY)
+        add_heading(
+            doc,
+            f"{kr}. {strip_manual_numbering(sec.get('title', ''))}",
+            size=SIZE_HEADING,
+            space_after=SPACE_BODY,
+        )
         step_counter = 0
         for step in sec.get("steps", []):
             if isinstance(step, str):
@@ -1461,7 +1483,7 @@ def build_procedure(doc, procedure):
                 for note in step.get("notes", []):
                     add_para(
                         doc,
-                        f"- {strip_manual_numbering(note)}",
+                        f"- {strip_manual_numbering(strip_manual_bullet(note))}",
                         indent_left=INDENT_10MM,
                     )
 

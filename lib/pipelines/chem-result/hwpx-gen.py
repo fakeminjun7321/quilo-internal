@@ -327,7 +327,12 @@ def build_theory(doc, content):
     pre.add_heading(doc, "2. 이론적 배경과 원리", size=pre.SIZE_TITLE, space_before=pre.SPACE_HEADING_LV1, space_after=pre.SPACE_HEADING_LV2)
     for s_idx, section in enumerate(as_list(content.get("theory"))):
         kr = pre.KR_NUM[s_idx] if s_idx < len(pre.KR_NUM) else str(s_idx + 1)
-        pre.add_heading(doc, f"{kr}. {section.get('topic', '')}", size=pre.SIZE_HEADING, space_after=pre.SPACE_BODY)
+        pre.add_heading(
+            doc,
+            f"{kr}. {pre.strip_manual_numbering(section.get('topic', ''))}",
+            size=pre.SIZE_HEADING,
+            space_after=pre.SPACE_BODY,
+        )
         counter = 0
         for item in as_list(section.get("items") or section.get("paragraphs")):
             if isinstance(item, str):
@@ -374,7 +379,12 @@ def build_procedure(doc, content):
     pre.add_heading(doc, "4. 실험 과정", size=pre.SIZE_TITLE, space_before=pre.SPACE_HEADING_LV1, space_after=pre.SPACE_HEADING_LV2)
     for sec_idx, section in enumerate(as_list(content.get("procedure"))):
         kr = pre.KR_NUM[sec_idx] if sec_idx < len(pre.KR_NUM) else str(sec_idx + 1)
-        pre.add_heading(doc, f"{kr}. {section.get('title', '')}", size=pre.SIZE_HEADING, space_after=pre.SPACE_BODY)
+        pre.add_heading(
+            doc,
+            f"{kr}. {pre.strip_manual_numbering(section.get('title', ''))}",
+            size=pre.SIZE_HEADING,
+            space_after=pre.SPACE_BODY,
+        )
         counter = 0
         for step in as_list(section.get("steps")):
             text = step if isinstance(step, str) else step.get("text", "")

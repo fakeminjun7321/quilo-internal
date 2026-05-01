@@ -106,6 +106,12 @@ JSON 스키마는 양 모드 동일하지만 `minimal` 모드에서는:
    ...
    나. [실험 B: 제목]
    ...
+
+5. 예상 데이터
+   * 매뉴얼의 Data 표·계산표에 들어갈 이론값, 문헌값, 계산식, 실험 후 채울 빈칸
+
+6. 예상 토의
+   * 매뉴얼의 Discussion/Conclusion/Questions 항목에 1:1로 대응하는 사전 답안
 ```
 
 ## 번호 매기기 규칙
@@ -164,6 +170,29 @@ JSON 스키마는 양 모드 동일하지만 `minimal` 모드에서는:
 - 주의사항은 `-` 로 들여쓰기하여 표기
 - 예시: 매뉴얼 "눈금실린더 내부와 수조 수면의 높이를 같게 맞춘다" →
   보고서에서는 같은 내용 + "수면 높이를 일치시키는 이유는 수주 압력(ρgh) 차이를 제거하여 기체의 압력을 P_gas = P_atm − P_H2O로 계산할 수 있도록 하기 위함이다."
+
+### 5. 예상 데이터 (Data Table)
+
+- 매뉴얼에 Data 표, 빈 결과표, 이론값/실험값/수득률 같은 계산칸이 있으면 `data_table`에 반드시 넣는다.
+- 사전보고서에서는 아직 측정하지 않은 값은 "실험 후 측정"처럼 빈칸 역할을 명확히 적는다.
+- 계산 가능한 값은 식과 최종 숫자를 함께 적는다. 수식 객체만 단독으로 넣고 숫자 설명을 생략하지 않는다.
+- 예: `이론적 수득량: 0.01448 mol × 180.16 g·mol^{-1} = 2.609 g`
+
+### 6. 예상 토의 (Expected Discussion)
+
+- 매뉴얼의 Discussion, Conclusion, Questions, 고찰 항목은 `expected_discussion` 배열에 원문 순서대로 1:1 대응시킨다.
+- 사전보고서이므로 실제 결과 단정 대신 "예상된다", "계산한다", "비교한다" 식으로 작성한다.
+- 평가자가 체크리스트로 확인할 수 있게 질문 문구를 합치거나 빼지 않는다.
+
+### 아스피린 합성·정제 실험 정확성
+
+- Salicylic acid에서 반응하는 친핵체는 페놀성 -OH의 산소라고 명시한다.
+- 황산은 주된 역할을 산 촉매로 설명한다. Acetic anhydride 반응에서 황산이 부산물 acetic acid나 물을 흡수해 평형을 민다고 쓰지 않는다.
+- 산 촉매 조건에서는 이탈기를 단순 acetate 음이온으로만 쓰지 말고, proton transfer 뒤 acetic acid 형태로 빠진다고 설명한다.
+- Acetic anhydride를 쓰는 이유는 acetic acid보다 acylation 반응성이 크고 acetate/acetic acid 경로가 hydroxide/water보다 좋은 이탈 조건을 제공하기 때문이다. 필요하면 AcOH pK_a ≈ 4.76, H_{2}O pK_a ≈ 15.7 비교를 쓴다.
+- Ethanol 재결정은 aspirin의 좋은 용매 역할, 물은 poor solvent 역할, slow cooling은 순도 향상, ice bath는 최종 회수율 향상으로 나누어 설명한다.
+- Acetic anhydride 끓는점은 139.8°C로 통일하고, `Le Chatelier의 원리`라고 쓴다.
+- 친핵성 아실 치환 메커니즘이 평가 포인트이면 mechanism figure placeholder를 1개 추가한다. Aspirin 합성에서는 protonated anhydride, phenolic -OH attack, tetrahedral intermediate, proton transfer, acetic acid leaving step을 포함한다.
 
 ## 그림 처리 (학교 양식 기준)
 

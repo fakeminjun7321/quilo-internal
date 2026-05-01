@@ -559,6 +559,18 @@ def compact_chemical_spacing(script):
     )
 
 
+def lift_functional_group_subscripts(script):
+    """Correct common LLM chemistry-script mistakes around substituent groups."""
+    s = str(script or "")
+    group = (
+        r"(?:OH|COOH|CHO|NH(?:_\{?2\}?)|NO(?:_\{?2\}?)|"
+        r"SO(?:_\{?3\}?H)|OCOCH(?:_\{?3\}?))"
+    )
+    s = re.sub(rf"_\s*\{{?\s*\(\s*({group})\s*\)\s*\}}?", r"(\1)", s)
+    s = re.sub(rf"_\s*\{{\s*({group})\s*\}}", r"(\1)", s)
+    return s
+
+
 def normalize_equation_script(script):
     s = str(script or "").strip()
     s = (
@@ -584,6 +596,7 @@ def normalize_equation_script(script):
     s = s.replace("×", " times ").replace("·", " cdot ")
     s = re.sub(r"\s+([_^])\s*", r"\1", s)
     s = brace_unbraced_scripts(s)
+    s = lift_functional_group_subscripts(s)
     s = compact_chemical_spacing(s)
     s = re.sub(r"\s{2,}", " ", s)
     return s.strip()
@@ -1074,6 +1087,106 @@ def build_chemicals_summary_table(doc, rows):
             )
 
 
+def build_data_table(doc, rows):
+    if not isinstance(rows, list) or not rows:
+        return
+    headers = ["항목", "값"]
+    solid_id = make_solid_border_fill(doc)
+    shaded_id = make_shaded_border_fill(doc)
+
+    table = doc.add_table(
+        rows=len(rows) + 1,
+        cols=len(headers),
+        width=TABLE_WIDTH,
+        border_fill_id_ref=solid_id,
+    )
+
+    col_widths = [14500, TABLE_WIDTH - 14500]
+    for c, w in enumerate(col_widths):
+        for r in range(len(rows) + 1):
+            try:
+                table.cell(r, c).set_size(width=w)
+            except Exception:
+                pass
+
+    for c, h in enumerate(headers):
+        cell = table.cell(0, c)
+        cell.element.set("borderFillIDRef", str(shaded_id))
+        _replace_cell_with_styled(
+            doc,
+            cell,
+            h,
+            size=SIZE_TABLE_HEADER,
+            bold=True,
+            align="CENTER",
+            line_spacing=TABLE_LINE_SPACING_PERCENT,
+        )
+
+    for r_idx, row in enumerate(rows, 1):
+        if isinstance(row, dict):
+            cells = [row.get("item", ""), row.get("value", "")]
+        else:
+            cells = [str(r_idx), str(row)]
+        for c_idx, val in enumerate(cells):
+            cell = table.cell(r_idx, c_idx)
+            cell.element.set("borderFillIDRef", str(solid_id))
+            _replace_cell_with_styled(
+                doc,
+                cell,
+                str(val or ""),
+                size=SIZE_TABLE_BODY,
+                align="LEFT",
+                line_spacing=TABLE_LINE_SPACING_PERCENT,
+            )
+
+
+def build_data_section(doc, rows, section_number=5, table_number=2):
+    if not isinstance(rows, list) or not rows:
+        return
+    add_heading(
+        doc,
+        f"{section_number}. 예상 데이터",
+        size=SIZE_TITLE,
+        space_before=SPACE_HEADING_LV1,
+        space_after=SPACE_HEADING_LV2,
+    )
+    add_heading(doc, f"[표 {table_number}] 예상 데이터", size=SIZE_BODY)
+    build_data_table(doc, rows)
+
+
+def _discussion_item_to_parts(item):
+    if isinstance(item, str):
+        return "", item
+    if isinstance(item, dict):
+        question = item.get("question") or item.get("topic") or item.get("title") or ""
+        answer = item.get("answer") or item.get("text") or item.get("response") or ""
+        return question, answer
+    return "", str(item or "")
+
+
+def build_expected_discussion(doc, items, section_number=6):
+    if not items:
+        return
+    if not isinstance(items, list):
+        items = [items]
+    add_heading(
+        doc,
+        f"{section_number}. 예상 토의",
+        size=SIZE_TITLE,
+        space_before=SPACE_HEADING_LV1,
+        space_after=SPACE_HEADING_LV2,
+    )
+    for idx, item in enumerate(items, 1):
+        question, answer = _discussion_item_to_parts(item)
+        prefix = f"**{question}**: " if question else ""
+        add_para(
+            doc,
+            f"{numbered_marker(idx)} {prefix}{answer}",
+            indent_left=INDENT_5MM,
+            space_after=SPACE_BODY,
+        )
+
+
 def compact_apparatus_description(description):
     s = re.sub(r"\s+", " ", str(description or "")).strip()
     if not s:
@@ -1166,6 +1279,8 @@ def build_table_of_contents(doc, content):
     """
     has_refs = bool(_ref_url_index(content))
     has_chemicals = bool(content.get("chemicals_summary_table"))
+    has_data = bool(content.get("data_table"))
+    has_discussion = bool(content.get("expected_discussion"))
 
     add_heading(doc, "목차", size=SIZE_TITLE,
                 space_before=SPACE_HEADING_LV1, space_after=SPACE_HEADING_LV2)
@@ -1196,6 +1311,11 @@ def build_table_of_contents(doc, content):
     for sec_idx, sec in enumerate(content.get("procedure", [])):
         kr = KR_NUM[sec_idx] if sec_idx < len(KR_NUM) else str(sec_idx + 1)
         lv2(f"{kr}. {sec.get('title', '')}")
+
+    if has_data:
+        lv1("5. 예상 데이터")
+    if has_discussion:
+        lv1("6. 예상 토의" if has_data else "5. 예상 토의")
 
     if has_refs:
         lv1("참고문헌")
@@ -1334,6 +1454,25 @@ def generate_hwpx(content):
     build_theory(doc, content.get("theory", []), content.get("figures_needed", []))
     build_apparatus_and_chemicals(doc, content)
     build_procedure(doc, content.get("procedure", []))
+    has_chem_table = bool(content.get("chemicals_summary_table"))
+    data_rows = content.get("data_table") if isinstance(content.get("data_table"), list) else []
+    discussion_items = (
+        content.get("expected_discussion")
+        if isinstance(content.get("expected_discussion"), list)
+        else []
+    )
+    has_data = bool(data_rows)
+    build_data_section(
+        doc,
+        data_rows,
+        section_number=5,
+        table_number=2 if has_chem_table else 1,
+    )
+    build_expected_discussion(
+        doc,
+        discussion_items,
+        section_number=6 if has_data else 5,
+    )
     build_references(doc, content)
 
     try:

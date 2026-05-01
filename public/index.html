@@ -330,7 +330,7 @@
     <section id="filesPanel" class="tab-panel" data-tab-panel="files" hidden>
       <div class="settings-card">
         <h2>내 파일</h2>
-        <p class="hint">생성된 보고서는 24시간만 보관됩니다.</p>
+        <p class="hint">생성된 보고서는 최대 3개, 24시간만 보관됩니다.</p>
         <div id="filesStatus" class="hint">불러오는 중...</div>
         <div id="filesList" class="file-list" aria-live="polite"></div>
       </div>
@@ -510,11 +510,12 @@
             return;
           }
           const files = data.files || [];
+          const maxFiles = data.maxFilesPerUser || 3;
           if (files.length === 0) {
-            status.textContent = "보관 중인 파일이 없습니다.";
+            status.textContent = `보관 중인 파일이 없습니다. 최대 ${maxFiles}개까지 저장됩니다.`;
             return;
           }
-          status.textContent = `${files.length}개 보관 중`;
+          status.textContent = `${files.length}/${maxFiles}개 보관 중`;
           for (const file of files) {
             const item = document.createElement("div");
             item.className = "file-item";

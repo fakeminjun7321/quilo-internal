@@ -1062,7 +1062,12 @@ app.get("/api/jobs/:id/download", requireAuth, (req, res) => {
 // Stored files (24h)
 app.get("/api/me/files", requireAuth, async (req, res) => {
   if (!supa.isEnabled()) {
-    return res.json({ files: [], retentionHours: 24, storage: false });
+    return res.json({
+      files: [],
+      retentionHours: 24,
+      maxFilesPerUser: 3,
+      storage: false,
+    });
   }
   const u = getSessionUser(req);
   if (!u.id) return res.status(403).json({ error: "권한 없음" });
@@ -1072,6 +1077,7 @@ app.get("/api/me/files", requireAuth, async (req, res) => {
     res.json({
       files,
       retentionHours: cfg.retentionHours,
+      maxFilesPerUser: cfg.maxFilesPerUser,
       storage: true,
     });
   } catch (e) {

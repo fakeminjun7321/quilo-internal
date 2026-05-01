@@ -476,7 +476,7 @@ _MARKER_RE = re.compile(
 
 EQ_PREFIXES = ("{{EQN-LATEX:", "{{EQ-LATEX:", "{{EQN:", "{{EQ:")
 MANUAL_NUMBER_RE = re.compile(
-    r"^\s*(?:(?:\(\s*\d{1,2}\s*\)|[①-⑳❶-❿])\s*|(?:\d{1,2}[.)])\s+)+"
+    r"^\s*(?:(?:\(\s*\d{1,2}\s*\)|[①-⑳❶-❿]|\d{1,2}[.)])[\s:：-]+)+"
 )
 
 

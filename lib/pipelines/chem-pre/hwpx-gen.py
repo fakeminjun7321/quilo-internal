@@ -627,6 +627,35 @@ def looks_like_standalone_equation(text):
     return has_operator and has_formula_bits
 
 
+def should_skip_auto_equation(text):
+    s = str(text or "").strip()
+    if not s:
+        return True
+
+    if re.search(r"https?://|www\.|doi\s*:|@", s, re.I):
+        return True
+    if re.match(r"^\s*\[\d+\]", s):
+        return True
+    if re.match(
+        r"^\s*(?:참고문헌|references?|출처|source|pubchem|nist|chemspider|doi|url)\b",
+        s,
+        re.I,
+    ):
+        return True
+
+    # Keep label/value prose and references as plain text. Labelled equations
+    # with known math keywords are handled before this guard.
+    if re.match(r"^.{1,80}[:：]\s*\S+", s):
+        return True
+
+    # Long Korean prose can contain numbers and '=' signs, but should not be
+    # promoted wholesale into a centered equation object.
+    if len(s) > 80 and re.search(r"[가-힣]", s):
+        return True
+
+    return False
+
+
 def normalize_equation_markers(text):
     """Promote raw equation-script lines to approved HWPX equation markers."""
     s = str(text or "")
@@ -634,19 +663,23 @@ def normalize_equation_markers(text):
         return s
 
     stripped = strip_manual_numbering(s)
-    if (
-        re.search(r"https?://|www\.", stripped, re.I)
-        or re.match(r"^\s*\[\d+\]", stripped)
+    if should_skip_auto_equation(stripped) and not re.search(
+        r"(?:반응식|수득률|계산식|공식|formula|equation|yield)",
+        stripped,
+        re.I,
     ):
         return s
 
     labeled = re.match(
-        r"^(.{0,60}?(?:반응식|수득률|계산식|공식|formula|equation|yield)[^:：]*[:：]\s*)(.+)$",
+        r"^(.{0,60}?(?:반응식|수득률|계산식|공식|formula|equation|yield)[^:：=]*[:：=]\s*)(.+)$",
         stripped,
         re.I,
     )
     if labeled and looks_like_standalone_equation(labeled.group(2)):
         return f"{labeled.group(1)}{{{{EQ:{normalize_equation_script(labeled.group(2))}}}}}"
+
+    if should_skip_auto_equation(stripped):
+        return s
 
     if looks_like_standalone_equation(stripped):
         return f"{{{{EQ:{normalize_equation_script(stripped)}}}}}"
@@ -1391,34 +1424,18 @@ def _postprocess_equations(hwpx_path):
             count = hwpx_equation_tool.replace_equation_placeholders(src, tmp_out)
             if count > 0:
                 shutil.move(str(tmp_out), str(src))
-                # validate the converted document — surface unresolved
-                # {{EQ:...}} placeholders or empty <hp:script/> elements
-                # to stderr so the Node wrapper can show them in progress.
-                try:
-                    issues = hwpx_equation_tool.validate_hwpx_equations(src)
-                    if issues:
-                        print(
-                            "[hwpx-gen] equation validation warnings:",
-                            file=sys.stderr,
-                        )
-                        for issue in issues[:10]:
-                            print(f"  - {issue}", file=sys.stderr)
-                    else:
-                        print(
-                            f"[hwpx-gen] equation conversion OK ({count} equations, no validation issues)",
-                            file=sys.stderr,
-                        )
-                except Exception as ve:
-                    print(
-                        f"[hwpx-gen] equation validation skipped: {ve}",
-                        file=sys.stderr,
-                    )
             else:
                 tmp_out.unlink()
+
             issues = hwpx_equation_tool.validate_hwpx_equations(src)
             if issues:
                 joined = "; ".join(issues[:5])
                 raise RuntimeError(f"equation validation failed: {joined}")
+            if count > 0:
+                print(
+                    f"[hwpx-gen] equation conversion OK ({count} equations, no validation issues)",
+                    file=sys.stderr,
+                )
         except Exception:
             if tmp_out.exists():
                 tmp_out.unlink()

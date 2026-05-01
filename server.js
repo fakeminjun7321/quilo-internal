@@ -85,6 +85,7 @@ const PIPELINES = {
     generateContent: require("./lib/pipelines/chem-result/generate")
       .generateReportContent,
     generateDocx: require("./lib/pipelines/chem-result/docx-gen").generateDocx,
+    generateHwpx: require("./lib/pipelines/chem-result/hwpx-gen").generateHwpx,
   },
   "phys-result": {
     label: "물리 결과보고서",

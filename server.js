@@ -235,6 +235,10 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+function isTruthyPolicyFlag(value) {
+  return value === true || value === "true" || value === "1" || value === "on";
+}
+
 // ── In-memory cumulative usage (server uptime-only; DB는 별도) ──────────────
 const totalUsage = {
   jobs: 0,
@@ -515,6 +519,23 @@ app.post(
       });
     }
 
+    const copyrightAccepted = isTruthyPolicyFlag(req.body.copyrightAccepted);
+    const academicIntegrityAccepted = isTruthyPolicyFlag(
+      req.body.academicIntegrityAccepted,
+    );
+    if (!copyrightAccepted || !academicIntegrityAccepted) {
+      return res.status(400).json({
+        error:
+          "저작권과 학교·교사 기준 확인에 동의해야 보고서를 생성할 수 있습니다.",
+      });
+    }
+    const policyAcknowledgement = {
+      copyrightAccepted,
+      academicIntegrityAccepted,
+      acceptedAt: new Date().toISOString(),
+      clientAcceptedAt: String(req.body.policyAcceptedAt || "").slice(0, 80),
+    };
+
     // fieldname별 파일 그룹핑 (chem-result는 photos 같이 multi 파일이 들어옴)
     const filesByField = {};
     for (const f of req.files || []) {
@@ -643,6 +664,7 @@ app.post(
       sourceFilename,
       model,
       format,
+      policyAcknowledgement,
     }).catch(
       (err) => {
         job.status = "error";
@@ -686,7 +708,13 @@ function normalizeStudentId(value) {
 }
 
 async function runGeneration(job, pipeline, pipelineInput, meta) {
-  const { date, sourceFilename, model, format = "docx" } = meta;
+  const {
+    date,
+    sourceFilename,
+    model,
+    format = "docx",
+    policyAcknowledgement,
+  } = meta;
   const t0 = Date.now();
   const timeoutMin = Math.round(JOB_TIMEOUT_MS / 60000);
   pushProgress(
@@ -789,6 +817,7 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
             title: content.title_kr || content.title || "",
             reportLabel: pipeline.label,
             format,
+            policyAcknowledgement,
           },
         });
         if (savedFile?.id) {
@@ -839,6 +868,7 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
             cacheWriteTokens: content.__cost?.cacheWriteTokens,
             webSearchCount: content.__cost?.webSearchCount,
             chargedUsd: pricing.getReportPrice(job.reportType), // 실제 차감된 고정 가격
+            policyAcknowledgement,
           },
         });
 

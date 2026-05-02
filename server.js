@@ -325,43 +325,6 @@ function pruneJobListeners(job) {
   return job.listeners.length;
 }
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function ensureClientStillConnected(job, graceMs = 10000) {
-  if (pruneJobListeners(job) > 0) return true;
-
-  const deadline = Date.now() + graceMs;
-  while (Date.now() < deadline) {
-    await sleep(250);
-    if (pruneJobListeners(job) > 0) return true;
-  }
-
-  job.clientDisconnected = true;
-  return false;
-}
-
-async function discardGeneratedOutput(job) {
-  if (supa.isEnabled() && job.userInfo?.id && job.fileId) {
-    await supa.deleteReportFile(job.userInfo.id, job.fileId).catch((e) => {
-      console.warn("[job] failed to delete disconnected output:", e.message);
-    });
-  }
-  job.result = null;
-  job.filename = null;
-  job.mimeType = null;
-  job.fileId = null;
-}
-
-async function abortIfClientDisconnected(job, graceMs) {
-  if (await ensureClientStillConnected(job, graceMs)) return;
-  await discardGeneratedOutput(job);
-  throw new Error(
-    "클라이언트 연결이 끊겨 작업을 차감 없이 중단했습니다. 다시 생성해 주세요.",
-  );
-}
-
 // 작업 결과는 24시간 보관 (사용자가 핸드폰→컴퓨터 이동 등의 시나리오 지원).
 // rate limit으로 사용자당 시간당 5건이라 24시간 누적 최대 ~120건 × 100KB = ~12MB 안전.
 setInterval(
@@ -844,8 +807,6 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
       job.filename = `${prefix}${pipeline.filenamePrefix}_${studentPart}${namePart}.${ext}`;
     }
 
-    await abortIfClientDisconnected(job, 10000);
-
     if (supa.isEnabled() && job.userInfo?.id) {
       try {
         const savedFile = await supa.saveReportFile({
@@ -874,7 +835,6 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
         pushProgress(job, `⚠ 파일함 저장 실패: ${e.message}`);
       }
     }
-    await abortIfClientDisconnected(job, 1000);
     job.status = "done";
 
     const totalSec = Math.floor((Date.now() - t0) / 1000);

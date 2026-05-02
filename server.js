@@ -155,6 +155,7 @@ const PIPELINES = {
     generateContent: require("./lib/pipelines/phys-result/generate")
       .generateReportContent,
     generateDocx: require("./lib/pipelines/phys-result/docx-gen").generateDocx,
+    generateHwpx: require("./lib/pipelines/phys-result/hwpx-gen").generateHwpx,
   },
 };
 const pricing = require("./lib/pricing");

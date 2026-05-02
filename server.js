@@ -789,10 +789,13 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
 
     // 사용자·학번 정보를 docx-gen이 사용할 수 있게 attach (보고서 제목 prefix 등)
     const studentId = String(pipelineInput.studentId || "").trim();
+    const renderedStudentName = String(
+      pipelineInput.studentName || job.userInfo?.name || "",
+    ).trim();
     Object.defineProperty(content, "__studentInfo", {
       value: {
         studentId,
-        userName: job.userInfo?.name || "",
+        userName: renderedStudentName,
       },
       enumerable: false,
       writable: false,
@@ -801,9 +804,7 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
     // hwpx 표지에서 사용할 사용자 입력값 (chem-pre 폼에서만 채워짐, 다른
     // 파이프라인은 빈 문자열). enumerable 키라 generator가 직접 읽음.
     content.student_id = studentId;
-    content.student_name = String(
-      pipelineInput.studentName || job.userInfo?.name || "",
-    ).trim();
+    content.student_name = renderedStudentName;
     content.temperature = String(pipelineInput.temperature || "").trim();
     content.pressure = String(pipelineInput.pressure || "").trim();
     content.report_number = extractReportLabel(sourceFilename);
@@ -829,14 +830,14 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
     if (typeof pipeline.buildFilename === "function") {
       const baseName = pipeline.buildFilename(content, {
         studentId,
-        userName: job.userInfo?.name || "",
+        userName: renderedStudentName,
         sourceFilename,
       });
       // buildFilename이 .docx로 끝나는 경우 ext로 교체
       job.filename = baseName.replace(/\.docx$/i, `.${ext}`);
     } else {
       const num = extractManualNumber(sourceFilename);
-      const userName = sanitizeForFilename(job.userInfo?.name || "");
+      const userName = sanitizeForFilename(renderedStudentName);
       const prefix = num ? `${num}_` : "";
       const studentPart = sanitizeForFilename(studentId) || "학번";
       const namePart = userName ? `_${userName}` : "";

@@ -294,13 +294,15 @@ JSON 스키마:
 - `x_label`, `y_label`: 축 레이블 (단위 포함)
 - `x_values`: x축 카테고리 배열 (예: `["피펫", "뷰렛"]`)
 - `series`: `[{ "label": "...", "values": [숫자, 숫자, ...] }]` — values는 숫자만 (string 금지)
+- 산점도/검량선처럼 x가 숫자인 경우 `series`: `[{ "label": "측정값", "points": [{"x": 10, "y": 0.195}, {"x": 15, "y": 0.251}] }]` 형태를 우선 사용한다.
+- 선형 회귀선을 함께 그려야 하면 `trendline`: `{ "slope": 0.007861, "intercept": 0.1246, "x_min": 10, "x_max": 25, "label": "y = 0.007861x + 0.1246" }`를 넣는다.
 - `reference_line` (선택): 이론값 등 수평 점선, `{ "value": 10.0, "label": "..." }`
 - `caption`: 차트 아래 캡션 (표준편차·관찰 포인트 설명)
 
 용도별:
 - 기구별/조건별 평균 비교 → `bar` + `reference_line`
 - 시간/조건 변화 추이 → `line`
-- 두 변수 관계 → `scatter`
+- 두 변수 관계/검량선 → `scatter` + `points` + 필요 시 `trendline`
 
 데이터가 충분할 때만 만들고, 부족하면 `"charts": []`. 보통 1~3개.
 

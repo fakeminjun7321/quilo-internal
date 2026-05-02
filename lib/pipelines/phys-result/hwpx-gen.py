@@ -24,6 +24,7 @@ from lxml import etree
 
 HERE = Path(__file__).resolve().parent
 PRE_HWPX = HERE.parent / "chem-pre" / "hwpx-gen.py"
+TEMPLATE_HWPX = HERE / "templates" / "result-report-template.hwpx"
 spec = importlib.util.spec_from_file_location("chem_pre_hwpx_gen", PRE_HWPX)
 pre = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(pre)
@@ -124,6 +125,36 @@ def fit_size(width_px, height_px, max_width, max_height):
     height = max(int(height_px * PX_TO_HWPUNIT), 1)
     scale = min(max_width / width, max_height / height, 1)
     return max(int(width * scale), 1), max(int(height * scale), 1), width, height
+
+
+def load_template_doc():
+    if TEMPLATE_HWPX.exists():
+        return HwpxDocument.open(TEMPLATE_HWPX)
+    return None
+
+
+def clear_template_body(doc):
+    """Keep the template's section/header/footer paragraph and remove only
+    the instructional body placeholders.
+    """
+    paragraphs = list(doc.paragraphs)
+    for paragraph in reversed(paragraphs[1:]):
+        doc.remove_paragraph(paragraph)
+
+
+def fill_template_title(doc, content):
+    title = content.get("title") or content.get("title_en") or content.get("title_kr") or "물리 결과보고서"
+    changed = False
+    for sec in getattr(doc.oxml, "sections", []):
+        element = getattr(sec, "element", None)
+        if element is None:
+            continue
+        for node in element.iter(f"{pre.NS_HP}t"):
+            if node.text and "(반드시 기재)" in node.text:
+                node.text = node.text.replace("(반드시 기재)", title)
+                changed = True
+        if changed and hasattr(sec, "mark_dirty"):
+            sec.mark_dirty()
 
 
 def apply_phys_page_layout(doc):
@@ -532,16 +563,23 @@ def update_preview_text(hwpx_path, text):
 
 
 def generate_hwpx(content):
-    doc = HwpxDocument.new()
-    apply_phys_page_layout(doc)
-    pre.apply_default_font(
-        doc,
-        pre.normalize_font_face(content.get("font_face") or content.get("__fontFace")),
-    )
-    build_header(doc, content)
+    doc = load_template_doc()
+    using_template = doc is not None
+    if using_template:
+        clear_template_body(doc)
+        fill_template_title(doc, content)
+    else:
+        doc = HwpxDocument.new()
+        apply_phys_page_layout(doc)
+        pre.apply_default_font(
+            doc,
+            pre.normalize_font_face(content.get("font_face") or content.get("__fontFace")),
+        )
+        build_header(doc, content)
     build_results(doc, content)
     build_conclusion(doc, content)
-    add_phys_page_number_to_footer(doc)
+    if not using_template:
+        add_phys_page_number_to_footer(doc)
     return doc
 
 

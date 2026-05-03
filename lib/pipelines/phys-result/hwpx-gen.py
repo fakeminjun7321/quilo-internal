@@ -208,10 +208,179 @@ def add_paragraph_to(target, text="", *, para_pr_id_ref=None):
     raise TypeError("target does not support add_paragraph")
 
 
+GREEK_TO_LATEX = {
+    "α": r"\alpha",
+    "β": r"\beta",
+    "γ": r"\gamma",
+    "δ": r"\delta",
+    "θ": r"\theta",
+    "λ": r"\lambda",
+    "μ": r"\mu",
+    "π": r"\pi",
+    "ρ": r"\rho",
+    "σ": r"\sigma",
+    "τ": r"\tau",
+    "φ": r"\phi",
+    "ω": r"\omega",
+    "Ω": r"\Omega",
+    "Δ": r"\Delta",
+    "Σ": r"\Sigma",
+}
+
+SUPERSCRIPT_TO_LATEX = str.maketrans({
+    "⁰": "0",
+    "¹": "1",
+    "²": "2",
+    "³": "3",
+    "⁴": "4",
+    "⁵": "5",
+    "⁶": "6",
+    "⁷": "7",
+    "⁸": "8",
+    "⁹": "9",
+    "⁺": "+",
+    "⁻": "-",
+})
+SUBSCRIPT_TO_LATEX = str.maketrans({
+    "₀": "0",
+    "₁": "1",
+    "₂": "2",
+    "₃": "3",
+    "₄": "4",
+    "₅": "5",
+    "₆": "6",
+    "₇": "7",
+    "₈": "8",
+    "₉": "9",
+    "₊": "+",
+    "₋": "-",
+})
+FORMULA_CHAR_CLASS = (
+    r"A-Za-z0-9"
+    r"αβγδθλμπρστφωΩΔΣ"
+    r"_\{\}\^\*\s\+\-=−–—≈≃≤≥<>/\\\(\)\[\]\.,"
+    r"·×√½°%⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻₀₁₂₃₄₅₆₇₈₉₊₋"
+)
+INLINE_FORMULA_RE = re.compile(
+    rf"(?<![A-Za-z0-9_])([{FORMULA_CHAR_CLASS}]{{1,120}}?"
+    rf"(?:=|≈|≃|≤|≥|<|>)"
+    rf"[{FORMULA_CHAR_CLASS}]{{1,160}})"
+)
+
+
+def convert_sqrt_parentheses(expr):
+    out = []
+    i = 0
+    while i < len(expr):
+        if expr[i] != "√":
+            out.append(expr[i])
+            i += 1
+            continue
+        j = i + 1
+        while j < len(expr) and expr[j].isspace():
+            j += 1
+        if j >= len(expr) or expr[j] != "(":
+            out.append(r"\sqrt")
+            i += 1
+            continue
+        depth = 0
+        k = j
+        while k < len(expr):
+            if expr[k] == "(":
+                depth += 1
+            elif expr[k] == ")":
+                depth -= 1
+                if depth == 0:
+                    inner = expr[j + 1:k]
+                    out.append(r"\sqrt{" + rich_formula_to_latex(inner) + "}")
+                    i = k + 1
+                    break
+            k += 1
+        else:
+            out.append(r"\sqrt")
+            i += 1
+    return "".join(out)
+
+
+def unicode_scripts_to_latex(expr):
+    expr = re.sub(
+        r"([A-Za-zαβγδθλμπρστφωΩΔΣ])([⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻]+)",
+        lambda m: f"{m.group(1)}^{{{m.group(2).translate(SUPERSCRIPT_TO_LATEX)}}}",
+        expr,
+    )
+    expr = re.sub(
+        r"([A-Za-zαβγδθλμπρστφωΩΔΣ])([₀₁₂₃₄₅₆₇₈₉₊₋]+)",
+        lambda m: f"{m.group(1)}_{{{m.group(2).translate(SUBSCRIPT_TO_LATEX)}}}",
+        expr,
+    )
+    return expr
+
+
+def rich_formula_to_latex(expr):
+    expr = str(expr or "").strip()
+    expr = re.sub(r"\*\*([^*]+)\*\*", r"\1", expr)
+    expr = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"\1", expr)
+    expr = expr.replace("−", "-").replace("–", "-").replace("—", "-")
+    expr = expr.replace("×", r"\times ").replace("·", r"\cdot ")
+    expr = expr.replace("≃", r"\approx ").replace("≈", r"\approx ")
+    expr = expr.replace("≤", r"\leq ").replace("≥", r"\geq ")
+    expr = expr.replace("½", r"\frac{1}{2}")
+    expr = unicode_scripts_to_latex(expr)
+    expr = convert_sqrt_parentheses(expr) if "√" in expr else expr
+    for greek, latex in GREEK_TO_LATEX.items():
+        expr = expr.replace(greek, f" {latex} ")
+    expr = re.sub(r"\s+", " ", expr).strip()
+    return expr
+
+
+def is_probable_physics_formula(expr):
+    clean = re.sub(r"\*\*?([^*]+)\*\*?", r"\1", str(expr or "")).strip()
+    if not clean or "{{EQ" in clean:
+        return False
+    if re.search(r"[가-힣]", clean):
+        return False
+    if not re.search(r"[A-Za-zαβγδθλμπρστφωΩΔΣ]", clean):
+        return False
+    if not re.search(r"=|≈|≃|≤|≥|<|>", clean):
+        return False
+    return True
+
+
+def normalize_physics_equation_markers(text):
+    """Promote inline physics formulas to native Hancom equation placeholders.
+
+    The shared chemistry HWPX generator already converts explicit
+    {{EQ:...}} markers and standalone formula lines. Physics result prose often
+    contains inline equations such as `I_{pivot} = mgdT^{2}/(4π^{2})`, so we
+    wrap only the formula span and leave the surrounding Korean prose intact.
+    """
+    s = str(text or "")
+    if "{{EQ" in s:
+        return s
+
+    def repl(match):
+        raw = match.group(1)
+        leading = re.match(r"^\s*", raw).group(0)
+        trailing = re.search(r"\s*$", raw).group(0)
+        core = raw.strip()
+        while core and core[-1] in ".,;:":
+            trailing = core[-1] + trailing
+            core = core[:-1].rstrip()
+        if not is_probable_physics_formula(core):
+            return raw
+        latex = rich_formula_to_latex(core)
+        if not latex:
+            return raw
+        return f"{leading}{{{{EQ-LATEX:{latex}}}}}{trailing}"
+
+    return INLINE_FORMULA_RE.sub(repl, s)
+
+
 def add_para_to(doc, target, text, *, base_size=pre.SIZE_BODY, bold=False,
                 align="LEFT", indent_left=0, keep_with_next=False,
                 color=None, space_after=None, space_before=0):
-    text = pre.normalize_equation_markers(str(text or ""))
+    text = normalize_physics_equation_markers(str(text or ""))
+    text = pre.normalize_equation_markers(text)
     if pre._is_equation_only(text):
         align = "CENTER"
         indent_left = 0
@@ -440,8 +609,11 @@ def add_picture(doc, data, *, fmt="png", caption="", max_width=MAX_IMAGE_WIDTH,
 
 def add_table(doc, headers, rows, caption=None, target=None):
     target = target or doc
-    headers = [str(h or "") for h in headers]
-    rows = [[str(c or "") for c in row] for row in rows or []]
+    headers = [normalize_physics_equation_markers(str(h or "")) for h in headers]
+    rows = [
+        [normalize_physics_equation_markers(str(c or "")) for c in row]
+        for row in rows or []
+    ]
     if not headers:
         return
 

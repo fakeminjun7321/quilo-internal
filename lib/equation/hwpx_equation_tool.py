@@ -190,7 +190,7 @@ class LatexToHwpConverter:
         r"\div": " DIV ",
         r"\pm": "+-",
         r"\mp": "-+",
-        r"\approx": "APPROX",
+        r"\approx": " APPROX ",
         r"\equiv": "==",
         r"\leq": "<=",
         r"\le": "<=",
@@ -553,6 +553,8 @@ def normalize_hwp_script(script: str) -> str:
     text = re.sub(r"\s+([_^])\s*", r"\1", text)
     text = brace_unbraced_scripts(text)
     text = compact_chemical_spacing(text)
+    text = re.sub(r"\b(APPROX|TIMES|DIV)(?=[A-Za-z0-9{])", r"\1 ", text)
+    text = re.sub(r"(?<=[A-Za-z0-9}])(?=(APPROX|TIMES|DIV)\b)", " ", text)
     text = re.sub(r"\s{2,}", " ", text)
     return text.strip()
 

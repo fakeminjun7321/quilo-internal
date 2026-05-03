@@ -460,24 +460,22 @@ def build_results(doc, content):
             space_after=pre.SPACE_BODY,
         )
         if exp.get("method_summary"):
-            pre.add_para(doc, f"방법: {exp.get('method_summary')}", indent_left=pre.INDENT_5MM)
+            pre.add_para(doc, exp.get("method_summary"), indent_left=pre.INDENT_5MM)
 
         table = exp.get("data_table") or {}
         if table.get("headers") and isinstance(table.get("rows"), list):
             table_counter["value"] += 1
-            pre.add_para(
+            add_table(
                 doc,
-                f"[표 {table_counter['value']}] 측정 데이터",
-                base_size=pre.SIZE_CAPTION,
-                indent_left=pre.INDENT_5MM,
-                space_after=220,
+                table.get("headers"),
+                table.get("rows"),
+                caption=f"[표 {table_counter['value']}] 측정 데이터",
             )
-            add_table(doc, table.get("headers"), table.get("rows"))
 
         build_chart(doc, exp.get("chart"), fig_counter)
 
         if exp.get("analysis"):
-            pre.add_para(doc, f"분석: {exp.get('analysis')}", indent_left=pre.INDENT_5MM)
+            pre.add_para(doc, exp.get("analysis"), indent_left=pre.INDENT_5MM)
 
         add_photo_blocks(doc, exp.get("photo_indices"), photos, fig_counter, title)
 
@@ -523,12 +521,12 @@ def collect_preview_text(content):
     for idx, exp in enumerate(as_list(content.get("experiments")), 1):
         lines.append(f"1.{idx + 1} {exp.get('name') or f'실험 {idx}'}")
         if exp.get("method_summary"):
-            lines.append(f"방법: {exp.get('method_summary')}")
+            lines.append(str(exp.get("method_summary")))
         table = exp.get("data_table") or {}
         if table.get("headers"):
             lines.append("[표] " + " / ".join(str(x) for x in table.get("headers", [])))
         if exp.get("analysis"):
-            lines.append(f"분석: {exp.get('analysis')}")
+            lines.append(str(exp.get("analysis")))
     lines.extend(["", "2. 결론"])
     conclusion = content.get("conclusion") or {}
     for key in ("objective_recap", "result_summary", "error_analysis", "problem_solving", "physical_meaning", "theory_connection"):

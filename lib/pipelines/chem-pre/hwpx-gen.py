@@ -863,7 +863,7 @@ def add_para(doc, text, *, base_size=SIZE_BODY, bold=False, align="LEFT",
             sub=sub,
             sup=sup,
             color=color,
-            highlight=highlight,
+            highlight=highlight and getattr(doc, "_v5_allow_highlights", True),
         )
         p.add_run(plain, char_pr_id_ref=cp)
     return p
@@ -1102,7 +1102,7 @@ def _replace_cell_with_styled(doc, cell, text, *, size=SIZE_BODY, bold=False,
             sub=sub,
             sup=sup,
             color=color,
-            highlight=highlight,
+            highlight=highlight and getattr(doc, "_v5_allow_highlights", True),
         )
         p.add_run(plain, char_pr_id_ref=cp)
 
@@ -1562,6 +1562,7 @@ def add_page_number_to_footer(doc):
 
 def generate_hwpx(content):
     doc = HwpxDocument.new()
+    doc._v5_allow_highlights = bool(content.get("__allowHighlights", True))
     apply_page_layout(doc)
     apply_default_font(
         doc,

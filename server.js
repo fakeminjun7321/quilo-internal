@@ -677,6 +677,7 @@ app.post(
     }
     pipelineInput.studentId =
       normalizeStudentId(pipelineInput.studentId) || postedStudentId || savedStudentId;
+    pipelineInput.allowHighlights = !!userInfo.isAdmin;
     if (reportType === "phys-result" && !pipelineInput.studentId) {
       return res
         .status(400)
@@ -858,8 +859,10 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
       signal: ac.signal,
       model,
       outputFormat: format,
+      allowHighlights: !!pipelineInput.allowHighlights,
       onProgress: (msg) => pushProgress(job, msg),
     });
+    content.__allowHighlights = !!pipelineInput.allowHighlights;
     const fontFace = normalizeFontFace(pipelineInput.fontFace);
     Object.defineProperty(content, "__fontFace", {
       value: fontFace,

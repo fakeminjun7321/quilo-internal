@@ -98,14 +98,22 @@ ALLOWED_FONT_FACES = {
     "함초롬바탕",
     "함초롱바탕",
     "Malgun Gothic",
+    "Nanum Gothic",
     "Nanum Myeongjo",
 }
 
 
 def normalize_font_face(face):
     face = str(face or "").strip()
-    if face == "함초롱바탕":
-        return "함초롬바탕"
+    aliases = {
+        "함초롱바탕": "함초롬바탕",
+        "hamchorom-batang": "함초롬바탕",
+        "malgun-gothic": "Malgun Gothic",
+        "nanum-gothic": "Nanum Gothic",
+        "nanum-myeongjo": "Nanum Myeongjo",
+    }
+    if face in aliases:
+        return aliases[face]
     if face in ALLOWED_FONT_FACES:
         return face
     return DEFAULT_FONT_FACE

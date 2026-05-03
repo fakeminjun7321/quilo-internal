@@ -217,8 +217,9 @@
         <label>글꼴:
           <select id="prFontFace" name="fontFace">
             <option value="malgun-gothic" selected>맑은 고딕</option>
+            <option value="nanum-gothic">나눔고딕</option>
             <option value="nanum-myeongjo">나눔명조</option>
-            <option value="hamchorom-batang" data-hwpx-only="true" hidden disabled>함초롬바탕</option>
+            <option value="hamchorom-batang">함초롬바탕</option>
           </select>
         </label>
       </p>
@@ -927,6 +928,7 @@
 
       function getFontLabel(fontId) {
         if (fontId === "hamchorom-batang") return "함초롬바탕";
+        if (fontId === "nanum-gothic") return "나눔고딕";
         if (fontId === "nanum-myeongjo") return "나눔명조";
         return "맑은 고딕";
       }
@@ -962,7 +964,12 @@
             option.hidden = !allowHwpxOnly;
             option.disabled = !allowHwpxOnly;
           });
-        if (!allowHwpxOnly && fontSelect.value === "hamchorom-batang") {
+        const selectedOption = fontSelect.options[fontSelect.selectedIndex];
+        if (
+          !allowHwpxOnly &&
+          selectedOption &&
+          selectedOption.dataset.hwpxOnly === "true"
+        ) {
           fontSelect.value = "malgun-gothic";
         }
       }

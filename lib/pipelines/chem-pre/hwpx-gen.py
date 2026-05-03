@@ -1601,6 +1601,59 @@ def _postprocess_equations(hwpx_path):
         raise RuntimeError(f"HWPX equation post-process failed: {e}") from e
 
 
+def ensure_embedded_bindata_items(hwpx_path):
+    """Mark every BinData manifest item as embedded.
+
+    python-hwpx registers newly added images in Contents/content.hpf, but it
+    omits Hancom's `isEmbeded="1"` attribute. Some Hangul viewers tolerate
+    that; Hancom Office can treat the image file as present in the zip but not
+    embedded in the document. Normalize the manifest after saving so generated
+    pictures behave like the original template assets.
+    """
+    from pathlib import Path
+    import shutil
+    import tempfile
+    import zipfile
+
+    src = Path(hwpx_path)
+    with zipfile.ZipFile(src, "r") as zin:
+        try:
+            manifest_bytes = zin.read("Contents/content.hpf")
+        except KeyError:
+            return
+
+    root = etree.fromstring(manifest_bytes)
+    changed = False
+    for item in root.iter():
+        if not item.tag.endswith("}item"):
+            continue
+        href = item.get("href") or ""
+        if not href.startswith("BinData/"):
+            continue
+        if item.get("isEmbeded") != "1":
+            item.set("isEmbeded", "1")
+            changed = True
+
+    if not changed:
+        return
+
+    updated = etree.tostring(root, encoding="utf-8", xml_declaration=True)
+    with tempfile.NamedTemporaryFile(suffix=".hwpx", dir=src.parent, delete=False) as tf:
+        tmp = Path(tf.name)
+    try:
+        with zipfile.ZipFile(src, "r") as zin, zipfile.ZipFile(tmp, "w") as zout:
+            for entry in zin.infolist():
+                if entry.filename == "Contents/content.hpf":
+                    zout.writestr(entry, updated)
+                else:
+                    zout.writestr(entry, zin.read(entry.filename))
+        shutil.move(str(tmp), str(src))
+    except Exception:
+        if tmp.exists():
+            tmp.unlink()
+        raise
+
+
 def main():
     if len(sys.argv) >= 2 and sys.argv[1] != "-":
         with open(sys.argv[1], "r", encoding="utf-8") as f:
@@ -1614,6 +1667,7 @@ def main():
         target = sys.argv[2]
         doc.save_to_path(target)
         _postprocess_equations(target)
+        ensure_embedded_bindata_items(target)
     else:
         # stdin/stdout mode: write to a temp file so the equation tool can
         # operate on a real path, then stream the result back out.
@@ -1623,6 +1677,7 @@ def main():
         try:
             doc.save_to_path(tmp_path)
             _postprocess_equations(tmp_path)
+            ensure_embedded_bindata_items(tmp_path)
             with open(tmp_path, "rb") as f:
                 sys.stdout.buffer.write(f.read())
         finally:

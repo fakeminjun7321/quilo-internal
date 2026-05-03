@@ -212,7 +212,7 @@ def add_picture(doc, data, *, fmt="png", caption="", max_width=MAX_IMAGE_WIDTH,
         treatAsChar="1",
         affectLSpacing="0",
         flowWithText="1",
-        allowOverlap="1",
+        allowOverlap="0",
         holdAnchorAndSO="0",
         vertRelTo="PARA",
         horzRelTo="COLUMN",
@@ -541,6 +541,7 @@ def main():
         target = Path(sys.argv[2])
         doc.save_to_path(str(target))
         pre._postprocess_equations(target)
+        pre.ensure_embedded_bindata_items(target)
     else:
         import os
         import tempfile
@@ -549,6 +550,7 @@ def main():
         try:
             doc.save_to_path(str(tmp_path))
             pre._postprocess_equations(tmp_path)
+            pre.ensure_embedded_bindata_items(tmp_path)
             sys.stdout.buffer.write(tmp_path.read_bytes())
         finally:
             try:

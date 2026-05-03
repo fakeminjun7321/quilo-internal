@@ -39,8 +39,8 @@
         <span id="balResult">결과: ...</span>
       </div>
 
-      <fieldset id="reportTypeFieldset">
-        <legend>보고서 종류</legend>
+      <div id="reportTypeFieldset" role="radiogroup" aria-labelledby="reportTypeLegend">
+        <div id="reportTypeLegend" class="report-type-title">보고서 종류</div>
         <label>
           <input type="radio" name="reportType" value="chem-pre" checked />
           화학 사전보고서
@@ -53,7 +53,7 @@
           <input type="radio" name="reportType" value="phys-result" />
           물리 결과보고서
         </label>
-      </fieldset>
+      </div>
     </div>
 
     <div id="comingSoon" class="notice" hidden>
@@ -539,7 +539,8 @@
             `사전 ${preCount}건 (₩${preKrw})`;
           document.getElementById("balResult").textContent =
             `결과 ${resultCount}건 (₩${resultKrw})`;
-          document.getElementById("balanceBox").style.display = "block";
+          document.getElementById("balanceBox").style.display = "flex";
+          document.querySelector(".report-toolbar")?.classList.add("has-balance");
         } catch (_) {
           /* graceful: 잔액 박스 숨김 */
         }

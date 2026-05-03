@@ -35,6 +35,7 @@ const PIPELINES = {
         temperature: String(body.temperature || "").trim(),
         pressure: String(body.pressure || "").trim(),
         fontFace: normalizeFontFace(body.fontFace),
+        userNotes: normalizeUserNotes(body.userNotes),
         style,
       };
     },
@@ -78,6 +79,7 @@ const PIPELINES = {
         temperature: String(body.temperature || "").trim(),
         pressure: String(body.pressure || "").trim(),
         fontFace: normalizeFontFace(body.fontFace),
+        userNotes: normalizeUserNotes(body.userNotes),
         style,
       };
     },
@@ -137,6 +139,7 @@ const PIPELINES = {
         })),
         studentId,
         fontFace: normalizeFontFace(body.fontFace),
+        userNotes: normalizeUserNotes(body.userNotes),
         style: "default",
       };
     },
@@ -708,6 +711,14 @@ function sanitizeForFilename(s) {
 
 function normalizeStudentId(value) {
   return String(value || "").trim().slice(0, 20);
+}
+
+function normalizeUserNotes(value) {
+  return String(value || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\n{4,}/g, "\n\n\n")
+    .trim()
+    .slice(0, 2000);
 }
 
 async function runGeneration(job, pipeline, pipelineInput, meta) {

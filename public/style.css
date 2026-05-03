@@ -386,6 +386,16 @@ form label textarea {
   margin-top: 4px;
 }
 
+.user-notes-field label {
+  display: block;
+}
+
+.user-notes-field textarea {
+  width: 100%;
+  min-height: 112px;
+  resize: vertical;
+}
+
 button {
   min-height: 40px;
   margin: 2px;

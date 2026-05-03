@@ -655,6 +655,7 @@ app.post(
     // fieldname별 파일 그룹핑 (chem-result는 photos 같이 multi 파일이 들어옴)
     const filesByField = {};
     for (const f of req.files || []) {
+      f.originalname = normalizeUploadFilename(f.originalname);
       filesByField[f.fieldname] = filesByField[f.fieldname] || [];
       filesByField[f.fieldname].push(f);
     }
@@ -826,6 +827,22 @@ function sanitizeForFilename(s) {
 
 function normalizeStudentId(value) {
   return String(value || "").trim().slice(0, 20);
+}
+
+function normalizeUploadFilename(value) {
+  const original = String(value || "");
+  if (!original) return "";
+  try {
+    const decoded = Buffer.from(original, "latin1").toString("utf8");
+    const hasHangul = /[가-힣ㄱ-ㅎㅏ-ㅣ\u1100-\u11FF]/;
+    const looksMojibake = /[ÃÂ]|[\u0080-\u009F]|á[\u0080-\u00BF]/.test(original);
+    if ((hasHangul.test(decoded) && !hasHangul.test(original)) || looksMojibake) {
+      return decoded;
+    }
+  } catch {
+    // Keep the browser-provided name if recovery fails.
+  }
+  return original;
 }
 
 function normalizeUserNotes(value) {

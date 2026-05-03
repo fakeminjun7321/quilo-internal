@@ -570,6 +570,35 @@ def is_numbered_placeholder(kind: str) -> bool:
     return kind.startswith("EQN")
 
 
+def strip_equation_markers_for_text(text: str) -> str:
+    """Return a readable plain-text fallback for malformed equation markers.
+
+    Report generation should not fail just because one model-produced
+    `{{EQ:...}}` span has unbalanced braces. In that case, keep the formula text
+    visible and remove the internal marker syntax so validation does not reject
+    the whole HWPX file.
+    """
+    text = str(text or "")
+    try:
+        placeholders = find_equation_placeholders(text)
+    except ValueError:
+        placeholders = []
+
+    if placeholders:
+        parts: list[str] = []
+        cursor = 0
+        for placeholder in placeholders:
+            parts.append(text[cursor : placeholder.start])
+            parts.append(placeholder.body.strip())
+            cursor = placeholder.end
+        parts.append(text[cursor:])
+        text = "".join(parts)
+
+    text = re.sub(r"\{\{(?:EQN-LATEX|EQ-LATEX|EQN|EQ):", "", text)
+    text = text.replace("}}", "")
+    return text
+
+
 @dataclass(frozen=True)
 class Placeholder:
     start: int
@@ -578,7 +607,7 @@ class Placeholder:
     body: str
 
 
-def find_equation_placeholders(text: str) -> list[Placeholder]:
+def find_equation_placeholders(text: str, strict: bool = True) -> list[Placeholder]:
     """Find {{EQ:...}} blocks while allowing balanced braces inside the body."""
     placeholders: list[Placeholder] = []
     pos = 0
@@ -621,7 +650,9 @@ def find_equation_placeholders(text: str) -> list[Placeholder]:
                 continue
             i += 1
         else:
-            raise ValueError(f"Unclosed equation placeholder starting at index {start}.")
+            if strict:
+                raise ValueError(f"Unclosed equation placeholder starting at index {start}.")
+            return placeholders
 
 
 def split_text_into_runs(
@@ -747,6 +778,42 @@ def replace_placeholders_in_run_group(
     return result, count
 
 
+def replace_placeholders_in_run_group_lenient(
+    runs: list[ET.Element],
+    id_gen: IdGenerator,
+    style: EquationStyle,
+    context: ReplacementContext,
+) -> tuple[list[ET.Element], int]:
+    """Convert valid placeholders and leave malformed markers as plain text."""
+    spans = build_text_run_spans(runs)
+    text = "".join(span.text for span in spans)
+    result: list[ET.Element] = []
+    count = 0
+    cursor = 0
+
+    for placeholder in find_equation_placeholders(text, strict=False):
+        result.extend(text_slice_to_runs(spans, cursor, placeholder.start))
+        run_attrs = attrs_at_position(spans, placeholder.start)
+        script = placeholder_to_script(placeholder.kind, placeholder.body)
+        result.append(make_equation_run(script, id_gen.next(), run_attrs, style=style))
+        if is_numbered_placeholder(placeholder.kind):
+            number = context.next_equation_number
+            context.next_equation_number += 1
+            result.append(make_text_run(f" ({number})", run_attrs))
+        count += 1
+        cursor = placeholder.end
+
+    if cursor < len(text):
+        tail_text = strip_equation_markers_for_text(text[cursor:])
+        if tail_text:
+            result.append(make_text_run(tail_text, attrs_at_position(spans, cursor)))
+
+    if not result:
+        run_attrs = dict(runs[0].attrib) if runs else {}
+        result.append(make_text_run(strip_equation_markers_for_text(text), run_attrs))
+    return result, count
+
+
 def replace_placeholders_in_section(
     xml_bytes: bytes,
     style: EquationStyle = EquationStyle(),
@@ -756,7 +823,8 @@ def replace_placeholders_in_section(
     root = ET.fromstring(xml_bytes)
     id_gen = IdGenerator(root)
     context = context or ReplacementContext()
-    changed = 0
+    converted = 0
+    did_change = False
 
     for para in root.findall(f".//{{{HP_NS}}}p"):
         replacements: list[tuple[int, int, list[ET.Element], int]] = []
@@ -777,12 +845,27 @@ def replace_placeholders_in_section(
             if "{{EQ" not in group_text:
                 continue
 
-            new_runs, count = replace_placeholders_in_run_group(
-                group,
-                id_gen=id_gen,
-                style=style,
-                context=context,
-            )
+            try:
+                new_runs, count = replace_placeholders_in_run_group(
+                    group,
+                    id_gen=id_gen,
+                    style=style,
+                    context=context,
+                )
+            except Exception as exc:
+                new_runs, count = replace_placeholders_in_run_group_lenient(
+                    group,
+                    id_gen=id_gen,
+                    style=style,
+                    context=context,
+                )
+                print(
+                    "[hwpx-equation] malformed equation marker left as text: "
+                    f"{exc}",
+                    file=sys.stderr,
+                )
+                replacements.append((start, index, new_runs, count))
+                continue
             if count:
                 replacements.append((start, index, new_runs, count))
 
@@ -791,11 +874,12 @@ def replace_placeholders_in_section(
                 para.remove(old_run)
             for offset, run in enumerate(new_runs):
                 para.insert(start + offset, run)
-            changed += count
+            converted += count
+            did_change = True
 
-    if changed == 0:
+    if not did_change:
         return xml_bytes, 0
-    return ET.tostring(root, encoding="utf-8", xml_declaration=True), changed
+    return ET.tostring(root, encoding="utf-8", xml_declaration=True), converted
 
 
 def find_section_files(zip_file: zipfile.ZipFile) -> list[str]:
@@ -851,9 +935,9 @@ def replace_equation_placeholders(
                 style=style,
                 context=context,
             )
-            if count:
+            if new_xml != xml_bytes:
                 updates[section_name] = new_xml
-                total += count
+            total += count
 
     write_zip_with_updates(input_hwpx, output_hwpx, updates)
     return total

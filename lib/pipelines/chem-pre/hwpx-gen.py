@@ -18,7 +18,7 @@ v5 brings the hwpx output to feature-parity with docx-gen.js:
 - light-blue shaded + bold + centered header row in the chemicals summary
 - real OWPML sub/super script runs for _{x} / ^{x} markers (Unicode fallback
   removed — Hangul renders true subscripts/superscripts)
-- inline **bold** / *italic* mixed at run level
+- inline **highlight** / *italic* mixed at run level
 """
 import sys
 import json
@@ -89,6 +89,7 @@ TABLE_CELL_MARGIN_Y = 100
 # Figure box border color (gray, matches docx generator)
 FIGURE_BORDER_COLOR = "#888888"
 TABLE_HEADER_FILL = "#D9E2F3"
+HIGHLIGHT_FILL = "#CDF2E4"
 LINK_COLOR = "#0563C1"
 
 # Match docx-gen.js FONT constant. Hangul auto-substitutes if Malgun Gothic
@@ -238,7 +239,7 @@ _CHAR_CACHE_KEY = "_v5_char_cache"
 
 
 def make_char_pr(doc, *, size=SIZE_BODY, bold=False, italic=False,
-                 sub=False, sup=False, color=None):
+                 sub=False, sup=False, color=None, highlight=False):
     """create (or reuse) a charPr with the given style and return its id.
     cached via doc._v5_char_cache so repeated style requests don't bloat
     header.xml.
@@ -247,7 +248,7 @@ def make_char_pr(doc, *, size=SIZE_BODY, bold=False, italic=False,
     if cache is None:
         cache = {}
         setattr(doc, _CHAR_CACHE_KEY, cache)
-    key = (size, bold, italic, sub, sup, color)
+    key = (size, bold, italic, sub, sup, color, highlight)
     if key in cache:
         return cache[key]
 
@@ -262,6 +263,8 @@ def make_char_pr(doc, *, size=SIZE_BODY, bold=False, italic=False,
     new_cp.set("height", str(size))
     if color:
         new_cp.set("textColor", color)
+    if highlight:
+        new_cp.set("borderFillIDRef", str(make_highlight_border_fill(doc)))
 
     # set every fontRef language to "0" so the document's first font face
     # (Malgun Gothic if we registered it; otherwise Hangul default) is used
@@ -443,6 +446,37 @@ def make_shaded_border_fill(doc, fill_color=TABLE_HEADER_FILL):
             attrib={
                 "faceColor": fill_color,
                 "hatchColor": "#000000",
+                "alpha": "0",
+            },
+        )
+
+    new_id = _new_border_fill(doc, mutate)
+    setattr(doc, cache_key, new_id)
+    return new_id
+
+
+def make_highlight_border_fill(doc, fill_color=HIGHLIGHT_FILL):
+    """No border + mint fill for inline highlighted text runs."""
+    cache_key = f"_v5_highlight_{fill_color}"
+    cache = getattr(doc, cache_key, None)
+    if cache:
+        return cache
+
+    def mutate(bf):
+        for side in ("leftBorder", "rightBorder", "topBorder", "bottomBorder"):
+            el = bf.find(f"{NS_HH}{side}")
+            if el is not None:
+                el.set("type", "NONE")
+        for ns in (NS_HH, NS_HC):
+            for old in bf.findall(f"{ns}fillBrush"):
+                bf.remove(old)
+        brush = etree.SubElement(bf, f"{NS_HC}fillBrush")
+        etree.SubElement(
+            brush,
+            f"{NS_HC}winBrush",
+            attrib={
+                "faceColor": fill_color,
+                "hatchColor": "#FF000000",
                 "alpha": "0",
             },
         )
@@ -703,7 +737,7 @@ def is_equation_only_text(text):
 
 
 def tokenize_marker_text(text):
-    """convert text into [(plain, bold, italic, sub, sup), ...] tokens.
+    """convert text into [(plain, bold, italic, sub, sup, highlight), ...] tokens.
 
     sub/sup precedence:
     1. Try Unicode subscript/superscript chars — Hangul renders them
@@ -717,29 +751,29 @@ def tokenize_marker_text(text):
     pos = 0
     for m in _MARKER_RE.finditer(text):
         if m.start() > pos:
-            out.append((text[pos:m.start()], False, False, False, False))
+            out.append((text[pos:m.start()], False, False, False, False, False))
         token = m.group(0)
         if token.startswith("**"):
-            out.append((token[2:-2], True, False, False, False))
+            out.append((token[2:-2], True, False, False, False, True))
         elif token.startswith("_{"):
             body = token[2:-1]
             mapped = _try_unicode_map(body, SUBSCRIPT_MAP)
             if mapped is not None:
-                out.append((mapped, False, False, False, False))
+                out.append((mapped, False, False, False, False, False))
             else:
-                out.append((body, False, False, True, False))
+                out.append((body, False, False, True, False, False))
         elif token.startswith("^{"):
             body = token[2:-1]
             mapped = _try_unicode_map(body, SUPERSCRIPT_MAP)
             if mapped is not None:
-                out.append((mapped, False, False, False, False))
+                out.append((mapped, False, False, False, False, False))
             else:
-                out.append((body, False, False, False, True))
+                out.append((body, False, False, False, True, False))
         else:
-            out.append((token[1:-1], False, True, False, False))
+            out.append((token[1:-1], False, True, False, False, False))
         pos = m.end()
     if pos < len(text):
-        out.append((text[pos:], False, False, False, False))
+        out.append((text[pos:], False, False, False, False, False))
     return [t for t in out if t[0]]
 
 
@@ -757,7 +791,7 @@ def tokenize(text):
     for start, end, _kind, _body in spans:
         if start > pos:
             out.extend(tokenize_marker_text(text[pos:start]))
-        out.append((text[start:end], False, False, False, False))
+        out.append((text[start:end], False, False, False, False, False))
         pos = end
     if pos < len(text):
         out.extend(tokenize_marker_text(text[pos:]))
@@ -820,7 +854,7 @@ def add_para(doc, text, *, base_size=SIZE_BODY, bold=False, align="LEFT",
         p.add_run("", char_pr_id_ref=cp)
         return p
 
-    for plain, b, i, sub, sup in tokens:
+    for plain, b, i, sub, sup, highlight in tokens:
         cp = make_char_pr(
             doc,
             size=base_size,
@@ -829,6 +863,7 @@ def add_para(doc, text, *, base_size=SIZE_BODY, bold=False, align="LEFT",
             sub=sub,
             sup=sup,
             color=color,
+            highlight=highlight,
         )
         p.add_run(plain, char_pr_id_ref=cp)
     return p
@@ -1058,7 +1093,7 @@ def _replace_cell_with_styled(doc, cell, text, *, size=SIZE_BODY, bold=False,
         cp = make_char_pr(doc, size=size, bold=bold, italic=italic, color=color)
         p.add_run("", char_pr_id_ref=cp)
         return
-    for plain, b, i, sub, sup in tokens:
+    for plain, b, i, sub, sup, highlight in tokens:
         cp = make_char_pr(
             doc,
             size=size,
@@ -1067,6 +1102,7 @@ def _replace_cell_with_styled(doc, cell, text, *, size=SIZE_BODY, bold=False,
             sub=sub,
             sup=sup,
             color=color,
+            highlight=highlight,
         )
         p.add_run(plain, char_pr_id_ref=cp)
 

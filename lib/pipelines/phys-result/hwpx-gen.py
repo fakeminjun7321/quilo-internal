@@ -404,7 +404,7 @@ def add_para_to(doc, target, text, *, base_size=pre.SIZE_BODY, bold=False,
         cp = pre.make_char_pr(doc, size=base_size, bold=bold, color=color)
         p.add_run("", char_pr_id_ref=cp)
         return p
-    for plain, b, i, sub, sup in tokens:
+    for plain, b, i, sub, sup, highlight in tokens:
         cp = pre.make_char_pr(
             doc,
             size=base_size,
@@ -413,6 +413,7 @@ def add_para_to(doc, target, text, *, base_size=pre.SIZE_BODY, bold=False,
             sub=sub,
             sup=sup,
             color=color,
+            highlight=highlight,
         )
         p.add_run(plain, char_pr_id_ref=cp)
     return p

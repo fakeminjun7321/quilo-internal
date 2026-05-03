@@ -3,15 +3,16 @@
 대구과학고 학생용 자동 보고서 생성 사이트. 보고서 종류별로 입력 폼이 다름.
 
 **지원 보고서:**
-- 🧪 **화학 사전보고서** — 매뉴얼 PDF만 올리면 사전보고서 .docx 자동 생성
-- 🔬 **화학 결과보고서** — 사전보고서 + 엑셀 데이터 + 사진 → 표/차트/사진이 들어간 결과보고서
-- ⚛️ 물리 결과보고서 — 준비 중
+- 🧪 **화학 사전보고서** — 매뉴얼 PDF만 올리면 사전보고서 `.docx` / `.hwpx` 자동 생성
+- 🔬 **화학 결과보고서** — 사전보고서 + 엑셀 데이터 + 사진 → 표/차트/사진이 들어간 `.docx` / `.hwpx` 결과보고서
+- ⚛️ **물리 결과보고서** — PASCO `.cap` 또는 엑셀/CSV + 사진 → 학교 양식 기반 `.docx` / `.hwpx` 결과보고서
 
 **스택:**
 - 백엔드: Node.js + Express
 - AI: Claude API (Sonnet 4.6 또는 Opus 4.7 선택) + 웹 검색
 - 데이터: xlsx (엑셀 파싱), chartjs-node-canvas (차트 PNG)
-- 출력: HWP 호환 .docx
+- 출력: HWP 호환 `.docx`, 한글오피스용 `.hwpx`
+- HWPX: `python-hwpx` + `lxml` + 자체 수식/이미지 후처리 도구
 - DB·인증: Supabase + 사용자별 비밀번호·예산
 
 ---
@@ -67,6 +68,8 @@ git push -u origin main
 
 빌드 끝나면 화면 상단에 `https://chem-pre-lab.onrender.com` 링크가 보임. 그게 사이트 URL.
 
+`npm install` 후 `postinstall`이 `.venv`를 만들고 HWPX 생성용 Python 패키지(`python-hwpx`, `lxml`)를 설치합니다. 이 단계가 실패해도 `.docx` 생성은 계속 동작하지만, `.hwpx` 출력은 비활성 또는 실패할 수 있습니다.
+
 ### 1-3. 친구들에게 공유
 
 URL + 공용 비밀번호 알려주면 끝.
@@ -121,6 +124,21 @@ URL + 공용 비밀번호 알려주면 끝.
 
 ---
 
+## 2-2. HWPX 한글파일 출력
+
+각 보고서 폼에서 출력 형식을 `.docx` 또는 `.hwpx`로 선택할 수 있습니다. `.hwpx`를 선택하면 서버가 같은 보고서 JSON을 Python HWPX 생성기로 넘겨 한글오피스에서 바로 열 수 있는 파일을 만듭니다.
+
+현재 구현 범위:
+
+- 화학 사전보고서: 표지, 제목/본문 계층, 기구·시약 표, 그림 placeholder, 링크, 위첨자/아래첨자, 실제 HWPX 수식 개체 변환
+- 화학 결과보고서: 실험 데이터 표, 차트 PNG, 업로드 사진, 참고문헌, 학생 정보 포함
+- 물리 결과보고서: 학교 HWPX 템플릿 박스 안에 실험 결과/결론을 삽입하고 표·차트·사진 포함
+- 글꼴: 맑은 고딕, 나눔명조, `.hwpx` 전용 함초롬바탕 선택 가능
+
+상세 구현 정리는 [`docs/hwpx-output.md`](docs/hwpx-output.md)를 참고하세요.
+
+---
+
 ## 3. 무료 플랜 한계 + Keepalive
 
 ### Render 무료
@@ -153,7 +171,7 @@ URL + 공용 비밀번호 알려주면 끝.
 
 ---
 
-## 5. 결과가 마음에 안 들 때
+## 5. 결과 스타일이나 한글파일이 마음에 안 들 때
 
 각 보고서 종류의 시스템 프롬프트 파일을 GitHub repo에서 직접 수정 → push → Render가 자동 재빌드:
 
@@ -162,6 +180,13 @@ URL + 공용 비밀번호 알려주면 끝.
 - 물리 결과: `lib/pipelines/phys-result/prompt.md`
 
 더 구체적인 지시 추가하면 즉시 반영. 예: "이론 섹션은 매 키워드마다 최소 5문단" / "수식은 별도 줄에 표기".
+
+`.hwpx` 레이아웃 자체를 조정하려면 각 파이프라인의 HWPX 생성기를 수정합니다.
+
+- 화학 사전: `lib/pipelines/chem-pre/hwpx-gen.py`
+- 화학 결과: `lib/pipelines/chem-result/hwpx-gen.py`
+- 물리 결과: `lib/pipelines/phys-result/hwpx-gen.py`
+- 공통 수식 변환: `lib/equation/hwpx_equation_tool.py`
 
 ---
 
@@ -174,18 +199,31 @@ chem-pre-lab-web/
 │   ├── parser.js                # 화학식 마커 (_{}, ^{}, *italic*) 공통
 │   ├── pricing.js, supabase.js, rate-limit.js, exchange-rate.js, auth.js
 │   ├── json-sanitize.js         # JSON 응답 안의 raw 제어문자 자동 escape
+│   ├── output-sanitize.js       # 출력 전 텍스트/수식 placeholder 정리
+│   ├── document-fonts.js        # docx/hwpx 글꼴 정규화
+│   ├── equation/
+│   │   └── hwpx_equation_tool.py # {{EQ:...}} → 실제 HWPX 수식 개체
 │   └── pipelines/
 │       ├── chem-pre/            # 화학 사전보고서
-│       │   ├── prompt.md, generate.js, docx-gen.js
-│       │   └── image-pipeline.js, image-search.js, nano-banana.js (미사용)
+│       │   ├── prompt.md, generate.js
+│       │   ├── docx-gen.js
+│       │   └── hwpx-gen.js, hwpx-gen.py
 │       ├── chem-result/         # 화학 결과보고서
 │       │   ├── prompt.md, generate.js, docx-gen.js
+│       │   ├── hwpx-gen.js, hwpx-gen.py
 │       │   ├── excel-parser.js  # xlsx/csv → markdown table
 │       │   └── chart-gen.js     # chart spec → PNG (chartjs-node-canvas)
-│       └── phys-result/         # 준비 중
+│       └── phys-result/         # 물리 결과보고서
+│           ├── prompt.md, generate.js, docx-gen.js
+│           ├── hwpx-gen.js, hwpx-gen.py
+│           ├── cap-parser.js
+│           └── templates/result-report-template.hwpx
 ├── public/
 │   ├── login.html, index.html, admin.html, style.css
+├── docs/
+│   └── hwpx-output.md
 ├── package.json
+├── requirements.txt             # Render postinstall에서 설치되는 Python 의존성
 ├── .env.example                 # (배포 시에는 Render 환경변수 사용)
 ├── .gitignore
 └── README.md

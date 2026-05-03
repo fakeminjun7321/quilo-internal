@@ -251,6 +251,17 @@ body > details,
   box-shadow: none;
 }
 
+.feedback-form {
+  max-width: 680px;
+}
+
+.inline-status {
+  display: inline-block;
+  margin-left: 10px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
 .balance-box {
   display: flex;
   flex-wrap: wrap;
@@ -372,6 +383,12 @@ input[type="file"] {
   width: 100%;
   padding: 10px;
   background: var(--surface-soft);
+}
+
+.feedback-form textarea,
+.feedback-form input,
+.feedback-form select {
+  width: 100%;
 }
 
 input:focus,
@@ -793,7 +810,7 @@ th button {
 
   .page-tabs {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     width: 100%;
   }
 
@@ -808,6 +825,11 @@ th button {
 
   .file-actions {
     justify-content: flex-start;
+  }
+
+  .inline-status {
+    display: block;
+    margin: 8px 0 0;
   }
 
   .confirm-card {

@@ -27,6 +27,7 @@
     <nav class="page-tabs" aria-label="화면 전환">
       <button type="button" class="active" data-tab="reports">보고서 작성</button>
       <button type="button" data-tab="files">내 파일</button>
+      <button type="button" data-tab="feedback">건의사항</button>
       <button type="button" data-tab="settings">개인 설정</button>
     </nav>
 
@@ -354,6 +355,49 @@
         <p class="hint">생성된 보고서는 최대 3개, 24시간만 보관됩니다.</p>
         <div id="filesStatus" class="hint">불러오는 중...</div>
         <div id="filesList" class="file-list" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <section id="feedbackPanel" class="tab-panel" data-tab-panel="feedback" hidden>
+      <div class="settings-card feedback-card">
+        <h2>건의사항</h2>
+        <form id="feedbackForm" class="compact-form feedback-form">
+          <p>
+            <label>분류:
+              <select id="feedbackCategory" required>
+                <option value="bug">버그 제보</option>
+                <option value="report-quality">보고서 내용</option>
+                <option value="data-processing">데이터 처리</option>
+                <option value="format">문서 형식</option>
+                <option value="account">계정/결제</option>
+                <option value="feature">기능 제안</option>
+                <option value="other">기타</option>
+              </select>
+            </label>
+          </p>
+          <p>
+            <label>제목:
+              <input id="feedbackTitle" type="text" maxlength="120" required placeholder="예: 물리 HWPX 이미지가 비어 있음" />
+            </label>
+          </p>
+          <p>
+            <label>내용:
+              <textarea id="feedbackMessage" rows="8" maxlength="4000" required placeholder="어떤 보고서 종류였는지, 어떤 파일/상황에서 문제가 났는지 적어주세요."></textarea>
+            </label>
+          </p>
+          <p>
+            <label>답장 받을 이메일 (선택):
+              <input id="feedbackContactEmail" type="email" maxlength="160" placeholder="name@example.com" />
+            </label>
+          </p>
+          <p class="hint">
+            비밀번호, API 키, 주민번호 같은 민감정보는 적지 마세요.
+          </p>
+          <p>
+            <button type="submit" id="feedbackBtn">보내기</button>
+            <span id="feedbackStatus" class="inline-status" aria-live="polite"></span>
+          </p>
+        </form>
       </div>
     </section>
 
@@ -813,6 +857,44 @@
           pwStatus.textContent = err.message;
         } finally {
           pwBtn.disabled = false;
+        }
+      });
+
+      // ── 건의사항/버그 제보 ────────────────────────────────────────────────
+      const feedbackForm = document.getElementById("feedbackForm");
+      const feedbackBtn = document.getElementById("feedbackBtn");
+      const feedbackStatus = document.getElementById("feedbackStatus");
+
+      feedbackForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        feedbackBtn.disabled = true;
+        feedbackStatus.style.color = "#666";
+        feedbackStatus.textContent = "전송 중...";
+
+        const payload = {
+          category: document.getElementById("feedbackCategory").value,
+          title: document.getElementById("feedbackTitle").value.trim(),
+          message: document.getElementById("feedbackMessage").value.trim(),
+          contactEmail: document.getElementById("feedbackContactEmail").value.trim(),
+          pageUrl: location.href,
+        };
+
+        try {
+          const res = await fetch("/api/feedback", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || "전송 실패");
+          feedbackStatus.style.color = "green";
+          feedbackStatus.textContent = "접수 완료";
+          feedbackForm.reset();
+        } catch (err) {
+          feedbackStatus.style.color = "red";
+          feedbackStatus.textContent = err.message || "전송 실패";
+        } finally {
+          feedbackBtn.disabled = false;
         }
       });
 

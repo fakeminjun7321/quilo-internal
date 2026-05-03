@@ -53,6 +53,28 @@ create index if not exists report_files_user_created_idx
 create index if not exists report_files_expires_idx
   on report_files (expires_at);
 
+-- ── 건의사항/버그 제보 ──────────────────────────────────────────────────────
+create table if not exists feedback_reports (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references users(id) on delete set null,
+  user_name text not null default '',
+  category text not null,
+  title text not null,
+  message text not null,
+  contact_email text,
+  page_url text,
+  user_agent text,
+  email_sent boolean not null default false,
+  email_error text,
+  meta jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists feedback_reports_created_idx
+  on feedback_reports (created_at desc);
+create index if not exists feedback_reports_user_created_idx
+  on feedback_reports (user_id, created_at desc);
+
 -- private bucket. 서버(service_role)가 사용자 권한 확인 후 대리 다운로드한다.
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
@@ -90,5 +112,6 @@ create trigger trg_users_updated_at
 alter table users enable row level security;
 alter table usage_logs enable row level security;
 alter table report_files enable row level security;
+alter table feedback_reports enable row level security;
 
 -- ── 끝 ─────────────────────────────────────────────────────────────────────

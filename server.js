@@ -171,6 +171,10 @@ const {
 const supa = require("./lib/supabase");
 const { krwToUsd, usdToKrw, getKrwPerUsd } = require("./lib/exchange-rate");
 const rateLimit = require("./lib/rate-limit");
+const {
+  CATEGORY_LABELS: FEEDBACK_CATEGORY_LABELS,
+  sendFeedbackEmail,
+} = require("./lib/feedback-mailer");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -236,6 +240,20 @@ function requireAdmin(req, res, next) {
 
 function isTruthyPolicyFlag(value) {
   return value === true || value === "true" || value === "1" || value === "on";
+}
+
+function normalizeFeedbackText(value, maxLen) {
+  return String(value || "")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+    .trim()
+    .slice(0, maxLen);
+}
+
+function normalizeFeedbackCategory(value) {
+  const category = String(value || "").trim();
+  return Object.prototype.hasOwnProperty.call(FEEDBACK_CATEGORY_LABELS, category)
+    ? category
+    : "other";
 }
 
 // ── In-memory cumulative usage (server uptime-only; DB는 별도) ──────────────
@@ -507,6 +525,94 @@ app.post("/api/me/password", requireAuth, async (req, res) => {
       .status(500)
       .json({ error: "비밀번호 변경 중 오류가 발생했습니다." });
   }
+});
+
+app.post("/api/feedback", requireAuth, async (req, res) => {
+  const userInfo = getSessionUser(req);
+  const limitKey = userInfo?.id || req.ip || "anonymous";
+  const limit = rateLimit.checkFeedbackLimit(limitKey);
+  if (!limit.allowed) {
+    return res.status(429).json({
+      error: `건의사항은 10분당 ${limit.limit}회까지 보낼 수 있습니다. 잠시 후 다시 시도하세요.`,
+    });
+  }
+
+  const category = normalizeFeedbackCategory(req.body?.category);
+  const title = normalizeFeedbackText(req.body?.title, 120);
+  const message = normalizeFeedbackText(req.body?.message, 4000);
+  const contactEmail = normalizeFeedbackText(req.body?.contactEmail, 160);
+  const pageUrl = normalizeFeedbackText(req.body?.pageUrl, 500);
+  const userAgent = normalizeFeedbackText(req.get("user-agent"), 500);
+
+  if (title.length < 3) {
+    return res.status(400).json({ error: "제목을 3자 이상 입력하세요." });
+  }
+  if (message.length < 10) {
+    return res.status(400).json({ error: "내용을 10자 이상 입력하세요." });
+  }
+  if (contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
+    return res.status(400).json({ error: "이메일 형식이 올바르지 않습니다." });
+  }
+
+  rateLimit.recordFeedbackAttempt(limitKey);
+
+  const feedback = {
+    category,
+    title,
+    message,
+    contactEmail,
+    pageUrl,
+    userAgent,
+    userId: userInfo?.id || "",
+    userName: userInfo?.name || "",
+    studentId: normalizeStudentId(userInfo?.studentId),
+    submittedAt: new Date().toISOString(),
+  };
+
+  let emailResult = { sent: false, reason: "not_attempted" };
+  try {
+    emailResult = await sendFeedbackEmail(feedback);
+  } catch (e) {
+    emailResult = { sent: false, reason: "send_exception", detail: e.message };
+  }
+
+  let stored = false;
+  let storeError = "";
+  if (supa.isEnabled()) {
+    try {
+      await supa.recordFeedback({
+        ...feedback,
+        emailSent: !!emailResult.sent,
+        emailError: emailResult.sent
+          ? ""
+          : [emailResult.reason, emailResult.detail].filter(Boolean).join(": "),
+        meta: {
+          resendId: emailResult.id || null,
+        },
+      });
+      stored = true;
+    } catch (e) {
+      storeError = e.message;
+      console.warn("[feedback] DB 저장 실패:", e.message);
+    }
+  }
+
+  console.log(
+    `[feedback] user=${feedback.userName || "-"} category=${category} title=${title} email=${emailResult.sent ? "sent" : emailResult.reason} stored=${stored}`,
+  );
+  if (!emailResult.sent && !stored) {
+    console.warn("[feedback] no email/db sink configured; message follows\n", {
+      ...feedback,
+      message,
+    });
+  }
+
+  return res.json({
+    ok: true,
+    emailSent: !!emailResult.sent,
+    stored,
+    storeError: process.env.NODE_ENV === "production" ? "" : storeError,
+  });
 });
 
 // ── Generate route ───────────────────────────────────────────────────────────

@@ -96,13 +96,14 @@ const PIPELINES = {
     creditField: "result", // result_credits_usd 차감
     prepareInput(filesByField, body) {
       const cap = filesByField.cap?.[0] || null;
-      const data = filesByField.data?.[0] || null;
+      const dataFiles = filesByField.data || [];
       const manual = filesByField.manual?.[0] || null;
+      const photos = filesByField.photos || [];
 
-      // .cap 또는 엑셀 데이터 중 하나는 필수
-      if (!cap && !data) {
+      // .cap, 표 데이터 파일, 또는 데이터표/그래프 스크린샷 중 하나는 필수
+      if (!cap && dataFiles.length === 0 && photos.length === 0) {
         throw new Error(
-          "PASCO Capstone (.cap) 파일 또는 엑셀/CSV 데이터 중 하나는 업로드하세요.",
+          "PASCO Capstone (.cap), 엑셀/CSV/텍스트 데이터, 또는 데이터표·그래프 스크린샷 중 하나는 업로드하세요.",
         );
       }
 
@@ -114,23 +115,26 @@ const PIPELINES = {
         }
       }
 
-      // 데이터 확장자 검증 (있을 때)
-      if (data) {
+      // 데이터 확장자 검증 (여러 개 가능)
+      for (const data of dataFiles) {
         const dext = (data.originalname.split(".").pop() || "").toLowerCase();
-        if (!["xlsx", "xls", "csv"].includes(dext)) {
-          throw new Error("엑셀/CSV 데이터는 .xlsx, .xls, .csv 형식만 가능합니다.");
+        if (!["xlsx", "xls", "csv", "txt", "md"].includes(dext)) {
+          throw new Error(
+            "데이터 파일은 .xlsx, .xls, .csv, .txt, .md 형식만 가능합니다.",
+          );
         }
       }
-
-      const photos = filesByField.photos || [];
 
       const studentId = String(body.studentId || "").trim().slice(0, 20);
 
       return {
         capBuffer: cap?.buffer || null,
         capName: cap?.originalname || "",
-        dataBuffer: data?.buffer || null,
-        dataName: data?.originalname || "",
+        dataFiles: dataFiles.map((data) => ({
+          buffer: data.buffer,
+          name: data.originalname,
+          mimetype: data.mimetype,
+        })),
         manualBuffer: manual?.buffer || null,
         photos: photos.map((p) => ({
           buffer: p.buffer,
@@ -208,12 +212,12 @@ app.use(
   }),
 );
 
-// 단일 파일 25MB, 전체 파일 개수 12개 (사진 multi 대비) — Render 무료 512MB 메모리 보호
+// 단일 파일 25MB, 전체 파일 개수 20개 (물리 다중 데이터/사진 대비) — Render 무료 512MB 메모리 보호
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 25 * 1024 * 1024,
-    files: 12,
+    files: 20,
   },
 });
 
@@ -734,7 +738,11 @@ app.post(
     );
     // 파일명 기반 보고서 번호 추출용 — pipeline이 지정한 fieldname 사용
     const sourceFile =
-      filesByField[pipeline.filenameSourceField]?.[0];
+      reportType === "phys-result"
+        ? filesByField.cap?.[0] ||
+          filesByField.manual?.[0] ||
+          filesByField.data?.[0]
+        : filesByField[pipeline.filenameSourceField]?.[0];
     const sourceFilename = sourceFile?.originalname || "";
     // 사용자가 폼에서 선택한 모델. 화이트리스트 검증으로 임의 모델 주입 차단.
     // Sonnet 비활성화 — Opus 4.7만 허용. 복구 시 "claude-sonnet-4-6" 추가.

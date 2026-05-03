@@ -163,7 +163,7 @@
     <!-- ── 물리 결과보고서 폼 (Phase 3) ─────────────────────────── -->
     <form id="physResultForm" class="report-form" data-report-form="phys-result" hidden>
       <p class="notice">
-        <strong>.cap 또는 엑셀 중 하나는 필수</strong>. 둘 다 있으면 둘 다 사용합니다.<br>
+        <strong>.cap, 엑셀/CSV/텍스트, 데이터표·그래프 스크린샷 중 하나는 필수</strong>. 여러 자료가 있으면 모두 사용합니다.<br>
         엑셀로 측정한 실험은 매뉴얼 PDF도 같이 첨부 권장.
       </p>
       <p>
@@ -172,8 +172,8 @@
         </label>
       </p>
       <p>
-        <label>엑셀/CSV 데이터 (.xlsx·.xls·.csv):
-          <input id="prData" name="data" type="file" accept=".xlsx,.xls,.csv" />
+        <label>엑셀/CSV/텍스트 데이터 (여러 개 가능):
+          <input id="prData" name="data" type="file" accept=".xlsx,.xls,.csv,.txt,.md,text/plain,text/markdown" multiple />
         </label>
       </p>
       <p>
@@ -182,7 +182,7 @@
         </label>
       </p>
       <p>
-        <label>실험 사진 (여러 장 가능, 선택):
+        <label>실험 사진 / 데이터표·그래프 스크린샷 (여러 장 가능, 선택):
           <input id="prPhotos" name="photos" type="file" accept=".png,.jpg,.jpeg" multiple />
         </label>
       </p>
@@ -928,8 +928,8 @@
       }
 
       // phys-result 비용 추정
-      // - .cap 파일은 서버에서 파싱되어 ~5K 토큰의 텍스트가 됨 (binary → 텍스트 변환 후 매우 작음)
-      // - 사진 1장 ≈ 1500 토큰
+      // - .cap 파일과 엑셀/CSV/텍스트는 서버에서 텍스트로 파싱됨
+      // - 이미지 자료 1장 ≈ 1500 토큰
       // - 양식·평가기준 PDF (선택): 추가 입력
       // - 출력 6K~10K (5p 강제 + 실제 사용자 경험상 2~3분 작성)
       function estimatePhysResultCost({
@@ -1349,13 +1349,13 @@
         if (currentJobId) return;
 
         const cap = document.getElementById("prCap").files[0] || null;
-        const dataFile = document.getElementById("prData").files[0] || null;
+        const dataFiles = Array.from(document.getElementById("prData").files);
         const manual = document.getElementById("prManual").files[0] || null;
         const photos = Array.from(document.getElementById("prPhotos").files);
 
-        // 클라이언트 검증: cap 또는 엑셀 중 하나는 필수 (사진은 선택)
-        if (!cap && !dataFile) {
-          alert("PASCO Capstone (.cap) 파일 또는 엑셀/CSV 데이터 중 하나는 업로드해야 합니다.");
+        // 클라이언트 검증: cap, 엑셀/CSV, 데이터 스크린샷 중 하나는 필수
+        if (!cap && dataFiles.length === 0 && photos.length === 0) {
+          alert("PASCO Capstone (.cap), 엑셀/CSV/텍스트 데이터, 데이터표·그래프 스크린샷 중 하나는 업로드해야 합니다.");
           return;
         }
         if (!currentStudentId) {
@@ -1379,7 +1379,8 @@
         const prUserNotes = getUserNotesValue("prUserNotes");
 
         const photoBytes = photos.reduce((s, p) => s + p.size, 0);
-        const dataInputBytes = (cap?.size || 0) + (dataFile?.size || 0);
+        const dataFileBytes = dataFiles.reduce((s, f) => s + f.size, 0);
+        const dataInputBytes = (cap?.size || 0) + dataFileBytes;
         const est = estimatePhysResultCost({
           capBytes: dataInputBytes,
           photoCount: photos.length,
@@ -1392,8 +1393,11 @@
         const krwHi = Math.round(est.hi * 1400);
         const inputLabel =
           (cap ? `.cap (${Math.round(cap.size / 1024)}KB)` : "") +
-          (cap && dataFile ? " + " : "") +
-          (dataFile ? `엑셀/CSV (${Math.round(dataFile.size / 1024)}KB)` : "");
+          (cap && dataFiles.length ? " + " : "") +
+          (dataFiles.length
+            ? `엑셀/CSV/텍스트 ${dataFiles.length}개 (${Math.round(dataFileBytes / 1024)}KB)`
+            : "") +
+          (!cap && dataFiles.length === 0 && photos.length ? "이미지 자료만" : "");
         const ok = await showConfirmDialog({
           title: "물리 결과보고서 생성",
           rows: [
@@ -1420,7 +1424,7 @@
         const fd = new FormData();
         fd.append("type", "phys-result");
         if (cap) fd.append("cap", cap);
-        if (dataFile) fd.append("data", dataFile);
+        dataFiles.forEach((f) => fd.append("data", f));
         if (manual) fd.append("manual", manual);
         photos.forEach((p) => fd.append("photos", p));
         const prDateStr = document.getElementById("prDate").value;

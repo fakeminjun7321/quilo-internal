@@ -142,6 +142,32 @@ def clear_template_body(doc):
         doc.remove_paragraph(paragraph)
 
 
+def clear_cell(cell):
+    parent = cell.element
+    for p in parent.findall(f"{pre.NS_HP}subList/{pre.NS_HP}p"):
+        p.getparent().remove(p)
+    for p in parent.findall(f"{pre.NS_HP}p"):
+        p.getparent().remove(p)
+
+
+def find_template_body_cells(doc):
+    result_cell = None
+    conclusion_cell = None
+    for idx, paragraph in enumerate(getattr(doc, "paragraphs", [])):
+        text = getattr(paragraph, "text", "") or ""
+        tables = getattr(paragraph, "tables", []) or []
+        if tables:
+            continue
+        next_tables = []
+        if idx + 1 < len(doc.paragraphs):
+            next_tables = getattr(doc.paragraphs[idx + 1], "tables", []) or []
+        if "1. 실험 결과" in text and next_tables:
+            result_cell = next_tables[0].cell(0, 0)
+        if "2. 결론" in text and next_tables:
+            conclusion_cell = next_tables[0].cell(0, 0)
+    return result_cell, conclusion_cell
+
+
 def fill_template_title(doc, content):
     title = content.get("title") or content.get("title_en") or content.get("title_kr") or "물리 결과보고서"
     changed = False
@@ -149,12 +175,90 @@ def fill_template_title(doc, content):
         element = getattr(sec, "element", None)
         if element is None:
             continue
-        for node in element.iter(f"{pre.NS_HP}t"):
-            if node.text and "(반드시 기재)" in node.text:
+        for paragraph in element.iter(f"{pre.NS_HP}p"):
+            text_nodes = list(paragraph.iter(f"{pre.NS_HP}t"))
+            for idx, node in enumerate(text_nodes):
+                if not node.text or "(반드시 기재)" not in node.text:
+                    continue
                 node.text = node.text.replace("(반드시 기재)", title)
+                run = node.getparent()
+                if idx > 0:
+                    prev = text_nodes[idx - 1]
+                    if prev.text and "실험 주제" in prev.text:
+                        prev.text = re.sub(r"(실험\s*주제\s*:).*", r" \1 ", prev.text)
+                        prev_run = prev.getparent()
+                        if run is not None and prev_run is not None and prev_run.get("charPrIDRef"):
+                            run.set("charPrIDRef", prev_run.get("charPrIDRef"))
                 changed = True
         if changed and hasattr(sec, "mark_dirty"):
             sec.mark_dirty()
+
+
+def add_paragraph_to(target, text="", *, para_pr_id_ref=None):
+    if hasattr(target, "add_paragraph"):
+        try:
+            return target.add_paragraph(
+                text,
+                para_pr_id_ref=para_pr_id_ref,
+                inherit_style=False,
+                include_run=False,
+            )
+        except TypeError:
+            return target.add_paragraph(text, para_pr_id_ref=para_pr_id_ref)
+    raise TypeError("target does not support add_paragraph")
+
+
+def add_para_to(doc, target, text, *, base_size=pre.SIZE_BODY, bold=False,
+                align="LEFT", indent_left=0, keep_with_next=False,
+                color=None, space_after=None, space_before=0):
+    text = pre.normalize_equation_markers(str(text or ""))
+    if pre._is_equation_only(text):
+        align = "CENTER"
+        indent_left = 0
+    effective_space_after = pre.SPACE_BODY if space_after is None else space_after
+    para_pr = pre.make_para_pr(
+        doc,
+        align=align,
+        indent_left=indent_left,
+        line_spacing=pre.LINE_SPACING_PERCENT,
+        keep_with_next=keep_with_next,
+        space_after=effective_space_after,
+        space_before=space_before,
+    )
+    p = add_paragraph_to(target, "", para_pr_id_ref=para_pr)
+    tokens = pre.tokenize(text)
+    if not tokens:
+        cp = pre.make_char_pr(doc, size=base_size, bold=bold, color=color)
+        p.add_run("", char_pr_id_ref=cp)
+        return p
+    for plain, b, i, sub, sup in tokens:
+        cp = pre.make_char_pr(
+            doc,
+            size=base_size,
+            bold=bold or b,
+            italic=i,
+            sub=sub,
+            sup=sup,
+            color=color,
+        )
+        p.add_run(plain, char_pr_id_ref=cp)
+    return p
+
+
+def add_heading_to(doc, target, text, *, size=pre.SIZE_TITLE, align="LEFT",
+                   indent_left=0, space_before=0, space_after=0):
+    return add_para_to(
+        doc,
+        target,
+        text,
+        base_size=size,
+        bold=True,
+        align=align,
+        indent_left=indent_left,
+        keep_with_next=True,
+        space_before=space_before,
+        space_after=space_after,
+    )
 
 
 def apply_phys_page_layout(doc):
@@ -208,8 +312,9 @@ def add_phys_page_number_to_footer(doc):
             return
 
 
-def add_picture(doc, data, *, fmt="png", caption="", max_width=MAX_IMAGE_WIDTH,
-                max_height=MAX_IMAGE_HEIGHT):
+def append_picture_to_paragraph(doc, para, data, *, fmt="png", caption="",
+                                max_width=MAX_IMAGE_WIDTH,
+                                max_height=MAX_IMAGE_HEIGHT):
     if not data:
         return False
     width_px, height_px = image_size(data)
@@ -217,19 +322,6 @@ def add_picture(doc, data, *, fmt="png", caption="", max_width=MAX_IMAGE_WIDTH,
         width_px, height_px, max_width, max_height,
     )
     item_id = doc.add_image(data, fmt)
-
-    para_pr = pre.make_para_pr(
-        doc,
-        align="CENTER",
-        line_spacing=pre.LINE_SPACING_PERCENT,
-        space_after=180,
-    )
-    para = doc.add_paragraph(
-        "",
-        para_pr_id_ref=para_pr,
-        inherit_style=False,
-        include_run=False,
-    )
     pic = para.add_shape(
         "pic",
         attributes={
@@ -309,11 +401,35 @@ def add_picture(doc, data, *, fmt="png", caption="", max_width=MAX_IMAGE_WIDTH,
         horzOffset="0",
     )
     etree.SubElement(pic, f"{pre.NS_HP}outMargin", left="0", right="0", top="0", bottom="0")
-    etree.SubElement(pic, f"{pre.NS_HP}shapeComment").text = caption or "image"
+    etree.SubElement(pic, f"{pre.NS_HP}shapeComment").text = "image"
+    return True
+
+
+def add_picture(doc, data, *, fmt="png", caption="", max_width=MAX_IMAGE_WIDTH,
+                max_height=MAX_IMAGE_HEIGHT, target=None):
+    target = target or doc
+    para_pr = pre.make_para_pr(
+        doc,
+        align="CENTER",
+        line_spacing=pre.LINE_SPACING_PERCENT,
+        space_after=180,
+    )
+    para = add_paragraph_to(target, "", para_pr_id_ref=para_pr)
+    if not append_picture_to_paragraph(
+        doc,
+        para,
+        data,
+        fmt=fmt,
+        caption=caption,
+        max_width=max_width,
+        max_height=max_height,
+    ):
+        return False
 
     if caption:
-        pre.add_para(
+        add_para_to(
             doc,
+            target,
             caption,
             base_size=pre.SIZE_CAPTION,
             align="CENTER",
@@ -322,7 +438,8 @@ def add_picture(doc, data, *, fmt="png", caption="", max_width=MAX_IMAGE_WIDTH,
     return True
 
 
-def add_table(doc, headers, rows, caption=None):
+def add_table(doc, headers, rows, caption=None, target=None):
+    target = target or doc
     headers = [str(h or "") for h in headers]
     rows = [[str(c or "") for c in row] for row in rows or []]
     if not headers:
@@ -330,7 +447,7 @@ def add_table(doc, headers, rows, caption=None):
 
     solid_id = pre.make_solid_border_fill(doc)
     shaded_id = pre.make_shaded_border_fill(doc)
-    table = doc.add_table(
+    table = target.add_table(
         rows=len(rows) + 1,
         cols=len(headers),
         width=PHYS_TABLE_WIDTH,
@@ -373,8 +490,9 @@ def add_table(doc, headers, rows, caption=None):
             )
 
     if caption:
-        pre.add_para(
+        add_para_to(
             doc,
+            target,
             caption,
             base_size=pre.SIZE_CAPTION,
             align="CENTER",
@@ -393,27 +511,82 @@ def build_header(doc, content):
     )
 
 
-def add_photo_blocks(doc, photo_indices, photos, fig_counter, caption_prefix):
+def add_photo_blocks(doc, photo_indices, photos, fig_counter, caption_prefix, target=None):
+    target = target or doc
+    selected = []
     for idx in as_list(photo_indices):
         try:
             photo = photos[int(idx)]
         except Exception:
             continue
         blob = decode_base64(photo.get("data_base64"))
-        fmt = image_format(photo.get("name"), photo.get("mimetype"), blob)
-        fig_counter["value"] += 1
-        caption = f"[그림 {fig_counter['value']}] {caption_prefix or '실험 사진'}"
-        add_picture(doc, blob, fmt=fmt, caption=caption)
+        if blob:
+            selected.append((photo, blob))
+    for start in range(0, len(selected), 3):
+        group = selected[start:start + 3]
+        if not group:
+            continue
+        solid_id = pre.make_solid_border_fill(doc)
+        table = target.add_table(
+            rows=2,
+            cols=len(group),
+            width=PHYS_TABLE_WIDTH,
+            border_fill_id_ref=solid_id,
+        )
+        col_width = max(int(PHYS_TABLE_WIDTH / len(group)), 5000)
+        image_max_width = max(col_width - 900, 5000)
+        image_max_height = 12500 if len(group) >= 3 else 16500
+        captions = []
+        for col, (photo, blob) in enumerate(group):
+            fmt = image_format(photo.get("name"), photo.get("mimetype"), blob)
+            fig_counter["value"] += 1
+            caption = f"[그림 {fig_counter['value']}] {caption_prefix or '실험 사진'}"
+            captions.append(caption)
+
+            img_cell = table.cell(0, col)
+            cap_cell = table.cell(1, col)
+            for cell in (img_cell, cap_cell):
+                cell.element.set("borderFillIDRef", str(solid_id))
+                try:
+                    cell.set_size(width=col_width)
+                except Exception:
+                    pass
+            para_pr = pre.make_para_pr(
+                doc,
+                align="CENTER",
+                line_spacing=pre.TABLE_LINE_SPACING_PERCENT,
+                space_after=0,
+            )
+            para = img_cell.add_paragraph("", para_pr_id_ref=para_pr)
+            append_picture_to_paragraph(
+                doc,
+                para,
+                blob,
+                fmt=fmt,
+                caption=caption,
+                max_width=image_max_width,
+                max_height=image_max_height,
+            )
+        for col, caption in enumerate(captions):
+            pre._replace_cell_with_styled(
+                doc,
+                table.cell(1, col),
+                caption,
+                size=pre.SIZE_CAPTION,
+                align="CENTER",
+                line_spacing=pre.TABLE_LINE_SPACING_PERCENT,
+            )
 
 
-def build_chart(doc, chart, fig_counter):
+def build_chart(doc, chart, fig_counter, target=None):
+    target = target or doc
     if not chart:
         return
     blob = decode_base64(chart.get("png_base64"))
     title = clean_label(chart.get("title") or "그래프")
     caption_text = clean_label(chart.get("caption") or "")
     if not blob:
-        pre.add_para(doc, f"[그래프] {title} - 렌더 실패", base_size=pre.SIZE_CAPTION)
+        add_para_to(doc, target, f"[그래프] {title} - 렌더 실패", base_size=pre.SIZE_CAPTION)
         return
 
     fig_counter["value"] += 1
@@ -427,40 +600,45 @@ def build_chart(doc, chart, fig_counter):
         caption=caption,
         max_width=MAX_CHART_WIDTH,
         max_height=MAX_CHART_HEIGHT,
+        target=target,
     )
 
 
-def build_results(doc, content):
+def build_results(doc, content, target=None, include_heading=True):
+    target = target or doc
     photos = as_list(content.get("__photos"))
     fig_counter = {"value": 0}
     table_counter = {"value": 0}
 
-    pre.add_heading(
-        doc,
-        "1. 실험 결과",
-        size=pre.SIZE_TITLE,
-        space_before=pre.SPACE_HEADING_LV1,
-        space_after=pre.SPACE_HEADING_LV2,
-    )
+    if include_heading:
+        add_heading_to(
+            doc,
+            target,
+            "1. 실험 결과",
+            size=pre.SIZE_TITLE,
+            space_before=pre.SPACE_HEADING_LV1,
+            space_after=pre.SPACE_HEADING_LV2,
+        )
 
     setup = content.get("experiment_setup") or {}
-    pre.add_heading(doc, "1.1 실험 장치 및 세팅", size=pre.SIZE_HEADING, space_after=pre.SPACE_BODY)
+    add_heading_to(doc, target, "1.1 실험 장치 및 세팅", size=pre.SIZE_HEADING, space_after=pre.SPACE_BODY)
     if setup.get("description"):
-        pre.add_para(doc, setup.get("description"), indent_left=pre.INDENT_5MM)
-    add_photo_blocks(doc, setup.get("photo_indices"), photos, fig_counter, "실험 장치")
+        add_para_to(doc, target, setup.get("description"), indent_left=pre.INDENT_5MM)
+    add_photo_blocks(doc, setup.get("photo_indices"), photos, fig_counter, "실험 장치", target=target)
 
     for idx, exp in enumerate(as_list(content.get("experiments")), 1):
         subnum = f"1.{idx + 1}"
         title = exp.get("name") or f"실험 {idx}"
-        pre.add_heading(
+        add_heading_to(
             doc,
+            target,
             f"{subnum} {title}",
             size=pre.SIZE_HEADING,
             space_before=pre.SPACE_HEADING_LV2,
             space_after=pre.SPACE_BODY,
         )
         if exp.get("method_summary"):
-            pre.add_para(doc, exp.get("method_summary"), indent_left=pre.INDENT_5MM)
+            add_para_to(doc, target, exp.get("method_summary"), indent_left=pre.INDENT_5MM)
 
         table = exp.get("data_table") or {}
         if table.get("headers") and isinstance(table.get("rows"), list):
@@ -470,44 +648,49 @@ def build_results(doc, content):
                 table.get("headers"),
                 table.get("rows"),
                 caption=f"[표 {table_counter['value']}] 측정 데이터",
+                target=target,
             )
 
-        build_chart(doc, exp.get("chart"), fig_counter)
+        build_chart(doc, exp.get("chart"), fig_counter, target=target)
 
         if exp.get("analysis"):
-            pre.add_para(doc, exp.get("analysis"), indent_left=pre.INDENT_5MM)
+            add_para_to(doc, target, exp.get("analysis"), indent_left=pre.INDENT_5MM)
 
-        add_photo_blocks(doc, exp.get("photo_indices"), photos, fig_counter, title)
+        add_photo_blocks(doc, exp.get("photo_indices"), photos, fig_counter, title, target=target)
 
 
-def add_conclusion_block(doc, label, value):
+def add_conclusion_block(doc, target, label, value):
     if not value:
         return
-    pre.add_para(doc, label, base_size=pre.SIZE_HEADING, bold=True, space_after=240)
+    add_para_to(doc, target, label, base_size=pre.SIZE_HEADING, bold=True, space_after=240)
     if isinstance(value, list):
         for item in value:
-            pre.add_para(doc, str(item), space_after=360)
+            add_para_to(doc, target, str(item), space_after=360)
     else:
-        pre.add_para(doc, str(value), space_after=360)
+        add_para_to(doc, target, str(value), space_after=360)
 
 
-def build_conclusion(doc, content):
-    pre.add_heading(
-        doc,
-        "2. 결론",
-        size=pre.SIZE_TITLE,
-        space_before=pre.SPACE_HEADING_LV1,
-        space_after=pre.SPACE_HEADING_LV2,
-    )
+def build_conclusion(doc, content, target=None, include_heading=True):
+    target = target or doc
+    if include_heading:
+        add_heading_to(
+            doc,
+            target,
+            "2. 결론",
+            size=pre.SIZE_TITLE,
+            space_before=pre.SPACE_HEADING_LV1,
+            space_after=pre.SPACE_HEADING_LV2,
+        )
     conclusion = content.get("conclusion") or {}
     if conclusion.get("objective_recap"):
-        pre.add_para(doc, conclusion.get("objective_recap"), space_after=pre.SPACE_BODY)
+        add_para_to(doc, target, conclusion.get("objective_recap"), space_after=pre.SPACE_BODY)
 
-    add_conclusion_block(doc, "▶ 결과 요약", conclusion.get("result_summary"))
-    add_conclusion_block(doc, "▶ 오차 분석", conclusion.get("error_analysis"))
-    add_conclusion_block(doc, "▶ 문제 인식 및 해결", conclusion.get("problem_solving"))
+    add_conclusion_block(doc, target, "▶ 결과 요약", conclusion.get("result_summary"))
+    add_conclusion_block(doc, target, "▶ 오차 분석", conclusion.get("error_analysis"))
+    add_conclusion_block(doc, target, "▶ 문제 인식 및 해결", conclusion.get("problem_solving"))
     add_conclusion_block(
         doc,
+        target,
         "▶ 물리적 고찰",
         conclusion.get("physical_meaning") or conclusion.get("theory_connection"),
     )
@@ -564,8 +747,15 @@ def generate_hwpx(content):
     doc = load_template_doc()
     using_template = doc is not None
     if using_template:
-        clear_template_body(doc)
         fill_template_title(doc, content)
+        result_cell, conclusion_cell = find_template_body_cells(doc)
+        if result_cell is not None and conclusion_cell is not None:
+            clear_cell(result_cell)
+            clear_cell(conclusion_cell)
+            build_results(doc, content, target=result_cell, include_heading=False)
+            build_conclusion(doc, content, target=conclusion_cell, include_heading=False)
+            return doc
+        clear_template_body(doc)
     else:
         doc = HwpxDocument.new()
         apply_phys_page_layout(doc)

@@ -7,20 +7,22 @@
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
-    <p class="topbar">
-      <span id="user"></span>
-      <a href="/admin" id="adminLink" style="display: none">관리자</a>
-      <a href="#" id="logout">로그아웃</a>
-    </p>
+    <header class="app-header">
+      <p class="topbar">
+        <span id="user"></span>
+        <a href="/admin" id="adminLink" style="display: none">관리자</a>
+        <a href="#" id="logout">로그아웃</a>
+      </p>
 
-    <h1>보고서 작성 툴</h1>
+      <h1>보고서 작성 툴</h1>
 
-    <div class="notice compliance-notice">
-      <strong>학습 보조 초안 생성 도구입니다.</strong>
-      본인이 이용 권한을 가진 파일만 업로드하고, 학교·교사 기준에서 AI 사용이 허용되는 범위인지 확인한 뒤 사용하세요.
-      생성 결과는 그대로 제출하지 말고 반드시 직접 검토·수정하세요.
-      업로드 파일은 AI 처리 과정에서 외부 처리업체로 전송될 수 있으며, 생성 파일은 24시간만 보관됩니다.
-    </div>
+      <div class="notice compliance-notice">
+        <strong>학습 보조 초안 생성 도구입니다.</strong>
+        본인이 이용 권한을 가진 파일만 업로드하고, 학교·교사 기준에서 AI 사용이 허용되는 범위인지 확인한 뒤 사용하세요.
+        생성 결과는 그대로 제출하지 말고 반드시 직접 검토·수정하세요.
+        업로드 파일은 AI 처리 과정에서 외부 처리업체로 전송될 수 있으며, 생성 파일은 24시간만 보관됩니다.
+      </div>
+    </header>
 
     <nav class="page-tabs" aria-label="화면 전환">
       <button type="button" class="active" data-tab="reports">보고서 작성</button>
@@ -29,27 +31,29 @@
     </nav>
 
     <section id="reportsPanel" class="tab-panel active" data-tab-panel="reports">
-    <div id="balanceBox" class="balance-box" style="display: none">
-      <strong>내 잔액</strong>
-      <span id="balPre">사전: ...</span>
-      <span id="balResult">결과: ...</span>
-    </div>
+    <div class="report-toolbar">
+      <div id="balanceBox" class="balance-box" style="display: none">
+        <strong>내 잔액</strong>
+        <span id="balPre">사전: ...</span>
+        <span id="balResult">결과: ...</span>
+      </div>
 
-    <fieldset id="reportTypeFieldset">
-      <legend>보고서 종류</legend>
-      <label>
-        <input type="radio" name="reportType" value="chem-pre" checked />
-        화학 사전보고서
-      </label>
-      <label>
-        <input type="radio" name="reportType" value="chem-result" />
-        화학 결과보고서
-      </label>
-      <label>
-        <input type="radio" name="reportType" value="phys-result" />
-        물리 결과보고서
-      </label>
-    </fieldset>
+      <fieldset id="reportTypeFieldset">
+        <legend>보고서 종류</legend>
+        <label>
+          <input type="radio" name="reportType" value="chem-pre" checked />
+          화학 사전보고서
+        </label>
+        <label>
+          <input type="radio" name="reportType" value="chem-result" />
+          화학 결과보고서
+        </label>
+        <label>
+          <input type="radio" name="reportType" value="phys-result" />
+          물리 결과보고서
+        </label>
+      </fieldset>
+    </div>
 
     <div id="comingSoon" class="notice" hidden>
       이 보고서 종류는 아직 준비 중입니다.<br>

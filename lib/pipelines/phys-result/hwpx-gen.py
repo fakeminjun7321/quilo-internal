@@ -1015,7 +1015,9 @@ def generate_hwpx(content):
     using_template = doc is not None
     if using_template:
         fill_template_title(doc, content)
-        move_template_title_header_to_body(doc)
+        # Keep the template's original title/header paragraph intact. Moving the
+        # header subList into a new top-level body paragraph produces HWPX that
+        # passes XML/ZIP validation but crashes Hancom Office HWP for macOS.
         result_cell, conclusion_cell = find_template_body_cells(doc)
         if result_cell is not None and conclusion_cell is not None:
             clear_cell(result_cell)

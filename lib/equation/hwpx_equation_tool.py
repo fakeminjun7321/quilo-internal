@@ -528,6 +528,25 @@ def compact_chemical_spacing(script: str) -> str:
     )
 
 
+def quote_textual_subscripts(script: str) -> str:
+    """Protect multi-letter subscript labels from HWP equation keywords.
+
+    Hancom equation scripts treat words such as `pi` as symbols. A physics
+    label like `I_{pivot}` can therefore render as `I_{πvot}` unless the label
+    is entered as literal text. Numeric and single-letter subscripts remain
+    mathematical variables.
+    """
+    def repl(match: re.Match[str]) -> str:
+        body = match.group(1).strip()
+        if not body or body.startswith('"') or body.startswith("'"):
+            return match.group(0)
+        if re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]*", body) and len(body) >= 2:
+            return f'_{{"{body}"}}'
+        return match.group(0)
+
+    return re.sub(r"_\{([^{}]+)\}", repl, str(script or ""))
+
+
 def normalize_hwp_script(script: str) -> str:
     text = str(script or "").strip()
     text = (
@@ -552,6 +571,7 @@ def normalize_hwp_script(script: str) -> str:
     text = text.replace("<=>", "<->")
     text = re.sub(r"\s+([_^])\s*", r"\1", text)
     text = brace_unbraced_scripts(text)
+    text = quote_textual_subscripts(text)
     text = compact_chemical_spacing(text)
     text = re.sub(r"\b(APPROX|TIMES|DIV)(?=[A-Za-z0-9{])", r"\1 ", text)
     text = re.sub(r"(?<=[A-Za-z0-9}])(?=(APPROX|TIMES|DIV)\b)", " ", text)

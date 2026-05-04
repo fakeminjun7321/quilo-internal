@@ -7,10 +7,11 @@ Builds the same two-section physics result report used by docx-gen.js:
 2. 결론
 
 The visual structure follows the supplied HWPX physics-result template: compact
-A4 margins, the "실험 주제" header, and the general-physics footer. Tables,
+A4 margins, the first-page "실험 주제" title box, and the general-physics footer. Tables,
 charts, and uploaded photos are embedded directly into the HWPX package.
 """
 import base64
+from copy import deepcopy
 import importlib.util
 import json
 import re
@@ -194,6 +195,71 @@ def fill_template_title(doc, content):
             sec.mark_dirty()
 
 
+def _next_xml_id(root):
+    used = []
+    for elem in root.iter():
+        value = elem.get("id")
+        if value and value.lstrip("-").isdigit():
+            used.append(int(value))
+    counter = max(used) + 1 if used else 1
+
+    def next_id():
+        nonlocal counter
+        value = str(counter)
+        counter += 1
+        return value
+
+    return next_id
+
+
+def _assign_fresh_ids(root, subtree):
+    next_id = _next_xml_id(root)
+    for elem in subtree.iter():
+        value = elem.get("id")
+        if value and value.lstrip("-").isdigit():
+            elem.set("id", next_id())
+
+
+def move_template_title_header_to_body(doc):
+    """Keep the template title box on page 1 without repeating it as a header."""
+    moved = False
+    for sec in getattr(doc.oxml, "sections", []):
+        element = getattr(sec, "element", None)
+        if element is None:
+            continue
+
+        title_headers = []
+        for header in list(element.iter(f"{pre.NS_HP}header")):
+            text = "".join(t.text or "" for t in header.iter(f"{pre.NS_HP}t"))
+            if "실험 주제" in text:
+                title_headers.append(header)
+
+        if not title_headers:
+            continue
+
+        top_level = list(element)
+        insert_at = (
+            1
+            if top_level and top_level[0].find(f".//{pre.NS_HP}secPr") is not None
+            else 0
+        )
+        for header in title_headers:
+            sublist = header.find(f"{pre.NS_HP}subList")
+            if sublist is not None:
+                for para in sublist.findall(f"{pre.NS_HP}p"):
+                    clone = deepcopy(para)
+                    _assign_fresh_ids(element, clone)
+                    element.insert(insert_at, clone)
+                    insert_at += 1
+                    moved = True
+            parent = header.getparent()
+            if parent is not None:
+                parent.remove(header)
+
+        if moved and hasattr(sec, "mark_dirty"):
+            sec.mark_dirty()
+
+
 def add_paragraph_to(target, text="", *, para_pr_id_ref=None):
     if hasattr(target, "add_paragraph"):
         try:
@@ -347,6 +413,27 @@ def is_probable_physics_formula(expr):
     return True
 
 
+def trim_formula_edges(core, trailing):
+    """Keep regex-matched inline formulas from swallowing nearby prose."""
+    core = str(core or "").strip()
+    trailing = str(trailing or "")
+
+    while core and core.count("(") > core.count(")"):
+        idx = core.rfind("(")
+        if idx < 0:
+            break
+        trailing = core[idx:] + trailing
+        core = core[:idx].rstrip()
+
+    while core and core.count(")") > core.count("(") and core.endswith(")"):
+        trailing = core[-1] + trailing
+        core = core[:-1].rstrip()
+
+    if core.count("(") != core.count(")"):
+        return "", trailing
+    return core, trailing
+
+
 def normalize_physics_equation_markers(text):
     """Promote inline physics formulas to native Hancom equation placeholders.
 
@@ -370,6 +457,7 @@ def normalize_physics_equation_markers(text):
         while core and core[-1] in ".,;:":
             trailing = core[-1] + trailing
             core = core[:-1].rstrip()
+        core, trailing = trim_formula_edges(core, trailing)
         if not is_probable_physics_formula(core):
             return raw
         latex = rich_formula_to_latex(core)
@@ -927,6 +1015,7 @@ def generate_hwpx(content):
     using_template = doc is not None
     if using_template:
         fill_template_title(doc, content)
+        move_template_title_header_to_body(doc)
         result_cell, conclusion_cell = find_template_body_cells(doc)
         if result_cell is not None and conclusion_cell is not None:
             clear_cell(result_cell)

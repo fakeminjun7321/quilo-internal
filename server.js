@@ -1481,7 +1481,7 @@ app.use((err, req, res, next) => {
     if (err.code === "LIMIT_FILE_SIZE") {
       msg = "파일이 너무 큽니다 (단일 파일 최대 25MB).";
     } else if (err.code === "LIMIT_FILE_COUNT") {
-      msg = "파일이 너무 많습니다 (최대 12개). 사진 수를 줄여보세요.";
+      msg = "파일이 너무 많습니다 (최대 20개). 사진 수를 줄여보세요.";
     } else if (err.code === "LIMIT_UNEXPECTED_FILE") {
       msg = `예상치 못한 파일 필드: ${err.field}`;
     }

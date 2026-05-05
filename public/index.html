@@ -64,7 +64,7 @@
     <!-- ── 화학 결과보고서 폼 (Phase 2 진행 중) ─────────────────────────── -->
     <form id="chemResultForm" class="report-form" data-report-form="chem-result" hidden>
       <p>
-        <label>사전보고서 (PDF 또는 docx) <strong>*</strong>:
+        <label>사전보고서 (PDF 권장, docx 가능) <strong>*</strong>:
           <input id="crPreReport" name="preReport" type="file" accept=".pdf,.docx" required />
         </label>
       </p>
@@ -1298,6 +1298,7 @@
             ["형식", crFormat === "hwpx" ? ".hwpx (한글)" : ".docx (MS Word)"],
             ["글꼴", getFontLabel(crFontFace)],
             ["참고 메모", userNotesSummary(crUserNotes)],
+            ["출력 범위", "사전보고서 뒤에 붙일 결과 추가 작성분"],
             ["첨부", `사전보고서${dataFile ? ", 데이터" : ", 데이터 없음"}${crUserNotes && !dataFile ? " (메모 활용)" : ""}, 사진 ${photos.length}장${manual ? ", 매뉴얼" : ""}`],
             ["총 크기", `${est.totalKB}KB`],
             ["예상 비용", costRangeText(est, krwLo, krwHi)],

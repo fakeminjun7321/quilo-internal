@@ -520,11 +520,8 @@ def generate_hwpx(content):
     doc._v5_allow_highlights = bool(content.get("__allowHighlights", True))
     pre.apply_page_layout(doc)
     pre.apply_default_font(doc, pre.normalize_font_face(content.get("font_face") or content.get("__fontFace")))
-    build_header(doc, content)
-    build_purpose(doc, content)
-    build_theory(doc, content)
-    build_apparatus(doc, content)
-    build_procedure(doc, content)
+    # chem-result output is the continuation to place after the uploaded
+    # pre-report PDF, so only render the added result/report-back sections.
     build_data(doc, content)
     build_discussion(doc, content)
     build_references(doc, content)

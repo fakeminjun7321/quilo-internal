@@ -69,9 +69,11 @@
         </label>
       </p>
       <p>
-        <label>실험 데이터 (엑셀·CSV·텍스트·사진) <strong>*</strong>:
-          <input id="crData" name="data" type="file" accept=".xlsx,.xls,.csv,.txt,.png,.jpg,.jpeg" required />
+        <label>실험 데이터 (엑셀·CSV·텍스트·사진, 선택):
+          <input id="crData" name="data" type="file" accept=".xlsx,.xls,.csv,.txt,.png,.jpg,.jpeg" />
         </label>
+        <br>
+        <small>엑셀로 정리할 정도의 데이터가 없으면 AI 참고 메모에 관찰값·판단 근거를 적어도 됩니다.</small>
       </p>
       <p>
         <label>실험 사진 (여러 장 가능, 선택):
@@ -1256,8 +1258,7 @@
 
         const preReport = document.getElementById("crPreReport").files[0];
         if (!preReport) return;
-        const dataFile = document.getElementById("crData").files[0];
-        if (!dataFile) return;
+        const dataFile = document.getElementById("crData").files[0] || null;
         const photos = Array.from(document.getElementById("crPhotos").files);
         const manual = document.getElementById("crManual").files[0] || null;
 
@@ -1282,7 +1283,7 @@
         const est = estimateChemResultCost({
           preReportBytes: preReport.size,
           manualBytes: manual?.size || 0,
-          dataBytes: dataFile.size,
+          dataBytes: dataFile?.size || 0,
           photoBytes,
           photoCount: photos.length,
           modelId: crModel,
@@ -1297,7 +1298,7 @@
             ["형식", crFormat === "hwpx" ? ".hwpx (한글)" : ".docx (MS Word)"],
             ["글꼴", getFontLabel(crFontFace)],
             ["참고 메모", userNotesSummary(crUserNotes)],
-            ["첨부", `사전보고서, 데이터, 사진 ${photos.length}장${manual ? ", 매뉴얼" : ""}`],
+            ["첨부", `사전보고서${dataFile ? ", 데이터" : ", 데이터 없음"}${crUserNotes && !dataFile ? " (메모 활용)" : ""}, 사진 ${photos.length}장${manual ? ", 매뉴얼" : ""}`],
             ["총 크기", `${est.totalKB}KB`],
             ["예상 비용", costRangeText(est, krwLo, krwHi)],
           ],
@@ -1315,7 +1316,7 @@
         const fd = new FormData();
         fd.append("type", "chem-result");
         fd.append("preReport", preReport);
-        fd.append("data", dataFile);
+        if (dataFile) fd.append("data", dataFile);
         photos.forEach((p) => fd.append("photos", p));
         if (manual) fd.append("manual", manual);
         const crDateStr = document.getElementById("crDate").value;

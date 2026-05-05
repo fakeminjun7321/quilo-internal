@@ -289,13 +289,9 @@ def make_char_pr(doc, *, size=SIZE_BODY, bold=False, italic=False,
     # (relSz) + vertical offset, NOT a dedicated element. Hangul ignores
     # <hh:subScript/>; it honors relSz=60 + offset instead.
     #
-    # offset sign empirically: positive moves UP (the v5 run with
-    # offset=-25 still rendered above baseline, indicating Hangul takes
-    # the absolute value or treats positive as up). So we use
-    #   sup → offset = +35  (rises above baseline)
-    #   sub → offset = -35  (drops below) — relying on Hangul honoring
-    # the negative for subscripts. If that still renders up, swap the
-    # sign on both lines.
+    # Hancom Office HWP for macOS renders negative offsets above the baseline
+    # and positive offsets below it. Keep signs explicit so plain-text markers
+    # such as I_{cm} and T^{2} land on the expected side of the baseline.
     if sub or sup:
         rel_sz = new_cp.find(f"{NS_HH}relSz")
         offset = new_cp.find(f"{NS_HH}offset")
@@ -304,7 +300,7 @@ def make_char_pr(doc, *, size=SIZE_BODY, bold=False, italic=False,
                          "other", "symbol", "user"):
                 rel_sz.set(lang, "70")
         if offset is not None:
-            value = "35" if sup else "-35"
+            value = "-35" if sup else "35"
             for lang in ("hangul", "latin", "hanja", "japanese",
                          "other", "symbol", "user"):
                 offset.set(lang, value)
@@ -754,7 +750,12 @@ def tokenize_marker_text(text):
             out.append((text[pos:m.start()], False, False, False, False, False))
         token = m.group(0)
         if token.startswith("**"):
-            out.append((token[2:-2], True, False, False, False, True))
+            inner = tokenize_marker_text(token[2:-2])
+            if inner:
+                for plain, b, i, sub, sup, highlight in inner:
+                    out.append((plain, True or b, i, sub, sup, True or highlight))
+            else:
+                out.append((token[2:-2], True, False, False, False, True))
         elif token.startswith("_{"):
             body = token[2:-1]
             mapped = _try_unicode_map(body, SUBSCRIPT_MAP)
@@ -770,7 +771,12 @@ def tokenize_marker_text(text):
             else:
                 out.append((body, False, False, False, True, False))
         else:
-            out.append((token[1:-1], False, True, False, False, False))
+            inner = tokenize_marker_text(token[1:-1])
+            if inner:
+                for plain, b, i, sub, sup, highlight in inner:
+                    out.append((plain, b, True or i, sub, sup, highlight))
+            else:
+                out.append((token[1:-1], False, True, False, False, False))
         pos = m.end()
     if pos < len(text):
         out.append((text[pos:], False, False, False, False, False))

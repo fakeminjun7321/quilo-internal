@@ -540,7 +540,11 @@ def quote_textual_subscripts(script: str) -> str:
         body = match.group(1).strip()
         if not body or body.startswith('"') or body.startswith("'"):
             return match.group(0)
-        if re.fullmatch(r"[A-Za-z][A-Za-z0-9_-]*", body) and len(body) >= 2:
+        textual_label = re.fullmatch(
+            r"(?=.*[A-Za-z])[A-Za-z0-9]+(?:[,\s_-]+[A-Za-z0-9]+)*",
+            body,
+        )
+        if textual_label and len(body) >= 2:
             return f'_{{"{body}"}}'
         return match.group(0)
 

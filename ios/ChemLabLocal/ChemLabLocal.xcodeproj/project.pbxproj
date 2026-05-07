@@ -18,6 +18,7 @@
 		92AE08BEE8B7A0D67146A4AC /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41BDF5D92E77711A1D1A295C /* SettingsView.swift */; };
 		C10B16C2E885C0024A1295CA /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18815C6CFEF313A622A53EBB /* AppModel.swift */; };
 		C5F4AD89A65B4F2A57BCD9FB /* result-report-template.hwpx in Resources */ = {isa = PBXBuildFile; fileRef = 73DF0B4345B2AC58F1336599 /* result-report-template.hwpx */; };
+		C85FC7BE7BFA15119659FD51 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8BF9DBEB7DBF982F831EBB0A /* Assets.xcassets */; };
 		D418B241D2EB13CECF04E457 /* AnthropicClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E580DAF3FC401837D9E0614 /* AnthropicClient.swift */; };
 		E2F956BCD8BF0E939D9F890D /* PromptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 725F8DA37669CC1B4F2A328D /* PromptBuilder.swift */; };
 		ECFE4C504D0ED6D6FA513E95 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 55C691E4E0C58A481039A33B /* ZIPFoundation */; };
@@ -39,6 +40,7 @@
 		73DF0B4345B2AC58F1336599 /* result-report-template.hwpx */ = {isa = PBXFileReference; path = "result-report-template.hwpx"; sourceTree = "<group>"; };
 		80B47D926FEC5D8D872E6498 /* DOCXExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DOCXExporter.swift; sourceTree = "<group>"; };
 		829769C56830421BBCE6B7EB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		8BF9DBEB7DBF982F831EBB0A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AA6946D0DD70650AC8C01AFB /* LocalFileExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFileExtractor.swift; sourceTree = "<group>"; };
 		E31956575FC62A020BFBB1EA /* GenerateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerateView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -100,6 +102,7 @@
 		ABFB6D2748828C8759B05322 /* ChemLabLocal */ = {
 			isa = PBXGroup;
 			children = (
+				8BF9DBEB7DBF982F831EBB0A /* Assets.xcassets */,
 				829769C56830421BBCE6B7EB /* Info.plist */,
 				0373763D20F1A4ACB283C369 /* App */,
 				4A3BA2A49EE63E547D92447D /* Models */,
@@ -195,6 +198,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C85FC7BE7BFA15119659FD51 /* Assets.xcassets in Resources */,
 				C5F4AD89A65B4F2A57BCD9FB /* result-report-template.hwpx in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

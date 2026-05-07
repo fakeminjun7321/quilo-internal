@@ -1,4 +1,4 @@
-# ChemLab Local
+# 보고서 작성툴
 
 Render 서버 없이 iPad 안에서 보고서 초안을 생성하는 네이티브 SwiftUI 앱입니다.
 

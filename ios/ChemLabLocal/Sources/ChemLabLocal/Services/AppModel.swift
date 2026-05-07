@@ -51,7 +51,7 @@ final class AppModel {
                 try FileManager.default.copyItem(at: url, to: dest)
                 let values = try dest.resourceValues(forKeys: [.fileSizeKey, .contentTypeKey])
                 let detectedType = ImportedDocumentType.detect(url: dest, contentType: values.contentType)
-                let type: ImportedDocumentType = role == .cap ? .cap : detectedType
+                let type = normalizedType(for: role, detectedType: detectedType)
                 importedFiles.append(
                     ImportedDocument(
                         url: dest,
@@ -104,7 +104,22 @@ final class AppModel {
             do {
                 let extractor = LocalFileExtractor()
                 appendLog("파일 분석 중...")
-                let contexts = try importedFiles.map { try extractor.extract($0) }
+                var contexts: [ExtractedFileContext] = []
+                for file in importedFiles {
+                    do {
+                        contexts.append(try extractor.extract(file))
+                    } catch {
+                        appendLog("파일 자동 분석 건너뜀: \(file.filename) — \(error.localizedDescription)")
+                        contexts.append(
+                            ExtractedFileContext(
+                                document: file,
+                                extractedText: "이 파일은 자동 파싱에 실패했습니다. 파일명, 역할, 사용자 메모만 참고하세요. 오류: \(error.localizedDescription)",
+                                attachmentData: nil,
+                                mediaType: nil
+                            )
+                        )
+                    }
+                }
 
                 appendLog("프롬프트 구성 중...")
                 let prompt = PromptBuilder().build(
@@ -173,21 +188,27 @@ final class AppModel {
 
         switch selectedKind {
         case .chemistryPre:
-            let hasManual = importedFiles.contains { $0.role == .manual || ($0.role == .general && $0.type == .pdf) }
+            let hasManual = importedFiles.contains {
+                ($0.role == .manual && [.pdf, .docx, .hwpx, .text, .image].contains($0.type))
+                    || ($0.role == .general && [.pdf, .docx, .hwpx, .text, .image].contains($0.type))
+            }
             if !hasManual {
-                return "화학 사전보고서는 실험 매뉴얼 PDF가 필요합니다."
+                return "화학 사전보고서는 실험 매뉴얼 파일이 필요합니다. PDF를 권장하고, DOCX/HWPX/텍스트/이미지도 사용할 수 있습니다."
             }
         case .chemistryResult:
             let hasPreReport = importedFiles.contains {
-                $0.role == .preReport || ($0.role == .general && [.pdf, .docx, .hwpx].contains($0.type))
+                ($0.role == .preReport && [.pdf, .docx, .hwpx, .text].contains($0.type))
+                    || ($0.role == .general && [.pdf, .docx, .hwpx, .text].contains($0.type))
             }
             if !hasPreReport {
                 return "화학 결과보고서는 기존 사전보고서 PDF/DOCX/HWPX가 필요합니다."
             }
         case .physicsResult:
             let hasPhysicsInput = importedFiles.contains {
-                [.cap, .data, .photos].contains($0.role)
-                    || ($0.role == .general && [.cap, .xlsx, .csv, .text, .image].contains($0.type))
+                ($0.role == .cap && $0.type == .cap)
+                    || ($0.role == .data && [.xlsx, .xls, .csv, .text, .image, .pdf].contains($0.type))
+                    || ($0.role == .photos && [.image, .pdf].contains($0.type))
+                    || ($0.role == .general && [.cap, .xlsx, .xls, .csv, .text, .image, .pdf].contains($0.type))
             }
             if !hasPhysicsInput {
                 return "물리 결과보고서는 .cap, 엑셀/CSV/텍스트 데이터, 사진/스크린샷 중 하나가 필요합니다."
@@ -200,10 +221,19 @@ final class AppModel {
         return nil
     }
 
+    private func normalizedType(for role: ImportedFileRole, detectedType: ImportedDocumentType) -> ImportedDocumentType {
+        if role == .cap, detectedType == .other {
+            return .cap
+        }
+        return detectedType
+    }
+
     private func uniqueFilename(for filename: String) -> String {
         let base = URL(fileURLWithPath: filename).deletingPathExtension().lastPathComponent
         let ext = URL(fileURLWithPath: filename).pathExtension
-        let suffix = Int(Date().timeIntervalSince1970 * 1000)
+        let millis = Int(Date().timeIntervalSince1970 * 1000)
+        let random = UUID().uuidString.prefix(8)
+        let suffix = "\(millis)-\(random)"
         return ext.isEmpty ? "\(base)-\(suffix)" : "\(base)-\(suffix).\(ext)"
     }
 }

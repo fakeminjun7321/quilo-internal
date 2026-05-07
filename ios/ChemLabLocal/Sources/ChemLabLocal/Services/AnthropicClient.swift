@@ -72,12 +72,15 @@ struct AnthropicClient {
 
     private func preparedImageData(_ data: Data, mediaType: String, filename: String) throws -> (data: Data, mediaType: String) {
         let maxBytes = 4_800_000
-        if data.count <= maxBytes {
+        let acceptedMediaTypes: Set<String> = ["image/jpeg", "image/png", "image/gif", "image/webp"]
+        let needsReencoding = !acceptedMediaTypes.contains(mediaType)
+        if data.count <= maxBytes && !needsReencoding {
             return (data, mediaType)
         }
 
         guard let image = UIImage(data: data) else {
-            throw NSError(domain: "AnthropicClient", code: 413, userInfo: [NSLocalizedDescriptionKey: "\(filename)이 5MB보다 크고 자동 압축할 수 없는 이미지입니다. 해상도를 낮춰 다시 넣어주세요."])
+            let reason = needsReencoding ? "Claude가 바로 받을 수 있는 이미지 형식이 아닙니다." : "5MB보다 크고 자동 압축할 수 없습니다."
+            throw NSError(domain: "AnthropicClient", code: 413, userInfo: [NSLocalizedDescriptionKey: "\(filename)은 \(reason) JPG/PNG로 저장하거나 해상도를 낮춰 다시 넣어주세요."])
         }
 
         var maxDimension: CGFloat = 2200

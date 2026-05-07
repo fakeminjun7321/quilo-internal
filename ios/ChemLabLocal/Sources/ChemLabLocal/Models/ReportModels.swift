@@ -133,6 +133,7 @@ enum ImportedDocumentType: String, CaseIterable {
     case hwpx = "HWPX"
     case docx = "DOCX"
     case xlsx = "XLSX"
+    case xls = "XLS"
     case csv = "CSV"
     case cap = "CAP"
     case image = "Image"
@@ -144,11 +145,12 @@ enum ImportedDocumentType: String, CaseIterable {
         if ext == "pdf" { return .pdf }
         if ext == "hwpx" { return .hwpx }
         if ext == "docx" { return .docx }
-        if ["xlsx", "xls"].contains(ext) { return .xlsx }
+        if ext == "xlsx" { return .xlsx }
+        if ext == "xls" { return .xls }
         if ext == "csv" { return .csv }
         if ext == "cap" { return .cap }
-        if ["txt", "md"].contains(ext) { return .text }
-        if contentType?.conforms(to: .image) == true || ["png", "jpg", "jpeg", "heic"].contains(ext) {
+        if ["txt", "md", "json", "log"].contains(ext) { return .text }
+        if contentType?.conforms(to: .image) == true || ["png", "jpg", "jpeg", "heic", "webp", "gif"].contains(ext) {
             return .image
         }
         return .other

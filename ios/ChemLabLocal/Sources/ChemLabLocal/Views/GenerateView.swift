@@ -163,7 +163,7 @@ struct GenerateView: View {
         switch type {
         case .pdf: "doc.richtext"
         case .hwpx, .docx: "doc.text"
-        case .xlsx, .csv: "tablecells"
+        case .xlsx, .xls, .csv: "tablecells"
         case .cap: "waveform.path.ecg"
         case .image: "photo"
         case .text: "text.alignleft"

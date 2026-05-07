@@ -67,21 +67,13 @@ struct LocalReportToolView: View {
             }
             .background(Color(.systemGroupedBackground))
             .navigationBarTitleDisplayMode(.inline)
-            .fileImporter(
-                isPresented: Binding(
-                    get: { activeImportRole != nil },
-                    set: { if !$0 { activeImportRole = nil } }
-                ),
-                allowedContentTypes: allowedContentTypes(for: activeImportRole ?? .general),
-                allowsMultipleSelection: allowsMultiple(for: activeImportRole ?? .general)
-            ) { result in
-                let role = activeImportRole ?? .general
-                activeImportRole = nil
-                switch result {
-                case .success(let urls):
+            .sheet(item: $activeImportRole, onDismiss: { activeImportRole = nil }) { role in
+                LocalDocumentPicker(
+                    contentTypes: contentTypes(for: role),
+                    allowsMultipleSelection: allowsMultiple(for: role)
+                ) { urls in
+                    activeImportRole = nil
                     model.importFiles(urls, role: role)
-                case .failure(let error):
-                    model.errorMessage = "파일 선택 실패: \(error.localizedDescription)"
                 }
             }
             .alert("오류", isPresented: Binding(get: { model.errorMessage != nil }, set: { if !$0 { model.errorMessage = nil } })) {
@@ -535,32 +527,8 @@ struct LocalReportToolView: View {
         role == .data || role == .photos || role == .general
     }
 
-    private func allowedContentTypes(for role: ImportedFileRole) -> [UTType] {
-        let pdf = UTType.pdf
-        let image = UTType.image
-        let text = UTType.plainText
-        let markdown = UTType(filenameExtension: "md") ?? .plainText
-        let csv = UTType.commaSeparatedText
-        let xlsx = UTType(filenameExtension: "xlsx") ?? .data
-        let xls = UTType(filenameExtension: "xls") ?? .data
-        let cap = UTType(importedAs: "com.pasco.capstone.cap")
-        let hwpx = UTType(filenameExtension: "hwpx") ?? .data
-        let docx = UTType(filenameExtension: "docx") ?? .data
-
-        switch role {
-        case .manual:
-            return [pdf]
-        case .preReport:
-            return [pdf, docx, hwpx]
-        case .cap:
-            return [cap, .data, .item]
-        case .data:
-            return [xlsx, xls, csv, text, markdown, image]
-        case .photos:
-            return [image]
-        case .general:
-            return [pdf, docx, hwpx, xlsx, xls, csv, text, markdown, cap, image, .data]
-        }
+    private func contentTypes(for _: ImportedFileRole) -> [UTType] {
+        [.item]
     }
 
     private func sendFeedbackMail() {
@@ -665,11 +633,43 @@ private struct FileRequestRow: View {
         switch type {
         case .pdf: "doc.richtext"
         case .hwpx, .docx: "doc.text"
-        case .xlsx, .csv: "tablecells"
+        case .xlsx, .xls, .csv: "tablecells"
         case .cap: "waveform.path.ecg"
         case .image: "photo"
         case .text: "text.alignleft"
         case .other: "doc"
+        }
+    }
+}
+
+private struct LocalDocumentPicker: UIViewControllerRepresentable {
+    let contentTypes: [UTType]
+    let allowsMultipleSelection: Bool
+    let onPick: ([URL]) -> Void
+
+    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
+        let picker = UIDocumentPickerViewController(forOpeningContentTypes: contentTypes, asCopy: true)
+        picker.allowsMultipleSelection = allowsMultipleSelection
+        picker.shouldShowFileExtensions = true
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_: UIDocumentPickerViewController, context _: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onPick: onPick)
+    }
+
+    final class Coordinator: NSObject, UIDocumentPickerDelegate {
+        let onPick: ([URL]) -> Void
+
+        init(onPick: @escaping ([URL]) -> Void) {
+            self.onPick = onPick
+        }
+
+        func documentPicker(_: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+            onPick(urls)
         }
     }
 }

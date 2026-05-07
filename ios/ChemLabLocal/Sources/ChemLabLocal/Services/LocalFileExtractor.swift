@@ -51,6 +51,12 @@ struct LocalFileExtractor {
             return context(document, text: try extractDOCXText(document.url), data: nil, mediaType: nil)
         case .xlsx:
             return context(document, text: try extractXLSXText(document.url), data: nil, mediaType: nil)
+        case .xls:
+            let decoded = decodeText(data).trimmingCharacters(in: .whitespacesAndNewlines)
+            let text = decoded.count > 120
+                ? decoded
+                : "구형 .xls 파일은 iPad 로컬 앱에서 직접 표 파싱이 제한됩니다. 가능하면 .xlsx 또는 .csv로 저장해서 다시 첨부하세요. 이 파일명과 사용자 메모는 보고서 작성 참고자료로 전달됩니다."
+            return context(document, text: text, data: nil, mediaType: nil)
         case .cap:
             return context(document, text: try extractCAPText(document.url), data: nil, mediaType: nil)
         case .other:
@@ -84,8 +90,11 @@ struct LocalFileExtractor {
     private func imageMediaType(_ url: URL) -> String {
         switch url.pathExtension.lowercased() {
         case "jpg", "jpeg": "image/jpeg"
+        case "png": "image/png"
+        case "gif": "image/gif"
+        case "webp": "image/webp"
         case "heic": "image/heic"
-        default: "image/png"
+        default: "image/other"
         }
     }
 

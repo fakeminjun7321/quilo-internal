@@ -1,0 +1,29 @@
+name: ChemLabLocal
+options:
+  bundleIdPrefix: com.fakeminjun
+  deploymentTarget:
+    iOS: "18.0"
+  xcodeVersion: "26.0"
+packages:
+  ZIPFoundation:
+    url: https://github.com/weichsel/ZIPFoundation.git
+    from: 0.9.19
+targets:
+  ChemLabLocal:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources/ChemLabLocal
+    resources:
+      - path: Sources/ChemLabLocal/Resources
+    dependencies:
+      - package: ZIPFoundation
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.fakeminjun.ChemLabLocal
+        PRODUCT_NAME: ChemLabLocal
+        INFOPLIST_FILE: Sources/ChemLabLocal/Info.plist
+        SWIFT_VERSION: 6.0
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_USER_SCRIPT_SANDBOXING: "NO"

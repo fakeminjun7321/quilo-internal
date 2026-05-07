@@ -12,13 +12,17 @@
 		33B6674218FCD7B46EB99C96 /* HWPXExporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 07D59EE0A35551A2660554E7 /* HWPXExporter.swift */; };
 		369B35234DA8FF52F3A38D0E /* ReportModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13B1E9198FBAAB663189839E /* ReportModels.swift */; };
 		5CF82F4E533C4C3437F7EDAB /* TextUtilities.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B0E1FEC6D3C5295111E7807 /* TextUtilities.swift */; };
+		859E3DC147518BB117F7DD03 /* chem-pre-prompt.md in Resources */ = {isa = PBXBuildFile; fileRef = A9833F8C4FD699A8C1A9A0D9 /* chem-pre-prompt.md */; };
 		8C23BB3DD38F80D18459AF64 /* LocalFileExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA6946D0DD70650AC8C01AFB /* LocalFileExtractor.swift */; };
 		8DD2D40460A6FEFF70C4E46F /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A7894040D2A8B8103D96B45 /* KeychainStore.swift */; };
 		8F3C1A2427BED37DE383021C /* GenerateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E31956575FC62A020BFBB1EA /* GenerateView.swift */; };
 		92AE08BEE8B7A0D67146A4AC /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41BDF5D92E77711A1D1A295C /* SettingsView.swift */; };
+		9E8845A76C36DAE0B45D8923 /* LocalReportToolView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4261FE058B587A64381AC49D /* LocalReportToolView.swift */; };
+		B5D8A06E0D31896D23AC9ACC /* chem-result-prompt.md in Resources */ = {isa = PBXBuildFile; fileRef = DEE9E71478B86151DF688B43 /* chem-result-prompt.md */; };
 		C10B16C2E885C0024A1295CA /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 18815C6CFEF313A622A53EBB /* AppModel.swift */; };
 		C5F4AD89A65B4F2A57BCD9FB /* result-report-template.hwpx in Resources */ = {isa = PBXBuildFile; fileRef = 73DF0B4345B2AC58F1336599 /* result-report-template.hwpx */; };
 		C85FC7BE7BFA15119659FD51 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8BF9DBEB7DBF982F831EBB0A /* Assets.xcassets */; };
+		C863C5E13E729B72FCB994A6 /* phys-result-prompt.md in Resources */ = {isa = PBXBuildFile; fileRef = 8999A07F5A57DCCE88788562 /* phys-result-prompt.md */; };
 		D418B241D2EB13CECF04E457 /* AnthropicClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E580DAF3FC401837D9E0614 /* AnthropicClient.swift */; };
 		E2F956BCD8BF0E939D9F890D /* PromptBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 725F8DA37669CC1B4F2A328D /* PromptBuilder.swift */; };
 		ECFE4C504D0ED6D6FA513E95 /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = 55C691E4E0C58A481039A33B /* ZIPFoundation */; };
@@ -33,6 +37,7 @@
 		266202DABBB07B44C63F1DA6 /* ChemLabLocalApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChemLabLocalApp.swift; sourceTree = "<group>"; };
 		2A7894040D2A8B8103D96B45 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		41BDF5D92E77711A1D1A295C /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		4261FE058B587A64381AC49D /* LocalReportToolView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalReportToolView.swift; sourceTree = "<group>"; };
 		4B0E1FEC6D3C5295111E7807 /* TextUtilities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TextUtilities.swift; sourceTree = "<group>"; };
 		569E98B73B0DF90A12610F3F /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		595968E8605C271600E5CC95 /* ChemLabLocal.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = ChemLabLocal.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -40,8 +45,11 @@
 		73DF0B4345B2AC58F1336599 /* result-report-template.hwpx */ = {isa = PBXFileReference; path = "result-report-template.hwpx"; sourceTree = "<group>"; };
 		80B47D926FEC5D8D872E6498 /* DOCXExporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DOCXExporter.swift; sourceTree = "<group>"; };
 		829769C56830421BBCE6B7EB /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		8999A07F5A57DCCE88788562 /* phys-result-prompt.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "phys-result-prompt.md"; sourceTree = "<group>"; };
 		8BF9DBEB7DBF982F831EBB0A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A9833F8C4FD699A8C1A9A0D9 /* chem-pre-prompt.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "chem-pre-prompt.md"; sourceTree = "<group>"; };
 		AA6946D0DD70650AC8C01AFB /* LocalFileExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalFileExtractor.swift; sourceTree = "<group>"; };
+		DEE9E71478B86151DF688B43 /* chem-result-prompt.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = "chem-result-prompt.md"; sourceTree = "<group>"; };
 		E31956575FC62A020BFBB1EA /* GenerateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GenerateView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -69,6 +77,7 @@
 			isa = PBXGroup;
 			children = (
 				73DF0B4345B2AC58F1336599 /* result-report-template.hwpx */,
+				826DD2E92972BE514BCC0C30 /* Prompts */,
 			);
 			path = Resources;
 			sourceTree = "<group>";
@@ -89,11 +98,22 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		826DD2E92972BE514BCC0C30 /* Prompts */ = {
+			isa = PBXGroup;
+			children = (
+				A9833F8C4FD699A8C1A9A0D9 /* chem-pre-prompt.md */,
+				DEE9E71478B86151DF688B43 /* chem-result-prompt.md */,
+				8999A07F5A57DCCE88788562 /* phys-result-prompt.md */,
+			);
+			path = Prompts;
+			sourceTree = "<group>";
+		};
 		875241E352B18AD1A2ECC1C0 /* Views */ = {
 			isa = PBXGroup;
 			children = (
 				569E98B73B0DF90A12610F3F /* ContentView.swift */,
 				E31956575FC62A020BFBB1EA /* GenerateView.swift */,
+				4261FE058B587A64381AC49D /* LocalReportToolView.swift */,
 				41BDF5D92E77711A1D1A295C /* SettingsView.swift */,
 			);
 			path = Views;
@@ -203,6 +223,9 @@
 			buildActionMask = 2147483647;
 			files = (
 				C85FC7BE7BFA15119659FD51 /* Assets.xcassets in Resources */,
+				859E3DC147518BB117F7DD03 /* chem-pre-prompt.md in Resources */,
+				B5D8A06E0D31896D23AC9ACC /* chem-result-prompt.md in Resources */,
+				C863C5E13E729B72FCB994A6 /* phys-result-prompt.md in Resources */,
 				C5F4AD89A65B4F2A57BCD9FB /* result-report-template.hwpx in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -223,6 +246,7 @@
 				33B6674218FCD7B46EB99C96 /* HWPXExporter.swift in Sources */,
 				8DD2D40460A6FEFF70C4E46F /* KeychainStore.swift in Sources */,
 				8C23BB3DD38F80D18459AF64 /* LocalFileExtractor.swift in Sources */,
+				9E8845A76C36DAE0B45D8923 /* LocalReportToolView.swift in Sources */,
 				E2F956BCD8BF0E939D9F890D /* PromptBuilder.swift in Sources */,
 				369B35234DA8FF52F3A38D0E /* ReportModels.swift in Sources */,
 				92AE08BEE8B7A0D67146A4AC /* SettingsView.swift in Sources */,

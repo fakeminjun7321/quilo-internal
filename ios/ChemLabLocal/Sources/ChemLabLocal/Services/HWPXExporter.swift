@@ -2,7 +2,7 @@ import Foundation
 import ZIPFoundation
 
 struct HWPXExporter {
-    func writeReport(title: String, bodyMarkdown: String) throws -> URL {
+    func writeReport(title: String, bodyMarkdown: String, fontFace _: FontFace = .malgunGothic) throws -> URL {
         guard let template = Bundle.main.url(forResource: "result-report-template", withExtension: "hwpx") else {
             throw NSError(domain: "HWPXExporter", code: 1, userInfo: [NSLocalizedDescriptionKey: "HWPX 템플릿을 찾을 수 없습니다."])
         }

@@ -1,15 +1,34 @@
 import Foundation
 
 struct PromptBuilder {
-    func build(kind: ReportKind, files: [ExtractedFileContext], userNotes: String) -> String {
+    func build(
+        kind: ReportKind,
+        files: [ExtractedFileContext],
+        userNotes: String,
+        outputFormat: OutputFormat,
+        reportStyle: ReportStyle,
+        fontFace: FontFace,
+        reportDate: Date,
+        studentName: String,
+        temperature: String,
+        pressure: String
+    ) -> String {
         let fileBlocks = files.map(\.promptBlock).joined(separator: "\n\n")
         let note = userNotes.trimmingCharacters(in: .whitespacesAndNewlines)
+        let webPrompt = bundledPrompt(for: kind)
 
         return """
         당신은 대구과학고 실험 보고서 초안 작성 도우미입니다.
         이 작업은 Render 서버 없이 iPad 앱 내부에서 수행됩니다. 첨부 파일과 사용자 메모에 근거해서만 작성하고, 확인되지 않은 수치를 만들지 마세요.
 
         보고서 종류: \(kind.title)
+        출력 형식: \(outputFormat.title)
+        보고서 스타일: \(reportStyle.title)
+        글꼴: \(fontFace.title)
+        날짜: \(dateString(reportDate))
+        이름: \(blankFallback(studentName))
+        실험 온도: \(blankFallback(temperature))
+        기압: \(blankFallback(pressure))
 
         작성 규칙:
         - 최종 출력은 HWPX에 바로 넣을 수 있는 Markdown 본문으로만 작성합니다.
@@ -21,6 +40,9 @@ struct PromptBuilder {
         보고서별 지시:
         \(instructions(for: kind))
 
+        기존 웹 서비스 시스템 프롬프트:
+        \(webPrompt)
+
         사용자 메모:
         \(note.isEmpty ? "(없음)" : note)
 
@@ -29,6 +51,41 @@ struct PromptBuilder {
 
         이제 보고서 본문을 작성하세요.
         """
+    }
+
+    private func bundledPrompt(for kind: ReportKind) -> String {
+        let resource: String
+        switch kind {
+        case .chemistryPre:
+            resource = "chem-pre-prompt"
+        case .chemistryResult:
+            resource = "chem-result-prompt"
+        case .physicsResult:
+            resource = "phys-result-prompt"
+        }
+
+        let url = Bundle.main.url(forResource: resource, withExtension: "md", subdirectory: "Prompts")
+            ?? Bundle.main.url(forResource: resource, withExtension: "md")
+        guard
+            let url,
+            let text = try? String(contentsOf: url, encoding: .utf8),
+            !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            return "(앱 번들에 기존 웹 프롬프트가 없어 기본 지시만 사용)"
+        }
+        return text
+    }
+
+    private func dateString(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = "yyyy. MM. dd."
+        return formatter.string(from: date)
+    }
+
+    private func blankFallback(_ value: String) -> String {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "(없음)" : trimmed
     }
 
     private func instructions(for kind: ReportKind) -> String {

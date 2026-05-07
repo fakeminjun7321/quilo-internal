@@ -41,12 +41,87 @@ enum OutputFormat: String, CaseIterable, Identifiable {
     var fileExtension: String { rawValue }
 }
 
+enum ReportStyle: String, CaseIterable, Identifiable {
+    case standard
+    case minimal
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .standard: "기본 양식"
+        case .minimal: "간단 양식"
+        }
+    }
+}
+
+enum FontFace: String, CaseIterable, Identifiable {
+    case malgunGothic
+    case nanumGothic
+    case nanumMyeongjo
+    case hamchoromBatang
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .malgunGothic: "맑은 고딕"
+        case .nanumGothic: "나눔고딕"
+        case .nanumMyeongjo: "나눔명조"
+        case .hamchoromBatang: "함초롬바탕"
+        }
+    }
+
+    var documentName: String {
+        switch self {
+        case .malgunGothic: "Malgun Gothic"
+        case .nanumGothic: "NanumGothic"
+        case .nanumMyeongjo: "NanumMyeongjo"
+        case .hamchoromBatang: "HCR Batang"
+        }
+    }
+}
+
+enum ImportedFileRole: String, CaseIterable, Identifiable {
+    case general
+    case manual
+    case preReport
+    case cap
+    case data
+    case photos
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .general: "입력 파일"
+        case .manual: "실험 매뉴얼"
+        case .preReport: "사전보고서"
+        case .cap: "PASCO Capstone"
+        case .data: "실험 데이터"
+        case .photos: "사진/스크린샷"
+        }
+    }
+
+    var promptLabel: String {
+        switch self {
+        case .general: "일반 첨부"
+        case .manual: "실험 매뉴얼"
+        case .preReport: "기존 사전보고서"
+        case .cap: "PASCO Capstone 원자료"
+        case .data: "사용자가 정리한 실험 데이터"
+        case .photos: "실험 사진 또는 데이터표/그래프 스크린샷"
+        }
+    }
+}
+
 struct ImportedDocument: Identifiable, Hashable {
     let id = UUID()
     let url: URL
     let filename: String
     let sizeBytes: Int64
     let type: ImportedDocumentType
+    let role: ImportedFileRole
 
     var sizeLabel: String {
         ByteCountFormatter.string(fromByteCount: sizeBytes, countStyle: .file)

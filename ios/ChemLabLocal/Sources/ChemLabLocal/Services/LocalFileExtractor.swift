@@ -10,7 +10,7 @@ struct ExtractedFileContext: Identifiable {
 
     var promptBlock: String {
         """
-        === \(document.filename) [\(document.type.rawValue), \(document.sizeLabel)] ===
+        === \(document.filename) [\(document.role.promptLabel), \(document.type.rawValue), \(document.sizeLabel)] ===
         \(extractedText)
         === 파일 끝 ===
         """

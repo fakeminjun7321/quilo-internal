@@ -7,8 +7,17 @@ import UniformTypeIdentifiers
 final class AppModel {
     var selectedKind: ReportKind = .physicsResult
     var outputFormat: OutputFormat = .hwpx
+    var reportStyle: ReportStyle = .standard
+    var fontFace: FontFace = .malgunGothic
     var importedFiles: [ImportedDocument] = []
     var userNotes = ""
+    var reportDate = Date()
+    var studentName = ""
+    var temperature = ""
+    var pressure = ""
+    var policyAccepted = false
+    var feedbackCategory = "버그 제보"
+    var feedbackText = ""
     var apiKey = ""
     var modelName = "claude-opus-4-7"
     var isGenerating = false
@@ -27,7 +36,7 @@ final class AppModel {
         appendLog("API 키를 기기에 저장했습니다.")
     }
 
-    func importFiles(_ urls: [URL]) {
+    func importFiles(_ urls: [URL], role: ImportedFileRole = .general) {
         for url in urls {
             let scoped = url.startAccessingSecurityScopedResource()
             defer {
@@ -47,7 +56,8 @@ final class AppModel {
                         url: dest,
                         filename: dest.lastPathComponent,
                         sizeBytes: Int64(values.fileSize ?? 0),
-                        type: type
+                        type: type,
+                        role: role
                     )
                 )
             } catch {
@@ -65,14 +75,20 @@ final class AppModel {
         }
     }
 
+    func removeFile(_ file: ImportedDocument) {
+        try? FileManager.default.removeItem(at: file.url)
+        importedFiles.removeAll { $0.id == file.id }
+    }
+
+    func files(for role: ImportedFileRole) -> [ImportedDocument] {
+        importedFiles.filter { $0.role == role }
+    }
+
     func generate() {
         guard !isGenerating else { return }
-        guard !apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            errorMessage = "Anthropic API 키를 먼저 입력하세요."
-            return
-        }
-        guard !importedFiles.isEmpty || !userNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            errorMessage = "파일 또는 사용자 메모가 필요합니다."
+
+        if let validationError = validateBeforeGenerate() {
+            errorMessage = validationError
             return
         }
 
@@ -92,7 +108,14 @@ final class AppModel {
                 let prompt = PromptBuilder().build(
                     kind: selectedKind,
                     files: contexts,
-                    userNotes: userNotes
+                    userNotes: userNotes,
+                    outputFormat: outputFormat,
+                    reportStyle: reportStyle,
+                    fontFace: fontFace,
+                    reportDate: reportDate,
+                    studentName: studentName,
+                    temperature: temperature,
+                    pressure: pressure
                 )
 
                 appendLog("Claude API 직접 호출 중...")
@@ -108,12 +131,14 @@ final class AppModel {
                 case .hwpx:
                     output = try HWPXExporter().writeReport(
                         title: selectedKind.outputTitle,
-                        bodyMarkdown: generatedText
+                        bodyMarkdown: generatedText,
+                        fontFace: fontFace
                     )
                 case .docx:
                     output = try DOCXExporter().writeReport(
                         title: selectedKind.outputTitle,
-                        bodyMarkdown: generatedText
+                        bodyMarkdown: generatedText,
+                        fontFace: fontFace
                     )
                 }
                 generatedReport = GeneratedReport(url: output, title: output.lastPathComponent)
@@ -128,6 +153,49 @@ final class AppModel {
 
     func appendLog(_ message: String) {
         logs.append(GenerationLog(message: message))
+    }
+
+    func resetFeedback() {
+        feedbackCategory = "버그 제보"
+        feedbackText = ""
+        appendLog("건의사항 입력을 비웠습니다.")
+    }
+
+    private func validateBeforeGenerate() -> String? {
+        if apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "Anthropic API 키를 먼저 입력하세요."
+        }
+        if !policyAccepted {
+            return "AI 사용 규정 확인 체크가 필요합니다."
+        }
+
+        switch selectedKind {
+        case .chemistryPre:
+            let hasManual = importedFiles.contains { $0.role == .manual || ($0.role == .general && $0.type == .pdf) }
+            if !hasManual {
+                return "화학 사전보고서는 실험 매뉴얼 PDF가 필요합니다."
+            }
+        case .chemistryResult:
+            let hasPreReport = importedFiles.contains {
+                $0.role == .preReport || ($0.role == .general && [.pdf, .docx, .hwpx].contains($0.type))
+            }
+            if !hasPreReport {
+                return "화학 결과보고서는 기존 사전보고서 PDF/DOCX/HWPX가 필요합니다."
+            }
+        case .physicsResult:
+            let hasPhysicsInput = importedFiles.contains {
+                [.cap, .data, .photos].contains($0.role)
+                    || ($0.role == .general && [.cap, .xlsx, .csv, .text, .image].contains($0.type))
+            }
+            if !hasPhysicsInput {
+                return "물리 결과보고서는 .cap, 엑셀/CSV/텍스트 데이터, 사진/스크린샷 중 하나가 필요합니다."
+            }
+        }
+
+        if importedFiles.isEmpty && userNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "파일 또는 사용자 메모가 필요합니다."
+        }
+        return nil
     }
 
     private func uniqueFilename(for filename: String) -> String {

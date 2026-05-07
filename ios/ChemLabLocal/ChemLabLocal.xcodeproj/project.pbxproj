@@ -169,6 +169,10 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 2600;
 				TargetAttributes = {
+					12E1C4310E82536EFBF1AFBF = {
+						DevelopmentTeam = 2CLPABDXPV;
+						ProvisioningStyle = Automatic;
+					};
 				};
 			};
 			buildConfigurationList = B681CE7BA5784D67FB39B46D /* Build configuration list for PBXProject "ChemLabLocal" */;
@@ -234,6 +238,8 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 2CLPABDXPV;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				INFOPLIST_FILE = Sources/ChemLabLocal/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -372,6 +378,8 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 2CLPABDXPV;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				INFOPLIST_FILE = Sources/ChemLabLocal/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (

@@ -543,7 +543,7 @@ struct LocalReportToolView: View {
         let csv = UTType.commaSeparatedText
         let xlsx = UTType(filenameExtension: "xlsx") ?? .data
         let xls = UTType(filenameExtension: "xls") ?? .data
-        let cap = UTType(filenameExtension: "cap") ?? .data
+        let cap = UTType(importedAs: "com.pasco.capstone.cap")
         let hwpx = UTType(filenameExtension: "hwpx") ?? .data
         let docx = UTType(filenameExtension: "docx") ?? .data
 
@@ -553,13 +553,13 @@ struct LocalReportToolView: View {
         case .preReport:
             return [pdf, docx, hwpx]
         case .cap:
-            return [cap]
+            return [cap, .data, .item]
         case .data:
             return [xlsx, xls, csv, text, markdown, image]
         case .photos:
             return [image]
         case .general:
-            return [pdf, docx, hwpx, xlsx, xls, csv, text, markdown, cap, image]
+            return [pdf, docx, hwpx, xlsx, xls, csv, text, markdown, cap, image, .data]
         }
     }
 

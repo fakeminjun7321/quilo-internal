@@ -37,5 +37,41 @@
   <true/>
   <key>LSSupportsOpeningDocumentsInPlace</key>
   <true/>
+  <key>CFBundleDocumentTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>PASCO Capstone File</string>
+      <key>LSHandlerRank</key>
+      <string>Owner</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>com.pasco.capstone.cap</string>
+      </array>
+    </dict>
+  </array>
+  <key>UTImportedTypeDeclarations</key>
+  <array>
+    <dict>
+      <key>UTTypeIdentifier</key>
+      <string>com.pasco.capstone.cap</string>
+      <key>UTTypeDescription</key>
+      <string>PASCO Capstone File</string>
+      <key>UTTypeConformsTo</key>
+      <array>
+        <string>public.data</string>
+        <string>public.zip-archive</string>
+      </array>
+      <key>UTTypeTagSpecification</key>
+      <dict>
+        <key>public.filename-extension</key>
+        <array>
+          <string>cap</string>
+        </array>
+        <key>public.mime-type</key>
+        <string>application/vnd.pasco.capstone</string>
+      </dict>
+    </dict>
+  </array>
 </dict>
 </plist>

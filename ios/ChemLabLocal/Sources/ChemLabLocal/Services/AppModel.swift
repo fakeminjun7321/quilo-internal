@@ -50,7 +50,8 @@ final class AppModel {
                 }
                 try FileManager.default.copyItem(at: url, to: dest)
                 let values = try dest.resourceValues(forKeys: [.fileSizeKey, .contentTypeKey])
-                let type = ImportedDocumentType.detect(url: dest, contentType: values.contentType)
+                let detectedType = ImportedDocumentType.detect(url: dest, contentType: values.contentType)
+                let type: ImportedDocumentType = role == .cap ? .cap : detectedType
                 importedFiles.append(
                     ImportedDocument(
                         url: dest,
@@ -60,6 +61,7 @@ final class AppModel {
                         role: role
                     )
                 )
+                appendLog("첨부: \(dest.lastPathComponent) (\(role.title), \(type.rawValue))")
             } catch {
                 errorMessage = "파일 가져오기 실패: \(error.localizedDescription)"
             }

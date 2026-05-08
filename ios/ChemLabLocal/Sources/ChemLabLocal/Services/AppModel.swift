@@ -19,7 +19,7 @@ final class AppModel {
     var feedbackCategory = "버그 제보"
     var feedbackText = ""
     var apiKey = ""
-    var modelName = "claude-opus-4-7"
+    var modelName = AnthropicClient.defaultModel
     var isGenerating = false
     var isTestingAPI = false
     var logs: [GenerationLog] = []
@@ -88,7 +88,7 @@ final class AppModel {
     }
 
     func generate() {
-        guard !isGenerating else { return }
+        guard !isGenerating && !isTestingAPI else { return }
 
         if let validationError = validateBeforeGenerate() {
             errorMessage = validationError
@@ -140,8 +140,9 @@ final class AppModel {
                     pressure: pressure
                 )
 
-                appendLog("Claude API 직접 호출 중...")
-                let client = AnthropicClient(apiKey: apiKey, model: modelName)
+                logModelAliasIfNeeded()
+                appendLog("Claude API 직접 호출 중: \(resolvedModelName)")
+                let client = AnthropicClient(apiKey: apiKey, model: resolvedModelName)
                 let generatedText = try await client.generateReport(
                     prompt: prompt,
                     attachments: contexts,
@@ -176,7 +177,7 @@ final class AppModel {
     }
 
     func testAPIConnection() {
-        guard !isTestingAPI else { return }
+        guard !isTestingAPI && !isGenerating else { return }
 
         if apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             errorMessage = "Anthropic API 키를 먼저 입력하세요."
@@ -186,6 +187,7 @@ final class AppModel {
 
         isTestingAPI = true
         errorMessage = nil
+        logModelAliasIfNeeded()
         appendLog("Claude 연결 테스트 시작: \(resolvedModelName)")
 
         Task {
@@ -193,7 +195,7 @@ final class AppModel {
                 isTestingAPI = false
             }
             do {
-                let client = AnthropicClient(apiKey: apiKey, model: modelName)
+                let client = AnthropicClient(apiKey: apiKey, model: resolvedModelName)
                 let text = try await client.generateReport(
                     prompt: "Reply with exactly: OK",
                     attachments: [],
@@ -221,8 +223,18 @@ final class AppModel {
     }
 
     var resolvedModelName: String {
+        AnthropicClient.apiModelName(for: modelName)
+    }
+
+    private var requestedModelName: String {
         let trimmed = modelName.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? "claude-opus-4-7" : trimmed
+        return trimmed.isEmpty ? AnthropicClient.defaultModel : trimmed
+    }
+
+    private func logModelAliasIfNeeded() {
+        if requestedModelName != resolvedModelName {
+            appendLog("모델 별칭 변환: \(requestedModelName) -> \(resolvedModelName)")
+        }
     }
 
     private func validateBeforeGenerate() -> String? {

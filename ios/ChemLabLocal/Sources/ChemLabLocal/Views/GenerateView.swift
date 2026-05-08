@@ -123,7 +123,7 @@ struct GenerateView: View {
                     .frame(minWidth: 150)
             }
             .buttonStyle(.borderedProminent)
-            .disabled(model.isGenerating)
+            .disabled(model.isGenerating || model.isTestingAPI)
 
             if let report = model.generatedReport {
                 ShareLink(item: report.url) {

@@ -2,8 +2,28 @@ import Foundation
 import UIKit
 
 struct AnthropicClient {
+    static let defaultModel = "claude-opus-4-7"
+
     let apiKey: String
     let model: String
+
+    static func apiModelName(for rawModel: String) -> String {
+        let trimmed = rawModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return defaultModel }
+
+        let aliases: [String: String] = [
+            // Let users type human-friendly names while still sending API slugs.
+            "opus-4-7": "claude-opus-4-7",
+            "opus 4.7": "claude-opus-4-7",
+            "opus-4-5": "claude-opus-4-5",
+            "opus 4.5": "claude-opus-4-5",
+            "sonnet-4-6": "claude-sonnet-4-6",
+            "sonnet 4.6": "claude-sonnet-4-6",
+            "sonnet-4-5": "claude-sonnet-4-5",
+            "sonnet 4.5": "claude-sonnet-4-5"
+        ]
+        return aliases[trimmed.lowercased()] ?? trimmed
+    }
 
     func generateReport(
         prompt: String,
@@ -18,7 +38,10 @@ struct AnthropicClient {
         request.setValue("application/json", forHTTPHeaderField: "content-type")
         request.timeoutInterval = 240
 
-        var content: [[String: Any]] = [["type": "text", "text": prompt]]
+        let apiModel = Self.apiModelName(for: model)
+        await status?("Claude API 모델: \(apiModel)")
+
+        var content: [[String: Any]] = []
         for attachment in attachments {
             guard let data = attachment.attachmentData, let mediaType = attachment.mediaType else { continue }
             if mediaType == "application/pdf" {
@@ -45,9 +68,10 @@ struct AnthropicClient {
                 ])
             }
         }
+        content.append(["type": "text", "text": prompt])
 
         let body: [String: Any] = [
-            "model": model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "claude-opus-4-7" : model,
+            "model": apiModel,
             "max_tokens": maxTokens,
             "messages": [
                 ["role": "user", "content": content]

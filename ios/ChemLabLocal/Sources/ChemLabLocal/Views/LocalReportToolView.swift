@@ -298,7 +298,7 @@ struct LocalReportToolView: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .disabled(model.isGenerating)
+            .disabled(model.isGenerating || model.isTestingAPI)
 
             if let report = model.generatedReport {
                 ShareLink(item: report.url) {

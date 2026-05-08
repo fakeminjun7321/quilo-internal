@@ -14,8 +14,16 @@ struct SettingsView: View {
                     TextField("모델", text: $model.modelName)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
-                    Button("API 키 저장") {
-                        model.saveAPIKey()
+                    HStack {
+                        Button("API 키 저장") {
+                            model.saveAPIKey()
+                        }
+                        Button {
+                            model.testAPIConnection()
+                        } label: {
+                            Label(model.isTestingAPI ? "테스트 중" : "Claude 연결 테스트", systemImage: "network")
+                        }
+                        .disabled(model.isTestingAPI || model.isGenerating)
                     }
                 }
 

@@ -21,6 +21,7 @@ final class AppModel {
     var apiKey = ""
     var modelName = "claude-opus-4-7"
     var isGenerating = false
+    var isTestingAPI = false
     var logs: [GenerationLog] = []
     var generatedReport: GeneratedReport?
     var errorMessage: String?
@@ -91,6 +92,7 @@ final class AppModel {
 
         if let validationError = validateBeforeGenerate() {
             errorMessage = validationError
+            appendLog("생성 중단: \(validationError)")
             return
         }
 
@@ -101,6 +103,9 @@ final class AppModel {
         appendLog("작업 시작: \(selectedKind.title)")
 
         Task {
+            defer {
+                isGenerating = false
+            }
             do {
                 let extractor = LocalFileExtractor()
                 appendLog("파일 분석 중...")
@@ -139,7 +144,10 @@ final class AppModel {
                 let client = AnthropicClient(apiKey: apiKey, model: modelName)
                 let generatedText = try await client.generateReport(
                     prompt: prompt,
-                    attachments: contexts
+                    attachments: contexts,
+                    status: { message in
+                        self.appendLog(message)
+                    }
                 )
 
                 appendLog("\(outputFormat.title) 파일 로컬 생성 중...")
@@ -164,7 +172,41 @@ final class AppModel {
                 errorMessage = error.localizedDescription
                 appendLog("오류: \(error.localizedDescription)")
             }
-            isGenerating = false
+        }
+    }
+
+    func testAPIConnection() {
+        guard !isTestingAPI else { return }
+
+        if apiKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            errorMessage = "Anthropic API 키를 먼저 입력하세요."
+            appendLog("Claude 연결 테스트 중단: API 키 없음")
+            return
+        }
+
+        isTestingAPI = true
+        errorMessage = nil
+        appendLog("Claude 연결 테스트 시작: \(resolvedModelName)")
+
+        Task {
+            defer {
+                isTestingAPI = false
+            }
+            do {
+                let client = AnthropicClient(apiKey: apiKey, model: modelName)
+                let text = try await client.generateReport(
+                    prompt: "Reply with exactly: OK",
+                    attachments: [],
+                    maxTokens: 16,
+                    status: { message in
+                        self.appendLog("테스트: \(message)")
+                    }
+                )
+                appendLog("Claude 연결 테스트 성공: \(String(text.prefix(80)))")
+            } catch {
+                errorMessage = error.localizedDescription
+                appendLog("Claude 연결 테스트 실패: \(error.localizedDescription)")
+            }
         }
     }
 
@@ -176,6 +218,11 @@ final class AppModel {
         feedbackCategory = "버그 제보"
         feedbackText = ""
         appendLog("건의사항 입력을 비웠습니다.")
+    }
+
+    var resolvedModelName: String {
+        let trimmed = modelName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "claude-opus-4-7" : trimmed
     }
 
     private func validateBeforeGenerate() -> String? {

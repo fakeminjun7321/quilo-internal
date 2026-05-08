@@ -5,7 +5,12 @@ struct AnthropicClient {
     let apiKey: String
     let model: String
 
-    func generateReport(prompt: String, attachments: [ExtractedFileContext]) async throws -> String {
+    func generateReport(
+        prompt: String,
+        attachments: [ExtractedFileContext],
+        maxTokens: Int = 12000,
+        status: (@MainActor (String) -> Void)? = nil
+    ) async throws -> String {
         var request = URLRequest(url: URL(string: "https://api.anthropic.com/v1/messages")!)
         request.httpMethod = "POST"
         request.setValue(apiKey.trimmingCharacters(in: .whitespacesAndNewlines), forHTTPHeaderField: "x-api-key")
@@ -43,17 +48,31 @@ struct AnthropicClient {
 
         let body: [String: Any] = [
             "model": model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "claude-opus-4-7" : model,
-            "max_tokens": 12000,
+            "max_tokens": maxTokens,
             "messages": [
                 ["role": "user", "content": content]
             ]
         ]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let bodyData = try JSONSerialization.data(withJSONObject: body)
+        let bodySize = ByteCountFormatter.string(fromByteCount: Int64(bodyData.count), countStyle: .file)
+        await status?("Claude 요청 본문 구성 완료: \(bodySize), 첨부 블록 \(max(content.count - 1, 0))개")
+        guard bodyData.count <= 31_000_000 else {
+            throw NSError(
+                domain: "AnthropicClient",
+                code: 413,
+                userInfo: [NSLocalizedDescriptionKey: "Claude 요청이 너무 큽니다(\(bodySize)). Anthropic Messages API는 전체 JSON 요청이 32MB 이하여야 합니다. PDF/사진을 줄이거나 일부 첨부를 빼고 다시 시도하세요."]
+            )
+        }
+        request.httpBody = bodyData
 
+        let started = Date()
+        await status?("Claude API 전송 중...")
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw NSError(domain: "AnthropicClient", code: 0, userInfo: [NSLocalizedDescriptionKey: "응답을 해석할 수 없습니다."])
         }
+        let elapsed = Date().timeIntervalSince(started)
+        await status?("Claude 응답 수신: HTTP \(http.statusCode), \(String(format: "%.1f", elapsed))초")
         guard (200..<300).contains(http.statusCode) else {
             throw NSError(domain: "AnthropicClient", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: "Claude API 오류 \(http.statusCode): \(apiErrorMessage(from: data))"])
         }

@@ -444,10 +444,20 @@ struct LocalReportToolView: View {
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
                     .textFieldStyle(.roundedBorder)
-                Button("API 키 저장") {
-                    model.saveAPIKey()
+                HStack {
+                    Button("API 키 저장") {
+                        model.saveAPIKey()
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                    Button {
+                        model.testAPIConnection()
+                    } label: {
+                        Label(model.isTestingAPI ? "테스트 중" : "Claude 연결 테스트", systemImage: "network")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(model.isTestingAPI || model.isGenerating)
                 }
-                .buttonStyle(.borderedProminent)
             }
 
             Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 10) {

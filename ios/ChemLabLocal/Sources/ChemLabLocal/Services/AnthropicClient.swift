@@ -36,6 +36,7 @@ struct AnthropicClient {
         request.setValue(apiKey.trimmingCharacters(in: .whitespacesAndNewlines), forHTTPHeaderField: "x-api-key")
         request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
         request.setValue("application/json", forHTTPHeaderField: "content-type")
+        request.setValue("text/event-stream", forHTTPHeaderField: "accept")
         request.timeoutInterval = 240
 
         let apiModel = Self.apiModelName(for: model)
@@ -73,6 +74,7 @@ struct AnthropicClient {
         let body: [String: Any] = [
             "model": apiModel,
             "max_tokens": maxTokens,
+            "stream": true,
             "messages": [
                 ["role": "user", "content": content]
             ]
@@ -91,22 +93,17 @@ struct AnthropicClient {
 
         let started = Date()
         await status?("Claude API 전송 중...")
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (bytes, response) = try await URLSession.shared.bytes(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw NSError(domain: "AnthropicClient", code: 0, userInfo: [NSLocalizedDescriptionKey: "응답을 해석할 수 없습니다."])
         }
-        let elapsed = Date().timeIntervalSince(started)
-        await status?("Claude 응답 수신: HTTP \(http.statusCode), \(String(format: "%.1f", elapsed))초")
         guard (200..<300).contains(http.statusCode) else {
+            let data = try await collectData(from: bytes)
             throw NSError(domain: "AnthropicClient", code: http.statusCode, userInfo: [NSLocalizedDescriptionKey: "Claude API 오류 \(http.statusCode): \(apiErrorMessage(from: data))"])
         }
 
-        let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        let blocks = json?["content"] as? [[String: Any]] ?? []
-        let text = blocks.compactMap { block -> String? in
-            guard block["type"] as? String == "text" else { return nil }
-            return block["text"] as? String
-        }.joined(separator: "\n")
+        await status?("Claude 요청 접수: HTTP \(http.statusCode), 스트리밍 수신 시작")
+        let text = try await readStreamingText(bytes, started: started, status: status)
         if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             throw NSError(domain: "AnthropicClient", code: 1, userInfo: [NSLocalizedDescriptionKey: "Claude 응답에 텍스트가 없습니다."])
         }
@@ -114,7 +111,7 @@ struct AnthropicClient {
     }
 
     private func preparedImageData(_ data: Data, mediaType: String, filename: String) throws -> (data: Data, mediaType: String) {
-        let maxBytes = 4_800_000
+        let maxBytes = 2_400_000
         let acceptedMediaTypes: Set<String> = ["image/jpeg", "image/png", "image/gif", "image/webp"]
         let needsReencoding = !acceptedMediaTypes.contains(mediaType)
         if data.count <= maxBytes && !needsReencoding {
@@ -126,8 +123,8 @@ struct AnthropicClient {
             throw NSError(domain: "AnthropicClient", code: 413, userInfo: [NSLocalizedDescriptionKey: "\(filename)은 \(reason) JPG/PNG로 저장하거나 해상도를 낮춰 다시 넣어주세요."])
         }
 
-        var maxDimension: CGFloat = 2200
-        var quality: CGFloat = 0.82
+        var maxDimension: CGFloat = 1800
+        var quality: CGFloat = 0.76
         var smallest: Data?
         for _ in 0..<8 {
             let resized = image.resized(maxDimension: maxDimension)
@@ -144,6 +141,70 @@ struct AnthropicClient {
             return (smallest, "image/jpeg")
         }
         throw NSError(domain: "AnthropicClient", code: 413, userInfo: [NSLocalizedDescriptionKey: "\(filename)을 Claude 이미지 제한에 맞게 줄이지 못했습니다. 사진을 잘라내거나 해상도를 낮춰주세요."])
+    }
+
+    private func readStreamingText(
+        _ bytes: URLSession.AsyncBytes,
+        started: Date,
+        status: (@MainActor (String) -> Void)?
+    ) async throws -> String {
+        var text = ""
+        var charCount = 0
+        var lastReportedChars = 0
+        var startedText = false
+
+        for try await line in bytes.lines {
+            guard line.hasPrefix("data: ") else { continue }
+            let payload = String(line.dropFirst(6))
+            guard payload != "[DONE]" else { continue }
+            guard
+                let data = payload.data(using: .utf8),
+                let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                let type = event["type"] as? String
+            else {
+                continue
+            }
+
+            if type == "error" {
+                let message = (event["error"] as? [String: Any])?["message"] as? String ?? payload
+                throw NSError(domain: "AnthropicClient", code: 2, userInfo: [NSLocalizedDescriptionKey: "Claude 스트리밍 오류: \(message)"])
+            }
+
+            if type == "content_block_start",
+               let block = event["content_block"] as? [String: Any],
+               block["type"] as? String == "text",
+               !startedText {
+                startedText = true
+                await status?("보고서 작성 시작 (\(elapsedSeconds(since: started))초)")
+            }
+
+            if type == "content_block_delta",
+               let delta = event["delta"] as? [String: Any],
+               delta["type"] as? String == "text_delta",
+               let chunk = delta["text"] as? String {
+                text += chunk
+                charCount += chunk.count
+                if charCount - lastReportedChars >= 1500 {
+                    await status?("보고서 작성 중... (\(charCount)자, \(elapsedSeconds(since: started))초)")
+                    lastReportedChars = charCount
+                }
+            }
+        }
+
+        await status?("Claude 응답 완료: \(charCount)자, \(elapsedSeconds(since: started))초")
+        return text
+    }
+
+    private func collectData(from bytes: URLSession.AsyncBytes) async throws -> Data {
+        var data = Data()
+        for try await byte in bytes {
+            data.append(byte)
+        }
+        return data
+    }
+
+    private func elapsedSeconds(since started: Date) -> Int {
+        Int(Date().timeIntervalSince(started).rounded())
     }
 
     private func apiErrorMessage(from data: Data) -> String {

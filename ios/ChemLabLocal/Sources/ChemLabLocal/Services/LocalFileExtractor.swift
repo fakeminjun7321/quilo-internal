@@ -1,4 +1,5 @@
 import Foundation
+import PDFKit
 import ZIPFoundation
 
 struct ExtractedFileContext: Identifiable {
@@ -42,7 +43,16 @@ struct LocalFileExtractor {
         case .text, .csv:
             return context(document, text: decodeText(data), data: nil, mediaType: nil)
         case .pdf:
-            return context(document, text: "PDF는 Claude document 입력으로 함께 전송됨.", data: data, mediaType: "application/pdf")
+            let extracted = extractPDFText(document.url)
+            if extracted.trimmingCharacters(in: .whitespacesAndNewlines).count >= 800 {
+                return context(
+                    document,
+                    text: "PDF 원문 텍스트를 iPad에서 먼저 추출했습니다. 전송 시간을 줄이기 위해 PDF 원본 업로드는 생략합니다.\n\n\(extracted)",
+                    data: nil,
+                    mediaType: nil
+                )
+            }
+            return context(document, text: "PDF 텍스트 추출량이 부족하여 Claude document 입력으로 함께 전송됨.", data: data, mediaType: "application/pdf")
         case .image:
             return context(document, text: "이미지는 Claude vision 입력으로 함께 전송됨.", data: data, mediaType: imageMediaType(document.url))
         case .hwpx:
@@ -99,10 +109,11 @@ struct LocalFileExtractor {
     }
 
     private func archive(_ url: URL) throws -> Archive {
-        guard let archive = Archive(url: url, accessMode: .read) else {
+        do {
+            return try Archive(url: url, accessMode: .read)
+        } catch {
             throw NSError(domain: "LocalFileExtractor", code: 1, userInfo: [NSLocalizedDescriptionKey: "ZIP 기반 파일을 열 수 없습니다: \(url.lastPathComponent)"])
         }
-        return archive
     }
 
     private func stringEntry(_ archive: Archive, _ path: String) throws -> String? {
@@ -137,6 +148,20 @@ struct LocalFileExtractor {
         let archive = try archive(url)
         guard let xml = try stringEntry(archive, "word/document.xml") else { return "" }
         return TextUtilities.xmlText(xml)
+    }
+
+    private func extractPDFText(_ url: URL) -> String {
+        guard let document = PDFDocument(url: url) else { return "" }
+        var pages: [String] = []
+        for index in 0..<document.pageCount {
+            guard let text = document.page(at: index)?.string else { continue }
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty {
+                pages.append("## PDF \(index + 1)쪽\n\(trimmed)")
+            }
+            if pages.joined(separator: "\n\n").count > 24_000 { break }
+        }
+        return pages.joined(separator: "\n\n")
     }
 
     private func extractZipText(_ url: URL, preferredNames: [String]) throws -> String {

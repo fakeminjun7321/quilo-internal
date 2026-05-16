@@ -87,7 +87,10 @@
       </p>
       <p class="user-notes-field">
         <label>AI 참고 메모 / 내 의견 (선택):
-          <textarea id="crUserNotes" name="userNotes" rows="4" maxlength="2000" placeholder="예: 색 변화가 예상보다 늦게 나타났고, 마지막 적정값은 종말점 판단이 애매해서 오차 분석에 반영하고 싶음"></textarea>
+          <textarea id="crUserNotes" name="userNotes" rows="4" maxlength="12000" placeholder="예: 색 변화가 예상보다 늦게 나타났고, 마지막 적정값은 종말점 판단이 애매해서 오차 분석에 반영하고 싶음"></textarea>
+          <br>
+          <small>.md/.txt 파일로 길게 작성한 메모도 함께 첨부할 수 있습니다.</small><br>
+          <input id="crUserNotesFile" name="userNotesFile" type="file" accept=".md,.txt,text/markdown,text/plain" />
         </label>
       </p>
       <p class="policy-check">
@@ -190,7 +193,10 @@
       </p>
       <p class="user-notes-field">
         <label>AI 참고 메모 / 내 의견 (선택):
-          <textarea id="prUserNotes" name="userNotes" rows="4" maxlength="2000" placeholder="예: 예비 시행 1회는 포토게이트가 흔들려 제외했고, 재측정에서는 트랙 이음새를 지나며 카트가 살짝 튀는 현상이 있었음"></textarea>
+          <textarea id="prUserNotes" name="userNotes" rows="4" maxlength="12000" placeholder="예: 예비 시행 1회는 포토게이트가 흔들려 제외했고, 재측정에서는 트랙 이음새를 지나며 카트가 살짝 튀는 현상이 있었음"></textarea>
+          <br>
+          <small>.md/.txt 파일로 길게 작성한 메모도 함께 첨부할 수 있습니다.</small><br>
+          <input id="prUserNotesFile" name="userNotesFile" type="file" accept=".md,.txt,text/markdown,text/plain" />
         </label>
       </p>
       <p class="policy-check">
@@ -254,7 +260,10 @@
       </p>
       <p class="user-notes-field">
         <label>AI 참고 메모 / 내 의견 (선택):
-          <textarea id="preUserNotes" name="userNotes" rows="4" maxlength="2000" placeholder="예: 선생님이 안전 주의와 수율 계산을 특히 강조했고, 실험 과정에서 왜 ice bath를 쓰는지 자세히 설명하고 싶음"></textarea>
+          <textarea id="preUserNotes" name="userNotes" rows="4" maxlength="12000" placeholder="예: 선생님이 안전 주의와 수율 계산을 특히 강조했고, 실험 과정에서 왜 ice bath를 쓰는지 자세히 설명하고 싶음"></textarea>
+          <br>
+          <small>.md/.txt 파일로 길게 작성한 메모도 함께 첨부할 수 있습니다.</small><br>
+          <input id="preUserNotesFile" name="userNotesFile" type="file" accept=".md,.txt,text/markdown,text/plain" />
         </label>
       </p>
       <p class="policy-check">
@@ -1098,8 +1107,29 @@
         return (document.getElementById(id)?.value || "").trim();
       }
 
-      function userNotesSummary(notes) {
-        return notes ? `${notes.length}자 입력됨` : "없음";
+      function getUserNotesFile(id) {
+        return document.getElementById(id)?.files?.[0] || null;
+      }
+
+      function validateUserNotesFile(file) {
+        if (!file) return true;
+        const ext = (file.name.split(".").pop() || "").toLowerCase();
+        if (!["md", "txt"].includes(ext)) {
+          alert("AI 참고 메모 파일은 .md 또는 .txt 형식만 업로드할 수 있습니다.");
+          return false;
+        }
+        if (file.size > 256 * 1024) {
+          alert("AI 참고 메모 파일은 최대 256KB까지만 업로드할 수 있습니다.");
+          return false;
+        }
+        return true;
+      }
+
+      function userNotesSummary(notes, file = null) {
+        const parts = [];
+        if (notes) parts.push(`${notes.length}자 직접 입력`);
+        if (file) parts.push(`${file.name} (${formatBytes(file.size)})`);
+        return parts.length ? parts.join(", ") : "없음";
       }
 
       function showConfirmDialog({ title, rows, note, okLabel = "생성" }) {
@@ -1179,6 +1209,8 @@
         updateChemPreFontOptions();
         const fontFace = document.getElementById("fontFace").value;
         const userNotes = getUserNotesValue("preUserNotes");
+        const userNotesFile = getUserNotesFile("preUserNotesFile");
+        if (!validateUserNotesFile(userNotesFile)) return;
 
         // 예상 비용 확인
         const est = estimateCost(file.size, model);
@@ -1189,7 +1221,7 @@
           rows: [
             ["모델", modelLabel],
             ["글꼴", getFontLabel(fontFace)],
-            ["참고 메모", userNotesSummary(userNotes)],
+            ["참고 메모", userNotesSummary(userNotes, userNotesFile)],
             ["PDF", `${est.sizeKB}KB`],
             ["예상 비용", costRangeText(est, krwLo, krwHi)],
           ],
@@ -1218,6 +1250,7 @@
         fd.append("style", styleValue);
         fd.append("fontFace", fontFace);
         fd.append("userNotes", userNotes);
+        if (userNotesFile) fd.append("userNotesFile", userNotesFile);
 
         // 표지에 들어갈 사용자 입력. 학번은 개인 설정값을 자동 사용한다.
         const nameEl = document.getElementById("studentName");
@@ -1278,12 +1311,14 @@
         updateChemResultFontOptions();
         const crFontFace = document.getElementById("crFontFace").value;
         const crUserNotes = getUserNotesValue("crUserNotes");
+        const crUserNotesFile = getUserNotesFile("crUserNotesFile");
+        if (!validateUserNotesFile(crUserNotesFile)) return;
 
         const photoBytes = photos.reduce((s, p) => s + p.size, 0);
         const est = estimateChemResultCost({
           preReportBytes: preReport.size,
           manualBytes: manual?.size || 0,
-          dataBytes: dataFile?.size || 0,
+          dataBytes: (dataFile?.size || 0) + (crUserNotesFile?.size || 0),
           photoBytes,
           photoCount: photos.length,
           modelId: crModel,
@@ -1297,9 +1332,9 @@
             ["스타일", crStyleLabel],
             ["형식", crFormat === "hwpx" ? ".hwpx (한글)" : ".docx (MS Word)"],
             ["글꼴", getFontLabel(crFontFace)],
-            ["참고 메모", userNotesSummary(crUserNotes)],
+            ["참고 메모", userNotesSummary(crUserNotes, crUserNotesFile)],
             ["출력 범위", "사전보고서 뒤에 붙일 결과 추가 작성분"],
-            ["첨부", `사전보고서${dataFile ? ", 데이터" : ", 데이터 없음"}${crUserNotes && !dataFile ? " (메모 활용)" : ""}, 사진 ${photos.length}장${manual ? ", 매뉴얼" : ""}`],
+            ["첨부", `사전보고서${dataFile ? ", 데이터" : ", 데이터 없음"}${(crUserNotes || crUserNotesFile) && !dataFile ? " (메모 활용)" : ""}, 사진 ${photos.length}장${manual ? ", 매뉴얼" : ""}`],
             ["총 크기", `${est.totalKB}KB`],
             ["예상 비용", costRangeText(est, krwLo, krwHi)],
           ],
@@ -1331,6 +1366,7 @@
         fd.append("format", crFormat);
         fd.append("fontFace", crFontFace);
         fd.append("userNotes", crUserNotes);
+        if (crUserNotesFile) fd.append("userNotesFile", crUserNotesFile);
         appendPolicyAcknowledgements(fd);
 
         try {
@@ -1379,10 +1415,13 @@
         updatePhysResultFontOptions();
         const prFontFace = document.getElementById("prFontFace").value;
         const prUserNotes = getUserNotesValue("prUserNotes");
+        const prUserNotesFile = getUserNotesFile("prUserNotesFile");
+        if (!validateUserNotesFile(prUserNotesFile)) return;
 
         const photoBytes = photos.reduce((s, p) => s + p.size, 0);
         const dataFileBytes = dataFiles.reduce((s, f) => s + f.size, 0);
-        const dataInputBytes = (cap?.size || 0) + dataFileBytes;
+        const dataInputBytes =
+          (cap?.size || 0) + dataFileBytes + (prUserNotesFile?.size || 0);
         const est = estimatePhysResultCost({
           capBytes: dataInputBytes,
           photoCount: photos.length,
@@ -1407,7 +1446,7 @@
             ["양식", "기본 양식"],
             ["형식", prFormat === "hwpx" ? ".hwpx (한글)" : ".docx (MS Word)"],
             ["글꼴", getFontLabel(prFontFace)],
-            ["참고 메모", userNotesSummary(prUserNotes)],
+            ["참고 메모", userNotesSummary(prUserNotes, prUserNotesFile)],
             ["입력", `${inputLabel}${photos.length > 0 ? `, 사진 ${photos.length}장` : ""}${manual ? ", 매뉴얼" : ""}`],
             ["총 크기", `${est.totalKB}KB`],
             ["예상 비용", costRangeText(est, krwLo, krwHi)],
@@ -1437,6 +1476,7 @@
         fd.append("format", prFormat);
         fd.append("fontFace", prFontFace);
         fd.append("userNotes", prUserNotes);
+        if (prUserNotesFile) fd.append("userNotesFile", prUserNotesFile);
         appendPolicyAcknowledgements(fd);
 
         try {

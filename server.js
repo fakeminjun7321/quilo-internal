@@ -35,7 +35,7 @@ const PIPELINES = {
         temperature: String(body.temperature || "").trim(),
         pressure: String(body.pressure || "").trim(),
         fontFace: normalizeFontFace(body.fontFace),
-        userNotes: normalizeUserNotes(body.userNotes),
+        userNotes: collectUserNotes(body.userNotes, filesByField),
         style,
       };
     },
@@ -79,7 +79,7 @@ const PIPELINES = {
         temperature: String(body.temperature || "").trim(),
         pressure: String(body.pressure || "").trim(),
         fontFace: normalizeFontFace(body.fontFace),
-        userNotes: normalizeUserNotes(body.userNotes),
+        userNotes: collectUserNotes(body.userNotes, filesByField),
         style,
       };
     },
@@ -143,7 +143,7 @@ const PIPELINES = {
         })),
         studentId,
         fontFace: normalizeFontFace(body.fontFace),
-        userNotes: normalizeUserNotes(body.userNotes),
+        userNotes: collectUserNotes(body.userNotes, filesByField),
         style: "default",
       };
     },
@@ -212,12 +212,14 @@ app.use(
   }),
 );
 
-// 단일 파일 25MB, 전체 파일 개수 20개 (물리 다중 데이터/사진 대비) — Render 무료 512MB 메모리 보호
+// 단일 파일 25MB, 전체 파일 개수 50개 (물리 다중 데이터/사진/메모 파일 대비)
+// — Render 무료 512MB 메모리 보호. Claude 전송 전 이미지는 별도 request-budget으로 축소한다.
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 25 * 1024 * 1024,
-    files: 20,
+    files: 50,
+    parts: 90,
   },
 });
 
@@ -845,12 +847,71 @@ function normalizeUploadFilename(value) {
   return original;
 }
 
-function normalizeUserNotes(value) {
+const MAX_USER_NOTES_CHARS = parseInt(
+  process.env.MAX_USER_NOTES_CHARS || "12000",
+  10,
+);
+const MAX_USER_NOTES_FILE_BYTES = parseInt(
+  process.env.MAX_USER_NOTES_FILE_BYTES || String(256 * 1024),
+  10,
+);
+
+function decodeUserTextBuffer(buffer) {
+  const buf = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer || []);
+  const utf8 = buf.toString("utf8");
+  try {
+    const eucKr = new TextDecoder("euc-kr").decode(buf);
+    const badUtf8 = (utf8.match(/\uFFFD/g) || []).length;
+    const badEucKr = (eucKr.match(/\uFFFD/g) || []).length;
+    if (badEucKr < badUtf8) return eucKr;
+  } catch {
+    // UTF-8 is the common path; keep it when legacy Korean decoding fails.
+  }
+  return utf8;
+}
+
+function normalizeUserNotes(value, maxLen = MAX_USER_NOTES_CHARS) {
   return String(value || "")
     .replace(/\r\n/g, "\n")
     .replace(/\n{4,}/g, "\n\n\n")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
     .trim()
-    .slice(0, 2000);
+    .slice(0, maxLen);
+}
+
+function collectUserNotes(textValue, filesByField = {}) {
+  const parts = [];
+  const typed = normalizeUserNotes(textValue);
+  if (typed) {
+    parts.push(`## 직접 입력한 참고 메모\n\n${typed}`);
+  }
+
+  const noteFiles = [
+    ...(filesByField.userNotesFile || []),
+    ...(filesByField.notesFile || []),
+  ];
+  if (noteFiles.length > 1) {
+    throw new Error("AI 참고 메모 파일은 1개만 업로드할 수 있습니다.");
+  }
+
+  const file = noteFiles[0];
+  if (file) {
+    const ext = (file.originalname.split(".").pop() || "").toLowerCase();
+    if (!["md", "txt"].includes(ext)) {
+      throw new Error("AI 참고 메모 파일은 .md 또는 .txt 형식만 가능합니다.");
+    }
+    if (file.buffer.length > MAX_USER_NOTES_FILE_BYTES) {
+      throw new Error(
+        `AI 참고 메모 파일이 너무 큽니다 (최대 ${Math.round(MAX_USER_NOTES_FILE_BYTES / 1024)}KB).`,
+      );
+    }
+    const fileText = normalizeUserNotes(decodeUserTextBuffer(file.buffer));
+    if (fileText) {
+      parts.push(`## 업로드한 참고 메모 파일: ${file.originalname}\n\n${fileText}`);
+    }
+  }
+
+  return normalizeUserNotes(parts.join("\n\n---\n\n"));
 }
 
 async function runGeneration(job, pipeline, pipelineInput, meta) {
@@ -1481,7 +1542,9 @@ app.use((err, req, res, next) => {
     if (err.code === "LIMIT_FILE_SIZE") {
       msg = "파일이 너무 큽니다 (단일 파일 최대 25MB).";
     } else if (err.code === "LIMIT_FILE_COUNT") {
-      msg = "파일이 너무 많습니다 (최대 20개). 사진 수를 줄여보세요.";
+      msg = "파일이 너무 많습니다 (최대 50개). 사진 수를 줄이거나 여러 번 나눠 생성해보세요.";
+    } else if (err.code === "LIMIT_PART_COUNT") {
+      msg = "업로드 항목이 너무 많습니다 (최대 90개).";
     } else if (err.code === "LIMIT_UNEXPECTED_FILE") {
       msg = `예상치 못한 파일 필드: ${err.field}`;
     }

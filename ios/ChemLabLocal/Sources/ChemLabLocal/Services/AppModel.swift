@@ -96,11 +96,22 @@ final class AppModel {
             return
         }
 
+        let kind = selectedKind
+        let format = outputFormat
+        let style = reportStyle
+        let face = fontFace
+        let files = importedFiles
+        let notes = userNotes
+        let date = reportDate
+        let name = studentName
+        let temp = temperature
+        let press = pressure
+
         isGenerating = true
         generatedReport = nil
         errorMessage = nil
         logs.removeAll()
-        appendLog("작업 시작: \(selectedKind.title)")
+        appendLog("작업 시작: \(kind.title)")
 
         Task {
             defer {
@@ -110,7 +121,7 @@ final class AppModel {
                 let extractor = LocalFileExtractor()
                 appendLog("파일 분석 중...")
                 var contexts: [ExtractedFileContext] = []
-                for file in importedFiles {
+                for file in files {
                     do {
                         contexts.append(try extractor.extract(file))
                     } catch {
@@ -128,16 +139,16 @@ final class AppModel {
 
                 appendLog("프롬프트 구성 중...")
                 let prompt = PromptBuilder().build(
-                    kind: selectedKind,
+                    kind: kind,
                     files: contexts,
-                    userNotes: userNotes,
-                    outputFormat: outputFormat,
-                    reportStyle: reportStyle,
-                    fontFace: fontFace,
-                    reportDate: reportDate,
-                    studentName: studentName,
-                    temperature: temperature,
-                    pressure: pressure
+                    userNotes: notes,
+                    outputFormat: format,
+                    reportStyle: style,
+                    fontFace: face,
+                    reportDate: date,
+                    studentName: name,
+                    temperature: temp,
+                    pressure: press
                 )
 
                 logModelAliasIfNeeded()
@@ -151,20 +162,21 @@ final class AppModel {
                     }
                 )
 
-                appendLog("\(outputFormat.title) 파일 로컬 생성 중...")
+                appendLog("\(format.title) 파일 로컬 생성 중...")
                 let output: URL
-                switch outputFormat {
+                switch format {
                 case .hwpx:
                     output = try HWPXExporter().writeReport(
-                        title: selectedKind.outputTitle,
+                        title: kind.outputTitle,
                         bodyMarkdown: generatedText,
-                        fontFace: fontFace
+                        kind: kind,
+                        fontFace: face
                     )
                 case .docx:
                     output = try DOCXExporter().writeReport(
-                        title: selectedKind.outputTitle,
+                        title: kind.outputTitle,
                         bodyMarkdown: generatedText,
-                        fontFace: fontFace
+                        fontFace: face
                     )
                 }
                 generatedReport = GeneratedReport(url: output, title: output.lastPathComponent)

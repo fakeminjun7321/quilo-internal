@@ -13,7 +13,12 @@ struct HWPXExporter {
         static let bodyParaPr = 14
     }
 
-    func writeReport(title: String, bodyMarkdown: String, fontFace _: FontFace = .malgunGothic) throws -> URL {
+    func writeReport(
+        title: String,
+        bodyMarkdown: String,
+        kind: ReportKind,
+        fontFace _: FontFace = .malgunGothic
+    ) throws -> URL {
         guard let template = Bundle.main.url(forResource: "result-report-template", withExtension: "hwpx") else {
             throw NSError(domain: "HWPXExporter", code: 1, userInfo: [NSLocalizedDescriptionKey: "HWPX 템플릿을 찾을 수 없습니다."])
         }
@@ -38,6 +43,10 @@ struct HWPXExporter {
         _ = try archive.extract(section) { data.append($0) }
         guard var xml = String(data: data, encoding: .utf8) else {
             throw NSError(domain: "HWPXExporter", code: 4, userInfo: [NSLocalizedDescriptionKey: "section XML 인코딩 오류"])
+        }
+
+        if !kind.usesBundledBodyTemplate {
+            xml = blankSectionXML(from: xml)
         }
 
         let body = makeParagraphs(title: title, markdown: bodyMarkdown)
@@ -139,6 +148,17 @@ struct HWPXExporter {
         return formatter.string(from: Date())
     }
 
+    private func blankSectionXML(from xml: String) -> String {
+        guard
+            let secStart = xml.range(of: "<hs:sec"),
+            let openEnd = xml[secStart.upperBound...].range(of: ">"),
+            let closeStart = xml.range(of: "</hs:sec>", options: .backwards)
+        else {
+            return xml
+        }
+        return String(xml[..<openEnd.upperBound]) + String(xml[closeStart.lowerBound...])
+    }
+
     private func validateTemplateStyleReferences(in archive: Archive) throws {
         guard let header = archive["Contents/header.xml"] else {
             throw NSError(domain: "HWPXExporter", code: 5, userInfo: [NSLocalizedDescriptionKey: "header.xml을 찾을 수 없습니다."])
@@ -199,5 +219,11 @@ struct HWPXExporter {
                 " "
             }
         })
+    }
+}
+
+private extension ReportKind {
+    var usesBundledBodyTemplate: Bool {
+        self == .physicsResult
     }
 }

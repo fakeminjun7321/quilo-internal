@@ -413,7 +413,7 @@ FORMULA_CHAR_CLASS = (
     r"A-Za-z0-9"
     r"αβγδθλμπρστφωΩΔΣ"
     r"_\{\}\^\*\s\+\-=−–—≈≃≤≥<>/\\\(\)\[\]\.,"
-    r"·×√½°%⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻₀₁₂₃₄₅₆₇₈₉₊₋"
+    r"·×√½°%′'⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻₀₁₂₃₄₅₆₇₈₉₊₋\u0307\u0308"
 )
 FORMULA_START_CLASS = r"A-Za-z0-9αβγδθλμπρστφωΩΔΣ\*\(\{"
 INLINE_FORMULA_RE = re.compile(
@@ -476,6 +476,7 @@ def rich_formula_to_latex(expr):
     expr = re.sub(r"\*\*([^*]+)\*\*", r"\1", expr)
     expr = re.sub(r"(?<!\*)\*([^*]+)\*(?!\*)", r"\1", expr)
     expr = expr.replace("−", "-").replace("–", "-").replace("—", "-")
+    expr = expr.replace("θ̈", r"\ddot{\theta}").replace("θ̇", r"\dot{\theta}")
     expr = expr.replace("×", r" \times ").replace("·", r" \cdot ")
     expr = expr.replace("≃", r" \approx ").replace("≈", r" \approx ")
     expr = expr.replace("≤", r" \leq ").replace("≥", r" \geq ")

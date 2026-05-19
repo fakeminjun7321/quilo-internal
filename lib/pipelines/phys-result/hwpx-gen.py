@@ -40,12 +40,12 @@ PAGE_MARGIN_TOP = 2835
 PAGE_MARGIN_BOTTOM = 2835
 PAGE_HEADER = 3402
 PAGE_FOOTER = 3969
-PHYS_TABLE_WIDTH = 50500
+PHYS_TABLE_WIDTH = 30300
 
-MAX_IMAGE_WIDTH = 33000
-MAX_IMAGE_HEIGHT = 23000
-MAX_CHART_WIDTH = 36000
-MAX_CHART_HEIGHT = 23000
+MAX_IMAGE_WIDTH = 19800
+MAX_IMAGE_HEIGHT = 13800
+MAX_CHART_WIDTH = 21600
+MAX_CHART_HEIGHT = 13800
 PX_TO_HWPUNIT = 75
 
 
@@ -719,12 +719,12 @@ def add_table(doc, headers, rows, caption=None, target=None):
         border_fill_id_ref=solid_id,
     )
     col_count = max(len(headers), max([len(r) for r in rows] + [len(headers)]), 1)
-    col_width = max(int(PHYS_TABLE_WIDTH / col_count), 2200)
+    col_width = max(int(PHYS_TABLE_WIDTH / col_count), 1320)
 
     for c in range(len(headers)):
         for r in range(len(rows) + 1):
             try:
-                table.cell(r, c).set_size(width=col_width)
+                table.cell(r, c).set_size(width=col_width, height=2160)
             except Exception:
                 pass
 
@@ -735,7 +735,7 @@ def add_table(doc, headers, rows, caption=None, target=None):
             doc,
             cell,
             text,
-            size=pre.SIZE_TABLE_HEADER,
+            size=900,
             bold=True,
             align="CENTER",
             line_spacing=pre.TABLE_LINE_SPACING_PERCENT,
@@ -749,7 +749,7 @@ def add_table(doc, headers, rows, caption=None, target=None):
                 doc,
                 cell,
                 row[c_idx] if c_idx < len(row) else "",
-                size=pre.SIZE_TABLE_BODY,
+                size=850,
                 align="CENTER",
                 line_spacing=pre.TABLE_LINE_SPACING_PERCENT,
             )
@@ -798,9 +798,9 @@ def add_photo_blocks(doc, photo_indices, photos, fig_counter, caption_prefix, ta
             width=PHYS_TABLE_WIDTH,
             border_fill_id_ref=solid_id,
         )
-        col_width = max(int(PHYS_TABLE_WIDTH / len(group)), 5000)
-        image_max_width = max(col_width - 900, 5000)
-        image_max_height = 12500 if len(group) >= 3 else 16500
+        col_width = max(int(PHYS_TABLE_WIDTH / len(group)), 3000)
+        image_max_width = max(col_width - 540, 3000)
+        image_max_height = 7500 if len(group) >= 3 else 9900
         captions = []
         for col, (photo, blob) in enumerate(group):
             fmt = image_format(photo.get("name"), photo.get("mimetype"), blob)

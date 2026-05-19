@@ -326,11 +326,18 @@ body > details,
   flex-wrap: wrap;
   gap: 10px 16px;
   justify-content: center;
+  align-items: center;
   margin: 34px 0 0;
   padding: 18px 0 0;
   border-top: 1px solid var(--border);
   color: var(--muted);
   font-size: 13px;
+}
+
+.site-version {
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
 }
 
 .legal-page {
@@ -355,6 +362,54 @@ body > details,
 
 .legal-page li {
   margin: 7px 0;
+}
+
+.version-card {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+}
+
+.version-card dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.version-card dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.version-card dd {
+  margin: 4px 0 0;
+  font-weight: 700;
+}
+
+.patch-notes {
+  display: grid;
+  gap: 12px;
+}
+
+.patch-note {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.patch-note h3 {
+  margin: 4px 0 10px;
+}
+
+.patch-note-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 /* 입력 요소 */

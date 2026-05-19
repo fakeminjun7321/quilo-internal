@@ -179,6 +179,7 @@ const {
   CATEGORY_LABELS: FEEDBACK_CATEGORY_LABELS,
   sendFeedbackEmail,
 } = require("./lib/feedback-mailer");
+const { getVersionInfo } = require("./lib/version-info");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1522,6 +1523,10 @@ app.get("/", (req, res) => {
 });
 
 app.get("/healthz", (req, res) => res.json({ ok: true }));
+
+app.get("/api/version", (req, res) => {
+  res.json(getVersionInfo());
+});
 
 // Supabase 7일 무활동 자동 pause 방지용 keepalive.
 // UptimeRobot 등 외부 모니터가 주기적으로 호출 → Supabase에 가벼운 쿼리 실행.

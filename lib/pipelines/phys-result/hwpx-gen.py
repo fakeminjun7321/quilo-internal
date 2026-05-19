@@ -195,6 +195,26 @@ def fill_template_title(doc, content):
             sec.mark_dirty()
 
 
+def make_template_title_header_first_page_only(doc):
+    """The supplied template stores the title box as an ODD-page header.
+
+    If left as-is, Hancom repeats "실험 주제" on pages 1, 3, 5... . The HWPX
+    FIRST page type keeps the same template object but restricts it to page 1.
+    """
+    changed = False
+    for sec in getattr(doc.oxml, "sections", []):
+        element = getattr(sec, "element", None)
+        if element is None:
+            continue
+        for header in element.iter(f"{pre.NS_HP}header"):
+            text = "".join(t.text or "" for t in header.iter(f"{pre.NS_HP}t"))
+            if "실험 주제" in text and header.get("applyPageType") != "FIRST":
+                header.set("applyPageType", "FIRST")
+                changed = True
+        if changed and hasattr(sec, "mark_dirty"):
+            sec.mark_dirty()
+
+
 def _next_xml_id(root):
     used = []
     for elem in root.iter():
@@ -1015,6 +1035,7 @@ def generate_hwpx(content):
     using_template = doc is not None
     if using_template:
         fill_template_title(doc, content)
+        make_template_title_header_first_page_only(doc)
         # Keep the template's original title/header paragraph intact. Moving the
         # header subList into a new top-level body paragraph produces HWPX that
         # passes XML/ZIP validation but crashes Hancom Office HWP for macOS.

@@ -1132,9 +1132,9 @@ def generate_hwpx(content):
         doc._v5_allow_highlights = bool(content.get("__allowHighlights", True))
     using_template = doc is not None
     if using_template:
-        fill_template_title(doc, content)
-        move_template_title_header_to_first_body_anchor(doc)
         result_cell, conclusion_cell = find_template_body_cells(doc)
+        fill_template_title(doc, content)
+        make_template_title_header_first_page_only(doc)
         if result_cell is not None and conclusion_cell is not None:
             clear_cell(result_cell)
             clear_cell(conclusion_cell)

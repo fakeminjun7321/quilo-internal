@@ -302,6 +302,16 @@ JSON 안의 모든 텍스트 필드에서:
 
 **중요:** 차트 이미지 안에 들어가는 텍스트(`title`, `x_label`, `y_label`, `x_values`, `series[].label`, `trendline.label`, `reference_line.label`)는 반드시 영어 ASCII로 작성한다. 한글 설명은 `caption`과 본문 `analysis`에만 작성한다.
 
+### Capstone 내장 그래프 우선 사용
+
+.cap 파일에서 추출된 이미지가 `[CAP graph/image N] ...` 이름으로 vision 입력에 제공될 수 있다. 이 이미지가 Capstone에서 사용자가 직접 만든 그래프, 선택 구간, 피팅 곡선, fit box, RMSE, 축/단위가 보이는 화면이면 **서버 chart로 같은 그래프를 새로 그리지 말고 해당 이미지를 우선 사용**한다.
+
+- 해당 실험 파트의 `photo_indices`에 `[CAP graph/image N]` 이미지 번호를 넣어 보고서에 그림으로 배치한다.
+- `chart` 필드는 cap 그래프에 없는 보조 비교 그래프가 꼭 필요할 때만 작성한다.
+- Capstone 그래프의 피팅식·파라미터·RMSE·축 범위는 이미지에서 명확히 읽히거나 .cap 파싱 텍스트/엑셀에 있는 값만 인용한다.
+- 선택 구간이 표시된 그래프는 학생이 실제로 분석에 사용한 구간으로 보고, 전체 raw 데이터보다 선택 구간의 피팅 결과를 우선 해석한다.
+- 같은 관계에 대해 cap 그래프와 서버 chart를 둘 다 넣어 지면을 낭비하지 않는다. 5페이지 제한 때문에 중복 그림은 감점 요소가 될 수 있다.
+
 차트 타입:
 - `"bar"`: 카테고리/조건별 비교
 - `"line"`: 시간/연속 변수 추이
@@ -336,6 +346,7 @@ reference_line 적극 활용 (이론값·기준선). 단, scatter에서 이론 �
 
 - 1.1 실험 장치 → `experiment_setup.photo_indices` (보통 1~2장, 장치 전경)
 - 각 1.2, 1.3 실험 파트 → `experiments[i].photo_indices` (핵심 과정 사진)
+- `[CAP graph/image N]` 이미지가 그래프/피팅 화면이면 실험 사진처럼 `photo_indices`에 넣어도 된다. 이 경우 캡션은 `[그림 N] ...` 형태가 되며, 본문 분석에서 해당 그림의 선택 구간·피팅 결과를 해석한다.
 
 ## 작업 순서
 

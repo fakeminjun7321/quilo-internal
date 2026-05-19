@@ -423,6 +423,34 @@ INLINE_FORMULA_RE = re.compile(
 )
 
 
+PLAIN_SUBSCRIPTS = str.maketrans({
+    "0": "₀",
+    "1": "₁",
+    "2": "₂",
+    "3": "₃",
+    "4": "₄",
+    "5": "₅",
+    "6": "₆",
+    "7": "₇",
+    "8": "₈",
+    "9": "₉",
+})
+
+
+def normalize_plain_physics_notation(text):
+    s = str(text or "")
+    s = re.sub(
+        r"([A-Za-zαβγδθλμπρστφωΩΔΣ])_([0-9])",
+        lambda m: f"{m.group(1)}{m.group(2).translate(PLAIN_SUBSCRIPTS)}",
+        s,
+    )
+    s = re.sub(r"\|([A-Za-zαβγδθλμπρστφωΩΔΣ]+)\|_max", r"|\1|max", s)
+    s = re.sub(r"\b([A-Za-zαβγδθλμπρστφωΩΔΣ]+)_max\b", r"\1max", s)
+    s = re.sub(r"\b([A-Za-zαβγδθλμπρστφωΩΔΣ]+)_cm\b", r"\1cm", s)
+    s = re.sub(r"\b([A-Za-zαβγδθλμπρστφωΩΔΣ]+)_pivot\b", r"\1pivot", s)
+    return s
+
+
 def convert_sqrt_parentheses(expr):
     out = []
     i = 0
@@ -534,6 +562,7 @@ def normalize_physics_equation_markers(text):
     s = str(text or "")
     if "{{EQ" in s:
         return s
+    s = normalize_plain_physics_notation(s)
 
     def repl(match):
         raw = match.group(1)

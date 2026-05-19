@@ -215,6 +215,74 @@ def make_template_title_header_first_page_only(doc):
             sec.mark_dirty()
 
 
+def move_template_title_header_to_first_body_anchor(doc):
+    """Render the template title box only once by anchoring it in body text.
+
+    HWPX headers support odd/even/both page types, but not a reliable
+    first-page-only header. Hancom may therefore repeat the template title box
+    on later pages even if the XML is patched to a nonstandard FIRST value.
+    Keep the exact template rectangle, but attach a cloned copy to the first
+    body paragraph and remove the original title header control.
+    """
+    changed = False
+    for sec in getattr(doc.oxml, "sections", []):
+        element = getattr(sec, "element", None)
+        if element is None:
+            continue
+
+        top_paragraphs = element.findall(f"{pre.NS_HP}p")
+        if not top_paragraphs:
+            continue
+        anchor_para = next(
+            (p for p in top_paragraphs if p.find(f".//{pre.NS_HP}secPr") is not None),
+            top_paragraphs[0],
+        )
+
+        title_shapes = []
+        for header in list(element.iter(f"{pre.NS_HP}header")):
+            text = "".join(t.text or "" for t in header.iter(f"{pre.NS_HP}t"))
+            if "실험 주제" not in text:
+                continue
+
+            for shape in header.findall(f".//{pre.NS_HP}rect"):
+                parent_run = shape.getparent()
+                title_shapes.append((deepcopy(shape), parent_run.get("charPrIDRef") if parent_run is not None else None))
+
+            ctrl = header.getparent()
+            run = ctrl.getparent() if ctrl is not None else None
+            if ctrl is not None and run is not None:
+                run.remove(ctrl)
+                if len(run) == 0:
+                    run_parent = run.getparent()
+                    if run_parent is not None:
+                        run_parent.remove(run)
+            elif ctrl is not None:
+                parent = ctrl.getparent()
+                if parent is not None:
+                    parent.remove(ctrl)
+            changed = True
+
+        if not title_shapes:
+            continue
+
+        children = list(anchor_para)
+        line_seg = anchor_para.find(f"{pre.NS_HP}linesegarray")
+        insert_at = children.index(line_seg) if line_seg is not None and line_seg in children else len(children)
+        for shape, char_pr in title_shapes:
+            _assign_fresh_ids(element, shape)
+            run = etree.Element(f"{pre.NS_HP}run")
+            if char_pr:
+                run.set("charPrIDRef", char_pr)
+            run.append(shape)
+            etree.SubElement(run, f"{pre.NS_HP}t").text = ""
+            anchor_para.insert(insert_at, run)
+            insert_at += 1
+            changed = True
+
+        if changed and hasattr(sec, "mark_dirty"):
+            sec.mark_dirty()
+
+
 def _next_xml_id(root):
     used = []
     for elem in root.iter():
@@ -1035,10 +1103,7 @@ def generate_hwpx(content):
     using_template = doc is not None
     if using_template:
         fill_template_title(doc, content)
-        make_template_title_header_first_page_only(doc)
-        # Keep the template's original title/header paragraph intact. Moving the
-        # header subList into a new top-level body paragraph produces HWPX that
-        # passes XML/ZIP validation but crashes Hancom Office HWP for macOS.
+        move_template_title_header_to_first_body_anchor(doc)
         result_cell, conclusion_cell = find_template_body_cells(doc)
         if result_cell is not None and conclusion_cell is not None:
             clear_cell(result_cell)

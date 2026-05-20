@@ -880,6 +880,14 @@ function normalizeUserNotes(value, maxLen = MAX_USER_NOTES_CHARS) {
     .slice(0, maxLen);
 }
 
+const USER_NOTES_MARKDOWN_GUIDE = [
+  "## AI 참고 메모 사용 규칙",
+  "",
+  "아래 참고 메모는 Markdown 문서일 수 있습니다.",
+  "제목(#), 목록(-/*), 굵게(**...**/__...__), 취소선(~~...~~), 코드(`...`), 링크([text](url)) 같은 Markdown 서식 기호는 보고서 본문에 그대로 복사하지 말고 의미만 반영하세요.",
+  "특히 취소선으로 표시된 내용은 삭제되었거나 보류된 내용일 수 있으므로 그대로 인용하지 말고, 필요한 경우 '제외/수정된 사항'의 의미만 자연스럽게 반영하세요.",
+].join("\n");
+
 function collectUserNotes(textValue, filesByField = {}) {
   const parts = [];
   const typed = normalizeUserNotes(textValue);
@@ -912,6 +920,9 @@ function collectUserNotes(textValue, filesByField = {}) {
     }
   }
 
+  if (parts.length) {
+    parts.unshift(USER_NOTES_MARKDOWN_GUIDE);
+  }
   return normalizeUserNotes(parts.join("\n\n---\n\n"));
 }
 

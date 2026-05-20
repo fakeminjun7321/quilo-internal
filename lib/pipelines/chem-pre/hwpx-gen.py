@@ -1166,13 +1166,12 @@ def build_chemicals_summary_table(doc, rows):
         for c_idx, val in enumerate(cells):
             cell = table.cell(r_idx, c_idx)
             cell.element.set("borderFillIDRef", str(solid_id))
-            align = "CENTER" if c_idx in (1, 2, 3) else "LEFT"
             _replace_cell_with_styled(
                 doc,
                 cell,
                 val,
                 size=SIZE_TABLE_BODY,
-                align=align,
+                align="CENTER",
                 line_spacing=TABLE_LINE_SPACING_PERCENT,
             )
 

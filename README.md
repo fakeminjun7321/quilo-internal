@@ -1,202 +1,179 @@
 # 보고서 작성 툴 (웹)
 
-대구과학고 학생용 자동 보고서 생성 사이트. 보고서 종류별로 입력 폼이 다름.
+대구과학고 학생용 자동 보고서 생성 웹사이트입니다. 보고서 종류별로 업로드 파일과 입력 폼을 다르게 받아 Claude API로 초안을 만들고, `.docx` 또는 `.hwpx` 파일로 출력합니다.
 
-**지원 보고서:**
-- 🧪 **화학 사전보고서** — 매뉴얼 PDF만 올리면 사전보고서 .docx 자동 생성
-- 🔬 **화학 결과보고서** — 사전보고서 + 엑셀 데이터 + 사진 → 표/차트/사진이 들어간 결과보고서
-- ⚛️ 물리 결과보고서 — 준비 중
+## 지원 보고서
 
-**스택:**
-- 백엔드: Node.js + Express
-- AI: Claude API (Sonnet 4.6 또는 Opus 4.7 선택) + 웹 검색
-- 데이터: xlsx (엑셀 파싱), chartjs-node-canvas (차트 PNG)
-- 출력: HWP 호환 .docx
-- DB·인증: Supabase + 사용자별 비밀번호·예산
+- 화학 사전보고서
+  - 실험 매뉴얼 PDF와 AI 참고 메모를 바탕으로 사전보고서 생성
+  - 시약 물성, 이론, 실험 과정, 참고문헌 정리
+- 화학 결과보고서
+  - 사전보고서, 실험 데이터, 사진, 매뉴얼, 참고 메모를 바탕으로 결과 추가 작성분 생성
+  - 표, 차트, 사진, 오차 분석, 결론 작성
+- 물리 결과보고서
+  - PASCO Capstone `.cap`, 엑셀/CSV/텍스트 데이터, 매뉴얼 PDF, 사진/그래프 스크린샷, 참고 메모 지원
+  - 물리 결과보고서 양식 기반 `.docx`/`.hwpx` 생성
+  - 표, 그래프, 실험 결과 해석, 결론 및 오차 분석 작성
 
----
+## 주요 기능
 
-## 1. Render.com 배포 (무료)
+- 사용자 로그인, 관리자 페이지, 사용자별 잔액/크레딧 관리
+- 보고서 종류별 입력 검증과 파일 파싱
+- Claude Opus 4.7 기반 보고서 생성
+- 엑셀/CSV/텍스트 데이터 파싱
+- PASCO Capstone `.cap` 파일 파싱
+- Chart.js 기반 그래프 PNG 생성
+- HWPX 템플릿 기반 한글 파일 생성
+- HWPX 한글 수식 객체 변환
+- AI 참고 메모와 Markdown 메모 파일 입력
+- 생성 파일 24시간 보관용 파일함
+- 건의사항/버그 제보 탭과 이메일 알림
+- 사이트 버전/패치노트 표시
 
-### 1-1. GitHub에 코드 올리기
+## 기술 스택
 
-GitHub 가입 → 새 repo 생성 (예: `chem-pre-lab-web`, Private 권장).
+- Backend: Node.js, Express
+- AI: Anthropic Claude API
+- DB/Auth/File records: Supabase
+- Documents: `docx`, HWPX ZIP/XML 생성기
+- Data: `xlsx`, CSV/text parser
+- Charts: `chart.js`, `chartjs-node-canvas`
+- Images: `sharp`
+- Deploy: Render
 
-이 폴더에서:
+## 문서
+
+유지보수와 배포 전 점검은 아래 문서를 먼저 확인하세요.
+
+- 전체 운영 기준: [`CLAUDE.md`](./CLAUDE.md)
+- 화학 사전보고서 파이프라인: [`docs/chem-pre-pipeline.md`](./docs/chem-pre-pipeline.md)
+- 화학 결과보고서 파이프라인: [`docs/chem-result-pipeline.md`](./docs/chem-result-pipeline.md)
+- 물리 결과보고서 파이프라인: [`docs/phys-result-pipeline.md`](./docs/phys-result-pipeline.md)
+- 보고서 생성기용 AI 참고 메모 작성 프롬프트: [`docs/report-generator-note-prompt.md`](./docs/report-generator-note-prompt.md)
+
+## 로컬 실행
 
 ```bash
-cd chem-pre-lab-web
-git init
-git add .
-git commit -m "init"
-git remote add origin https://github.com/<사용자명>/chem-pre-lab-web.git
-git branch -M main
-git push -u origin main
+npm install
+cp .env.example .env
+npm start
 ```
 
-`.env` 파일은 `.gitignore`에 들어 있어서 자동으로 제외됨 (API 키 안전).
+기본 포트는 `3000`입니다.
 
-### 1-2. Render에서 Web Service 생성
-
-1. https://render.com 가입 (GitHub 로그인 추천)
-2. 대시보드 → **"New +"** → **"Web Service"**
-3. GitHub 연동 → 위에서 만든 repo 선택
-4. 설정 값:
-   - **Name**: `chem-pre-lab` (URL이 `https://chem-pre-lab.onrender.com` 형태가 됨)
-   - **Region**: Singapore (한국에서 가장 가까움)
-   - **Branch**: `main`
-   - **Runtime**: Node
-   - **Build Command**: `npm install`
-   - **Start Command**: `npm start`
-   - **Instance Type**: **Free**
-5. 같은 페이지 아래쪽 **Environment Variables** 항목에 다음 4개 추가:
-
-   | Key | Value | 필수? |
-   |-----|-------|-------|
-   | `ANTHROPIC_API_KEY` | `sk-ant-...` (Anthropic 콘솔) | ✅ |
-   | `SHARED_PASSWORD` | 친구들에게 알려줄 공용 비밀번호 | ✅ |
-   | `SESSION_SECRET` | 32자 이상 랜덤 문자열 | ✅ |
-   | `NODE_ENV` | `production` | ✅ |
-   | `GEMINI_API_KEY` | Google AI Studio 키 (이미지 생성용, 아래 설명) | 🎨 그림 옵션 쓰려면 |
-   | `GOOGLE_CSE_API_KEY` | Google Cloud Custom Search 키 | 🔎 이미지 검색 쓰려면 |
-   | `GOOGLE_CSE_CX` | Custom Search Engine ID | 🔎 이미지 검색 쓰려면 |
-   | `JOB_TIMEOUT_MS` | 작업 타임아웃 (기본 480000 = 8분) | 선택 |
-   | `MAX_TOKENS` | 출력 토큰 상한 (기본 16000) | 선택 |
-
-6. **Create Web Service** 클릭 → 첫 빌드 5분 정도
-
-빌드 끝나면 화면 상단에 `https://chem-pre-lab.onrender.com` 링크가 보임. 그게 사이트 URL.
-
-### 1-3. 친구들에게 공유
-
-URL + 공용 비밀번호 알려주면 끝.
-
----
-
-## 2. Anthropic API 키 발급
-
-1. https://console.anthropic.com 가입
-2. 좌측 메뉴 **"API Keys"** → **"Create Key"**
-3. 키 이름 적당히 (예: `chem-pre-lab`) → 생성된 `sk-ant-...` 복사
-4. 결제 수단 등록 (Settings → Billing) — 키만 발급해서는 호출 못 함, 크레딧 충전 필요
-
-월 사용량 제한 두려면 콘솔의 **Limits** 메뉴에서 spend limit 설정.
-
----
-
-## 2-1. (선택) 그림 자동 처리 옵션
-
-체크박스 켜면 보고서에 필요한 그림을 **Google 이미지 검색 → 못 찾으면 Google AI Studio (Nano Banana)** 순서로 자동 처리합니다. 화학 그래프·구조도는 부정확할 수 있으니 실험적 기능으로 봐주세요.
-
-### Gemini API 키 (Google AI Studio)
-
-1. https://aistudio.google.com/apikey 접속 (Google 계정 로그인)
-2. **Create API key** 클릭 → 프로젝트 선택/생성 → 키 발급
-3. `GEMINI_API_KEY` 환경변수에 입력
-
-비용: 이미지 1장당 약 **$0.04** (≈56원)
-
-### Google Custom Search 설정 (이미지 검색용)
-
-1. **Custom Search Engine 만들기**
-   - https://programmablesearchengine.google.com/controlpanel/create 접속
-   - **Sites to search**: `*.com` (또는 비워두고 "Search the entire web" 토글 ON)
-   - **Search settings → Image search**: **ON**
-   - 만들기 → 다음 화면에서 **Search engine ID** 복사 → `GOOGLE_CSE_CX`에 입력
-2. **API 키 발급**
-   - https://console.cloud.google.com/apis/credentials 접속
-   - **+ Create Credentials → API key** → 키 복사 → `GOOGLE_CSE_API_KEY`에 입력
-   - 같은 페이지의 **API 라이브러리**에서 "Custom Search API" 검색 → **Enable** 클릭
-
-비용: 무료 100회/일, 이후 $5/1000회 (≈ 6.7원/회)
-
-### 환경변수 조합별 동작
-
-| GOOGLE_CSE_* | GEMINI_API_KEY | 동작 |
-|---|---|---|
-| ⭕ | ⭕ | 검색 → 못찾으면 AI 생성 |
-| ❌ | ⭕ | 항상 AI 생성 |
-| ⭕ | ❌ | 검색만, 못찾으면 placeholder |
-| ❌ | ❌ | 항상 placeholder (체크박스 의미 없음) |
-
----
-
-## 3. 무료 플랜 한계 + Keepalive
-
-### Render 무료
-- **15분 비활성 후 sleep** — 첫 요청에 30초~1분 걸림
-- **750 시간/월** — 한 달 풀로 켜둬도 가능 (한 달=720h)
-- **메모리 512MB** — 충분
-- **Anthropic API 비용은 별도** — 본인이 결제
-
-### Supabase 무료
-- **7일 무활동 시 자동 pause** — DB 죽으면 로그인 불가
-
-### 해결: UptimeRobot keepalive (권장)
-1. https://uptimerobot.com 무료 가입
-2. **+ Add New Monitor** → HTTP(s)
-3. URL: `https://chem-pre-lab-web.onrender.com/api/keepalive`
-4. Interval: **5 minutes** (무료 최소)
-
-→ Render sleep + Supabase pause 모두 방지.
-
----
-
-## 4. 비용 감 잡기 (모델별·종류별)
-
-| 모델 | 화학 사전 | 화학 결과 | 물리 결과 |
-|------|---------|---------|---------|
-| Sonnet 4.6 | ~$0.05 (₩70) | ~$0.10 (₩140) | ~$0.08 (₩110) |
-| Opus 4.7 | ~$0.25 (₩350) | ~$0.50 (₩700) | ~$0.40 (₩560) |
-
-대략적 추정. 정확한 값은 폼 제출 시 confirm dialog에 표시. 결과보고서가 더 비싼 이유는 사진(1500토큰/장) + 데이터 + 더 긴 출력.
-
----
-
-## 5. 결과가 마음에 안 들 때
-
-각 보고서 종류의 시스템 프롬프트 파일을 GitHub repo에서 직접 수정 → push → Render가 자동 재빌드:
-
-- 화학 사전: `lib/pipelines/chem-pre/prompt.md`
-- 화학 결과: `lib/pipelines/chem-result/prompt.md`
-- 물리 결과: `lib/pipelines/phys-result/prompt.md`
-
-더 구체적인 지시 추가하면 즉시 반영. 예: "이론 섹션은 매 키워드마다 최소 5문단" / "수식은 별도 줄에 표기".
-
----
-
-## 6. 폴더 구조
-
+```text
+http://localhost:3000
 ```
+
+## Render 배포
+
+Render Web Service 설정 예시:
+
+| 항목 | 값 |
+|---|---|
+| Runtime | Node |
+| Build Command | `npm install` |
+| Start Command | `npm start` |
+| Branch | `main` |
+
+필수 환경변수:
+
+| Key | 설명 |
+|---|---|
+| `ANTHROPIC_API_KEY` | Claude API 호출용 키 |
+| `SUPABASE_URL` | Supabase Project URL |
+| `SUPABASE_SERVICE_KEY` | Supabase service role key |
+| `ADMIN_NAME` | 서버 시작 시 보장할 관리자 이름 |
+| `ADMIN_PASSWORD` | 서버 시작 시 관리자 생성에 사용할 초기 비밀번호 |
+| `SESSION_SECRET` | Express session 서명용 32자 이상 랜덤 문자열 |
+| `NODE_ENV` | `production` |
+
+선택 환경변수:
+
+| Key | 설명 |
+|---|---|
+| `MAX_TOKENS` | Claude 출력 token 상한, 기본 `32000` |
+| `JOB_TIMEOUT_MS` | 작업 timeout, 기본 `480000` ms |
+| `ANTHROPIC_IMAGE_MAX_BASE64_CHARS` | 이미지 1장 base64 제한 |
+| `ANTHROPIC_IMAGE_MAX_EDGE` | 이미지 리사이즈 최대 edge |
+| `RESEND_API_KEY` | 건의사항 이메일 전송용 |
+| `FEEDBACK_EMAIL_FROM` 또는 `RESEND_FROM` | 건의사항 발신자 |
+| `FEEDBACK_EMAIL_TO` | 건의사항 수신자 |
+
+환경변수 예시는 [`.env.example`](./.env.example)을 참고하세요. 실제 `.env`와 API 키는 절대 GitHub에 올리지 않습니다.
+
+## 입력 파일 요약
+
+| 보고서 종류 | 주요 입력 |
+|---|---|
+| 화학 사전보고서 | 실험 매뉴얼 PDF, AI 참고 메모 |
+| 화학 결과보고서 | 사전보고서 PDF/docx, 데이터 파일, 사진, 매뉴얼 PDF, AI 참고 메모 |
+| 물리 결과보고서 | `.cap`, 엑셀/CSV/txt/md 데이터, 매뉴얼 PDF, 사진/그래프/표 스크린샷, AI 참고 메모 |
+
+## 출력 형식
+
+- `.docx`
+- `.hwpx`
+
+HWPX 출력은 각 파이프라인의 Python HWPX 생성기를 통해 만들어집니다. 물리 결과보고서는 학교 결과보고서 HWPX 템플릿을 기반으로 제목, 결과, 결론, 표, 그래프, 사진, 수식을 삽입합니다.
+
+## 폴더 구조
+
+```text
 chem-pre-lab-web/
-├── server.js                    # Express + PIPELINES 레지스트리
-├── lib/
-│   ├── parser.js                # 화학식 마커 (_{}, ^{}, *italic*) 공통
-│   ├── pricing.js, supabase.js, rate-limit.js, exchange-rate.js, auth.js
-│   ├── json-sanitize.js         # JSON 응답 안의 raw 제어문자 자동 escape
-│   └── pipelines/
-│       ├── chem-pre/            # 화학 사전보고서
-│       │   ├── prompt.md, generate.js, docx-gen.js
-│       │   └── image-pipeline.js, image-search.js, nano-banana.js (미사용)
-│       ├── chem-result/         # 화학 결과보고서
-│       │   ├── prompt.md, generate.js, docx-gen.js
-│       │   ├── excel-parser.js  # xlsx/csv → markdown table
-│       │   └── chart-gen.js     # chart spec → PNG (chartjs-node-canvas)
-│       └── phys-result/         # 준비 중
+├── server.js
 ├── public/
-│   ├── login.html, index.html, admin.html, style.css
+│   ├── index.html
+│   ├── login.html
+│   ├── admin.html
+│   ├── changelog.html
+│   └── style.css
+├── lib/
+│   ├── anthropic-media.js
+│   ├── document-fonts.js
+│   ├── excel-parser.js
+│   ├── feedback-mailer.js
+│   ├── output-sanitize.js
+│   ├── version-info.js
+│   ├── equation/
+│   │   └── hwpx_equation_tool.py
+│   └── pipelines/
+│       ├── chem-pre/
+│       ├── chem-result/
+│       └── phys-result/
+├── db/
+│   └── migrations/
+├── docs/
+├── .env.example
 ├── package.json
-├── .env.example                 # (배포 시에는 Render 환경변수 사용)
-├── .gitignore
 └── README.md
 ```
 
-새 보고서 종류 추가하려면: `lib/pipelines/<type>/` 폴더에 `prompt.md`, `generate.js`, `docx-gen.js` 작성 + `server.js`의 `PIPELINES` 객체에 한 줄 등록.
+## 배포 전 점검
 
----
+```bash
+node -c server.js
+node -c lib/pipelines/chem-pre/generate.js
+node -c lib/pipelines/chem-result/generate.js
+node -c lib/pipelines/phys-result/generate.js
+python3 -m py_compile lib/pipelines/chem-pre/hwpx-gen.py
+python3 -m py_compile lib/pipelines/chem-result/hwpx-gen.py
+python3 -m py_compile lib/pipelines/phys-result/hwpx-gen.py
+git diff --check
+```
 
-## 7. 보안 메모
+민감정보 점검:
 
-- 공용 비밀번호 1개로만 보호되니 외부에 절대 공개 X
-- API 키는 Render 환경변수에만 — 절대 git에 올리지 말 것
-- 세션 쿠키는 12시간 유지
+```bash
+git ls-files | grep -E '(^|/)(\.env|.*key.*|.*secret.*)'
+rg -n "sk-ant-|SUPABASE_SERVICE_KEY|RESEND_API_KEY|SESSION_SECRET|eyJ|password|패스워드|비밀번호" .
+```
+
+문서의 placeholder가 검색될 수 있으므로 실제 secret 값인지 확인합니다.
+
+## 보안 메모
+
+- API 키, Supabase service role key, session secret은 Render 환경변수로만 관리합니다.
+- 실제 사용자 업로드 파일, 예시 보고서 PDF/HWP, 개인 계정 정보는 GitHub에 올리지 않습니다.
+- `.gitignore`에서 `.env`, `.claude/`, `.pdf`, `.hwp`, 예시 보고서 폴더를 제외합니다.
+- 생성물은 학습 보조 초안이며 제출 전 반드시 직접 검토해야 합니다.

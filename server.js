@@ -183,8 +183,8 @@ const { getVersionInfo } = require("./lib/version-info");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-// Temporary full-site closure. Revert this commit or set this to false to reopen.
-const SITE_CLOSED_FOR_MAINTENANCE = true;
+// Full-site closure. Revert this commit or set this to false to reopen.
+const SITE_CLOSED = true;
 const SESSION_SECRET =
   process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
 
@@ -216,26 +216,26 @@ app.use(
 );
 
 app.use((req, res, next) => {
-  if (!SITE_CLOSED_FOR_MAINTENANCE) return next();
+  if (!SITE_CLOSED) return next();
 
   const allowedPaths = new Set(["/healthz", "/api/version"]);
   if (allowedPaths.has(req.path)) return next();
 
-  const message = "사이트 점검 중입니다. 잠시 후 다시 접속해주세요.";
+  const message = "사이트가 폐쇄되었습니다.";
   if (req.path.startsWith("/api/") || req.accepts("json")) {
-    return res.status(503).json({
+    return res.status(410).json({
       ok: false,
-      maintenance: true,
+      closed: true,
       error: message,
     });
   }
 
-  res.status(503).type("html").send(`<!doctype html>
+  res.status(410).type("html").send(`<!doctype html>
 <html lang="ko">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>점검 중</title>
+  <title>서비스 폐쇄</title>
   <style>
     :root { color-scheme: light; }
     body {
@@ -262,8 +262,8 @@ app.use((req, res, next) => {
 </head>
 <body>
   <main>
-    <h1>사이트 점검 중입니다</h1>
-    <p>보고서 작성 툴을 잠시 닫아두었습니다.<br />조금 뒤 다시 접속해주세요.</p>
+    <h1>사이트가 폐쇄되었습니다</h1>
+    <p>보고서 작성 툴 서비스를 닫았습니다.</p>
   </main>
 </body>
 </html>`);

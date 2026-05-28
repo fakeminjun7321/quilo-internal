@@ -183,6 +183,8 @@ const { getVersionInfo } = require("./lib/version-info");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+// Temporary full-site closure. Revert this commit or set this to false to reopen.
+const SITE_CLOSED_FOR_MAINTENANCE = true;
 const SESSION_SECRET =
   process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
 
@@ -212,6 +214,60 @@ app.use(
     },
   }),
 );
+
+app.use((req, res, next) => {
+  if (!SITE_CLOSED_FOR_MAINTENANCE) return next();
+
+  const allowedPaths = new Set(["/healthz", "/api/version"]);
+  if (allowedPaths.has(req.path)) return next();
+
+  const message = "사이트 점검 중입니다. 잠시 후 다시 접속해주세요.";
+  if (req.path.startsWith("/api/") || req.accepts("json")) {
+    return res.status(503).json({
+      ok: false,
+      maintenance: true,
+      error: message,
+    });
+  }
+
+  res.status(503).type("html").send(`<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>점검 중</title>
+  <style>
+    :root { color-scheme: light; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+      background: #f5f7fb;
+      color: #1f2937;
+    }
+    main {
+      width: min(560px, calc(100vw - 40px));
+      padding: 40px 32px;
+      border: 1px solid #d8e0ee;
+      border-radius: 12px;
+      background: #fff;
+      box-shadow: 0 18px 60px rgba(15, 23, 42, 0.08);
+      text-align: center;
+    }
+    h1 { margin: 0 0 14px; font-size: 30px; letter-spacing: 0; }
+    p { margin: 0; font-size: 17px; line-height: 1.7; color: #475569; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>사이트 점검 중입니다</h1>
+    <p>보고서 작성 툴을 잠시 닫아두었습니다.<br />조금 뒤 다시 접속해주세요.</p>
+  </main>
+</body>
+</html>`);
+});
 
 // 단일 파일 25MB, 전체 파일 개수 50개 (물리 다중 데이터/사진/메모 파일 대비)
 // — Render 무료 512MB 메모리 보호. Claude 전송 전 이미지는 별도 request-budget으로 축소한다.

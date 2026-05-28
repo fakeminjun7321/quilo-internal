@@ -184,7 +184,7 @@ const { getVersionInfo } = require("./lib/version-info");
 const app = express();
 const PORT = process.env.PORT || 3000;
 // Full-site closure. Revert this commit or set this to false to reopen.
-const SITE_CLOSED = true;
+const SITE_CLOSED = false;
 const SESSION_SECRET =
   process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
 

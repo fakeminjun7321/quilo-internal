@@ -1,7 +1,7 @@
 {
-  "name": "chem-pre-lab-web",
+  "name": "lab-report-generator-web",
   "version": "1.0.0",
-  "description": "DGSHS chemistry pre-lab report generator (web)",
+  "description": "AI-assisted lab report generator web app",
   "main": "server.js",
   "type": "commonjs",
   "scripts": {

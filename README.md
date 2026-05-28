@@ -1,6 +1,6 @@
-# 보고서 작성 툴 (웹)
+# Lab Report Generator Web
 
-대구과학고 학생용 자동 보고서 생성 웹사이트입니다. 보고서 종류별로 업로드 파일과 입력 폼을 다르게 받아 Claude API로 초안을 만들고, `.docx` 또는 `.hwpx` 파일로 출력합니다.
+AI-assisted lab report generator web app입니다. 보고서 종류별로 업로드 파일과 입력 폼을 다르게 받아 Claude API로 초안을 만들고, `.docx` 또는 `.hwpx` 파일로 출력합니다.
 
 ## 지원 보고서
 
@@ -120,7 +120,7 @@ HWPX 출력은 각 파이프라인의 Python HWPX 생성기를 통해 만들어�
 ## 폴더 구조
 
 ```text
-chem-pre-lab-web/
+lab-report-generator-web/
 ├── server.js
 ├── public/
 │   ├── index.html
@@ -176,4 +176,11 @@ rg -n "sk-ant-|SUPABASE_SERVICE_KEY|RESEND_API_KEY|SESSION_SECRET|eyJ|password|�
 - API 키, Supabase service role key, session secret은 Render 환경변수로만 관리합니다.
 - 실제 사용자 업로드 파일, 예시 보고서 PDF/HWP, 개인 계정 정보는 GitHub에 올리지 않습니다.
 - `.gitignore`에서 `.env`, `.claude/`, `.pdf`, `.hwp`, 예시 보고서 폴더를 제외합니다.
+- 공개 저장소에는 학교/기관 전용 양식 PDF/HWPX와 실제 사용자 예시 보고서를 포함하지 않습니다.
 - 생성물은 학습 보조 초안이며 제출 전 반드시 직접 검토해야 합니다.
+
+## 라이선스
+
+이 저장소의 자체 코드는 MIT License로 공개합니다. 자세한 내용은 [`LICENSE`](./LICENSE)를 확인하세요.
+
+포함된 제3자 폰트와 의존성은 각각의 라이선스를 따릅니다. 공개 배포 전 확인 사항은 [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md)에 정리했습니다.

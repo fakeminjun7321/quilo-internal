@@ -8,7 +8,7 @@
 
 핵심 목표는 다음과 같다.
 
-- 대구과학고 일반물리학실험 결과보고서 양식에 맞는 구조 생성
+- (영재학교)과학고 일반물리학실험 결과보고서 양식에 맞는 구조 생성
 - 실험 결과를 표와 그래프로 제시
 - 물리 이론, 오차 분석, 문제 인식 및 해결을 평가기준에 맞게 반영
 - `.cap` 파일과 사용자가 직접 정리한 데이터가 충돌할 때 원본 데이터 기준으로 방어
@@ -46,8 +46,8 @@ flowchart TD
 | `lib/pipelines/phys-result/docx-gen.js` | DOCX 렌더러 |
 | `lib/pipelines/phys-result/hwpx-gen.js` | Node에서 Python HWPX 렌더러를 실행하는 wrapper |
 | `lib/pipelines/phys-result/hwpx-gen.py` | 물리 결과보고서 HWPX 렌더러 |
-| `lib/pipelines/phys-result/templates/result-report-template.hwpx` | 물리 결과보고서 HWPX 기준 양식 |
-| `lib/pipelines/phys-result/form.pdf` | Claude 입력에 자동 첨부되는 결과보고서 양식 PDF |
+| `lib/pipelines/phys-result/templates/result-report-template.hwpx` | 물리 결과보고서 HWPX 기준 양식. 공개 저장소에는 포함하지 않으며, 권한 있는 배포자가 별도로 넣으면 사용됨 |
+| `lib/pipelines/phys-result/form.pdf` | Claude 입력에 자동 첨부되는 결과보고서 양식 PDF. 공개 저장소에는 포함하지 않으며, 없으면 첨부 없이 진행 |
 | `lib/equation/hwpx_equation_tool.py` | HWPX 수식 placeholder를 한컴 수식 객체로 변환 |
 | `lib/excel-parser.js` | 엑셀/CSV를 Markdown table과 구조화 table로 변환 |
 | `lib/anthropic-media.js` | Claude vision 제한에 맞게 이미지 압축/리사이즈 |
@@ -898,7 +898,7 @@ xcuserdata/
 - 사용자 메모는 추가 맥락이지 사실 생성 근거가 아니다.
 - HWPX 수식 postprocess 오류는 숨기지 않는다.
 - HWPX가 "열리기만 하는" 것과 "한컴에서 정상 렌더링되는" 것은 다르다. 실제 한컴 확인이 필요하다.
-- Render에서 돌아가는 웹 기능과 iPad 로컬 앱 코드를 섞지 않는다.
+- Render에서 돌아가는 웹 기능만 이 공개 저장소 범위로 다룬다.
 
 ## 28. 향후 개선 후보
 

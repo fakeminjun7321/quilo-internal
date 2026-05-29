@@ -434,7 +434,7 @@ def make_shaded_border_fill(doc, fill_color=TABLE_HEADER_FILL):
         # earlier attempts were silently ignored.
         brush = etree.SubElement(bf, f"{NS_HC}fillBrush")
         # Verbatim form taken from a Hangul-shaded cell in the user's
-        # 2402구민준_Energy Conservation.hwpx — Hangul ignored every other
+        # 2402홍길동_Energy Conservation.hwpx — Hangul ignored every other
         # variant we tried.
         etree.SubElement(
             brush,

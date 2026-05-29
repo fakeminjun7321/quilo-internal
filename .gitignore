@@ -17,4 +17,5 @@ xcuserdata/
 잘만든보고서 에시/
 *.hwp
 *.pdf
-!lib/pipelines/phys-result/form.pdf
+*.hwpx
+ios/

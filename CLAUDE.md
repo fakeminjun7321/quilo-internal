@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-이 문서는 Render에서 실제 운영 중인 보고서 생성 기능을 수정하거나 점검할 때 따라야 하는 기준서이다. iPad 로컬 앱 구현은 별도이며, 여기서는 웹/Render 서버 파이프라인만 다룬다.
+이 문서는 Render에서 실제 운영 중인 보고서 생성 기능을 수정하거나 점검할 때 따라야 하는 기준서이다. 공개 저장소는 웹/Render 서버 파이프라인만 다룬다.
 
 각 보고서 파이프라인의 전체 세부 구현, 배포 전 점검, HWPX/DOCX 렌더링 흐름은 아래 문서를 먼저 읽는다.
 
@@ -55,8 +55,10 @@
   - 학교 물리 결과보고서 양식 HWPX를 기반으로 제목, 실험 결과, 결론, 표, 차트, 사진, 수식을 삽입한다.
 - `lib/pipelines/phys-result/templates/result-report-template.hwpx`
   - 물리 결과보고서 HWPX 출력의 기준 템플릿이다.
+  - 공개 저장소에는 포함하지 않는다. 배포자가 권한을 가진 템플릿을 별도로 넣으면 템플릿 기반 출력이 활성화된다.
 - `lib/pipelines/phys-result/form.pdf`
   - Claude 입력에 자동 첨부되는 결과보고서 양식 PDF이다.
+  - 공개 저장소에는 포함하지 않는다. 없으면 첨부 없이 graceful fallback 한다.
 - `lib/equation/hwpx_equation_tool.py`
   - `{{EQ:...}}`, `{{EQ-LATEX:...}}` 같은 수식 placeholder를 실제 HWPX 한글 수식 객체로 바꾼다.
 - `lib/excel-parser.js`
@@ -177,8 +179,7 @@
 
 ## 수정 시 주의할 점
 
-- iPad 앱 코드와 Render 서버 코드를 섞지 않는다.
-- `ios/ChemLabLocal/` 수정은 이 문서 범위 밖이다.
+- iPad 로컬 앱 코드는 공개 저장소 범위에서 제외한다.
 - `chem-pre` HWPX generator는 공통 helper로 재사용되므로, 물리 HWPX만 고치려면 먼저 `phys-result/hwpx-gen.py`에서 해결할 수 있는지 본다.
 - `chem-pre/hwpx-gen.py`를 수정하면 화학 사전/화학 결과/물리 HWPX 모두 영향받을 수 있다.
 - `.cap` 파서 수정 시 기존 `userdata` 표, `timeseries` 데이터, Workbook text 추출이 깨지지 않아야 한다.

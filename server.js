@@ -897,7 +897,7 @@ app.post(
     const sourceFilename = sourceFile?.originalname || "";
     // 사용자가 폼에서 선택한 모델. 화이트리스트 검증으로 임의 모델 주입 차단.
     // Opus 4.8 기본(품질 우선). 4.7도 하위호환으로 허용. Sonnet도 쓰려면 "claude-sonnet-4-6" 추가.
-    const ALLOWED_MODELS = ["claude-opus-4-8", "claude-opus-4-7"];
+    const ALLOWED_MODELS = ["claude-sonnet-4-6", "claude-opus-4-8", "claude-opus-4-7"]; // TEMP: Sonnet 4.6 테스트 (끝나면 이 커밋 revert)
     const requestedModel = String(req.body.model || "").trim();
     const model = ALLOWED_MODELS.includes(requestedModel) ? requestedModel : null;
 

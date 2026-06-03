@@ -208,6 +208,12 @@ const JOB_TIMEOUT_MS = parseInt(
   process.env.JOB_TIMEOUT_MS || String(8 * 60 * 1000),
   10,
 );
+// PDF 통번역은 페이지 수에 비례해 오래 걸릴 수 있어(다묶음 번역+레이아웃 삽입)
+// 별도의 넉넉한 타임아웃을 둔다. 비동기 job+SSE라 HTTP 요청 길이 제한과 무관.
+const PDF_TRANSLATE_TIMEOUT_MS = parseInt(
+  process.env.PDF_TRANSLATE_TIMEOUT_MS || String(20 * 60 * 1000),
+  10,
+);
 
 // ── Middleware ───────────────────────────────────────────────────────────────
 
@@ -1047,7 +1053,7 @@ function buildTranslatedFilename(originalName) {
 
 async function runPdfTranslation(job, { pdfBuffer, originalName, model }) {
   const t0 = Date.now();
-  const timeoutMin = Math.round(JOB_TIMEOUT_MS / 60000);
+  const timeoutMin = Math.round(PDF_TRANSLATE_TIMEOUT_MS / 60000);
   pushProgress(job, `🚀 PDF 통번역 시작 (timeout: ${timeoutMin}분)`);
 
   const ac = new AbortController();
@@ -1057,7 +1063,7 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model }) {
     timedOut = true;
     pushProgress(job, `⏰ ${timeoutMin}분 초과 — 강제 종료 중...`);
     ac.abort();
-  }, JOB_TIMEOUT_MS);
+  }, PDF_TRANSLATE_TIMEOUT_MS);
 
   try {
     const sizeKB = Math.round(pdfBuffer.length / 1024);

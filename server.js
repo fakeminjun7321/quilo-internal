@@ -1320,24 +1320,34 @@ async function prepareScannedRouting(pdfBuffer, { signal, onProgress }) {
       throw new Error("페이지 이미지를 생성하지 못했습니다.");
     }
     onProgress(`🧩 페이지를 ${meta.tiles}개 이미지 조각으로 분할(읽기 좋게)`);
-    // 이미지 압축을 병렬로(순차 await 제거) — 순서 보존을 위해 인덱스 매핑.
+    // 원본 PNG 타일 버퍼(그림 복원 crop 용) — Claude 가 보는 imageBlocks 와 같은 순서 유지.
+    const tileBuffers = meta.files.map((f) => fs.readFileSync(f));
+    // 이미지 압축을 병렬로(순차 await 제거).
     const prepared = await Promise.all(
-      meta.files.map((f) =>
+      tileBuffers.map((buf, i) =>
         prepareImageForAnthropic(
-          { buffer: fs.readFileSync(f), name: path.basename(f), mimetype: "image/png" },
+          { buffer: buf, name: path.basename(meta.files[i]), mimetype: "image/png" },
           { forceCompress: true },
         ).catch(() => null),
       ),
     );
-    const blocks = prepared
-      .filter((p) => p && p.ok)
-      .map((p) => toAnthropicImageBlock(p));
+    // 준비 성공한 것만 블록으로 보내고, 그에 대응하는 원본 버퍼를 같은 순서로 보관
+    // (일부 실패 시에도 Claude 의 image 인덱스 ↔ crop 대상 타일 정합 유지).
+    const blocks = [];
+    const keptTiles = [];
+    prepared.forEach((p, i) => {
+      if (p && p.ok) {
+        blocks.push(toAnthropicImageBlock(p));
+        keptTiles.push(tileBuffers[i]);
+      }
+    });
     if (!blocks.length) {
       throw new Error("이미지를 Claude 입력 형식으로 준비하지 못했습니다.");
     }
     return {
       scanned: true,
       imageBlocks: blocks,
+      tileBuffers: keptTiles,
       truncated: !!meta.truncated,
       tiles: meta.tiles,
       pageCount: meta.page_count,
@@ -1390,11 +1400,15 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) 
       result = await retypesetPdf({
         pdfBuffer,
         imageBlocks: routing.imageBlocks,
+        tiles: routing.tileBuffers, // 원본 타일 — 그림 복원 crop 용
         model,
         signal: ac.signal,
         onProgress,
       });
       effectiveMode = "retypeset"; // 출력은 재조판본(_재조판)
+      if (result.figures) {
+        pushProgress(job, `🖼️ 원본 그림 ${result.figures}개를 본문에 복원했습니다.`);
+      }
     } else if (mode === "retypeset") {
       result = await retypesetPdf({
         pdfBuffer,

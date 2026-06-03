@@ -196,6 +196,16 @@ const {
 const { getVersionInfo } = require("./lib/version-info");
 const { translatePdf } = require("./lib/pipelines/pdf-translate/translate");
 const { retypesetPdf } = require("./lib/pipelines/pdf-translate/latex-gen");
+const {
+  analyzePdf,
+  rasterizePages,
+} = require("./lib/pipelines/pdf-translate/pdf-tool");
+const {
+  prepareImageForAnthropic,
+  toAnthropicImageBlock,
+} = require("./lib/anthropic-media");
+const fs = require("fs");
+const os = require("os");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1257,6 +1267,61 @@ function buildTranslatedFilename(originalName, suffix = "_KO") {
   return `${base}${suffix}.pdf`;
 }
 
+// 텍스트 레이어가 없는 스캔/이미지 PDF 를 감지하고, 그런 경우 페이지를 고해상도
+// 이미지 타일로 렌더링해 Claude 비전용 블록을 만든다(OCR 재조판 경로). 일반 PDF 면
+// { scanned:false } 만 돌려준다. 임시 파일은 항상 정리한다.
+async function prepareScannedRouting(pdfBuffer, { signal, onProgress }) {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdftr-"));
+  const pdfPath = path.join(tmpDir, "in.pdf");
+  try {
+    fs.writeFileSync(pdfPath, pdfBuffer);
+    let scanned = false;
+    try {
+      const a = await analyzePdf(pdfPath, { signal });
+      scanned = !!a.scanned;
+    } catch (e) {
+      onProgress(`⚠ 텍스트 레이어 분석을 건너뜁니다: ${e.message}`);
+      return { scanned: false, imageBlocks: null };
+    }
+    if (!scanned) return { scanned: false, imageBlocks: null };
+
+    onProgress(
+      "🖼️ 텍스트 레이어가 없는 스캔/이미지 PDF 감지 → 고해상도 OCR 재조판으로 전환",
+    );
+    const maxPages = parseInt(process.env.PDF_OCR_MAX_PAGES || "20", 10);
+    const meta = await rasterizePages(pdfPath, tmpDir, { maxPages, signal });
+    if (!meta.files || !meta.files.length) {
+      throw new Error("페이지 이미지를 생성하지 못했습니다.");
+    }
+    onProgress(`🧩 페이지를 ${meta.tiles}개 이미지 조각으로 분할(읽기 좋게)`);
+    const blocks = [];
+    for (const f of meta.files) {
+      const buf = fs.readFileSync(f);
+      const prepared = await prepareImageForAnthropic(
+        { buffer: buf, name: path.basename(f), mimetype: "image/png" },
+        { forceCompress: true },
+      );
+      if (prepared.ok) blocks.push(toAnthropicImageBlock(prepared));
+    }
+    if (!blocks.length) {
+      throw new Error("이미지를 Claude 입력 형식으로 준비하지 못했습니다.");
+    }
+    return {
+      scanned: true,
+      imageBlocks: blocks,
+      truncated: !!meta.truncated,
+      tiles: meta.tiles,
+      pageCount: meta.page_count,
+    };
+  } finally {
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch {
+      /* best-effort cleanup */
+    }
+  }
+}
+
 async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) {
   const t0 = Date.now();
   const timeoutMin = Math.round(PDF_TRANSLATE_TIMEOUT_MS / 60000);
@@ -1275,26 +1340,53 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) 
     const sizeKB = Math.round(pdfBuffer.length / 1024);
     pushProgress(job, `📥 PDF 수신 (${sizeKB}KB)`);
 
-    const result =
-      mode === "retypeset"
-        ? await retypesetPdf({
-            pdfBuffer,
-            model,
-            signal: ac.signal,
-            onProgress: (msg) => pushProgress(job, msg),
-          })
-        : await translatePdf({
-            pdfBuffer,
-            model,
-            signal: ac.signal,
-            onProgress: (msg) => pushProgress(job, msg),
-          });
+    const onProgress = (msg) => pushProgress(job, msg);
+
+    // 스캔/이미지 PDF 라우팅: 텍스트 레이어가 없으면 in-place 든 retypeset 이든
+    // 무조건 고해상도 OCR 재조판으로 처리한다(글자 교체는 텍스트 박스가 없어 불가).
+    const routing = await prepareScannedRouting(pdfBuffer, {
+      signal: ac.signal,
+      onProgress,
+    });
+
+    let effectiveMode = mode;
+    let result;
+    if (routing.scanned && routing.imageBlocks) {
+      if (routing.truncated) {
+        pushProgress(
+          job,
+          `⚠ 페이지/분량이 많아 앞부분 위주로 처리합니다(이미지 ${routing.tiles}조각).`,
+        );
+      }
+      result = await retypesetPdf({
+        pdfBuffer,
+        imageBlocks: routing.imageBlocks,
+        model,
+        signal: ac.signal,
+        onProgress,
+      });
+      effectiveMode = "retypeset"; // 출력은 재조판본(_재조판)
+    } else if (mode === "retypeset") {
+      result = await retypesetPdf({
+        pdfBuffer,
+        model,
+        signal: ac.signal,
+        onProgress,
+      });
+    } else {
+      result = await translatePdf({
+        pdfBuffer,
+        model,
+        signal: ac.signal,
+        onProgress,
+      });
+    }
 
     job.result = result.buffer;
     job.mimeType = "application/pdf";
     job.filename = buildTranslatedFilename(
       originalName,
-      mode === "retypeset" ? "_재조판" : "_KO",
+      effectiveMode === "retypeset" ? "_재조판" : "_KO",
     );
     job.status = "done";
 
@@ -1302,7 +1394,7 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) 
     const outKB = Math.round(result.buffer.length / 1024);
     pushProgress(
       job,
-      mode === "retypeset"
+      effectiveMode === "retypeset"
         ? `🎉 재조판 완료! ${outKB}KB, 총 ${totalSec}초. 다운로드 가능합니다.`
         : `🎉 완료! ${result.pageCount}쪽 / 문단 ${result.blockCount}개 → ${outKB}KB, 총 ${totalSec}초. 다운로드 가능합니다.`,
     );

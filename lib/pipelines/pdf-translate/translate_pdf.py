@@ -22,6 +22,7 @@ DeepL 문서 번역과 같은 방식: 디지털 PDF(텍스트 레이어가 있�
 """
 
 import sys
+import os
 import json
 from collections import defaultdict
 
@@ -98,6 +99,89 @@ def cmd_extract(pdf_path):
     scanned = len(doc) > 0 and total_text_chars < 20 * len(doc)
     out = {"page_count": len(doc), "scanned": scanned, "blocks": blocks}
     sys.stdout.write(json.dumps(out, ensure_ascii=False))
+    doc.close()
+
+
+def cmd_analyze(pdf_path):
+    """텍스트 레이어 유무만 빠르게 판정(블록 추출 없이). 스캔/이미지 PDF 라우팅용."""
+    doc = fitz.open(pdf_path)
+    total = 0
+    for page in doc:
+        t = page.get_text("text") or ""
+        total += len(t.strip())
+    n = len(doc)
+    scanned = n > 0 and total < 20 * n
+    sys.stdout.write(
+        json.dumps(
+            {"page_count": n, "text_chars": total, "scanned": scanned},
+            ensure_ascii=False,
+        )
+    )
+    doc.close()
+
+
+def cmd_rasterize(pdf_path, out_dir, target_width_px=1400, max_pages=20):
+    """각 페이지를 가독 가능한 PNG 타일로 렌더링한다(스캔본을 Claude 비전으로 읽히기 위함).
+
+    핵심: 일부 PDF(문제집 등)는 한 페이지가 세로로 매우 길다(예: 958×11833). 이를 한 장
+    이미지로 보내면 Claude 가 긴 변을 1568px 로 줄여 글자가 다시 뭉개진다. 그래서 폭을
+    가독 해상도(≈target_width_px)로 맞춰 렌더하되, 세로로 긴 페이지는 페이지 모양 타일로
+    잘라(겹침 포함) 각각 저장한다. clip 렌더라 거대한 픽스맵을 만들지 않는다."""
+    target_width_px = int(target_width_px)
+    max_pages = int(max_pages)
+    tile_h_px = 1800       # 타일 1장의 최대 높이(px)
+    overlap_px = 130       # 타일 경계에서 줄이 잘리지 않도록 겹침
+    max_tiles_per_page = 30
+    max_tiles_total = 80
+    os.makedirs(out_dir, exist_ok=True)
+    doc = fitz.open(pdf_path)
+    n = len(doc)
+    rendered = min(n, max_pages)
+    files = []
+    truncated = n > rendered
+    for i in range(rendered):
+        if len(files) >= max_tiles_total:
+            truncated = True
+            break
+        page = doc[i]
+        rect = page.rect
+        w_pt = rect.width or 612.0
+        h_pt = rect.height or 792.0
+        zoom = target_width_px / w_pt
+        zoom = max(1.0, min(zoom, 4.0))
+        mat = fitz.Matrix(zoom, zoom)
+        tile_h_pt = tile_h_px / zoom
+        overlap_pt = overlap_px / zoom
+        step_pt = max(tile_h_pt - overlap_pt, tile_h_pt * 0.5)
+        y = 0.0
+        t = 0
+        while y < h_pt - 1 and t < max_tiles_per_page:
+            if len(files) >= max_tiles_total:
+                truncated = True
+                break
+            y1 = min(y + tile_h_pt, h_pt)
+            clip = fitz.Rect(rect.x0, rect.y0 + y, rect.x1, rect.y0 + y1)
+            pix = page.get_pixmap(matrix=mat, clip=clip, alpha=False)
+            out_path = os.path.join(out_dir, f"p-{i:03d}-{t:02d}.png")
+            pix.save(out_path)
+            files.append(out_path)
+            t += 1
+            if y1 >= h_pt:
+                break
+            y += step_pt
+    sys.stdout.write(
+        json.dumps(
+            {
+                "page_count": n,
+                "rendered_pages": rendered,
+                "tiles": len(files),
+                "truncated": truncated,
+                "target_width_px": target_width_px,
+                "files": files,
+            },
+            ensure_ascii=False,
+        )
+    )
     doc.close()
 
 
@@ -222,6 +306,11 @@ def main():
     try:
         if mode == "extract":
             cmd_extract(sys.argv[2])
+        elif mode == "analyze":
+            cmd_analyze(sys.argv[2])
+        elif mode == "rasterize":
+            # rasterize <pdf> <out_dir> [long_edge_px] [max_pages]
+            cmd_rasterize(*sys.argv[2:6])
         elif mode == "render":
             cmd_render(sys.argv[2], sys.argv[3], sys.argv[4])
         else:

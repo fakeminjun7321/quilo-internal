@@ -140,6 +140,38 @@ def _cdist(a, b):
     return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
 
 
+def _bg_around(pix, rect, m=3):
+    """블록 '바로 바깥' 테두리의 정확한 최빈색 = 주변 배경색(글자 잉크가 없어 깨끗).
+    이 색으로 덮으면 redaction 이 주변과 똑같아져 '상자' 경계가 안 보인다."""
+    x0, y0, x1, y1 = int(rect.x0), int(rect.y0), int(rect.x1), int(rect.y1)
+    W, H = pix.width, pix.height
+    counts = {}
+
+    def add(x, y):
+        if 0 <= x < W and 0 <= y < H:
+            try:
+                p = pix.pixel(x, y)
+                counts[p] = counts.get(p, 0) + 1
+            except Exception:
+                pass
+
+    sy = max(1, (y1 - y0) // 8)
+    sx = max(1, (x1 - x0) // 12)
+    y = y0
+    while y < y1:
+        add(x0 - m, y)
+        add(x1 + m - 1, y)
+        y += sy
+    x = x0
+    while x < x1:
+        add(x, y0 - m)
+        add(x, y1 + m - 1)
+        x += sx
+    if not counts:
+        return None
+    return max(counts.items(), key=lambda kv: kv[1])[0]  # 정확한 색(양자화 안 함)
+
+
 def _cluster_rects(rects, gap=18.0):
     """가까운 사각형들을 묶는다(1패스 greedy). 그래프 라인아트 영역 잡기용."""
     clusters = []
@@ -208,11 +240,20 @@ def cmd_extract(pdf_path):
         # 그림/그래프 영역 안의 텍스트(축 라벨·기호·분자식 등)는 번역하지 않고 영어로 둔다.
         rect = fitz.Rect(block["bbox"])
         cx, cy = (rect.x0 + rect.x1) / 2, (rect.y0 + rect.y1) / 2
+        regs = regions(pno)
         on_figure = any(
-            (reg.x0 - 14) <= cx <= (reg.x1 + 14)
-            and (reg.y0 - 14) <= cy <= (reg.y1 + 14)
-            for reg in regions(pno)
+            (reg.x0 - 18) <= cx <= (reg.x1 + 18)
+            and (reg.y0 - 18) <= cy <= (reg.y1 + 18)
+            for reg in regs
         )
+        # 그림 근처의 '짧은' 블록(축 끝 라벨 RAB, V(RAB) 등)도 영어로 둔다.
+        # 긴 캡션·본문은 영향 없음(짧을 때만).
+        if not on_figure and len(text.strip()) <= 8:
+            on_figure = any(
+                (reg.x0 - 40) <= cx <= (reg.x1 + 40)
+                and (reg.y0 - 40) <= cy <= (reg.y1 + 40)
+                for reg in regs
+            )
         if on_figure:
             continue
         blocks.append({"id": bid, "page": pno, "text": text})
@@ -425,7 +466,8 @@ def cmd_render(pdf_path, out_path, font_path):
             if min(r, g, b) > 0.8:
                 fill = None
             else:
-                bbg = _bg_in_rect(sample, rect) or page_bg
+                # 블록 '바로 바깥'의 정확한 배경색으로 덮어 경계가 안 보이게(상자 느낌 제거).
+                bbg = _bg_around(sample, rect) or page_bg
                 fill = (bbg[0] / 255.0, bbg[1] / 255.0, bbg[2] / 255.0)
             page.add_redact_annot(rect, fill=fill)
         page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)

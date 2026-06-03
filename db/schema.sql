@@ -89,7 +89,8 @@ values (
   52428800,
   array[
     'application/hwp+zip',
-    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/pdf'
   ]
 )
 on conflict (id) do update set

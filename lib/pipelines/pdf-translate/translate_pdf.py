@@ -192,8 +192,13 @@ def cmd_render(pdf_path, out_path, font_path):
     for pno, items in by_page.items():
         page = doc[pno]
         # 1) 원문 글자만 지운다. images=NONE 으로 그림은 보존.
+        #    밝은(흰색 계열) 글자는 어두운 배경 위에 있을 가능성이 높다 → 흰색으로
+        #    덮으면 배경까지 흰 박스가 되고 다시 그린 흰 글자도 안 보인다. 이 경우엔
+        #    fill 을 생략해 원래 배경(그림/도형)이 비치게 한다.
         for rect, _ko, _sz, _col in items:
-            page.add_redact_annot(rect, fill=(1, 1, 1))
+            r, g, b = _color01(_col)
+            light = min(r, g, b) > 0.8
+            page.add_redact_annot(rect, fill=None if light else (1, 1, 1))
         page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
         # 2) 같은 박스에 번역문 삽입(넘치면 폰트를 줄여 맞춤). TextWriter 가 폰트 임베드.
         #    본문은 양끝맞춤, 제목류는 가운데 정렬로 LaTeX 조판처럼 단정하게.

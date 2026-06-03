@@ -672,6 +672,20 @@
         </dl>
       </div>
 
+      <div class="settings-card" id="usageCard">
+        <h2>사용 내역</h2>
+        <dl class="settings-summary">
+          <dt>보유 크레딧</dt>
+          <dd id="usageCredits">-</dd>
+          <dt>이번 시간 생성</dt>
+          <dd id="usageGen">-</dd>
+          <dt id="usageRestrictDt" style="display:none">모델 제한</dt>
+          <dd id="usageRestrict" style="display:none">-</dd>
+        </dl>
+        <h3 style="margin:14px 0 6px;font-size:14px">최근 생성</h3>
+        <div id="usageRecent" style="font-size:13px"><p class="hint">불러오는 중…</p></div>
+      </div>
+
       <div class="settings-card">
         <h2>학번</h2>
         <form id="profileForm" class="compact-form">
@@ -1036,10 +1050,73 @@
           panel.hidden = !active;
         });
         if (tabName === "files") loadFiles();
+        if (tabName === "settings") loadUsage();
       }
       tabButtons.forEach((btn) => {
         btn.addEventListener("click", () => showTab(btn.dataset.tab));
       });
+
+      // ── 사용 내역 대시보드 ────────────────────────────────────────────────
+      function escapeHtml(s) {
+        return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;",
+        })[c]);
+      }
+      function modelShortName(m) {
+        if (!m) return "";
+        if (m.indexOf("opus") >= 0) return "Opus";
+        if (m.indexOf("sonnet") >= 0) return "Sonnet";
+        return m;
+      }
+      async function loadUsage() {
+        const credEl = document.getElementById("usageCredits");
+        const genEl = document.getElementById("usageGen");
+        const recentEl = document.getElementById("usageRecent");
+        if (!credEl) return;
+        try {
+          const d = await fetch("/api/me/usage").then((r) => r.json());
+          if (d.isAdmin) credEl.textContent = "관리자 (무제한)";
+          else if (d.unlimited) credEl.textContent = "무제한";
+          else credEl.textContent = (d.credits ?? 0) + " 크레딧";
+          genEl.textContent = `${d.genCount ?? 0} / ${d.genLimit ?? 5} 건`;
+          const rDt = document.getElementById("usageRestrictDt");
+          const rDd = document.getElementById("usageRestrict");
+          if (d.restrictedModel) {
+            rDt.style.display = "";
+            rDd.style.display = "";
+            rDd.textContent = modelShortName(d.restrictedModel) + "만 사용 가능";
+          } else {
+            rDt.style.display = "none";
+            rDd.style.display = "none";
+          }
+          const list = Array.isArray(d.recent) ? d.recent : [];
+          if (!list.length) {
+            recentEl.innerHTML =
+              '<p class="hint">최근 생성 기록이 없습니다.</p>';
+            return;
+          }
+          const rows = list
+            .map((x) => {
+              const dt = x.date ? new Date(x.date) : null;
+              const when = dt
+                ? `${dt.getMonth() + 1}/${dt.getDate()} ${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}`
+                : "-";
+              const cr =
+                x.credits != null ? x.credits + "크레딧" : "베타·무료";
+              const md = x.model ? modelShortName(x.model) : "-";
+              return `<tr><td style="padding:4px 8px 4px 0;white-space:nowrap;color:var(--text-muted)">${when}</td><td style="padding:4px 8px 4px 0">${escapeHtml(x.label || "생성")}</td><td style="padding:4px 8px 4px 0">${md}</td><td style="padding:4px 0;white-space:nowrap">${cr}</td></tr>`;
+            })
+            .join("");
+          recentEl.innerHTML = `<table style="width:100%;border-collapse:collapse"><tbody>${rows}</tbody></table>`;
+        } catch (e) {
+          recentEl.innerHTML =
+            '<p class="hint">사용 내역을 불러오지 못했습니다.</p>';
+        }
+      }
 
       // ── 상단 드롭다운 네비 ────────────────────────────────────────────────
       (function initNav() {

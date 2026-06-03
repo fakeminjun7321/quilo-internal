@@ -2061,6 +2061,49 @@ app.get("/api/me/balance", requireAuth, async (req, res) => {
   }
 });
 
+// 본인 사용 내역 대시보드: 크레딧 + 이번 시간 생성 횟수 + 최근 생성 이력
+app.get("/api/me/usage", requireAuth, async (req, res) => {
+  const u = getSessionUser(req);
+  const genCount = u.id ? rateLimit.getUserGenCount(u.id) : 0;
+  const base = {
+    isAdmin: !!u.isAdmin,
+    genCount,
+    genLimit: rateLimit.GEN_LIMIT,
+    modelCredits: pricing.MODEL_CREDITS,
+  };
+  if (!supa.isEnabled() || !u.id) {
+    return res.json({ ...base, credits: 0, recent: [] });
+  }
+  const REAL = new Set(["chem-pre", "chem-result", "phys-result"]);
+  try {
+    const user = await supa.findUserById(u.id);
+    const logs = await supa.listUsageLogsForUser(u.id, 20);
+    const recent = logs.map((l) => {
+      const model = l.meta?.model || null;
+      const rt = l.meta?.reportType || null;
+      return {
+        date: l.created_at,
+        label: l.meta?.reportLabel || rt || "생성",
+        reportType: rt,
+        model,
+        // 실제 보고서 3종만 크레딧 차감 — 베타(예: pdf-translate)는 무료(null)
+        credits: model && REAL.has(rt) ? pricing.getModelCredits(model) : null,
+        title: l.meta?.title || null,
+      };
+    });
+    res.json({
+      ...base,
+      credits: Math.max(0, Math.trunc(Number(user?.credits) || 0)),
+      unlimited: !!user?.unlimited,
+      restrictedModel: user?.restricted_model || null,
+      recent,
+    });
+  } catch (e) {
+    console.error("[me/usage] error:", e);
+    res.json({ ...base, credits: 0, recent: [] }); // fail-safe
+  }
+});
+
 app.post("/api/admin/users/:id/reset-spent", requireAdmin, async (req, res) => {
   if (!supa.isEnabled())
     return res.status(503).json({ error: "Supabase 미설정" });

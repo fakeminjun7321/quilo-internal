@@ -152,23 +152,22 @@ def cmd_rasterize(pdf_path, out_dir, target_width_px=1400, max_pages=20):
         mat = fitz.Matrix(zoom, zoom)
         tile_h_pt = tile_h_px / zoom
         overlap_pt = overlap_px / zoom
-        step_pt = max(tile_h_pt - overlap_pt, tile_h_pt * 0.5)
-        y = 0.0
-        t = 0
-        while y < h_pt - 1 and t < max_tiles_per_page:
+        # 타일 수를 먼저 정해 '균등 분할'한다 → 얇은 자투리(앞 타일과 중복) 방지.
+        # 1.15 여유: 한 타일보다 조금 더 긴 페이지(일반 A4 등)는 자르지 않고 1장으로.
+        n_tiles = max(1, int(-(-h_pt // (tile_h_pt * 1.15))))  # ceil
+        n_tiles = min(n_tiles, max_tiles_per_page)
+        seg_pt = h_pt / n_tiles
+        for t in range(n_tiles):
             if len(files) >= max_tiles_total:
                 truncated = True
                 break
-            y1 = min(y + tile_h_pt, h_pt)
-            clip = fitz.Rect(rect.x0, rect.y0 + y, rect.x1, rect.y0 + y1)
+            y0 = max(0.0, seg_pt * t - overlap_pt / 2)
+            y1 = min(h_pt, seg_pt * (t + 1) + overlap_pt / 2)
+            clip = fitz.Rect(rect.x0, rect.y0 + y0, rect.x1, rect.y0 + y1)
             pix = page.get_pixmap(matrix=mat, clip=clip, alpha=False)
             out_path = os.path.join(out_dir, f"p-{i:03d}-{t:02d}.png")
             pix.save(out_path)
             files.append(out_path)
-            t += 1
-            if y1 >= h_pt:
-                break
-            y += step_pt
     sys.stdout.write(
         json.dumps(
             {

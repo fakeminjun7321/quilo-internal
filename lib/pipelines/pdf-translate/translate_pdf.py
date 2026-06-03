@@ -108,6 +108,25 @@ def _color01(c):
     return (((c >> 16) & 255) / 255, ((c >> 8) & 255) / 255, (c & 255) / 255)
 
 
+def _detect_align(rect, page_width):
+    """원문 블록 위치로 정렬을 추정한다.
+
+    제목/저자처럼 '좁고 + 좌우 여백이 거의 대칭'인 블록은 가운데 정렬,
+    그 외(본문 컬럼)는 양끝맞춤(justify) — LaTeX 조판처럼 단정해진다.
+    본문은 컬럼 폭을 거의 다 쓰므로 폭 기준으로 제목과 구분된다.
+    """
+    w = rect.x1 - rect.x0
+    left = rect.x0
+    right = page_width - rect.x1
+    if (
+        w < 0.62 * page_width
+        and left > 0.15 * page_width
+        and abs(left - right) < 0.06 * page_width
+    ):
+        return fitz.TEXT_ALIGN_CENTER
+    return fitz.TEXT_ALIGN_JUSTIFY
+
+
 def _has_leftover(ret):
     """TextWriter.fill_textbox 반환값(보통 leftover 리스트)에 '안 들어간 텍스트'가 있는지."""
     if not ret:
@@ -119,7 +138,7 @@ def _has_leftover(ret):
     return bool(ret)
 
 
-def _draw_fit(page, rect, text, color, font, start_size, min_size=4.0):
+def _draw_fit(page, rect, text, color, font, start_size, align, min_size=4.0):
     """rect 안에 다 들어가도록 폰트 크기를 줄여가며 '한 번만' 그린다.
 
     insert_textbox 는 줄높이를 직접 추정해야 해서, 높이가 한 줄과 비슷한 얇은
@@ -127,20 +146,21 @@ def _draw_fit(page, rect, text, color, font, start_size, min_size=4.0):
     안 그려지는' 문제가 있었다(제목이 통째로 사라진 버그). TextWriter 는
     write_text() 전에는 페이지에 그리지 않으므로, fill_textbox 로 '다 들어갔는지'를
     먼저 확인하고 들어갈 때만 커밋한다 → 겹침·잘림·증발이 없다.
+
+    align: 본문은 justify(양끝맞춤), 제목류는 center — fill_textbox 는 마지막 줄
+    /한 줄짜리는 자동으로 좌측 처리하므로 짧은 블록도 어색하지 않다.
     """
     fs = max(min_size, min(float(start_size), 400.0))
     while fs > min_size:
         tw = fitz.TextWriter(page.rect)
-        leftover = tw.fill_textbox(
-            rect, text, font=font, fontsize=fs, align=fitz.TEXT_ALIGN_LEFT
-        )
+        leftover = tw.fill_textbox(rect, text, font=font, fontsize=fs, align=align)
         if not _has_leftover(leftover):
             tw.write_text(page, color=color)
             return fs < float(start_size) - 0.01
         fs -= 0.5
     # 최소 크기에서도 넘치면 들어가는 만큼이라도 그린다(빈칸보다 낫다).
     tw = fitz.TextWriter(page.rect)
-    tw.fill_textbox(rect, text, font=font, fontsize=min_size, align=fitz.TEXT_ALIGN_LEFT)
+    tw.fill_textbox(rect, text, font=font, fontsize=min_size, align=align)
     tw.write_text(page, color=color)
     return True
 
@@ -176,8 +196,11 @@ def cmd_render(pdf_path, out_path, font_path):
             page.add_redact_annot(rect, fill=(1, 1, 1))
         page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
         # 2) 같은 박스에 번역문 삽입(넘치면 폰트를 줄여 맞춤). TextWriter 가 폰트 임베드.
+        #    본문은 양끝맞춤, 제목류는 가운데 정렬로 LaTeX 조판처럼 단정하게.
+        page_width = page.rect.width
         for rect, ko, _size, color in items:
-            if _draw_fit(page, rect, ko, _color01(color), font, _size):
+            align = _detect_align(rect, page_width)
+            if _draw_fit(page, rect, ko, _color01(color), font, _size, align):
                 shrunk += 1
             replaced += 1
 

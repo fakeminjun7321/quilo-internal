@@ -1319,7 +1319,10 @@ function extractReportLabel(filename) {
 }
 
 function sanitizeForFilename(s) {
+  // NFC 정규화 후 자르기 — macOS는 한글을 NFD(자모분해)로 주므로, 정규화 없이
+  // slice 하면 음절 중간이 잘려 "전ᄀ" 같은 깨진 자모가 남는다.
   return String(s || "")
+    .normalize("NFC")
     .replace(/[\\/:*?"<>|]/g, "_")
     .trim()
     .slice(0, 30);

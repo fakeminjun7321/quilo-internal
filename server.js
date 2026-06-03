@@ -991,6 +991,9 @@ app.post(
     if (!file) {
       return res.status(400).json({ error: "PDF 파일을 업로드하세요." });
     }
+    // multer 가 주는 originalname 은 한글이 latin1 로 깨져 들어온다 — /api/generate
+    // 와 동일하게 정규화해야 다운로드 파일명(…_KO.pdf)이 깨지지 않는다.
+    file.originalname = normalizeUploadFilename(file.originalname);
     if (
       file.mimetype !== "application/pdf" &&
       !/\.pdf$/i.test(file.originalname || "")

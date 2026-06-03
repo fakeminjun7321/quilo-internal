@@ -108,46 +108,41 @@ def _color01(c):
     return (((c >> 16) & 255) / 255, ((c >> 8) & 255) / 255, (c & 255) / 255)
 
 
-def _wrap(font, text, width, fs):
-    """폰트 메트릭으로 직접 줄바꿈. 공백(어절) 기준, 한 어절이 줄폭보다 길면 글자 단위로 자른다."""
-    lines = []
-    for para in text.split("\n"):
-        cur = ""
-        for word in para.split(" "):
-            trial = word if not cur else cur + " " + word
-            if font.text_length(trial, fontsize=fs) <= width:
-                cur = trial
-                continue
-            if cur:
-                lines.append(cur)
-                cur = ""
-            if font.text_length(word, fontsize=fs) <= width:
-                cur = word
-            else:  # 한 어절이 줄폭보다 길다 → 글자 단위 분해
-                chunk = ""
-                for ch in word:
-                    if not chunk or font.text_length(chunk + ch, fontsize=fs) <= width:
-                        chunk += ch
-                    else:
-                        lines.append(chunk)
-                        chunk = ch
-                cur = chunk
-        if cur:
-            lines.append(cur)
-    return lines or [""]
+def _has_leftover(ret):
+    """TextWriter.fill_textbox 반환값(보통 leftover 리스트)에 '안 들어간 텍스트'가 있는지."""
+    if not ret:
+        return False
+    if isinstance(ret, str):
+        return bool(ret.strip())
+    if isinstance(ret, (list, tuple)):
+        return any(_has_leftover(x) for x in ret)
+    return bool(ret)
 
 
-def _fit(font, text, rect, start_size, min_size=4.0, line_factor=1.3):
-    """rect 안에 들어가는 최대 폰트 크기와 줄바꿈 결과를 찾는다(넘치면 축소)."""
-    width = max(rect.width - 2.0, 1.0)
-    height = rect.height
-    fs = max(min_size, min(float(start_size), 200.0))
-    while fs >= min_size:
-        lines = _wrap(font, text, width, fs)
-        if len(lines) * fs * line_factor <= height:
-            return fs, lines
+def _draw_fit(page, rect, text, color, font, start_size, min_size=4.0):
+    """rect 안에 다 들어가도록 폰트 크기를 줄여가며 '한 번만' 그린다.
+
+    insert_textbox 는 줄높이를 직접 추정해야 해서, 높이가 한 줄과 비슷한 얇은
+    박스(예: 제목)에서 '맞다고 계산했지만 실제로는 한 줄도 안 들어가 아무것도
+    안 그려지는' 문제가 있었다(제목이 통째로 사라진 버그). TextWriter 는
+    write_text() 전에는 페이지에 그리지 않으므로, fill_textbox 로 '다 들어갔는지'를
+    먼저 확인하고 들어갈 때만 커밋한다 → 겹침·잘림·증발이 없다.
+    """
+    fs = max(min_size, min(float(start_size), 400.0))
+    while fs > min_size:
+        tw = fitz.TextWriter(page.rect)
+        leftover = tw.fill_textbox(
+            rect, text, font=font, fontsize=fs, align=fitz.TEXT_ALIGN_LEFT
+        )
+        if not _has_leftover(leftover):
+            tw.write_text(page, color=color)
+            return fs < float(start_size) - 0.01
         fs -= 0.5
-    return min_size, _wrap(font, text, width, min_size)
+    # 최소 크기에서도 넘치면 들어가는 만큼이라도 그린다(빈칸보다 낫다).
+    tw = fitz.TextWriter(page.rect)
+    tw.fill_textbox(rect, text, font=font, fontsize=min_size, align=fitz.TEXT_ALIGN_LEFT)
+    tw.write_text(page, color=color)
+    return True
 
 
 def cmd_render(pdf_path, out_path, font_path):
@@ -168,10 +163,9 @@ def cmd_render(pdf_path, out_path, font_path):
         size, color = dominant_size_color(block)
         by_page[pno].append((rect, str(ko).strip(), size, color))
 
-    # 측정용 폰트 1개만 로드(insert_htmlbox 는 호출마다 폰트를 Story 에 재적재해
-    # 24쪽/수백 블록에서 메모리가 1GB+ 로 치솟아 512MB 서버를 OOM 시켰다).
-    measure_font = fitz.Font(fontfile=font_path)
-    FONTNAME = "kf"
+    # 폰트는 한 번만 로드해 모든 TextWriter 가 공유한다. (insert_htmlbox 는 호출마다
+    # 2MB 폰트를 Story 에 재적재해 24쪽/수백 블록에서 ~1.5GB OOM 을 냈다.)
+    font = fitz.Font(fontfile=font_path)
 
     replaced = 0
     shrunk = 0
@@ -181,22 +175,10 @@ def cmd_render(pdf_path, out_path, font_path):
         for rect, _ko, _sz, _col in items:
             page.add_redact_annot(rect, fill=(1, 1, 1))
         page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
-        # 2) 한글 폰트는 페이지당 한 번만 임베드.
-        page.insert_font(fontname=FONTNAME, fontfile=font_path)
-        # 3) 폰트 메트릭으로 미리 크기를 맞춰 한 번만 그린다(넘칠 때 다시 그리면
-        #    글자가 겹치므로 사전 계산이 필수). 칸을 넘기면 폰트를 줄여 맞춘다.
-        for rect, ko, size, color in items:
-            fs, lines = _fit(measure_font, ko, rect, size)
-            if fs < float(size) - 0.01:
+        # 2) 같은 박스에 번역문 삽입(넘치면 폰트를 줄여 맞춤). TextWriter 가 폰트 임베드.
+        for rect, ko, _size, color in items:
+            if _draw_fit(page, rect, ko, _color01(color), font, _size):
                 shrunk += 1
-            page.insert_textbox(
-                rect,
-                "\n".join(lines),
-                fontname=FONTNAME,
-                fontsize=fs,
-                color=_color01(color),
-                align=0,
-            )
             replaced += 1
 
     doc.save(out_path, garbage=3, deflate=True)

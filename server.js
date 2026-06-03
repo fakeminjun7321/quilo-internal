@@ -236,6 +236,26 @@ app.use(
   }),
 );
 
+// DEV 전용: 로컬에서 Supabase 없이 UI 를 점검하기 위한 가짜 관리자 세션.
+// DEV_FAKE_AUTH=1 + 비-production 일 때만 동작. (Render 는 NODE_ENV=production 이라
+// 혹시 환경변수가 새어도 무력화된다 — 이중 안전장치.)
+if (
+  process.env.DEV_FAKE_AUTH === "1" &&
+  process.env.NODE_ENV !== "production"
+) {
+  console.warn("⚠ DEV_FAKE_AUTH 활성 — 가짜 관리자 세션. 프로덕션에서 쓰면 안 됨.");
+  app.use((req, res, next) => {
+    if (req.session && !req.session.userInfo) {
+      req.session.userInfo = {
+        id: "dev-admin",
+        name: "개발관리자",
+        isAdmin: true,
+      };
+    }
+    next();
+  });
+}
+
 app.use((req, res, next) => {
   if (!SITE_CLOSED) return next();
 

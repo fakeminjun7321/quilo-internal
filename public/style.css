@@ -2323,3 +2323,180 @@ textarea.tool-input {
   color: var(--text-faint);
   text-align: right;
 }
+
+/* ── 상단 드롭다운 네비 (CANSAT식) ─────────────────────────────────── */
+.topnav {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  box-shadow: var(--shadow-sm);
+}
+.topnav-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 0 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 60px;
+}
+.topnav .brand {
+  margin-right: 8px;
+}
+.topnav-menu {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+.nav-dd {
+  position: relative;
+}
+.nav-dd-btn {
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  color: var(--text);
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.nav-dd-btn:hover,
+.nav-dd.open .nav-dd-btn {
+  background: var(--surface-2);
+  color: var(--accent-text);
+}
+.nav-dd .caret {
+  font-size: 10px;
+  opacity: 0.6;
+  transition: transform 0.15s var(--tap);
+}
+.nav-dd.open .caret {
+  transform: rotate(180deg);
+}
+.nav-dd-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 210px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  padding: 6px;
+  display: none;
+  flex-direction: column;
+}
+.nav-dd-right .nav-dd-menu {
+  left: auto;
+  right: 0;
+}
+.nav-dd.open .nav-dd-menu {
+  display: flex;
+}
+.nav-dd-menu a {
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  text-decoration: none;
+  font-size: 14px;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.nav-dd-menu a:hover {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+/* hidden 속성이 위 display:flex 에 지지 않도록 (베타 링크는 테스터에게만 노출) */
+.nav-dd-menu a[hidden] {
+  display: none;
+}
+.nav-dd-menu .dd-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 5px 4px;
+}
+.beta-pill {
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--accent);
+  color: var(--on-accent);
+  border-radius: 999px;
+  padding: 1px 7px;
+  margin-left: auto;
+}
+.topnav-burger {
+  display: none;
+  background: none;
+  border: 0;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--text);
+  margin-left: auto;
+  padding: 6px 10px;
+}
+.slim-disclaimer {
+  max-width: 1100px;
+  margin: 12px auto 0;
+  padding: 8px 18px;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.slim-disclaimer strong {
+  color: var(--text);
+}
+@media (hover: hover) {
+  .nav-dd:hover .nav-dd-menu {
+    display: flex;
+  }
+  .nav-dd:hover .caret {
+    transform: rotate(180deg);
+  }
+}
+@media (max-width: 760px) {
+  .topnav-burger {
+    display: inline-block;
+  }
+  .topnav-menu {
+    display: none;
+    position: absolute;
+    top: 60px;
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    margin: 0;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    box-shadow: var(--shadow);
+    padding: 8px;
+  }
+  .topnav-menu.open {
+    display: flex;
+  }
+  .nav-dd-menu {
+    position: static;
+    box-shadow: none;
+    border: 0;
+    padding: 0 0 6px 14px;
+    min-width: 0;
+  }
+  .nav-dd-right .nav-dd-menu {
+    right: auto;
+  }
+  .topnav-menu .theme-toggle {
+    align-self: flex-start;
+    margin: 6px;
+  }
+}

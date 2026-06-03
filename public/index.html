@@ -20,16 +20,54 @@
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
-    <header class="app-header">
-      <div class="app-bar">
+    <header class="topnav" id="topnav">
+      <div class="topnav-inner">
         <a href="/" class="brand">
           <span class="brand-mark" aria-hidden="true">R</span>
           보고서 작성 툴
         </a>
-        <div class="header-actions">
-          <span id="user"></span>
-          <a href="/admin" id="adminLink" style="display: none">관리자</a>
-          <a href="#" id="logout">로그아웃</a>
+        <button type="button" class="topnav-burger" id="navBurger" aria-label="메뉴 열기">☰</button>
+        <nav class="topnav-menu" id="navMenu" aria-label="주 메뉴">
+          <div class="nav-dd" data-dd>
+            <button type="button" class="nav-dd-btn">보고서 작성 <span class="caret" aria-hidden="true">▾</span></button>
+            <div class="nav-dd-menu">
+              <a href="#" data-report="chem-pre">화학 사전보고서</a>
+              <a href="#" data-report="chem-result">화학 결과보고서</a>
+              <a href="#" data-report="phys-result">물리 결과보고서</a>
+            </div>
+          </div>
+          <div class="nav-dd" data-dd>
+            <button type="button" class="nav-dd-btn">도구 모음 <span class="caret" aria-hidden="true">▾</span></button>
+            <div class="nav-dd-menu">
+              <a href="/tools/word-count.html">글자수 세기</a>
+              <a href="/equation/index.html">LaTeX → 한글 수식 변환</a>
+              <a href="/tools/regression.html">선형회귀 · 추세선</a>
+              <a href="/tools/graph.html">그래프 생성기</a>
+              <a href="/tools/image.html">이미지 변환 · 압축</a>
+              <a href="/tools/pdf-merge.html">PDF 병합</a>
+              <a href="/tools/convert.html">파일 변환기</a>
+              <a href="/translate.html" id="navBetaTranslate" hidden>PDF 통번역 <span class="beta-pill">베타</span></a>
+            </div>
+          </div>
+          <div class="nav-dd" data-dd>
+            <button type="button" class="nav-dd-btn">예시 · 가이드 <span class="caret" aria-hidden="true">▾</span></button>
+            <div class="nav-dd-menu">
+              <a href="/examples.html">예시 모음</a>
+              <a href="/guide.html">이용 가이드</a>
+              <a href="/changelog.html">패치노트</a>
+            </div>
+          </div>
+          <div class="nav-dd nav-dd-right" data-dd>
+            <button type="button" class="nav-dd-btn"><span id="user">내 계정</span> <span class="caret" aria-hidden="true">▾</span></button>
+            <div class="nav-dd-menu">
+              <a href="#" data-tab="files">내 파일</a>
+              <a href="#" data-tab="settings">개인 설정</a>
+              <a href="#" data-tab="feedback">건의사항</a>
+              <a href="/admin" id="adminLink" style="display: none">관리자</a>
+              <div class="dd-sep" aria-hidden="true"></div>
+              <a href="#" id="logout">로그아웃</a>
+            </div>
+          </div>
           <button
             type="button"
             id="themeToggle"
@@ -40,26 +78,14 @@
             <span class="theme-icon-light" aria-hidden="true">🌙</span>
             <span class="theme-icon-dark" aria-hidden="true">☀️</span>
           </button>
-        </div>
-      </div>
-
-      <div class="app-hero">
-        <h1>보고서 작성 툴</h1>
-        <div class="notice compliance-notice">
-          <strong>학습 보조 초안 생성 도구입니다.</strong>
-          본인이 이용 권한을 가진 파일만 업로드하고, 학교·교사 기준에서 AI 사용이 허용되는 범위인지 확인한 뒤 사용하세요.
-          생성 결과는 그대로 제출하지 말고 반드시 직접 검토·수정하세요.
-          업로드 파일은 AI 처리 과정에서 외부 처리업체로 전송될 수 있으며, 생성 파일은 24시간만 보관됩니다.
-        </div>
+        </nav>
       </div>
     </header>
 
-    <nav class="page-tabs" aria-label="화면 전환">
-      <button type="button" class="active" data-tab="reports">보고서 작성</button>
-      <button type="button" data-tab="files">내 파일</button>
-      <button type="button" data-tab="feedback">건의사항</button>
-      <button type="button" data-tab="settings">개인 설정</button>
-    </nav>
+    <p class="slim-disclaimer">
+      <strong>학습 보조 초안 생성 도구입니다.</strong>
+      본인이 권한을 가진 파일만 올리고, 학교·교사 기준에서 AI 사용이 허용되는지 확인 후 사용하세요. 생성 결과는 반드시 직접 검토·수정하고 그대로 제출하지 마세요. 업로드 파일은 AI 처리 중 외부 처리업체로 전송될 수 있으며, 생성 파일은 24시간만 보관됩니다.
+    </p>
 
     <section id="reportsPanel" class="tab-panel active" data-tab-panel="reports">
     <div class="app-banner">
@@ -820,6 +846,73 @@
       tabButtons.forEach((btn) => {
         btn.addEventListener("click", () => showTab(btn.dataset.tab));
       });
+
+      // ── 상단 드롭다운 네비 ────────────────────────────────────────────────
+      (function initNav() {
+        const dds = Array.from(document.querySelectorAll(".nav-dd[data-dd]"));
+        const menu = document.getElementById("navMenu");
+        const closeAll = () => dds.forEach((d) => d.classList.remove("open"));
+
+        dds.forEach((dd) => {
+          const btn = dd.querySelector(".nav-dd-btn");
+          btn?.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const wasOpen = dd.classList.contains("open");
+            closeAll();
+            if (!wasOpen) dd.classList.add("open");
+          });
+        });
+        document.addEventListener("click", closeAll);
+
+        document.getElementById("navBurger")?.addEventListener("click", (e) => {
+          e.stopPropagation();
+          menu?.classList.toggle("open");
+        });
+
+        // 보고서 작성 드롭다운 → 보고서 종류 선택 + reports 탭으로
+        document.querySelectorAll(".nav-dd-menu a[data-report]").forEach((a) => {
+          a.addEventListener("click", (e) => {
+            e.preventDefault();
+            const radio = document.querySelector(
+              `input[name="reportType"][value="${a.dataset.report}"]`,
+            );
+            if (radio) {
+              radio.checked = true;
+              updateReportTypeView();
+            }
+            showTab("reports");
+            closeAll();
+            menu?.classList.remove("open");
+            document
+              .getElementById("reportsPanel")
+              ?.scrollIntoView({ behavior: "smooth", block: "start" });
+          });
+        });
+
+        // 내 계정 드롭다운 → 탭 전환
+        document.querySelectorAll(".nav-dd-menu a[data-tab]").forEach((a) => {
+          a.addEventListener("click", (e) => {
+            e.preventDefault();
+            showTab(a.dataset.tab);
+            closeAll();
+            menu?.classList.remove("open");
+          });
+        });
+      })();
+
+      // 베타 메뉴 노출: 관리자 또는 지정 테스터에게만 'PDF 통번역(베타)' 표시
+      fetch("/api/me/beta")
+        .then((r) => (r.ok ? r.json() : { features: [] }))
+        .then((b) => {
+          if (
+            Array.isArray(b.features) &&
+            b.features.includes("pdf-translate")
+          ) {
+            const el = document.getElementById("navBetaTranslate");
+            if (el) el.hidden = false;
+          }
+        })
+        .catch(() => {});
 
       // Default to today
       document.getElementById("date").value = new Date().toISOString().slice(0, 10);

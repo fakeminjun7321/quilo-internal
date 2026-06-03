@@ -1302,14 +1302,16 @@ async function prepareScannedRouting(pdfBuffer, { signal, onProgress }) {
   try {
     fs.writeFileSync(pdfPath, pdfBuffer);
     let scanned = false;
+    let mathDensity = 0;
     try {
       const a = await analyzePdf(pdfPath, { signal });
       scanned = !!a.scanned;
+      mathDensity = Number(a.math_density) || 0;
     } catch (e) {
       onProgress(`⚠ 텍스트 레이어 분석을 건너뜁니다: ${e.message}`);
-      return { scanned: false, imageBlocks: null };
+      return { scanned: false, imageBlocks: null, mathDensity: 0 };
     }
-    if (!scanned) return { scanned: false, imageBlocks: null };
+    if (!scanned) return { scanned: false, imageBlocks: null, mathDensity };
 
     onProgress(
       "🖼️ 텍스트 레이어가 없는 스캔/이미지 PDF 감지 → 고해상도 OCR 재조판으로 전환",
@@ -1351,6 +1353,7 @@ async function prepareScannedRouting(pdfBuffer, { signal, onProgress }) {
       truncated: !!meta.truncated,
       tiles: meta.tiles,
       pageCount: meta.page_count,
+      mathDensity,
     };
   } finally {
     try {
@@ -1388,7 +1391,26 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) 
       onProgress,
     });
 
-    let effectiveMode = mode;
+    // 변환 방식 자동 결정: 사용자가 "자동"(또는 미지정)이면 분석으로 정한다.
+    // 스캔/이미지 → 재조판(OCR), 텍스트+수식 많음 → 재조판, 일반 텍스트 → 빠른 번역.
+    const AUTO_MATH_THRESHOLD = Number(process.env.PDF_AUTO_MATH_THRESHOLD || 12);
+    const isAuto = mode !== "inplace" && mode !== "retypeset";
+    let resolvedMode = mode;
+    if (isAuto) {
+      resolvedMode =
+        routing.scanned || (routing.mathDensity || 0) >= AUTO_MATH_THRESHOLD
+          ? "retypeset"
+          : "inplace";
+      pushProgress(
+        job,
+        `🔎 자동 변환방식 → ${resolvedMode === "retypeset" ? "재조판(수식·정밀)" : "빠른 번역(레이아웃 유지)"}` +
+          (routing.scanned
+            ? " · 스캔본 감지"
+            : ` · 수식밀도 ${routing.mathDensity ?? 0}`),
+      );
+    }
+
+    let effectiveMode = resolvedMode;
     let result;
     if (routing.scanned && routing.imageBlocks) {
       if (routing.truncated) {
@@ -1409,7 +1431,7 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) 
       if (result.figures) {
         pushProgress(job, `🖼️ 원본 그림 ${result.figures}개를 본문에 복원했습니다.`);
       }
-    } else if (mode === "retypeset") {
+    } else if (resolvedMode === "retypeset") {
       result = await retypesetPdf({
         pdfBuffer,
         model,

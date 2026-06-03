@@ -102,18 +102,38 @@ def cmd_extract(pdf_path):
     doc.close()
 
 
+_MATH_SYMS = "∑∫√±×÷≤≥≠≈∞∂∇·°→←↔⟨⟩∝∈∉⊂⊃∪∩∀∃∮∇µΩ"
+
+
 def cmd_analyze(pdf_path):
-    """텍스트 레이어 유무만 빠르게 판정(블록 추출 없이). 스캔/이미지 PDF 라우팅용."""
+    """텍스트 레이어 유무 + 수식 밀도를 판정(자동 변환방식 선택용).
+    scanned: 텍스트 레이어 없음(스캔/이미지). math_density: 1000자당 수식 지표 점수."""
     doc = fitz.open(pdf_path)
     total = 0
+    parts = []
     for page in doc:
         t = page.get_text("text") or ""
         total += len(t.strip())
+        parts.append(t)
+    text = "\n".join(parts)
     n = len(doc)
     scanned = n > 0 and total < 20 * n
+    # 수식 지표: 그리스 문자(U+0370–03FF), 수학 기호, 위/아래 첨자(U+2070–209F), '=' 빈도
+    greek = sum(1 for c in text if "Ͱ" <= c <= "Ͽ")
+    syms = sum(1 for c in text if c in _MATH_SYMS)
+    subsup = sum(1 for c in text if "⁰" <= c <= "₟")
+    eqs = text.count("=")
+    math_score = greek * 3 + syms * 3 + subsup * 2 + eqs
+    density = round((math_score / max(total, 1)) * 1000, 2)
     sys.stdout.write(
         json.dumps(
-            {"page_count": n, "text_chars": total, "scanned": scanned},
+            {
+                "page_count": n,
+                "text_chars": total,
+                "scanned": scanned,
+                "math_score": math_score,
+                "math_density": density,
+            },
             ensure_ascii=False,
         )
     )

@@ -78,11 +78,12 @@
                 <label>
                   <span class="field-label">변환 방식</span>
                   <select id="trMode" name="mode">
-                    <option value="inplace" selected>빠른 번역 — 레이아웃·그림 그대로, 글자만 한국어 (일반 문서·매뉴얼)</option>
-                    <option value="retypeset">고품질 재조판 — 문서를 다시 조판, 수식 복원 (논문·수식 많은 문서, PDF 새로 생성)</option>
+                    <option value="auto" selected>자동 (권장) — PDF를 분석해 알맞은 방식을 자동 선택</option>
+                    <option value="inplace">빠른 번역 — 레이아웃·그림 그대로, 글자만 한국어 (일반 문서·매뉴얼)</option>
+                    <option value="retypeset">고품질 재조판 — 문서를 다시 조판, 수식 복원·스캔본 OCR (논문·문제집, PDF 새로 생성)</option>
                   </select>
                 </label>
-                <p class="hint" id="trModeHint" style="margin:4px 0 0">레이아웃을 그대로 두고 글자만 바꿉니다. 수식이 많은 문서는 “고품질 재조판”을 고르세요.</p>
+                <p class="hint" id="trModeHint" style="margin:4px 0 0">PDF만 올리면 됩니다 — 스캔본·수식 많은 문서는 자동으로 ‘재조판’, 일반 문서는 ‘빠른 번역’으로 처리합니다. 원하면 직접 고를 수도 있어요.</p>
               </div>
 
               <div class="field">
@@ -188,15 +189,16 @@
         const modeSel = document.getElementById("trMode");
         const modeHint = document.getElementById("trModeHint");
         const modelSel = document.getElementById("trModel");
+        const MODE_HINTS = {
+          auto: "PDF만 올리면 됩니다 — 스캔본·수식 많은 문서는 자동으로 ‘재조판’, 일반 문서는 ‘빠른 번역’으로 처리합니다. 원하면 직접 고를 수도 있어요.",
+          retypeset:
+            "문서를 한국어로 다시 조판하고 수식을 복원해 새 PDF를 만듭니다. 스캔본·이미지 PDF도 이 방식(OCR)으로 처리되며 원본 그림도 복원합니다. 기본 Sonnet으로 빠르게 — 수식이 아주 복잡한 논문만 Opus를 고르세요(느림).",
+          inplace:
+            "레이아웃을 그대로 두고 글자만 바꿉니다. 텍스트 레이어가 있는 일반 문서에 적합합니다.",
+        };
         modeSel?.addEventListener("change", () => {
-          if (modeSel.value === "retypeset") {
-            modeHint.textContent =
-              "문서를 한국어로 다시 조판하고 수식을 복원해 새 PDF를 만듭니다. 스캔본·이미지 PDF도 이 방식으로 처리됩니다. 기본 Sonnet으로 빠르게 — 수식이 아주 복잡한 논문만 Opus를 고르세요(느림).";
-            // 모델은 강제하지 않음 — 속도를 위해 기본 Sonnet 유지(사용자가 직접 Opus 선택 가능)
-          } else {
-            modeHint.textContent =
-              "레이아웃을 그대로 두고 글자만 바꿉니다. 수식이 많은 문서는 “고품질 재조판”을 고르세요.";
-          }
+          modeHint.textContent = MODE_HINTS[modeSel.value] || MODE_HINTS.auto;
+          // 모델은 강제하지 않음 — 속도를 위해 기본 Sonnet 유지(사용자가 직접 Opus 선택 가능)
         });
 
         const form = document.getElementById("trForm");

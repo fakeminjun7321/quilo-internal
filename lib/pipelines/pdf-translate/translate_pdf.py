@@ -85,15 +85,136 @@ def has_letters(s):
     return any(ch.isalpha() for ch in s)
 
 
+# ── 배경색 샘플링 (그림/그래프 위 텍스트 판별 + 색 맞춤 redaction) ───────────────
+def _sample_pixmap(page):
+    """배경색 샘플링용 페이지 픽스맵(zoom 1 → 1pt = 1px, 좌표 그대로 사용)."""
+    return page.get_pixmap(matrix=fitz.Matrix(1, 1), alpha=False)
+
+
+def _quant(px):
+    return (px[0] // 16 * 16, px[1] // 16 * 16, px[2] // 16 * 16)
+
+
+def _bg_in_rect(pix, rect):
+    """rect 영역의 최빈색(=배경; 글자 잉크는 소수) 추정. 실패 시 None."""
+    x0, y0 = max(0, int(rect.x0)), max(0, int(rect.y0))
+    x1, y1 = min(pix.width, int(rect.x1)), min(pix.height, int(rect.y1))
+    if x1 - x0 < 2 or y1 - y0 < 2:
+        return None
+    counts = {}
+    sx, sy = max(1, (x1 - x0) // 12), max(1, (y1 - y0) // 6)
+    yy = y0
+    while yy < y1:
+        xx = x0
+        while xx < x1:
+            try:
+                q = _quant(pix.pixel(xx, yy))
+                counts[q] = counts.get(q, 0) + 1
+            except Exception:
+                pass
+            xx += sx
+        yy += sy
+    if not counts:
+        return None
+    return max(counts.items(), key=lambda kv: kv[1])[0]
+
+
+def _page_bg(pix):
+    """모서리·여백 픽셀의 최빈색 = 페이지 배경색."""
+    w, h = pix.width, pix.height
+    pts = []
+    for xx, yy in [(2, 2), (w - 3, 2), (2, h - 3), (w - 3, h - 3), (w // 2, 2), (2, h // 2)]:
+        try:
+            pts.append(_quant(pix.pixel(xx, yy)))
+        except Exception:
+            pass
+    if not pts:
+        return (240, 240, 240)
+    counts = {}
+    for p in pts:
+        counts[p] = counts.get(p, 0) + 1
+    return max(counts.items(), key=lambda kv: kv[1])[0]
+
+
+def _cdist(a, b):
+    return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2) ** 0.5
+
+
+def _cluster_rects(rects, gap=18.0):
+    """가까운 사각형들을 묶는다(1패스 greedy). 그래프 라인아트 영역 잡기용."""
+    clusters = []
+    for r in rects:
+        placed = False
+        for c in clusters:
+            cb = c["bbox"]
+            if fitz.Rect(cb.x0 - gap, cb.y0 - gap, cb.x1 + gap, cb.y1 + gap).intersects(r):
+                c["bbox"] = cb | r
+                c["n"] += 1
+                placed = True
+                break
+        if not placed:
+            clusters.append({"bbox": fitz.Rect(r), "n": 1})
+    return clusters
+
+
+def _figure_regions(page):
+    """그림/그래프 영역 = 이미지 + '윤곽선' vector drawing(선·곡선·축·화살표·격자)을
+    함께 묶은 클러스터. 배경 채움(fill-only) 사각형(색 배너 등)은 제외 → 배너 위 본문을
+    figure 로 오인하지 않는다. 얇은 선(축 등)도 포함해야 그래프가 잡힌다."""
+    elems = []
+    try:
+        for im in page.get_images(full=True):
+            for r in page.get_image_rects(im[0]):
+                elems.append(fitz.Rect(r))
+    except Exception:
+        pass
+    try:
+        for d in page.get_drawings():
+            if "s" in (d.get("type") or ""):  # 윤곽선 path
+                elems.append(fitz.Rect(d["rect"]))
+    except Exception:
+        pass
+    page_area = page.rect.width * page.rect.height
+    regions = []
+    for c in _cluster_rects(elems):
+        b = c["bbox"]
+        if (
+            c["n"] >= 4
+            and b.width > 50
+            and b.height > 50
+            and b.width * b.height < 0.88 * page_area
+        ):
+            regions.append(b)
+    return regions
+
+
 def cmd_extract(pdf_path):
     doc = fitz.open(pdf_path)
     blocks = []
     total_text_chars = 0
+    # 페이지별 figure 영역(이미지 + 그래프 라인아트) 캐시 — 그림 위 텍스트 판별용.
+    page_cache = {}
+
+    def regions(pno):
+        if pno not in page_cache:
+            page_cache[pno] = _figure_regions(doc[pno])
+        return page_cache[pno]
+
     for bid, pno, block in iter_text_blocks(doc):
         text = block_text(block)
         if not text or not has_letters(text):
             continue
-        total_text_chars += len(text)
+        total_text_chars += len(text)  # scanned 판정엔 모든 글자 포함
+        # 그림/그래프 영역 안의 텍스트(축 라벨·기호·분자식 등)는 번역하지 않고 영어로 둔다.
+        rect = fitz.Rect(block["bbox"])
+        cx, cy = (rect.x0 + rect.x1) / 2, (rect.y0 + rect.y1) / 2
+        on_figure = any(
+            (reg.x0 - 14) <= cx <= (reg.x1 + 14)
+            and (reg.y0 - 14) <= cy <= (reg.y1 + 14)
+            for reg in regions(pno)
+        )
+        if on_figure:
+            continue
         blocks.append({"id": bid, "page": pno, "text": text})
     # 텍스트가 거의 없으면 스캔본(글자가 이미지)일 가능성이 높다 → Node가 안내.
     scanned = len(doc) > 0 and total_text_chars < 20 * len(doc)
@@ -294,14 +415,19 @@ def cmd_render(pdf_path, out_path, font_path):
     shrunk = 0
     for pno, items in by_page.items():
         page = doc[pno]
+        sample = _sample_pixmap(page)  # redaction 색 맞춤용(원본 배경 샘플)
+        page_bg = _page_bg(sample)
         # 1) 원문 글자만 지운다. images=NONE 으로 그림은 보존.
-        #    밝은(흰색 계열) 글자는 어두운 배경 위에 있을 가능성이 높다 → 흰색으로
-        #    덮으면 배경까지 흰 박스가 되고 다시 그린 흰 글자도 안 보인다. 이 경우엔
-        #    fill 을 생략해 원래 배경(그림/도형)이 비치게 한다.
+        #    밝은(흰색 계열) 글자 → 어두운 배경 위일 수 있어 fill 생략(배경 비침).
+        #    그 외엔 흰색 박스 대신 **그 자리 배경색**으로 덮어 색이 튀지 않게 한다.
         for rect, _ko, _sz, _col in items:
             r, g, b = _color01(_col)
-            light = min(r, g, b) > 0.8
-            page.add_redact_annot(rect, fill=None if light else (1, 1, 1))
+            if min(r, g, b) > 0.8:
+                fill = None
+            else:
+                bbg = _bg_in_rect(sample, rect) or page_bg
+                fill = (bbg[0] / 255.0, bbg[1] / 255.0, bbg[2] / 255.0)
+            page.add_redact_annot(rect, fill=fill)
         page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
         # 2) 같은 박스에 번역문 삽입(넘치면 폰트를 줄여 맞춤). TextWriter 가 폰트 임베드.
         #    본문은 양끝맞춤, 제목류는 가운데 정렬로 LaTeX 조판처럼 단정하게.

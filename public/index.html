@@ -791,12 +791,16 @@
       function openLoginDropdown() {
         const dd = document.getElementById("loginDd");
         if (!dd || dd.hidden) return false;
-        document
-          .querySelectorAll(".nav-dd.open")
-          .forEach((d) => d.classList.remove("open"));
-        dd.classList.add("open");
-        document.getElementById("navMenu")?.classList.add("open");
-        document.getElementById("li_username")?.focus();
+        // 다음 틱에 연다 — 이 함수를 부른 클릭이 document 까지 버블링되며
+        // closeAll() 이 돌아 방금 연 드롭다운을 즉시 닫는 것을 피한다.
+        setTimeout(() => {
+          document
+            .querySelectorAll(".nav-dd.open")
+            .forEach((d) => d.classList.remove("open"));
+          dd.classList.add("open");
+          document.getElementById("navMenu")?.classList.add("open");
+          document.getElementById("li_username")?.focus();
+        }, 0);
         return true;
       }
 

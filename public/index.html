@@ -57,7 +57,36 @@
               <a href="/changelog.html">패치노트</a>
             </div>
           </div>
-          <div class="nav-dd nav-dd-right" data-dd>
+          <!-- 로그아웃 상태: '로그인' 누르면 로그인 폼이 드롭다운으로 내려온다 -->
+          <div class="nav-dd nav-dd-right" data-dd id="loginDd" hidden>
+            <button type="button" class="nav-dd-btn nav-login-trigger">로그인 <span class="caret" aria-hidden="true">▾</span></button>
+            <div class="nav-dd-menu nav-login-menu">
+              <form id="loginForm">
+                <div class="auth-head" style="margin-bottom:6px">
+                  <strong>로그인</strong>
+                  <p class="hint" style="margin:2px 0 0">계정으로 로그인해 시작하세요.</p>
+                </div>
+                <div class="field">
+                  <label><span class="field-label">이름</span>
+                  <input id="li_username" required maxlength="50" autocomplete="username" /></label>
+                </div>
+                <div class="field">
+                  <label><span class="field-label">비밀번호</span>
+                  <input id="li_password" type="password" required autocomplete="current-password" /></label>
+                </div>
+                <label class="check-line"><input type="checkbox" id="li_age14" /> <span>만 14세 이상 <strong>(필수)</strong></span></label>
+                <label class="check-line"><input type="checkbox" id="li_agree" /> <span>약관·개인정보·환불정책 동의 <strong>(필수)</strong></span></label>
+                <div class="form-actions" style="margin-top:8px">
+                  <button type="submit" id="li_btn" class="btn btn-primary">로그인</button>
+                </div>
+                <p id="li_err" class="form-error" style="display:none"></p>
+                <p class="hint" style="text-align:center;margin:6px 0 0">계정이 없으신가요? <a href="/signup.html">회원가입</a></p>
+              </form>
+            </div>
+          </div>
+
+          <!-- 로그인 상태: 계정 메뉴 -->
+          <div class="nav-dd nav-dd-right" data-dd id="acctDd" hidden>
             <button type="button" class="nav-dd-btn"><span id="user">내 계정</span> <span class="caret" aria-hidden="true">▾</span></button>
             <div class="nav-dd-menu">
               <a href="#" data-tab="files">내 파일</a>
@@ -685,10 +714,15 @@
         fd.append("policyAcceptedAt", new Date().toISOString());
       }
 
-      // Confirm session
-      fetch("/api/me")
-        .then((r) => (r.ok ? r.json() : Promise.reject()))
-        .then((d) => {
+      // 로그인 전/후 같은 페이지(같은 골격). 로그아웃이면 리다이렉트 대신
+      // 상단 '로그인' 드롭다운을 띄우고, 로그인하면 그 자리를 계정 메뉴로 바꾼다.
+      function applyAuth(loggedIn, d) {
+        document.body.dataset.auth = loggedIn ? "in" : "out";
+        const loginDd = document.getElementById("loginDd");
+        const acctDd = document.getElementById("acctDd");
+        if (loginDd) loginDd.hidden = loggedIn;
+        if (acctDd) acctDd.hidden = !loggedIn;
+        if (loggedIn && d) {
           document.getElementById("user").textContent = d.user + " 님 ";
           document.getElementById("settingsUserName").textContent = d.user;
           setStudentIdUi(d.studentId || getLocalStudentId());
@@ -698,11 +732,67 @@
           if (d.isAdmin) {
             document.getElementById("adminLink").style.display = "inline";
           }
-          // 일반 사용자: 잔액 박스 표시
           if (!d.isAdmin) loadBalance();
           loadFiles();
-        })
-        .catch(() => (location.href = "/login.html"));
+        }
+      }
+
+      // Confirm session
+      fetch("/api/me")
+        .then((r) => (r.ok ? r.json() : Promise.reject()))
+        .then((d) => applyAuth(true, d))
+        .catch(() => applyAuth(false));
+
+      // 로그인 폼(드롭다운) 제출
+      document
+        .getElementById("loginForm")
+        ?.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const err = document.getElementById("li_err");
+          err.style.display = "none";
+          const body = {
+            username: document.getElementById("li_username").value,
+            password: document.getElementById("li_password").value,
+            age14Confirmed: document.getElementById("li_age14").checked,
+            termsAccepted: document.getElementById("li_agree").checked,
+          };
+          if (!body.age14Confirmed || !body.termsAccepted) {
+            err.textContent = "만 14세 이상 확인과 약관 동의가 필요합니다.";
+            err.style.display = "block";
+            return;
+          }
+          const btn = document.getElementById("li_btn");
+          btn.disabled = true;
+          btn.textContent = "로그인 중...";
+          try {
+            const res = await fetch("/api/login", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "로그인 실패");
+            location.reload();
+          } catch (ex) {
+            err.textContent = ex.message;
+            err.style.display = "block";
+            btn.disabled = false;
+            btn.textContent = "로그인";
+          }
+        });
+
+      // 로그아웃 상태에서 보고서 종류를 누르면 로그인 드롭다운을 연다.
+      function openLoginDropdown() {
+        const dd = document.getElementById("loginDd");
+        if (!dd || dd.hidden) return false;
+        document
+          .querySelectorAll(".nav-dd.open")
+          .forEach((d) => d.classList.remove("open"));
+        dd.classList.add("open");
+        document.getElementById("navMenu")?.classList.add("open");
+        document.getElementById("li_username")?.focus();
+        return true;
+      }
 
       async function loadBalance() {
         try {
@@ -829,7 +919,7 @@
       document.getElementById("logout").addEventListener("click", async (e) => {
         e.preventDefault();
         await fetch("/api/logout", { method: "POST" });
-        location.href = "/login.html";
+        location.href = "/"; // 같은 페이지로 — 로그아웃 골격(로그인 드롭다운)으로 전환
       });
 
       // 상단 탭 전환
@@ -878,6 +968,12 @@
         document.querySelectorAll(".nav-dd-menu a[data-report]").forEach((a) => {
           a.addEventListener("click", (e) => {
             e.preventDefault();
+            closeAll();
+            // 로그아웃 상태면 폼 대신 로그인 드롭다운을 연다.
+            if (document.body.dataset.auth === "out") {
+              if (typeof openLoginDropdown === "function") openLoginDropdown();
+              return;
+            }
             const radio = document.querySelector(
               `input[name="reportType"][value="${a.dataset.report}"]`,
             );
@@ -886,7 +982,6 @@
               updateReportTypeView();
             }
             showTab("reports");
-            closeAll();
             menu?.classList.remove("open");
             document
               .getElementById("reportsPanel")
@@ -974,7 +1069,17 @@
           }
         }
       }
-      reportTypeRadios.forEach((r) => r.addEventListener("change", updateReportTypeView));
+      reportTypeRadios.forEach((r) =>
+        r.addEventListener("change", () => {
+          // 로그아웃 상태면 선택을 취소하고 로그인 드롭다운을 연다.
+          if (document.body.dataset.auth === "out") {
+            r.checked = false;
+            if (typeof openLoginDropdown === "function") openLoginDropdown();
+            return;
+          }
+          updateReportTypeView();
+        }),
+      );
       updateReportTypeView();
 
       const form = document.getElementById("form");

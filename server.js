@@ -2019,10 +2019,9 @@ app.get("/admin", (req, res) => {
 });
 
 app.get("/", (req, res) => {
-  if (getSessionUser(req)) {
-    return res.sendFile(path.join(__dirname, "public", "index.html"));
-  }
-  res.redirect("/login.html");
+  // 로그인 여부와 무관하게 같은 페이지(같은 골격)를 준다. 로그아웃 상태면
+  // index.html 이 상단 '로그인' 드롭다운을 띄우고, 로그인하면 그 자리가 계정 메뉴로 바뀐다.
+  res.sendFile(path.join(__dirname, "public", "index.html"));
 });
 
 app.get("/healthz", (req, res) => res.json({ ok: true }));

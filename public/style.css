@@ -118,9 +118,9 @@ html {
 }
 
 body {
-  width: min(1080px, calc(100% - 32px));
+  width: min(1180px, calc(100% - 40px));
   margin: 0 auto;
-  padding: 28px 0 56px;
+  padding: 24px 0 56px;
   font-family: var(--font-sans);
   color: var(--text);
   background: var(--bg);
@@ -2332,11 +2332,15 @@ textarea.tool-input {
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   box-shadow: var(--shadow-sm);
+  /* 좁은 본문 컬럼 밖으로 빠져나가 화면 끝까지 가는 풀폭 바(답답함 해소, SNU식) */
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-bottom: 18px;
 }
 .topnav-inner {
-  max-width: 1200px;
+  max-width: 1180px;
   margin: 0 auto;
-  padding: 0 28px;
+  padding: 0 32px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2437,6 +2441,31 @@ textarea.tool-input {
   border-radius: 999px;
   padding: 1px 7px;
   margin-left: auto;
+}
+/* 로그인 드롭다운(폼) */
+.nav-login-menu {
+  min-width: 320px;
+  padding: 18px;
+}
+.nav-login-menu .field {
+  margin: 0 0 10px;
+}
+.nav-login-menu .field-label {
+  font-size: 13px;
+  display: block;
+  margin-bottom: 4px;
+}
+.nav-login-menu input[type="text"],
+.nav-login-menu input[type="password"],
+.nav-login-menu input:not([type]) {
+  width: 100%;
+}
+.nav-login-menu .check-line {
+  font-size: 12.5px;
+  margin: 6px 0;
+}
+.nav-login-menu .btn {
+  width: 100%;
 }
 .topnav-burger {
   display: none;

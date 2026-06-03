@@ -129,7 +129,7 @@
       </p>
       <div class="home-hero-cta">
         <button type="button" class="btn btn-primary btn-lg" id="heroStart">지금 시작하기 →</button>
-        <a class="btn btn-outline btn-lg" href="#reportTypes">어떤 게 되나요?</a>
+        <a class="btn btn-outline btn-lg" href="#features">어떤 게 되나요?</a>
       </div>
       <ul class="home-hero-points">
         <li>화학 사전 · 화학 결과 · 물리 결과 3종</li>
@@ -548,6 +548,65 @@
       <pre id="progress"></pre>
       <div id="resultArea"></div>
     </div>
+
+    <!-- ── 홍보: 무엇이 되나요 ───────────────────────────── -->
+    <section class="section" id="features">
+      <div class="section-head">
+        <h2>어떤 보고서를 만들 수 있나요?</h2>
+        <p>업로드한 자료를 분석해 학교 양식에 맞는 초안을 만들어 줍니다. 표·그래프·사진·수식까지 문서 안에 직접 들어갑니다.</p>
+      </div>
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="feature-ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6M10 3v6l-5.4 9.4A2 2 0 0 0 6.3 21h11.4a2 2 0 0 0 1.7-2.6L14 9V3"/><path d="M7.5 14h9"/></svg>
+          </div>
+          <h3>화학 사전보고서</h3>
+          <p>실험 매뉴얼 PDF에서 이론·원리를 전개하고, 시약 물성을 정리해 사전보고서 초안을 만듭니다.</p>
+          <span class="feature-tag">매뉴얼 PDF → 사전보고서</span>
+        </div>
+        <div class="feature-card">
+          <div class="feature-ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="6" rx="0.5"/><rect x="12.5" y="7" width="3" height="10" rx="0.5"/><rect x="18" y="9" width="3" height="8" rx="0.5"/></svg>
+          </div>
+          <h3>화학 결과보고서</h3>
+          <p>데이터·사진을 분석해 평균·오차를 계산하고, 표와 차트를 그려 사전보고서 뒤 결과 분량을 채웁니다.</p>
+          <span class="feature-tag">데이터·사진 → 결과 추가분</span>
+        </div>
+        <div class="feature-card">
+          <div class="feature-ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1.6"/><ellipse cx="12" cy="12" rx="10" ry="4.4"/><ellipse cx="12" cy="12" rx="10" ry="4.4" transform="rotate(60 12 12)"/><ellipse cx="12" cy="12" rx="10" ry="4.4" transform="rotate(120 12 12)"/></svg>
+          </div>
+          <h3>물리 결과보고서</h3>
+          <p>PASCO Capstone(.cap)·엑셀·CSV 데이터로 실험 파트별 표·그래프·분석·결론을 구성합니다.</p>
+          <span class="feature-tag">.cap·엑셀 → 결과보고서</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 홍보: 3단계 ───────────────────────────── -->
+    <section class="section" id="how">
+      <div class="section-head">
+        <h2>3단계면 끝</h2>
+        <p>복잡한 설정 없이, 올리고 기다리고 받으면 됩니다.</p>
+      </div>
+      <div class="steps">
+        <div class="step">
+          <span class="step-num">1</span>
+          <h3>자료 업로드</h3>
+          <p>매뉴얼·실험 데이터·사진을 드래그앤드롭으로 올립니다.</p>
+        </div>
+        <div class="step">
+          <span class="step-num">2</span>
+          <h3>AI가 초안 작성</h3>
+          <p>진행 상황을 실시간으로 보여주며 보고서 초안을 만듭니다.</p>
+        </div>
+        <div class="step">
+          <span class="step-num">3</span>
+          <h3>검토 후 다운로드</h3>
+          <p>.docx / .hwpx로 받아 직접 확인·수정한 뒤 사용합니다.</p>
+        </div>
+      </div>
+    </section>
     </section>
 
     <section id="filesPanel" class="tab-panel" data-tab-panel="files" hidden>
@@ -669,10 +728,6 @@
         <a href="/terms.html">이용약관</a>
         <a href="/privacy.html">개인정보처리방침</a>
         <a href="/refund.html">환불정책</a>
-        <a href="/changelog.html">패치노트</a>
-        <a href="/tools/index.html">도구 모음</a>
-        <a href="/guide.html">이용 가이드</a>
-        <a href="/examples.html">예시 모음</a>
         <a href="https://blog.naver.com/physicjun1905" target="_blank" rel="noopener">블로그</a>
         <a href="https://github.com/fakeminjun7321/lab-report-generator-web" target="_blank" rel="noopener">GitHub</a>
       </div>
@@ -978,7 +1033,11 @@
             if (!wasOpen) dd.classList.add("open");
           });
         });
-        document.addEventListener("click", closeAll);
+        // 드롭다운 바깥을 클릭할 때만 닫는다. (로그인 폼 등 .nav-dd 내부 클릭은
+        // 닫지 않음 — 아이디·비번 입력하려다 창이 사라지던 문제 수정)
+        document.addEventListener("click", (e) => {
+          if (!e.target.closest(".nav-dd")) closeAll();
+        });
 
         document.getElementById("navBurger")?.addEventListener("click", (e) => {
           e.stopPropagation();

@@ -115,6 +115,13 @@ html[data-theme="dark"] {
 html {
   min-height: 100%;
   background: var(--bg);
+  scroll-behavior: smooth;
+}
+/* 스티키 상단바(66px) 아래로 가리지 않게 앵커 스크롤 여백 */
+#features,
+#how,
+#reportTypes {
+  scroll-margin-top: 84px;
 }
 
 body {

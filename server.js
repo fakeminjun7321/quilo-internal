@@ -194,6 +194,7 @@ const {
   sendFeedbackEmail,
 } = require("./lib/feedback-mailer");
 const { getVersionInfo } = require("./lib/version-info");
+const { translatePdf } = require("./lib/pipelines/pdf-translate/translate");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -970,6 +971,185 @@ app.post(
     );
   },
 );
+
+// ── PDF 통번역 (관리자 테스트 전용) ─────────────────────────────────────────────
+// DeepL 식 문서 번역: 그림·레이아웃은 그대로 두고 텍스트만 한국어로 교체한다.
+// 외부로 PDF 를 보내지 않고 우리 서버에서만 처리한다 (Claude + PyMuPDF).
+// 안정화되면 로그인+크레딧 흐름으로 일반 공개 예정.
+app.post(
+  "/api/translate-pdf",
+  requireAdmin,
+  upload.single("pdf"),
+  async (req, res) => {
+    const file = req.file;
+    if (!file) {
+      return res.status(400).json({ error: "PDF 파일을 업로드하세요." });
+    }
+    if (
+      file.mimetype !== "application/pdf" &&
+      !/\.pdf$/i.test(file.originalname || "")
+    ) {
+      return res.status(400).json({ error: "PDF 파일만 업로드 가능합니다." });
+    }
+
+    const userInfo = getSessionUser(req);
+
+    // 모델 선택(관리자) — 기본은 translate.js 의 기본값(문서 번역엔 Sonnet 으로 충분).
+    const ALLOWED_MODELS = [
+      "claude-opus-4-8",
+      "claude-opus-4-7",
+      "claude-sonnet-4-6",
+    ];
+    const requested = String(req.body.model || "").trim();
+    const model = ALLOWED_MODELS.includes(requested) ? requested : null;
+
+    // 진행 중 작업 자동 중단 (generate 와 동일 정책)
+    if (userInfo.id) {
+      const prevJobId = activeJobByUser.get(userInfo.id);
+      if (prevJobId) {
+        const prevJob = jobs.get(prevJobId);
+        if (prevJob && prevJob.status === "running" && prevJob.abortController) {
+          prevJob.autoAborted = true;
+          pushProgress(prevJob, "🔄 새 작업 시작 — 이전 작업 자동 중단");
+          prevJob.abortController.abort();
+        }
+      }
+    }
+
+    const job = createJob(userInfo);
+    job.reportType = "pdf-translate";
+    if (userInfo.id) activeJobByUser.set(userInfo.id, job.id);
+
+    res.json({ jobId: job.id });
+
+    runPdfTranslation(job, {
+      pdfBuffer: file.buffer,
+      originalName: file.originalname || "document.pdf",
+      model,
+    }).catch((err) => {
+      job.status = "error";
+      job.error = err.message || String(err);
+      pushProgress(job, `❌ 오류: ${job.error}`);
+      job.listeners.forEach((r) => {
+        sendSse(r, "error", job.error);
+        r.end();
+      });
+      job.listeners = [];
+    });
+  },
+);
+
+function buildTranslatedFilename(originalName) {
+  const baseRaw = String(originalName || "document.pdf").replace(/\.pdf$/i, "");
+  const base = sanitizeForFilename(baseRaw) || "document";
+  return `${base}_KO.pdf`;
+}
+
+async function runPdfTranslation(job, { pdfBuffer, originalName, model }) {
+  const t0 = Date.now();
+  const timeoutMin = Math.round(JOB_TIMEOUT_MS / 60000);
+  pushProgress(job, `🚀 PDF 통번역 시작 (timeout: ${timeoutMin}분)`);
+
+  const ac = new AbortController();
+  job.abortController = ac;
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    pushProgress(job, `⏰ ${timeoutMin}분 초과 — 강제 종료 중...`);
+    ac.abort();
+  }, JOB_TIMEOUT_MS);
+
+  try {
+    const sizeKB = Math.round(pdfBuffer.length / 1024);
+    pushProgress(job, `📥 PDF 수신 (${sizeKB}KB)`);
+
+    const result = await translatePdf({
+      pdfBuffer,
+      model,
+      signal: ac.signal,
+      onProgress: (msg) => pushProgress(job, msg),
+    });
+
+    job.result = result.buffer;
+    job.mimeType = "application/pdf";
+    job.filename = buildTranslatedFilename(originalName);
+    job.status = "done";
+
+    const totalSec = Math.floor((Date.now() - t0) / 1000);
+    const outKB = Math.round(result.buffer.length / 1024);
+    pushProgress(
+      job,
+      `🎉 완료! ${result.pageCount}쪽 / 문단 ${result.blockCount}개 → ${outKB}KB, 총 ${totalSec}초. 다운로드 가능합니다.`,
+    );
+
+    if (result.cost) {
+      pushProgress(job, `📊 ${pricing.formatCostLine(result.cost)}`);
+      addToTotal(result.cost, null);
+    }
+
+    // 사용량 기록 (관리자 통계용). 파일함(Supabase storage)은 docx/hwpx MIME 만
+    // 허용하도록 만들어져 있어 PDF 는 저장하지 않는다 — 다운로드는 24시간 동안
+    // job 결과로 제공된다. 일반 공개 시 버킷 정책과 함께 파일함 저장을 켠다.
+    if (supa.isEnabled() && job.userInfo?.id) {
+      try {
+        await supa.recordUsage({
+          userId: job.userInfo.id,
+          jobId: job.id,
+          textCostUsd: result.cost?.total || 0,
+          imageCostUsd: 0,
+          meta: {
+            reportType: "pdf-translate",
+            reportLabel: "PDF 통번역",
+            title: originalName,
+            model: result.cost?.model,
+            inputTokens: result.cost?.inputTokens,
+            outputTokens: result.cost?.outputTokens,
+            cacheReadTokens: result.cost?.cacheReadTokens,
+            cacheWriteTokens: result.cost?.cacheWriteTokens,
+            pageCount: result.pageCount,
+            blockCount: result.blockCount,
+          },
+        });
+      } catch (e) {
+        pushProgress(job, `⚠ 사용량 통계 기록 실패: ${e.message}`);
+      }
+    } else {
+      pushProgress(
+        job,
+        `📊 서버 누적 (메모리): ${totalUsage.jobs}건 / 총 ${fmtUSD(totalUsage.totalUSD)} ${fmtKRW(totalUsage.totalUSD)}`,
+      );
+    }
+    // 관리자 전용 기능 — 크레딧 차감 없음.
+  } catch (e) {
+    if (job.autoAborted) {
+      throw new Error("새 작업 시작으로 자동 중단되었습니다.");
+    }
+    if (job.userAborted) {
+      throw new Error("사용자가 작업을 중지했습니다.");
+    }
+    if (timedOut) {
+      const elapsedMin = Math.floor((Date.now() - t0) / 60000);
+      throw new Error(
+        `${timeoutMin}분 timeout으로 작업이 강제 종료되었습니다 (실제 ${elapsedMin}분 경과).`,
+      );
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+    if (
+      job.userInfo?.id &&
+      activeJobByUser.get(job.userInfo.id) === job.id
+    ) {
+      activeJobByUser.delete(job.userInfo.id);
+    }
+  }
+
+  job.listeners.forEach((r) => {
+    sendSse(r, "done", { filename: job.filename, fileId: job.fileId });
+    r.end();
+  });
+  job.listeners = [];
+}
 
 // 매뉴얼 파일명에서 첫 번째 숫자 그룹을 추출 (예: "I-08_Synthe..." -> "08")
 function extractManualNumber(filename) {

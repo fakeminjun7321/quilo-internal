@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PDF 통번역 (베타) · 보고서 작성 툴</title>
+    <meta name="description" content="PDF 문서를 그림·레이아웃 그대로 두고 텍스트만 한국어로 통번역합니다. (관리자 테스트 중)" />
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("theme");
+          if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+          document.documentElement.setAttribute("data-theme", t);
+        } catch (e) {}
+      })();
+    </script>
+    <link rel="stylesheet" href="/style.css" />
+    <style>
+      .tr-wrap { max-width: 760px; margin: 0 auto; }
+      .tr-note { font-size: 13px; line-height: 1.6; }
+      .tr-note ul { margin: 8px 0 0; padding-left: 18px; }
+      .beta-badge {
+        display: inline-block; font-size: 11px; font-weight: 700;
+        padding: 2px 8px; border-radius: 999px; vertical-align: middle;
+        background: var(--accent, #2563eb); color: #fff; margin-left: 8px;
+      }
+      #gate { text-align: center; padding: 48px 16px; }
+    </style>
+  </head>
+  <body class="landing">
+    <div class="landing-bg" aria-hidden="true"></div>
+
+    <nav class="landing-nav">
+      <div class="landing-nav-inner">
+        <a href="/" class="brand">
+          <span class="brand-mark" aria-hidden="true">R</span>
+          보고서 작성 툴
+        </a>
+        <div class="landing-nav-actions">
+          <a href="/" class="nav-link">메인</a>
+          <a href="/tools/index.html" class="nav-link">도구 모음</a>
+          <button type="button" id="themeToggle" class="theme-toggle" aria-label="다크 모드로 전환" title="다크 모드로 전환">
+            <span class="theme-icon-light" aria-hidden="true">🌙</span>
+            <span class="theme-icon-dark" aria-hidden="true">☀️</span>
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <main class="landing-shell">
+      <section class="section" style="border-top: 0">
+        <div class="tr-wrap">
+          <div class="tool-page-head">
+            <h1>PDF 통번역 <span class="beta-badge">관리자 베타</span></h1>
+            <p>PDF를 올리면 <b>그림·표·레이아웃은 그대로 두고 텍스트만 한국어</b>로 바꿔 PDF로 돌려줍니다. 외부로 파일을 보내지 않고 서버에서만 처리합니다(Claude + PyMuPDF).</p>
+          </div>
+
+          <!-- 접근 게이트: 로그인/관리자 확인 후 도구 노출 -->
+          <div id="gate" class="card">
+            <p class="hint">권한 확인 중...</p>
+          </div>
+
+          <!-- 도구 본체 (관리자만 노출) -->
+          <div id="tool" style="display: none">
+            <form id="trForm" class="card">
+              <div class="field">
+                <span class="field-label">번역할 PDF <span class="req">*</span></span>
+                <div class="dropzone">
+                  <input id="trPdf" name="pdf" type="file" accept="application/pdf,.pdf" required aria-label="번역할 PDF" />
+                  <span class="dropzone-icon" aria-hidden="true">📄</span>
+                  <span class="dropzone-title">PDF를 끌어다 놓거나 클릭</span>
+                  <span class="dropzone-sub">텍스트 레이어가 있는 PDF (스캔본/OCR 미지원)</span>
+                  <span class="dropzone-file" data-dz-file></span>
+                </div>
+              </div>
+
+              <div class="field">
+                <label>
+                  <span class="field-label">번역 모델</span>
+                  <select id="trModel" name="model">
+                    <option value="claude-sonnet-4-6" selected>Sonnet 4.6 — 빠르고 저렴 (문서 번역 권장)</option>
+                    <option value="claude-opus-4-8">Opus 4.8 — 최고 품질 (느림·고가)</option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="form-actions">
+                <button type="submit" id="trBtn" class="btn btn-primary btn-lg">한국어로 번역</button>
+              </div>
+              <p id="trError" class="form-error" style="display: none"></p>
+            </form>
+
+            <div class="card tr-note">
+              <b>참고</b>
+              <ul>
+                <li>한국어가 원문보다 길어지면 칸에 맞춰 글자 크기를 자동으로 줄입니다. 빽빽한 표/캡션은 작게 보일 수 있어요.</li>
+                <li>그림 안에 글자가 박힌 이미지(스캔본)는 번역되지 않습니다 — 텍스트 레이어가 있는 PDF만 지원합니다.</li>
+                <li>볼드/이탤릭 등 글자 스타일은 단순화되며, 위치·색은 최대한 유지합니다.</li>
+                <li>결과물은 24시간 동안 다시 내려받을 수 있습니다(이 기기 기준).</li>
+              </ul>
+            </div>
+
+            <div id="progressArea" style="display: none">
+              <div class="status-head">
+                <span class="spinner" id="genSpinner" aria-hidden="true"></span>
+                <h2 id="statusTitle">번역 중...</h2>
+                <button type="button" id="stopBtn" class="stop-btn" style="display: none">중지</button>
+              </div>
+              <pre id="progress"></pre>
+              <div id="resultArea"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-links">
+        <a href="/">메인</a>
+        <a href="/tools/index.html">도구 모음</a>
+        <a href="/guide.html">이용 가이드</a>
+      </div>
+      <div class="footer-copy">© 2026 Lab Report Generator Web · MIT License</div>
+    </footer>
+
+    <script src="/theme.js"></script>
+    <script>
+      const gate = document.getElementById("gate");
+      const tool = document.getElementById("tool");
+
+      // 접근 게이트: 로그인 + 관리자 확인
+      (async function guard() {
+        try {
+          const res = await fetch("/api/me");
+          if (res.status === 401) {
+            gate.innerHTML =
+              '<p class="hint">로그인이 필요합니다.</p><p style="margin-top:12px"><a class="btn btn-primary" href="/login.html">로그인</a></p>';
+            return;
+          }
+          const me = await res.json();
+          if (!me.isAdmin) {
+            gate.innerHTML =
+              '<p class="hint">이 기능은 현재 <b>관리자 테스트 중</b>입니다. 안정화되면 일반 공개됩니다.</p>';
+            return;
+          }
+          gate.style.display = "none";
+          tool.style.display = "block";
+          initTool();
+        } catch (e) {
+          gate.innerHTML = '<p class="hint">권한 확인 중 오류가 발생했습니다.</p>';
+        }
+      })();
+
+      function initTool() {
+        const form = document.getElementById("trForm");
+        const btn = document.getElementById("trBtn");
+        const stopBtn = document.getElementById("stopBtn");
+        const errEl = document.getElementById("trError");
+        const progressArea = document.getElementById("progressArea");
+        const progressEl = document.getElementById("progress");
+        const resultArea = document.getElementById("resultArea");
+        const statusTitle = document.getElementById("statusTitle");
+        const genSpinner = document.getElementById("genSpinner");
+        const fileInput = document.getElementById("trPdf");
+        let currentJobId = null;
+        let currentEs = null;
+
+        // 드롭존: 파일명 표시 + 드래그 하이라이트 (index.html 과 동일 동작)
+        document.querySelectorAll(".dropzone").forEach((dz) => {
+          const input = dz.querySelector('input[type="file"]');
+          if (!input || dz.dataset.dzInit) return;
+          dz.dataset.dzInit = "1";
+          const fileEl = dz.querySelector("[data-dz-file]");
+          const render = () => {
+            if (input.files && input.files.length) {
+              dz.classList.add("is-filled");
+              if (fileEl) fileEl.textContent = input.files[0].name;
+            } else {
+              dz.classList.remove("is-filled");
+              if (fileEl) fileEl.textContent = "";
+            }
+          };
+          input.addEventListener("change", render);
+          ["dragenter", "dragover"].forEach((ev) =>
+            dz.addEventListener(ev, (e) => {
+              e.preventDefault();
+              dz.classList.add("is-dragover");
+            }),
+          );
+          ["dragleave", "drop"].forEach((ev) =>
+            dz.addEventListener(ev, () => dz.classList.remove("is-dragover")),
+          );
+          dz.addEventListener("drop", (e) => {
+            e.preventDefault();
+            if (e.dataTransfer && e.dataTransfer.files.length) {
+              input.files = e.dataTransfer.files;
+              render();
+            }
+          });
+        });
+
+        function appendLine(text) {
+          progressEl.textContent += text + "\n";
+          progressEl.scrollTop = progressEl.scrollHeight;
+        }
+
+        function setBusy(busy) {
+          btn.disabled = busy;
+          fileInput.disabled = busy;
+          btn.textContent = busy ? "번역 중..." : "한국어로 번역";
+          genSpinner.style.display = busy ? "inline-block" : "none";
+          stopBtn.style.display = busy ? "inline-block" : "none";
+        }
+
+        form.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          errEl.style.display = "none";
+          if (!fileInput.files || !fileInput.files.length) {
+            errEl.textContent = "PDF 파일을 선택하세요.";
+            errEl.style.display = "block";
+            return;
+          }
+
+          const fd = new FormData();
+          fd.append("pdf", fileInput.files[0]);
+          fd.append("model", document.getElementById("trModel").value);
+
+          progressArea.style.display = "block";
+          progressEl.textContent = "";
+          resultArea.innerHTML = "";
+          statusTitle.textContent = "번역 중...";
+          setBusy(true);
+
+          try {
+            const res = await fetch("/api/translate-pdf", {
+              method: "POST",
+              body: fd,
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "요청 실패");
+            currentJobId = data.jobId;
+            streamJob(data.jobId);
+          } catch (err) {
+            appendLine("오류: " + err.message);
+            statusTitle.textContent = "오류";
+            setBusy(false);
+          }
+        });
+
+        stopBtn.addEventListener("click", async () => {
+          if (!currentJobId) return;
+          stopBtn.textContent = "중지 중...";
+          try {
+            await fetch(`/api/jobs/${currentJobId}/abort`, { method: "POST" });
+          } catch (e) {}
+        });
+
+        function streamJob(jobId) {
+          const es = new EventSource(`/api/jobs/${jobId}/stream`);
+          currentEs = es;
+
+          es.addEventListener("progress", (e) => {
+            appendLine(JSON.parse(e.data));
+          });
+
+          es.addEventListener("done", (e) => {
+            const data = JSON.parse(e.data);
+            statusTitle.textContent = "완료 ✓";
+            const link = document.createElement("a");
+            link.href = `/api/jobs/${jobId}/download`;
+            link.textContent = `📥 ${data.filename} 다운로드`;
+            link.download = data.filename;
+            link.className = "btn btn-primary";
+            resultArea.appendChild(link);
+            es.close();
+            setBusy(false);
+            stopBtn.textContent = "중지";
+          });
+
+          es.addEventListener("error", (e) => {
+            const msg = e.data
+              ? JSON.parse(e.data)
+              : "서버 연결이 끊겼습니다. 잠시 후 다시 시도하세요.";
+            appendLine("오류: " + msg);
+            statusTitle.textContent = "오류";
+            es.close();
+            setBusy(false);
+            stopBtn.textContent = "중지";
+          });
+        }
+      }
+    </script>
+  </body>
+</html>

@@ -61,12 +61,6 @@
                 <input id="password2" name="password2" type="password" required minlength="6" autocomplete="new-password" />
               </label>
             </div>
-            <div class="field">
-              <label>
-                <span class="field-label">학번 (선택 — 물리 결과보고서에 필요)</span>
-                <input id="studentId" name="studentId" maxlength="30" inputmode="numeric" placeholder="예: 2402" />
-              </label>
-            </div>
             <label class="check-line">
               <input type="checkbox" id="age14" required />
               <span>만 14세 이상입니다 <strong>(필수)</strong></span>
@@ -140,7 +134,6 @@
             body: JSON.stringify({
               username: document.getElementById("username").value,
               password: pw,
-              studentId: document.getElementById("studentId").value,
               age14Confirmed: document.getElementById("age14").checked,
               termsAccepted: document.getElementById("agree").checked,
             }),

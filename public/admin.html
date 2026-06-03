@@ -553,6 +553,12 @@
               <input data-act="testername" placeholder="테스터 이름 추가" style="font-size:13px;padding:4px 8px" />
               <button data-act="addtester" style="font-size:12px;padding:3px 8px">추가</button>
             </div>
+            <div style="margin-top:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+              <span class="hint">테스터 1인당 하루 한도:</span>
+              <input data-act="limitval" type="number" min="0" value="${Number(f.dailyLimit) || 0}" style="width:84px;font-size:13px;padding:4px 8px" />
+              <button data-act="savelimit" style="font-size:12px;padding:3px 8px">한도 저장</button>
+              <span class="hint">0 = 무제한 · 서버 재시작 시 기본값으로 초기화</span>
+            </div>
           </div>`,
           )
           .join("");
@@ -603,6 +609,28 @@
               alert(data.error || "추가 실패");
               return;
             }
+            loadBeta();
+          } else if (act === "savelimit") {
+            const v = item.querySelector('[data-act="limitval"]').value;
+            const res = await fetch(
+              `/api/admin/beta/${encodeURIComponent(key)}`,
+              {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  dailyLimit: Math.max(0, parseInt(v, 10) || 0),
+                }),
+              },
+            );
+            const data = await res.json();
+            if (!res.ok) {
+              alert(data.error || "저장 실패");
+              return;
+            }
+            alert(
+              `'${key}' 하루 한도: ` +
+                (data.dailyLimit === 0 ? "무제한" : data.dailyLimit + "회/일"),
+            );
             loadBeta();
           }
         });

@@ -344,13 +344,39 @@ function requireAdmin(req, res, next) {
 }
 
 // 베타 기능 게이트: 관리자이거나, 해당 베타가 enabled 이고 테스터로 지정된 사용자만 통과.
+// 베타 기능 일일 사용 한도 (per-feature). rate-limit과 동일하게 메모리 보관 → 재시작 시 리셋.
+// 값 = 테스터 1인당 하루 허용 횟수. 0 이하 = 무제한. 기본값 BETA_DAILY_LIMIT(기본 15).
+const BETA_DAILY_LIMIT_DEFAULT = Math.max(
+  0,
+  Number(process.env.BETA_DAILY_LIMIT) || 15,
+);
+const betaDailyLimits = new Map(); // featureKey -> limit(int)
+function getBetaDailyLimit(key) {
+  return betaDailyLimits.has(key)
+    ? betaDailyLimits.get(key)
+    : BETA_DAILY_LIMIT_DEFAULT;
+}
+
 function requireBeta(key) {
   return async (req, res, next) => {
     const u = getSessionUser(req);
     if (!u) return res.status(401).json({ error: "로그인이 필요합니다." });
-    if (u.isAdmin) return next();
+    if (u.isAdmin) return next(); // 관리자는 접근·한도 모두 면제
     try {
       if (supa.isEnabled() && u.id && (await supa.userHasBeta(u.id, key))) {
+        // 접근 OK → 테스터 일일 사용 한도 확인
+        const chk = rateLimit.checkBetaUsageLimit(
+          u.id,
+          key,
+          getBetaDailyLimit(key),
+        );
+        if (!chk.allowed) {
+          return res.status(429).json({
+            error: `오늘 베타 사용 한도(${chk.limit}회)를 모두 사용했습니다. 내일 다시 이용해 주세요.`,
+            limit: chk.limit,
+            used: chk.count,
+          });
+        }
         return next();
       }
     } catch {
@@ -1028,9 +1054,19 @@ app.get("/api/me/beta", requireAuth, async (req, res) => {
       const all = await supa.listBetaFeatures();
       return res.json({
         features: all.filter((f) => f.enabled).map((f) => f.key),
+        admin: true, // 관리자는 한도 면제
       });
     }
-    return res.json({ features: await supa.getUserBetaFeatures(u.id) });
+    const keys = await supa.getUserBetaFeatures(u.id);
+    const usage = keys.map((k) => {
+      const lim = getBetaDailyLimit(k);
+      return {
+        key: k,
+        limit: lim, // 0 = 무제한
+        used: rateLimit.getBetaUsageCount(u.id, k),
+      };
+    });
+    return res.json({ features: keys, usage });
   } catch {
     return res.json({ features: [] });
   }
@@ -1040,7 +1076,14 @@ app.get("/api/admin/beta", requireAdmin, async (req, res) => {
   if (!supa.isEnabled())
     return res.status(503).json({ error: "Supabase 미설정" });
   try {
-    res.json({ features: await supa.listBetaFeatures() });
+    const features = await supa.listBetaFeatures();
+    res.json({
+      features: features.map((f) => ({
+        ...f,
+        dailyLimit: getBetaDailyLimit(f.key),
+      })),
+      defaultDailyLimit: BETA_DAILY_LIMIT_DEFAULT,
+    });
   } catch (e) {
     res
       .status(e.code === "BETA_TABLE_MISSING" ? 409 : 500)
@@ -1070,8 +1113,15 @@ app.patch("/api/admin/beta/:key", requireAdmin, async (req, res) => {
   if (!supa.isEnabled())
     return res.status(503).json({ error: "Supabase 미설정" });
   try {
-    await supa.setBetaFeatureEnabled(req.params.key, !!req.body.enabled);
-    res.json({ ok: true });
+    if (req.body.enabled !== undefined) {
+      await supa.setBetaFeatureEnabled(req.params.key, !!req.body.enabled);
+    }
+    if (req.body.dailyLimit !== undefined) {
+      // 0 이하 = 무제한
+      const n = Math.max(0, Math.trunc(Number(req.body.dailyLimit) || 0));
+      betaDailyLimits.set(req.params.key, n);
+    }
+    res.json({ ok: true, dailyLimit: getBetaDailyLimit(req.params.key) });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -1171,6 +1221,10 @@ app.post(
     const job = createJob(userInfo);
     job.reportType = "pdf-translate";
     if (userInfo.id) activeJobByUser.set(userInfo.id, job.id);
+    // 베타 일일 사용 기록 (테스터 한정 — 관리자는 면제). requireBeta 에서 한도 확인 완료.
+    if (userInfo.id && !userInfo.isAdmin) {
+      rateLimit.recordBetaUsage(userInfo.id, "pdf-translate");
+    }
 
     res.json({ jobId: job.id });
 

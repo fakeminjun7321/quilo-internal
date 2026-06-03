@@ -150,9 +150,11 @@
           }
           const me = await res.json();
           let allowed = !!me.isAdmin;
+          let betaInfo = null;
           if (!allowed) {
             try {
               const b = await fetch("/api/me/beta").then((r) => r.json());
+              betaInfo = b;
               allowed =
                 Array.isArray(b.features) && b.features.includes("pdf-translate");
             } catch {}
@@ -164,6 +166,17 @@
           }
           gate.style.display = "none";
           tool.style.display = "block";
+          // 비관리자 테스터: 오늘 남은 베타 사용량 표시
+          if (!me.isAdmin && betaInfo && Array.isArray(betaInfo.usage)) {
+            const u = betaInfo.usage.find((x) => x.key === "pdf-translate");
+            if (u && u.limit > 0) {
+              const left = Math.max(0, u.limit - u.used);
+              tool.insertAdjacentHTML(
+                "afterbegin",
+                `<p class="hint" style="margin:0 0 12px">오늘 사용 가능: <b>${left}/${u.limit}</b>회 (베타 한도)</p>`,
+              );
+            }
+          }
           initTool();
         } catch (e) {
           gate.innerHTML = '<p class="hint">권한 확인 중 오류가 발생했습니다.</p>';

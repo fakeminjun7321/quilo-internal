@@ -76,6 +76,17 @@
 
               <div class="field">
                 <label>
+                  <span class="field-label">변환 방식</span>
+                  <select id="trMode" name="mode">
+                    <option value="inplace" selected>빠른 번역 — 레이아웃·그림 그대로, 글자만 한국어 (일반 문서·매뉴얼)</option>
+                    <option value="retypeset">고품질 재조판 — 문서를 다시 조판, 수식 복원 (논문·수식 많은 문서, PDF 새로 생성)</option>
+                  </select>
+                </label>
+                <p class="hint" id="trModeHint" style="margin:4px 0 0">레이아웃을 그대로 두고 글자만 바꿉니다. 수식이 많은 문서는 “고품질 재조판”을 고르세요.</p>
+              </div>
+
+              <div class="field">
+                <label>
                   <span class="field-label">번역 모델</span>
                   <select id="trModel" name="model">
                     <option value="claude-sonnet-4-6" selected>Sonnet 4.6 — 빠르고 저렴 (문서 번역 권장)</option>
@@ -160,6 +171,21 @@
       })();
 
       function initTool() {
+        // 변환 방식에 따라 안내문 + 권장 모델 갱신
+        const modeSel = document.getElementById("trMode");
+        const modeHint = document.getElementById("trModeHint");
+        const modelSel = document.getElementById("trModel");
+        modeSel?.addEventListener("change", () => {
+          if (modeSel.value === "retypeset") {
+            modeHint.textContent =
+              "문서를 한국어로 다시 조판하고 수식을 복원해 새 PDF를 만듭니다. 수식 많은 논문에 적합(시간이 더 걸립니다). 수식 복원에는 Opus 권장.";
+            if (modelSel) modelSel.value = "claude-opus-4-8";
+          } else {
+            modeHint.textContent =
+              "레이아웃을 그대로 두고 글자만 바꿉니다. 수식이 많은 문서는 “고품질 재조판”을 고르세요.";
+          }
+        });
+
         const form = document.getElementById("trForm");
         const btn = document.getElementById("trBtn");
         const stopBtn = document.getElementById("stopBtn");
@@ -232,6 +258,7 @@
           const fd = new FormData();
           fd.append("pdf", fileInput.files[0]);
           fd.append("model", document.getElementById("trModel").value);
+          fd.append("mode", document.getElementById("trMode").value);
 
           progressArea.style.display = "block";
           progressEl.textContent = "";

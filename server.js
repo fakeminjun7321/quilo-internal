@@ -195,6 +195,7 @@ const {
 } = require("./lib/feedback-mailer");
 const { getVersionInfo } = require("./lib/version-info");
 const { translatePdf } = require("./lib/pipelines/pdf-translate/translate");
+const { retypesetPdf } = require("./lib/pipelines/pdf-translate/latex-gen");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1173,10 +1174,16 @@ app.post(
 
     res.json({ jobId: job.id });
 
+    const mode =
+      String(req.body.mode || "").trim() === "retypeset"
+        ? "retypeset"
+        : "inplace";
+
     runPdfTranslation(job, {
       pdfBuffer: file.buffer,
       originalName: file.originalname || "document.pdf",
       model,
+      mode,
     }).catch((err) => {
       job.status = "error";
       job.error = err.message || String(err);
@@ -1190,13 +1197,13 @@ app.post(
   },
 );
 
-function buildTranslatedFilename(originalName) {
+function buildTranslatedFilename(originalName, suffix = "_KO") {
   const baseRaw = String(originalName || "document.pdf").replace(/\.pdf$/i, "");
   const base = sanitizeForFilename(baseRaw) || "document";
-  return `${base}_KO.pdf`;
+  return `${base}${suffix}.pdf`;
 }
 
-async function runPdfTranslation(job, { pdfBuffer, originalName, model }) {
+async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) {
   const t0 = Date.now();
   const timeoutMin = Math.round(PDF_TRANSLATE_TIMEOUT_MS / 60000);
   pushProgress(job, `🚀 PDF 통번역 시작 (timeout: ${timeoutMin}분)`);
@@ -1214,23 +1221,36 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model }) {
     const sizeKB = Math.round(pdfBuffer.length / 1024);
     pushProgress(job, `📥 PDF 수신 (${sizeKB}KB)`);
 
-    const result = await translatePdf({
-      pdfBuffer,
-      model,
-      signal: ac.signal,
-      onProgress: (msg) => pushProgress(job, msg),
-    });
+    const result =
+      mode === "retypeset"
+        ? await retypesetPdf({
+            pdfBuffer,
+            model,
+            signal: ac.signal,
+            onProgress: (msg) => pushProgress(job, msg),
+          })
+        : await translatePdf({
+            pdfBuffer,
+            model,
+            signal: ac.signal,
+            onProgress: (msg) => pushProgress(job, msg),
+          });
 
     job.result = result.buffer;
     job.mimeType = "application/pdf";
-    job.filename = buildTranslatedFilename(originalName);
+    job.filename = buildTranslatedFilename(
+      originalName,
+      mode === "retypeset" ? "_재조판" : "_KO",
+    );
     job.status = "done";
 
     const totalSec = Math.floor((Date.now() - t0) / 1000);
     const outKB = Math.round(result.buffer.length / 1024);
     pushProgress(
       job,
-      `🎉 완료! ${result.pageCount}쪽 / 문단 ${result.blockCount}개 → ${outKB}KB, 총 ${totalSec}초. 다운로드 가능합니다.`,
+      mode === "retypeset"
+        ? `🎉 재조판 완료! ${outKB}KB, 총 ${totalSec}초. 다운로드 가능합니다.`
+        : `🎉 완료! ${result.pageCount}쪽 / 문단 ${result.blockCount}개 → ${outKB}KB, 총 ${totalSec}초. 다운로드 가능합니다.`,
     );
 
     if (result.cost) {

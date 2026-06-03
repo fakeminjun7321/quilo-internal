@@ -1894,12 +1894,30 @@ app.post("/api/admin/users", requireAdmin, async (req, res) => {
 app.patch("/api/admin/users/:id", requireAdmin, async (req, res) => {
   if (!supa.isEnabled())
     return res.status(503).json({ error: "Supabase 미설정" });
-  const { name, password, budgetUsd, budgetKrw, isAdmin, spentUsd } =
-    req.body || {};
+  const {
+    name,
+    password,
+    budgetUsd,
+    budgetKrw,
+    isAdmin,
+    spentUsd,
+    restrictedModel,
+    unlimited,
+  } = req.body || {};
   if (password != null && password !== "" && String(password).length < 5) {
     return res
       .status(400)
       .json({ error: "비밀번호는 최소 5자 이상이어야 합니다." });
+  }
+  // 모델 제한: "" = 전체 허용, 그 외엔 허용 모델 id만
+  if (restrictedModel !== undefined) {
+    const allowedRestrict = ["", "claude-opus-4-8", "claude-sonnet-4-6"];
+    const rm = restrictedModel == null ? "" : String(restrictedModel).trim();
+    if (!allowedRestrict.includes(rm)) {
+      return res
+        .status(400)
+        .json({ error: "허용되지 않은 모델 제한 값입니다." });
+    }
   }
   const patch = {};
   if (name) patch.name = String(name).trim();
@@ -1910,6 +1928,9 @@ app.patch("/api/admin/users/:id", requireAdmin, async (req, res) => {
   }
   if (isAdmin != null) patch.isAdmin = !!isAdmin;
   if (spentUsd != null) patch.spentUsd = Number(spentUsd);
+  if (restrictedModel !== undefined)
+    patch.restrictedModel = restrictedModel == null ? "" : String(restrictedModel).trim();
+  if (unlimited != null) patch.unlimited = !!unlimited;
   try {
     const user = await supa.updateUser(req.params.id, patch);
     res.json({ ok: true, user });

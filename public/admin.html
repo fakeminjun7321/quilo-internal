@@ -269,6 +269,7 @@
             <td>
               ${unlockBtn}
               <button data-act="edit" data-id="${u.id}">수정</button>
+              <button data-act="model" data-id="${u.id}">모델: ${u.restricted_model ? modelShort(u.restricted_model) + "만" : "전체"}</button>
               <button data-act="reset" data-id="${u.id}">사용량 0</button>
               <button data-act="delete" data-id="${u.id}" style="color: red">삭제</button>
             </td>
@@ -345,6 +346,26 @@
           const password = prompt("새 비밀번호:");
           if (!password) return;
           await patchUser(id, { password });
+          loadUsers();
+        } else if (act === "model") {
+          // 사용자별 모델 제한: 전체 / Opus만 / Sonnet만
+          const input = prompt(
+            "이 사용자가 쓸 수 있는 모델을 제한합니다.\n\n" +
+              "1 = 전체 허용 (사용자가 선택)\n" +
+              "2 = Opus만 (항상 Opus 4.8)\n" +
+              "3 = Sonnet만 (항상 Sonnet 4.6)\n\n" +
+              "번호 입력:",
+            "1",
+          );
+          if (input == null) return;
+          const map = {
+            1: "",
+            2: "claude-opus-4-8",
+            3: "claude-sonnet-4-6",
+          };
+          const key = String(input).trim();
+          if (!(key in map)) return alert("1, 2, 3 중 하나를 입력하세요.");
+          await patchUser(id, { restrictedModel: map[key] });
           loadUsers();
         }
       });

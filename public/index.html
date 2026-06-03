@@ -117,16 +117,27 @@
     </p>
 
     <section id="reportsPanel" class="tab-panel active" data-tab-panel="reports">
-    <div class="app-banner">
-      <div class="app-banner-ico" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>
+    <section class="home-hero" id="homeHero">
+      <span class="eyebrow">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15" aria-hidden="true"><path d="M5 3v4M3 5h4M6 17v4M4 19h4"/><path d="M13 3l2.4 6.6L22 12l-6.6 2.4L13 21l-2.4-6.6L4 12l6.6-2.4z"/></svg>
+        AI 학습 보조 · 화학 · 물리 실험 보고서
+      </span>
+      <h1>실험 보고서 초안,<br /><span class="grad">몇 분 만에 끝.</span></h1>
+      <p class="home-hero-sub">
+        매뉴얼·데이터·사진만 올리면 화학/물리 <b>사전·결과보고서 초안</b>을 학교 양식(.docx/.hwpx)으로 만들어 줍니다.
+        표·그래프·사진·수식까지 문서 안에 그대로 들어갑니다.
+      </p>
+      <div class="home-hero-cta">
+        <button type="button" class="btn btn-primary btn-lg" id="heroStart">지금 시작하기 →</button>
+        <a class="btn btn-outline btn-lg" href="#reportTypes">어떤 게 되나요?</a>
       </div>
-      <div>
-        <h2>보고서 만들기</h2>
-        <p>보고서 종류를 고르고 자료를 올리면 초안을 생성합니다. 결과는 반드시 직접 검토·수정해 사용하세요.</p>
-      </div>
-    </div>
-    <div class="report-toolbar">
+      <ul class="home-hero-points">
+        <li>화학 사전 · 화학 결과 · 물리 결과 3종</li>
+        <li>.docx / .hwpx(한글) 출력 · 표·차트·사진 자동 삽입</li>
+        <li>업로드 파일은 24시간만 보관</li>
+      </ul>
+    </section>
+    <div class="report-toolbar" id="reportTypes">
       <div id="balanceBox" class="balance-box" style="display: none">
         <strong>내 크레딧</strong>
         <span id="balCredits">...</span>
@@ -153,11 +164,6 @@
           <span class="rt-tag">.cap·엑셀 → 결과보고서</span>
         </label>
       </div>
-    </div>
-
-    <div id="choosePrompt" class="notice">
-      위에서 <strong>보고서 종류를 선택</strong>하면 입력 폼이 나타납니다.
-      <small>도구·예시·가이드는 상단 메뉴에서 바로 이용할 수 있어요.</small>
     </div>
 
     <div id="comingSoon" class="notice" hidden>
@@ -793,6 +799,17 @@
         document.getElementById("li_username")?.focus();
         return true;
       }
+
+      // 히어로 '지금 시작하기': 로그아웃이면 로그인 드롭다운, 로그인이면 보고서 종류로.
+      document.getElementById("heroStart")?.addEventListener("click", () => {
+        if (document.body.dataset.auth === "out") {
+          openLoginDropdown();
+        } else {
+          document
+            .getElementById("reportTypes")
+            ?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      });
 
       async function loadBalance() {
         try {

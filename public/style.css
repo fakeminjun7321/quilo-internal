@@ -1778,7 +1778,8 @@ body.landing {
   letter-spacing: -0.03em;
 }
 
-.hero h1 .grad {
+.hero h1 .grad,
+.home-hero h1 .grad {
   background: linear-gradient(100deg, var(--accent), #8b5cf6 70%);
   -webkit-background-clip: text;
   background-clip: text;
@@ -2488,6 +2489,59 @@ textarea.tool-input {
 }
 .slim-disclaimer strong {
   color: var(--text);
+}
+/* 홈 히어로 (홍보용 첫 화면) */
+.home-hero {
+  text-align: center;
+  padding: clamp(40px, 6vw, 72px) 20px clamp(28px, 4vw, 48px);
+  margin-bottom: 10px;
+  border-radius: var(--radius-lg);
+  background: radial-gradient(
+    1100px 420px at 50% -25%,
+    var(--accent-soft),
+    transparent 72%
+  );
+}
+.home-hero h1 {
+  font-size: clamp(31px, 5.6vw, 56px);
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+  margin: 16px 0 0;
+}
+.home-hero-sub {
+  max-width: 680px;
+  margin: 18px auto 0;
+  color: var(--text-muted);
+  font-size: clamp(14px, 1.6vw, 17px);
+  line-height: 1.7;
+}
+.home-hero-cta {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 28px;
+}
+.home-hero-points {
+  list-style: none;
+  padding: 0;
+  margin: 30px auto 0;
+  display: flex;
+  gap: 10px 22px;
+  justify-content: center;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.home-hero-points li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.home-hero-points li::before {
+  content: "✓";
+  color: var(--success);
+  font-weight: 800;
 }
 /* 드롭다운은 클릭으로만 연다(호버 자동 열림 없음) — SNU식, 의도치 않은 열림 방지 */
 @media (max-width: 760px) {

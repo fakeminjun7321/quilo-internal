@@ -152,7 +152,7 @@ def cmd_rasterize(pdf_path, out_dir, target_width_px=1400, max_pages=20):
     tile_h_px = 1800       # 타일 1장의 최대 높이(px)
     overlap_px = 130       # 타일 경계에서 줄이 잘리지 않도록 겹침
     max_tiles_per_page = 30
-    max_tiles_total = 80
+    max_tiles_total = 100
     os.makedirs(out_dir, exist_ok=True)
     doc = fitz.open(pdf_path)
     n = len(doc)

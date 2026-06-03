@@ -1341,7 +1341,7 @@ async function prepareScannedRouting(pdfBuffer, { signal, onProgress }) {
     onProgress(
       "🖼️ 텍스트 레이어가 없는 스캔/이미지 PDF 감지 → 고해상도 OCR 재조판으로 전환",
     );
-    const maxPages = parseInt(process.env.PDF_OCR_MAX_PAGES || "20", 10);
+    const maxPages = parseInt(process.env.PDF_OCR_MAX_PAGES || "30", 10);
     const meta = await rasterizePages(pdfPath, tmpDir, { maxPages, signal });
     if (!meta.files || !meta.files.length) {
       throw new Error("페이지 이미지를 생성하지 못했습니다.");

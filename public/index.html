@@ -106,7 +106,7 @@
       <div id="reportTypeFieldset" role="radiogroup" aria-labelledby="reportTypeLegend">
         <div id="reportTypeLegend" class="report-type-title">보고서 종류</div>
         <label>
-          <input type="radio" name="reportType" value="chem-pre" checked />
+          <input type="radio" name="reportType" value="chem-pre" />
           <span class="rt-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v6l-5.4 9.4A2 2 0 0 0 6.3 21h11.4a2 2 0 0 0 1.7-2.6L14 9V3"/><path d="M7.5 14h9"/></svg></span>
           <span class="rt-title">화학 사전보고서</span>
           <span class="rt-tag">매뉴얼 PDF → 사전보고서 초안</span>
@@ -124,6 +124,11 @@
           <span class="rt-tag">.cap·엑셀 → 결과보고서</span>
         </label>
       </div>
+    </div>
+
+    <div id="choosePrompt" class="notice">
+      위에서 <strong>보고서 종류를 선택</strong>하면 입력 폼이 나타납니다.
+      <small>도구·예시·가이드는 상단 메뉴에서 바로 이용할 수 있어요.</small>
     </div>
 
     <div id="comingSoon" class="notice" hidden>
@@ -937,9 +942,12 @@
         }
       }
 
+      const choosePrompt = document.getElementById("choosePrompt");
       function updateReportTypeView() {
-        const selected =
-          document.querySelector('input[name="reportType"]:checked')?.value || "chem-pre";
+        const checked = document.querySelector(
+          'input[name="reportType"]:checked',
+        );
+        const selected = checked ? checked.value : null;
         let matched = false;
 
         reportForms.forEach((formEl) => {
@@ -948,7 +956,11 @@
           setVisible(formEl, active);
           matched = matched || active;
         });
-        setVisible(comingSoon, !matched);
+        // 아무 종류도 안 고르면 폼 대신 안내만(로그인 직후 홈 상태).
+        // 고른 종류에 폼이 없을 때만 '준비 중'.
+        if (choosePrompt) setVisible(choosePrompt, !selected);
+        setVisible(comingSoon, !!selected && !matched);
+        if (!selected) return;
 
         if (selected === "chem-result") {
           const crDate = document.getElementById("crDate");

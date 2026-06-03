@@ -27,6 +27,39 @@
       .drop-z .sub { font-size: 13px; margin-top: 4px; }
       .panel { display: none; gap: 16px; }
       .panel.on { display: grid; }
+      /* 상위 탭(파일·표 / 이미지 / PDF병합 / 수식) */
+      .conv-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 16px;
+      }
+      .conv-tabs button {
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--text-muted);
+        font-weight: 700;
+        font-size: 14px;
+        padding: 9px 16px;
+        border-radius: 999px;
+        cursor: pointer;
+      }
+      .conv-tabs button:hover { background: var(--surface-2); color: var(--text); }
+      .conv-tabs button.on {
+        background: var(--accent);
+        color: var(--on-accent);
+        border-color: var(--accent);
+      }
+      .conv-panel { display: none; }
+      .conv-panel.on { display: block; }
+      .conv-frame {
+        width: 100%;
+        height: 78vh;
+        min-height: 560px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--surface);
+      }
     </style>
   </head>
   <body class="landing">
@@ -48,9 +81,17 @@
       <section class="section" style="border-top:0">
         <div class="tool-page-head">
           <h1>파일 변환기</h1>
-          <p>표·이미지·PDF 형식을 서로 변환합니다. 모든 처리는 브라우저 안에서만 이뤄지고 파일은 서버로 전송되지 않습니다.</p>
+          <p>표·이미지·PDF·수식을 한 곳에서 변환합니다. 파일·이미지·PDF는 브라우저 안에서, 수식 변환은 우리 서버에서 처리합니다.</p>
         </div>
 
+        <div class="conv-tabs" id="convTabs" role="tablist">
+          <button class="on" type="button" data-tab="file">파일 · 표 변환</button>
+          <button type="button" data-tab="image">이미지 변환 · 압축</button>
+          <button type="button" data-tab="pdfmerge">PDF 병합</button>
+          <button type="button" data-tab="equation">수식 변환 (LaTeX→한글)</button>
+        </div>
+
+        <div class="conv-panel on" data-panel="file">
         <div class="tool-card">
           <div class="mode-tabs" id="modeTabs">
             <button data-m="table" class="on">표 (Excel ↔ CSV ↔ TSV)</button>
@@ -101,6 +142,17 @@
 
           <p class="hint" id="cvMsg" style="margin:0"></p>
         </div>
+        </div>
+
+        <div class="conv-panel" data-panel="image">
+          <iframe class="conv-frame" data-src="/tools/image.html?embed=1" title="이미지 변환·압축"></iframe>
+        </div>
+        <div class="conv-panel" data-panel="pdfmerge">
+          <iframe class="conv-frame" data-src="/tools/pdf-merge.html?embed=1" title="PDF 병합"></iframe>
+        </div>
+        <div class="conv-panel" data-panel="equation">
+          <iframe class="conv-frame" data-src="/equation/index.html?embed=1" title="수식 변환"></iframe>
+        </div>
       </section>
     </main>
 
@@ -115,6 +167,25 @@
     </footer>
 
     <script src="/theme.js"></script>
+    <script>
+      // 상위 탭 전환 + iframe 지연 로드(처음 누를 때만 src 설정)
+      (function () {
+        const tabs = document.querySelectorAll("#convTabs button[data-tab]");
+        const panels = document.querySelectorAll(".conv-panel[data-panel]");
+        tabs.forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const t = btn.dataset.tab;
+            tabs.forEach((b) => b.classList.toggle("on", b === btn));
+            panels.forEach((p) => p.classList.toggle("on", p.dataset.panel === t));
+            const frame = document
+              .querySelector(`.conv-panel[data-panel="${t}"]`)
+              ?.querySelector("iframe.conv-frame");
+            if (frame && !frame.src && frame.dataset.src)
+              frame.src = frame.dataset.src;
+          });
+        });
+      })();
+    </script>
     <script>
       (function () {
         var msg = document.getElementById("cvMsg");

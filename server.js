@@ -1320,15 +1320,18 @@ async function prepareScannedRouting(pdfBuffer, { signal, onProgress }) {
       throw new Error("페이지 이미지를 생성하지 못했습니다.");
     }
     onProgress(`🧩 페이지를 ${meta.tiles}개 이미지 조각으로 분할(읽기 좋게)`);
-    const blocks = [];
-    for (const f of meta.files) {
-      const buf = fs.readFileSync(f);
-      const prepared = await prepareImageForAnthropic(
-        { buffer: buf, name: path.basename(f), mimetype: "image/png" },
-        { forceCompress: true },
-      );
-      if (prepared.ok) blocks.push(toAnthropicImageBlock(prepared));
-    }
+    // 이미지 압축을 병렬로(순차 await 제거) — 순서 보존을 위해 인덱스 매핑.
+    const prepared = await Promise.all(
+      meta.files.map((f) =>
+        prepareImageForAnthropic(
+          { buffer: fs.readFileSync(f), name: path.basename(f), mimetype: "image/png" },
+          { forceCompress: true },
+        ).catch(() => null),
+      ),
+    );
+    const blocks = prepared
+      .filter((p) => p && p.ok)
+      .map((p) => toAnthropicImageBlock(p));
     if (!blocks.length) {
       throw new Error("이미지를 Claude 입력 형식으로 준비하지 못했습니다.");
     }

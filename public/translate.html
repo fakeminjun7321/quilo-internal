@@ -191,8 +191,8 @@
         modeSel?.addEventListener("change", () => {
           if (modeSel.value === "retypeset") {
             modeHint.textContent =
-              "문서를 한국어로 다시 조판하고 수식을 복원해 새 PDF를 만듭니다. 수식 많은 논문에 적합(시간이 더 걸립니다). 수식 복원에는 Opus 권장.";
-            if (modelSel) modelSel.value = "claude-opus-4-8";
+              "문서를 한국어로 다시 조판하고 수식을 복원해 새 PDF를 만듭니다. 스캔본·이미지 PDF도 이 방식으로 처리됩니다. 기본 Sonnet으로 빠르게 — 수식이 아주 복잡한 논문만 Opus를 고르세요(느림).";
+            // 모델은 강제하지 않음 — 속도를 위해 기본 Sonnet 유지(사용자가 직접 Opus 선택 가능)
           } else {
             modeHint.textContent =
               "레이아웃을 그대로 두고 글자만 바꿉니다. 수식이 많은 문서는 “고품질 재조판”을 고르세요.";

@@ -304,7 +304,7 @@ app.use((req, res, next) => {
 <body>
   <main>
     <h1>사이트가 폐쇄되었습니다</h1>
-    <p>보고서 작성 툴 서비스를 닫았습니다.</p>
+    <p>Quilo 서비스를 닫았습니다.</p>
   </main>
 </body>
 </html>`);

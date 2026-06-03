@@ -100,6 +100,34 @@
       <p id="listStatus" class="hint"></p>
     </section>
 
+    <section class="settings-card" id="betaSection">
+      <div class="card-head">
+        <h2>베타 기능</h2>
+        <button id="refreshBeta" class="secondary compact">새로고침</button>
+      </div>
+      <p class="hint">
+        베타 기능을 켜고/끄고, 지정한 테스터 계정에게만 노출합니다. 관리자는 항상 사용 가능. 여러 베타를 동시에 운영할 수 있습니다.
+      </p>
+      <form id="betaAddForm" class="compact-form" style="margin-bottom: 14px">
+        <div class="field">
+          <label>
+            <span class="field-label">새 기능 key (영문·숫자·-)</span>
+            <input id="betaKey" maxlength="40" placeholder="예: pdf-translate" />
+          </label>
+        </div>
+        <div class="field">
+          <label>
+            <span class="field-label">표시 이름</span>
+            <input id="betaLabel" maxlength="60" placeholder="예: PDF 통번역" />
+          </label>
+        </div>
+        <button type="submit">기능 추가</button>
+        <span id="betaAddStatus" class="inline-status"></span>
+      </form>
+      <div id="betaList"></div>
+      <p id="betaStatus" class="hint"></p>
+    </section>
+
     <section class="settings-card">
       <div class="card-head">
         <h2>보고서 생성 로그</h2>
@@ -451,9 +479,145 @@
 
       document.getElementById("refreshLogs").addEventListener("click", loadLogs);
 
+      // ── 베타 기능 관리 ──────────────────────────────────────────────────────
+      async function loadBeta() {
+        const list = document.getElementById("betaList");
+        const status = document.getElementById("betaStatus");
+        status.textContent = "불러오는 중...";
+        try {
+          const res = await fetch("/api/admin/beta");
+          const data = await res.json();
+          if (!res.ok) {
+            list.innerHTML = "";
+            status.textContent = data.error || "오류";
+            return;
+          }
+          status.textContent = "";
+          renderBeta(data.features || []);
+        } catch (e) {
+          status.textContent = "오류: " + e.message;
+        }
+      }
+
+      function renderBeta(features) {
+        const list = document.getElementById("betaList");
+        if (!features.length) {
+          list.innerHTML = '<p class="hint">등록된 베타 기능이 없습니다.</p>';
+          return;
+        }
+        list.innerHTML = features
+          .map(
+            (f) => `
+          <div class="beta-item" data-key="${escape(f.key)}" style="border:1px solid var(--border,#e2e8f0);border-radius:10px;padding:12px;margin-bottom:10px">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <b>${escape(f.label || f.key)}</b>
+              <code style="font-size:12px;opacity:.6">${escape(f.key)}</code>
+              <label class="check-line" style="margin-left:auto"><input type="checkbox" data-act="toggle" ${f.enabled ? "checked" : ""}/> 활성</label>
+              <button data-act="delfeat" style="color:red;font-size:11px;padding:3px 6px">기능 삭제</button>
+            </div>
+            <div style="margin-top:8px;font-size:13px">
+              <span class="hint">테스터:</span>
+              ${
+                f.testers.length
+                  ? f.testers
+                      .map(
+                        (t) =>
+                          `<span style="display:inline-block;background:var(--chip,#eef2ff);border-radius:999px;padding:2px 8px;margin:2px">${escape(t.name)} <a href="#" data-act="deltester" data-uid="${t.id}" style="color:red;text-decoration:none">×</a></span>`,
+                      )
+                      .join("")
+                  : '<span class="hint">없음 (관리자만 사용 가능)</span>'
+              }
+            </div>
+            <div style="margin-top:8px;display:flex;gap:6px">
+              <input data-act="testername" placeholder="테스터 이름 추가" style="font-size:13px;padding:4px 8px" />
+              <button data-act="addtester" style="font-size:12px;padding:3px 8px">추가</button>
+            </div>
+          </div>`,
+          )
+          .join("");
+      }
+
+      document
+        .getElementById("betaList")
+        .addEventListener("click", async (e) => {
+          const item = e.target.closest(".beta-item");
+          if (!item) return;
+          const key = item.dataset.key;
+          const act = e.target.dataset.act;
+          if (act === "toggle") {
+            await fetch(`/api/admin/beta/${encodeURIComponent(key)}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ enabled: e.target.checked }),
+            });
+            loadBeta();
+          } else if (act === "delfeat") {
+            if (!confirm(`'${key}' 기능을 삭제할까요? (테스터 지정도 함께 삭제)`))
+              return;
+            await fetch(`/api/admin/beta/${encodeURIComponent(key)}`, {
+              method: "DELETE",
+            });
+            loadBeta();
+          } else if (act === "deltester") {
+            e.preventDefault();
+            await fetch(
+              `/api/admin/beta/${encodeURIComponent(key)}/testers/${e.target.dataset.uid}`,
+              { method: "DELETE" },
+            );
+            loadBeta();
+          } else if (act === "addtester") {
+            const input = item.querySelector('[data-act="testername"]');
+            const name = input.value.trim();
+            if (!name) return;
+            const res = await fetch(
+              `/api/admin/beta/${encodeURIComponent(key)}/testers`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name }),
+              },
+            );
+            const data = await res.json();
+            if (!res.ok) {
+              alert(data.error || "추가 실패");
+              return;
+            }
+            loadBeta();
+          }
+        });
+
+      document
+        .getElementById("betaAddForm")
+        .addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const key = document.getElementById("betaKey").value.trim();
+          const label = document.getElementById("betaLabel").value.trim();
+          const st = document.getElementById("betaAddStatus");
+          if (!key) {
+            st.textContent = "key 필수";
+            return;
+          }
+          st.textContent = "추가 중...";
+          const res = await fetch("/api/admin/beta", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ key, label }),
+          });
+          const data = await res.json();
+          st.textContent = res.ok ? "추가됨" : data.error || "실패";
+          if (res.ok) {
+            document.getElementById("betaKey").value = "";
+            document.getElementById("betaLabel").value = "";
+            loadBeta();
+          }
+        });
+
+      document.getElementById("refreshBeta").addEventListener("click", loadBeta);
+
       // 초기 로드
       loadUsers();
       loadLogs();
+      loadBeta();
     </script>
   </body>
 </html>

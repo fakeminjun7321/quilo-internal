@@ -119,4 +119,28 @@ alter table usage_logs enable row level security;
 alter table report_files enable row level security;
 alter table feedback_reports enable row level security;
 
+-- ── 베타 기능 플래그 + 테스터 지정 ──────────────────────────────────────────
+create table if not exists beta_features (
+  key text primary key,
+  label text not null default '',
+  enabled boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists beta_testers (
+  feature_key text not null references beta_features(key) on delete cascade,
+  user_id uuid not null references users(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (feature_key, user_id)
+);
+
+create index if not exists beta_testers_user_idx on beta_testers (user_id);
+
+alter table beta_features enable row level security;
+alter table beta_testers enable row level security;
+
+insert into beta_features (key, label, enabled)
+values ('pdf-translate', 'PDF 통번역', true)
+on conflict (key) do nothing;
+
 -- ── 끝 ─────────────────────────────────────────────────────────────────────

@@ -322,6 +322,25 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+// 베타 기능 게이트: 관리자이거나, 해당 베타가 enabled 이고 테스터로 지정된 사용자만 통과.
+function requireBeta(key) {
+  return async (req, res, next) => {
+    const u = getSessionUser(req);
+    if (!u) return res.status(401).json({ error: "로그인이 필요합니다." });
+    if (u.isAdmin) return next();
+    try {
+      if (supa.isEnabled() && u.id && (await supa.userHasBeta(u.id, key))) {
+        return next();
+      }
+    } catch {
+      /* 테이블 없음/조회 오류 → 차단(아래 403) */
+    }
+    return res
+      .status(403)
+      .json({ error: "이 기능은 현재 베타 테스터에게만 열려 있습니다." });
+  };
+}
+
 function isTruthyPolicyFlag(value) {
   return value === true || value === "true" || value === "1" || value === "on";
 }
@@ -978,13 +997,116 @@ app.post(
   },
 );
 
-// ── PDF 통번역 (관리자 테스트 전용) ─────────────────────────────────────────────
+// ── 베타 기능 (관리자 관리 + 사용자 노출 조회) ───────────────────────────────
+// 현재 사용자가 접근 가능한 베타 기능 key 목록(메뉴 노출용). 관리자는 enabled 전부.
+app.get("/api/me/beta", requireAuth, async (req, res) => {
+  const u = getSessionUser(req);
+  if (!supa.isEnabled()) return res.json({ features: [] });
+  try {
+    if (u.isAdmin) {
+      const all = await supa.listBetaFeatures();
+      return res.json({
+        features: all.filter((f) => f.enabled).map((f) => f.key),
+      });
+    }
+    return res.json({ features: await supa.getUserBetaFeatures(u.id) });
+  } catch {
+    return res.json({ features: [] });
+  }
+});
+
+app.get("/api/admin/beta", requireAdmin, async (req, res) => {
+  if (!supa.isEnabled())
+    return res.status(503).json({ error: "Supabase 미설정" });
+  try {
+    res.json({ features: await supa.listBetaFeatures() });
+  } catch (e) {
+    res
+      .status(e.code === "BETA_TABLE_MISSING" ? 409 : 500)
+      .json({ error: e.message });
+  }
+});
+
+app.post("/api/admin/beta", requireAdmin, async (req, res) => {
+  if (!supa.isEnabled())
+    return res.status(503).json({ error: "Supabase 미설정" });
+  const key = String(req.body.key || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "");
+  const label = String(req.body.label || "").trim();
+  if (!key)
+    return res.status(400).json({ error: "기능 key(영문/숫자/하이픈) 필수" });
+  try {
+    await supa.createBetaFeature(key, label || key);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.patch("/api/admin/beta/:key", requireAdmin, async (req, res) => {
+  if (!supa.isEnabled())
+    return res.status(503).json({ error: "Supabase 미설정" });
+  try {
+    await supa.setBetaFeatureEnabled(req.params.key, !!req.body.enabled);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete("/api/admin/beta/:key", requireAdmin, async (req, res) => {
+  if (!supa.isEnabled())
+    return res.status(503).json({ error: "Supabase 미설정" });
+  try {
+    await supa.deleteBetaFeature(req.params.key);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/admin/beta/:key/testers", requireAdmin, async (req, res) => {
+  if (!supa.isEnabled())
+    return res.status(503).json({ error: "Supabase 미설정" });
+  const name = String(req.body.name || "").trim();
+  if (!name) return res.status(400).json({ error: "사용자 이름 필수" });
+  try {
+    const user = await supa.findUserByName(name);
+    if (!user)
+      return res
+        .status(404)
+        .json({ error: `사용자 '${name}'를 찾을 수 없습니다.` });
+    await supa.addBetaTester(req.params.key, user.id);
+    res.json({ ok: true, tester: { id: user.id, name: user.name } });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete(
+  "/api/admin/beta/:key/testers/:userId",
+  requireAdmin,
+  async (req, res) => {
+    if (!supa.isEnabled())
+      return res.status(503).json({ error: "Supabase 미설정" });
+    try {
+      await supa.removeBetaTester(req.params.key, req.params.userId);
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ error: e.message });
+    }
+  },
+);
+
+// ── PDF 통번역 (베타: 관리자 + 지정 테스터) ──────────────────────────────────
 // DeepL 식 문서 번역: 그림·레이아웃은 그대로 두고 텍스트만 한국어로 교체한다.
 // 외부로 PDF 를 보내지 않고 우리 서버에서만 처리한다 (Claude + PyMuPDF).
-// 안정화되면 로그인+크레딧 흐름으로 일반 공개 예정.
+// 접근 제어는 requireBeta("pdf-translate") — 관리자탭 베타 관리에서 테스터 지정.
 app.post(
   "/api/translate-pdf",
-  requireAdmin,
+  requireBeta("pdf-translate"),
   upload.single("pdf"),
   async (req, res) => {
     const file = req.file;

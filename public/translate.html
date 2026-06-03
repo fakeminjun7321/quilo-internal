@@ -128,7 +128,7 @@
       const gate = document.getElementById("gate");
       const tool = document.getElementById("tool");
 
-      // 접근 게이트: 로그인 + 관리자 확인
+      // 접근 게이트: 로그인 + (관리자 또는 'pdf-translate' 베타 테스터)
       (async function guard() {
         try {
           const res = await fetch("/api/me");
@@ -138,9 +138,17 @@
             return;
           }
           const me = await res.json();
-          if (!me.isAdmin) {
+          let allowed = !!me.isAdmin;
+          if (!allowed) {
+            try {
+              const b = await fetch("/api/me/beta").then((r) => r.json());
+              allowed =
+                Array.isArray(b.features) && b.features.includes("pdf-translate");
+            } catch {}
+          }
+          if (!allowed) {
             gate.innerHTML =
-              '<p class="hint">이 기능은 현재 <b>관리자 테스트 중</b>입니다. 안정화되면 일반 공개됩니다.</p>';
+              '<p class="hint">이 기능은 현재 <b>베타 테스터에게만</b> 열려 있습니다. 사용을 원하면 운영자에게 요청하세요.</p>';
             return;
           }
           gate.style.display = "none";

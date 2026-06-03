@@ -673,18 +673,28 @@ app.get("/api/me", async (req, res) => {
   }
 
   let studentId = normalizeStudentId(u.studentId);
+  let blockedReportTypes = [];
   if (supa.isEnabled() && u.id) {
     try {
       const freshUser = await supa.findUserById(u.id);
       if (freshUser) {
         studentId = normalizeStudentId(freshUser.student_id);
         req.session.userInfo.studentId = studentId;
+        // 기존 freshUser 조회 재사용 — 추가 쿼리 없이 차단 목록도 같이 반영
+        blockedReportTypes = supa.normalizeBlockedTypes
+          ? supa.normalizeBlockedTypes(freshUser.blocked_report_types)
+          : [];
       }
     } catch (e) {
       console.warn("[me] profile lookup failed:", e.message);
     }
   }
-  return res.json({ user: u.name, isAdmin: !!u.isAdmin, studentId });
+  return res.json({
+    user: u.name,
+    isAdmin: !!u.isAdmin,
+    studentId,
+    blockedReportTypes,
+  });
 });
 
 app.patch("/api/me/profile", requireAuth, async (req, res) => {
@@ -906,6 +916,22 @@ app.post(
     }
 
     const userInfo = getSessionUser(req);
+
+    // 보고서 종류 접근 제한 (관리자 면제). DB 컬럼 없으면/조회 실패 시 fail-open.
+    if (userInfo.id && !userInfo.isAdmin) {
+      try {
+        const blocked = await supa.getBlockedReportTypes(userInfo.id);
+        if (blocked.includes(reportType)) {
+          return res.status(403).json({
+            error:
+              "이 계정은 해당 보고서 종류의 생성 권한이 없습니다. 관리자에게 문의하세요.",
+          });
+        }
+      } catch {
+        /* 제한 정보 조회 실패 → 차단하지 않음(기존 동작 보존) */
+      }
+    }
+
     const postedStudentId = normalizeStudentId(req.body.studentId);
     let savedStudentId = normalizeStudentId(userInfo.studentId);
     if (supa.isEnabled() && userInfo.id) {
@@ -1977,11 +2003,14 @@ app.get("/api/admin/users", requireAdmin, async (req, res) => {
     return res.status(503).json({ error: "Supabase 미설정" });
   try {
     const users = await supa.listUsers();
-    // 각 사용자별 시간당 보고서 생성 카운트 추가
+    // 보고서 종류 접근 제한 맵(별도 fail-safe 쿼리 — 컬럼 없으면 빈 맵)
+    const blockedMap = await supa.listBlockedReportTypesMap();
+    // 각 사용자별 시간당 보고서 생성 카운트 + 차단 목록 추가
     const usersWithRate = users.map((u) => ({
       ...u,
       recent_gen_count: rateLimit.getUserGenCount(u.id),
       recent_gen_limit: rateLimit.GEN_LIMIT,
+      blocked_report_types: blockedMap[u.id] || [],
     }));
     const rate = await getKrwPerUsd();
     res.json({ users: usersWithRate, krwPerUsd: rate });
@@ -2049,6 +2078,7 @@ app.patch("/api/admin/users/:id", requireAdmin, async (req, res) => {
     spentUsd,
     restrictedModel,
     unlimited,
+    blockedReportTypes,
   } = req.body || {};
   if (password != null && password !== "" && String(password).length < 5) {
     return res
@@ -2065,6 +2095,19 @@ app.patch("/api/admin/users/:id", requireAdmin, async (req, res) => {
         .json({ error: "허용되지 않은 모델 제한 값입니다." });
     }
   }
+  // 보고서 종류 접근 제한: 허용된 종류 key 배열만
+  let normalizedBlocked;
+  if (blockedReportTypes !== undefined) {
+    const VALID = ["chem-pre", "chem-result", "phys-result"];
+    if (!Array.isArray(blockedReportTypes)) {
+      return res
+        .status(400)
+        .json({ error: "blockedReportTypes 는 배열이어야 합니다." });
+    }
+    normalizedBlocked = [
+      ...new Set(blockedReportTypes.map((x) => String(x))),
+    ].filter((x) => VALID.includes(x));
+  }
   const patch = {};
   if (name) patch.name = String(name).trim();
   if (password) patch.password = password;
@@ -2077,11 +2120,20 @@ app.patch("/api/admin/users/:id", requireAdmin, async (req, res) => {
   if (restrictedModel !== undefined)
     patch.restrictedModel = restrictedModel == null ? "" : String(restrictedModel).trim();
   if (unlimited != null) patch.unlimited = !!unlimited;
+  if (normalizedBlocked !== undefined)
+    patch.blockedReportTypes = normalizedBlocked;
   try {
     const user = await supa.updateUser(req.params.id, patch);
     res.json({ ok: true, user });
   } catch (e) {
     console.error("[admin]", req.method, req.path, "error:", e);
+    // blocked_report_types 컬럼 미생성(마이그레이션 전) 친절 안내
+    if (/blocked_report_types/.test(e.message || "")) {
+      return res.status(409).json({
+        error:
+          "보고서 종류 제한 컬럼이 아직 없습니다. db/migrations/20260603_add_blocked_report_types.sql 을 Supabase 에 실행하세요.",
+      });
+    }
     res.status(500).json({ error: "처리 중 오류가 발생했습니다." });
   }
 });

@@ -226,6 +226,10 @@
         if (m.indexOf("sonnet") >= 0) return "Sonnet";
         return m;
       }
+      function reportAccessLabel(blocked) {
+        if (!Array.isArray(blocked) || !blocked.length) return "전체";
+        return "제한 " + blocked.length;
+      }
       function creditCell(u) {
         if (u.unlimited) {
           const m = u.restricted_model
@@ -270,6 +274,7 @@
               ${unlockBtn}
               <button data-act="edit" data-id="${u.id}">수정</button>
               <button data-act="model" data-id="${u.id}">모델: ${u.restricted_model ? modelShort(u.restricted_model) + "만" : "전체"}</button>
+              <button data-act="reports" data-id="${u.id}" data-blocked="${(u.blocked_report_types || []).join(",")}">보고서: ${reportAccessLabel(u.blocked_report_types)}</button>
               <button data-act="reset" data-id="${u.id}">사용량 0</button>
               <button data-act="delete" data-id="${u.id}" style="color: red">삭제</button>
             </td>
@@ -366,6 +371,46 @@
           const key = String(input).trim();
           if (!(key in map)) return alert("1, 2, 3 중 하나를 입력하세요.");
           await patchUser(id, { restrictedModel: map[key] });
+          loadUsers();
+        } else if (act === "reports") {
+          // 사용자별 보고서 종류 접근 제한 (차단 목록)
+          const num2type = {
+            1: "chem-pre",
+            2: "chem-result",
+            3: "phys-result",
+          };
+          const type2num = { "chem-pre": "1", "chem-result": "2", "phys-result": "3" };
+          const cur = (btn.dataset.blocked || "").split(",").filter(Boolean);
+          const curNums = cur.map((t) => type2num[t]).filter(Boolean).join(",");
+          const input = prompt(
+            "이 사용자가 만들 수 없게 '차단'할 보고서 종류 번호를 쉼표로 입력하세요.\n\n" +
+              "1 = 화학 사전보고서\n2 = 화학 결과보고서\n3 = 물리 결과보고서\n\n" +
+              "예) 1,3 = 화학사전·물리결과 차단 / 빈칸 = 전체 허용(제한 없음)",
+            curNums,
+          );
+          if (input === null) return;
+          const blocked = [
+            ...new Set(
+              String(input)
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean),
+            ),
+          ]
+            .map((n) => num2type[n])
+            .filter(Boolean);
+          const res = await fetch(`/api/admin/users/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ blockedReportTypes: blocked }),
+          });
+          const data = await res.json();
+          if (!res.ok) return alert("실패: " + (data.error || "알 수 없음"));
+          alert(
+            blocked.length
+              ? `차단됨: ${blocked.length}개 종류`
+              : "전체 허용으로 설정됨",
+          );
           loadUsers();
         }
       });

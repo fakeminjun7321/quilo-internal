@@ -814,6 +814,18 @@
 
       // 로그인 전/후 같은 페이지(같은 골격). 로그아웃이면 리다이렉트 대신
       // 상단 '로그인' 드롭다운을 띄우고, 로그인하면 그 자리를 계정 메뉴로 바꾼다.
+      // 차단된 보고서 종류 카드를 숨긴다(서버에서도 강제 — 이건 UX용).
+      function applyReportTypeAccess(blocked) {
+        const set = new Set(Array.isArray(blocked) ? blocked : []);
+        document.querySelectorAll('input[name="reportType"]').forEach((radio) => {
+          const label = radio.closest("label");
+          if (!label) return;
+          const hide = set.has(radio.value);
+          label.style.display = hide ? "none" : "";
+          if (hide && radio.checked) radio.checked = false;
+        });
+      }
+
       function applyAuth(loggedIn, d) {
         document.body.dataset.auth = loggedIn ? "in" : "out";
         const loginDd = document.getElementById("loginDd");
@@ -830,8 +842,12 @@
           if (d.isAdmin) {
             document.getElementById("adminLink").style.display = "inline";
           }
+          // 관리자는 서버에서 제한 면제 → 카드도 전부 표시
+          applyReportTypeAccess(d.isAdmin ? [] : d.blockedReportTypes);
           if (!d.isAdmin) loadBalance();
           loadFiles();
+        } else {
+          applyReportTypeAccess([]);
         }
       }
 

@@ -22,9 +22,7 @@ DeepL 문서 번역과 같은 방식: 디지털 PDF(텍스트 레이어가 있�
 """
 
 import sys
-import os
 import json
-import html as html_mod
 from collections import defaultdict
 
 import fitz  # PyMuPDF
@@ -86,15 +84,6 @@ def has_letters(s):
     return any(ch.isalpha() for ch in s)
 
 
-def color_to_hex(c):
-    if isinstance(c, (list, tuple)):
-        r, g, b = (int(round(x * 255)) for x in c[:3])
-    else:
-        c = int(c)
-        r, g, b = (c >> 16) & 255, (c >> 8) & 255, c & 255
-    return f"#{r:02x}{g:02x}{b:02x}"
-
-
 def cmd_extract(pdf_path):
     doc = fitz.open(pdf_path)
     blocks = []
@@ -112,14 +101,53 @@ def cmd_extract(pdf_path):
     doc.close()
 
 
-def build_css(font_file, size, color):
-    # PyMuPDF Story 는 CSS px 를 pt 처럼 다룬다(1:1). 원본 포인트 크기를 그대로 쓴다.
-    return (
-        f"@font-face {{ font-family: kf; src: url({font_file}); }}\n"
-        f"* {{ font-family: kf; font-size: {size:.1f}px; "
-        f"color: {color_to_hex(color)}; line-height: 1.18; "
-        f"margin: 0; padding: 0; }}"
-    )
+def _color01(c):
+    if isinstance(c, (list, tuple)):
+        return tuple(float(x) for x in c[:3])
+    c = int(c)
+    return (((c >> 16) & 255) / 255, ((c >> 8) & 255) / 255, (c & 255) / 255)
+
+
+def _wrap(font, text, width, fs):
+    """폰트 메트릭으로 직접 줄바꿈. 공백(어절) 기준, 한 어절이 줄폭보다 길면 글자 단위로 자른다."""
+    lines = []
+    for para in text.split("\n"):
+        cur = ""
+        for word in para.split(" "):
+            trial = word if not cur else cur + " " + word
+            if font.text_length(trial, fontsize=fs) <= width:
+                cur = trial
+                continue
+            if cur:
+                lines.append(cur)
+                cur = ""
+            if font.text_length(word, fontsize=fs) <= width:
+                cur = word
+            else:  # 한 어절이 줄폭보다 길다 → 글자 단위 분해
+                chunk = ""
+                for ch in word:
+                    if not chunk or font.text_length(chunk + ch, fontsize=fs) <= width:
+                        chunk += ch
+                    else:
+                        lines.append(chunk)
+                        chunk = ch
+                cur = chunk
+        if cur:
+            lines.append(cur)
+    return lines or [""]
+
+
+def _fit(font, text, rect, start_size, min_size=4.0, line_factor=1.3):
+    """rect 안에 들어가는 최대 폰트 크기와 줄바꿈 결과를 찾는다(넘치면 축소)."""
+    width = max(rect.width - 2.0, 1.0)
+    height = rect.height
+    fs = max(min_size, min(float(start_size), 200.0))
+    while fs >= min_size:
+        lines = _wrap(font, text, width, fs)
+        if len(lines) * fs * line_factor <= height:
+            return fs, lines
+        fs -= 0.5
+    return min_size, _wrap(font, text, width, min_size)
 
 
 def cmd_render(pdf_path, out_path, font_path):
@@ -140,9 +168,10 @@ def cmd_render(pdf_path, out_path, font_path):
         size, color = dominant_size_color(block)
         by_page[pno].append((rect, str(ko).strip(), size, color))
 
-    font_dir = os.path.dirname(os.path.abspath(font_path))
-    font_file = os.path.basename(font_path)
-    arch = fitz.Archive(font_dir)
+    # 측정용 폰트 1개만 로드(insert_htmlbox 는 호출마다 폰트를 Story 에 재적재해
+    # 24쪽/수백 블록에서 메모리가 1GB+ 로 치솟아 512MB 서버를 OOM 시켰다).
+    measure_font = fitz.Font(fontfile=font_path)
+    FONTNAME = "kf"
 
     replaced = 0
     shrunk = 0
@@ -152,35 +181,27 @@ def cmd_render(pdf_path, out_path, font_path):
         for rect, _ko, _sz, _col in items:
             page.add_redact_annot(rect, fill=(1, 1, 1))
         page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
-        # 2) 같은 박스에 번역문 삽입 (scale_low=0 → 넘치면 자동 축소해 맞춤).
+        # 2) 한글 폰트는 페이지당 한 번만 임베드.
+        page.insert_font(fontname=FONTNAME, fontfile=font_path)
+        # 3) 폰트 메트릭으로 미리 크기를 맞춰 한 번만 그린다(넘칠 때 다시 그리면
+        #    글자가 겹치므로 사전 계산이 필수). 칸을 넘기면 폰트를 줄여 맞춘다.
         for rect, ko, size, color in items:
-            html = f"<div>{html_mod.escape(ko)}</div>"
-            css = build_css(font_file, size, color)
-            try:
-                ret = page.insert_htmlbox(
-                    rect, html, css=css, archive=arch, scale_low=0
-                )
-            except Exception:
-                # 폰트/HTML 문제 시 최후 수단: 단순 텍스트 박스로라도 채운다.
-                page.insert_textbox(
-                    rect, ko, fontname="kf", fontfile=font_path,
-                    fontsize=min(size, 9), color=_hex_to_rgb01(color_to_hex(color)),
-                )
-                replaced += 1
-                continue
-            scale = ret[1] if isinstance(ret, (list, tuple)) and len(ret) > 1 else 1.0
-            replaced += 1
-            if scale and scale < 0.999:
+            fs, lines = _fit(measure_font, ko, rect, size)
+            if fs < float(size) - 0.01:
                 shrunk += 1
+            page.insert_textbox(
+                rect,
+                "\n".join(lines),
+                fontname=FONTNAME,
+                fontsize=fs,
+                color=_color01(color),
+                align=0,
+            )
+            replaced += 1
 
-    doc.save(out_path, garbage=4, deflate=True)
+    doc.save(out_path, garbage=3, deflate=True)
     doc.close()
     sys.stdout.write(json.dumps({"ok": True, "replaced": replaced, "shrunk": shrunk}))
-
-
-def _hex_to_rgb01(hexstr):
-    h = hexstr.lstrip("#")
-    return (int(h[0:2], 16) / 255, int(h[2:4], 16) / 255, int(h[4:6], 16) / 255)
 
 
 def main():

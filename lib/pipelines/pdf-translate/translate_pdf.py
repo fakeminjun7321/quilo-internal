@@ -317,6 +317,30 @@ def cmd_render(pdf_path, out_path, font_path):
     sys.stdout.write(json.dumps({"ok": True, "replaced": replaced, "shrunk": shrunk}))
 
 
+def cmd_split(pdf_path, out_dir, pages_per_chunk=5):
+    """텍스트 PDF 를 페이지 범위로 나눠 sub-PDF 들로 저장(재조판 병렬 처리용).
+    각 chunk 를 동시에 번역해 합치면 Opus 품질 그대로 벽시계 시간을 줄인다."""
+    pages_per_chunk = max(1, int(pages_per_chunk))
+    os.makedirs(out_dir, exist_ok=True)
+    src = fitz.open(pdf_path)
+    n = len(src)
+    chunks = []
+    ci = 0
+    for start in range(0, n, pages_per_chunk):
+        end = min(start + pages_per_chunk, n)
+        sub = fitz.open()
+        sub.insert_pdf(src, from_page=start, to_page=end - 1)
+        path = os.path.join(out_dir, f"chunk-{ci}.pdf")
+        sub.save(path, garbage=3, deflate=True)
+        sub.close()
+        chunks.append({"path": path, "start": start + 1, "end": end})
+        ci += 1
+    src.close()
+    sys.stdout.write(
+        json.dumps({"page_count": n, "chunks": chunks}, ensure_ascii=False)
+    )
+
+
 def main():
     if len(sys.argv) < 2:
         sys.stderr.write("usage: translate_pdf.py extract|render ...\n")
@@ -332,6 +356,9 @@ def main():
             cmd_rasterize(*sys.argv[2:6])
         elif mode == "render":
             cmd_render(sys.argv[2], sys.argv[3], sys.argv[4])
+        elif mode == "split":
+            # split <pdf> <out_dir> [pages_per_chunk]
+            cmd_split(*sys.argv[2:5])
         else:
             sys.stderr.write(f"unknown mode: {mode}\n")
             sys.exit(2)

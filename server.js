@@ -199,6 +199,7 @@ const { retypesetPdf } = require("./lib/pipelines/pdf-translate/latex-gen");
 const {
   analyzePdf,
   rasterizePages,
+  splitPdf,
 } = require("./lib/pipelines/pdf-translate/pdf-tool");
 const {
   prepareImageForAnthropic,
@@ -1289,6 +1290,28 @@ app.post(
   },
 );
 
+// 텍스트 PDF 를 페이지 구간 sub-PDF 버퍼들로 분할(재조판 병렬 번역용). 1구간이면 null.
+async function splitPdfToBuffers(pdfBuffer, { signal, onProgress }) {
+  const per = parseInt(process.env.PDF_RETYPESET_CHUNK_PAGES || "5", 10);
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdfsplit-"));
+  const pdfPath = path.join(tmpDir, "in.pdf");
+  try {
+    fs.writeFileSync(pdfPath, pdfBuffer);
+    const meta = await splitPdf(pdfPath, tmpDir, { pagesPerChunk: per, signal });
+    if (!meta.chunks || meta.chunks.length <= 1) return null; // 분할 의미 없음
+    return meta.chunks.map((c) => fs.readFileSync(c.path));
+  } catch (e) {
+    onProgress(`⚠ 구간 분할 건너뜀(단일 처리): ${e.message}`);
+    return null;
+  } finally {
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch {
+      /* best-effort */
+    }
+  }
+}
+
 function buildTranslatedFilename(originalName, suffix = "_KO") {
   const baseRaw = String(originalName || "document.pdf").replace(/\.pdf$/i, "");
   const base = sanitizeForFilename(baseRaw) || "document";
@@ -1447,8 +1470,14 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) 
         pushProgress(job, `🖼️ 원본 그림 ${result.figures}개를 본문에 복원했습니다.`);
       }
     } else if (resolvedMode === "retypeset") {
+      // 텍스트 PDF 재조판: 페이지 구간으로 분할해 병렬 번역(Opus 품질 유지·속도↑).
+      const pdfChunks = await splitPdfToBuffers(pdfBuffer, {
+        signal: ac.signal,
+        onProgress,
+      });
       result = await retypesetPdf({
         pdfBuffer,
+        pdfChunks,
         model,
         signal: ac.signal,
         onProgress,

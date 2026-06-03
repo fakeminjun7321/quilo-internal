@@ -1264,10 +1264,12 @@ app.post(
 
     res.json({ jobId: job.id });
 
-    const mode =
-      String(req.body.mode || "").trim() === "retypeset"
-        ? "retypeset"
-        : "inplace";
+    // auto(기본) / inplace / retypeset 그대로 전달 — runPdfTranslation 이 auto 를
+    // 분석으로 해석한다(여기서 inplace 로 뭉개면 auto 분기가 죽고 안내가 틀려진다).
+    const reqMode = String(req.body.mode || "").trim();
+    const mode = ["inplace", "retypeset", "auto"].includes(reqMode)
+      ? reqMode
+      : "auto";
 
     runPdfTranslation(job, {
       pdfBuffer: file.buffer,

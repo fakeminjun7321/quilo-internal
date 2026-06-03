@@ -691,6 +691,32 @@
       </div>
 
       <div class="settings-card">
+        <h2>기본 모델 · 양식 선호</h2>
+        <p class="hint">보고서 작성 화면을 열 때 자동으로 선택될 기본값입니다. 생성할 때 언제든 바꿀 수 있습니다.</p>
+        <div class="compact-form">
+          <p>
+            <label>기본 AI 모델:<br>
+              <select id="prefModelSel" class="tool-input" style="max-width:280px">
+                <option value="">매번 직접 선택</option>
+                <option value="claude-opus-4-8">Opus 4.8 (정밀 · 3크레딧)</option>
+                <option value="claude-sonnet-4-6">Sonnet 4.6 (빠름 · 1크레딧)</option>
+              </select>
+            </label>
+          </p>
+          <p>
+            <label>기본 양식(화학 사전보고서):<br>
+              <select id="prefStyleSel" class="tool-input" style="max-width:280px">
+                <option value="">매번 직접 선택</option>
+                <option value="default">기본 양식</option>
+                <option value="minimal">간단 양식</option>
+              </select>
+            </label>
+          </p>
+          <p class="hint" id="prefSaveStatus" style="min-height:1.2em"></p>
+        </div>
+      </div>
+
+      <div class="settings-card">
         <h2>비밀번호 변경</h2>
       <form id="pwForm" class="compact-form">
         <p>
@@ -1296,6 +1322,78 @@
           profileBtn.disabled = false;
         }
       });
+
+      // ── 개인 설정: 기본 모델 · 양식 선호 (이 브라우저에 저장) ──────────────
+      (function () {
+        const modelSel = document.getElementById("prefModelSel");
+        const styleSel = document.getElementById("prefStyleSel");
+        const prefStatus = document.getElementById("prefSaveStatus");
+        if (!modelSel || !styleSel) return;
+        const PM = "prefModel",
+          PS = "prefStyle";
+        function getPref(k) {
+          try {
+            return localStorage.getItem(k) || "";
+          } catch (e) {
+            return "";
+          }
+        }
+        function setPref(k, v) {
+          try {
+            if (v) localStorage.setItem(k, v);
+            else localStorage.removeItem(k);
+          } catch (e) {}
+        }
+        // 선호값을 보고서 폼 라디오에 반영 (세 폼의 모델 + 화학 사전 양식)
+        function applyPrefsToForm() {
+          const pm = getPref(PM),
+            ps = getPref(PS);
+          if (pm) {
+            document
+              .querySelectorAll(
+                'input[name="model"],input[name="crModel"],input[name="prModel"]',
+              )
+              .forEach((r) => {
+                if (r.value === pm && !r.checked) {
+                  r.checked = true;
+                  r.dispatchEvent(new Event("change", { bubbles: true }));
+                }
+              });
+          }
+          if (ps) {
+            document.querySelectorAll('input[name="style"]').forEach((r) => {
+              if (r.value === ps && !r.checked) {
+                r.checked = true;
+                r.dispatchEvent(new Event("change", { bubbles: true }));
+              }
+            });
+          }
+        }
+        window.applyPrefsToForm = applyPrefsToForm;
+        // 초기화: 저장값으로 셀렉트 채우기
+        modelSel.value = getPref(PM);
+        styleSel.value = getPref(PS);
+        function flash(msg) {
+          if (!prefStatus) return;
+          prefStatus.style.color = "green";
+          prefStatus.textContent = msg;
+          setTimeout(() => {
+            prefStatus.textContent = "";
+          }, 1800);
+        }
+        modelSel.addEventListener("change", () => {
+          setPref(PM, modelSel.value);
+          applyPrefsToForm();
+          flash("기본 모델 저장됨");
+        });
+        styleSel.addEventListener("change", () => {
+          setPref(PS, styleSel.value);
+          applyPrefsToForm();
+          flash("기본 양식 저장됨");
+        });
+        // 페이지 로드 시 폼 라디오에 기본값 반영
+        applyPrefsToForm();
+      })();
 
       // ── 비밀번호 변경 ────────────────────────────────────────────────────
       const pwForm = document.getElementById("pwForm");

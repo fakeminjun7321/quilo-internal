@@ -946,7 +946,8 @@ app.post("/api/chat/feedback", async (req, res) => {
 });
 
 // ── 관리자 전용 AI 보조 (로그인 기록·사용로그·사용자 등 관리자 데이터를 읽고 답함) ──
-const CHAT_ADMIN_MODEL = process.env.CHAT_ADMIN_MODEL || CHAT_MEMO_MODEL;
+// 관리자 챗은 입력(스냅샷)이 크므로 무료 한도에 안정적인 70b 기본. 필요시 env로 gpt-oss-120b 지정.
+const CHAT_ADMIN_MODEL = process.env.CHAT_ADMIN_MODEL || CHAT_MODEL;
 app.post("/api/admin/chat", requireAdmin, async (req, res) => {
   if (!CHAT_API_KEY) {
     return res
@@ -975,8 +976,8 @@ app.post("/api/admin/chat", requireAdmin, async (req, res) => {
   try {
     const [users, usage, logins] = await Promise.all([
       supa.isEnabled() ? supa.listUsers() : [],
-      supa.isEnabled() ? supa.listUsageLogs(60) : [],
-      supa.isEnabled() ? supa.listLoginLogs(120) : [],
+      supa.isEnabled() ? supa.listUsageLogs(30) : [],
+      supa.isEnabled() ? supa.listLoginLogs(60) : [],
     ]);
     const userLines = (users || [])
       .slice(0, 200)
@@ -1042,8 +1043,16 @@ ${snapshot}`;
   }
   if (!upstream.ok || !upstream.body) {
     const t = await upstream.text().catch(() => "");
-    console.error("[admin-chat] upstream", upstream.status, t.slice(0, 300));
-    return res.status(502).json({ error: "AI 응답 오류." });
+    console.error("[admin-chat] upstream", upstream.status, t.slice(0, 400));
+    const hint =
+      upstream.status === 429
+        ? "사용량 한도입니다(잠시 후 다시). 입력이 크면 한도에 더 잘 걸려요."
+        : upstream.status === 404 || upstream.status === 400
+          ? "모델 문제일 수 있습니다 (CHAT_ADMIN_MODEL 확인)."
+          : "";
+    return res
+      .status(502)
+      .json({ error: `AI 응답 오류 (${upstream.status}). ${hint}`.trim() });
   }
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
   res.setHeader("Cache-Control", "no-store");

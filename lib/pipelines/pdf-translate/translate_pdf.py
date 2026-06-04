@@ -54,9 +54,15 @@ def iter_text_blocks(doc):
 # /Encoding /Differences 상 실제 글자: 33('!')→'+', 34('"')→Δ, 35('#')→− (U+2212).
 # 그래서 "−458 kJ mol⁻¹" 가 "#458 kJ mol#1" 로, "ΔE" 가 '"E' 로 깨져 나온다.
 _MATHPI_FIX = {"!": "+", '"': "Δ", "#": "−"}  # +  Δ  −
-# Computer Modern Symbol(CMSY) — 각주 별표(*)가 인코딩 깨짐으로 U+21E4(⇤)로 추출된다
-# (예: 저자명 'Ashish Vaswani*' → 'Ashish Vaswani⇤'). †(U+2020)·‡(U+2021)는 정상.
-_CMSY_FIX = {"⇤": "*"}
+# Computer Modern / AMS 수식 폰트(LaTeX 논문)는 ToUnicode 가 깨져 기호가 엉뚱한
+# 라틴문자·dingbat 으로 추출된다. 폰트별로 '그 슬롯의 실제 기호'를 매핑한다 —
+# 이 폰트들은 기호 전용이라(진짜 라틴문자가 없음) 안전하다. †·‡·· (cdot)·−·• 는
+# 이미 올바로 추출되므로 건드리지 않는다.
+_CMSY_FIX = {"⇤": "*", "⇥": "×", "2": "∈", "p": "√"}  # 각주* 곱× 원소∈ 근호√
+_CMEX_FIX = {"P": "Σ"}  # 합 Σ
+# MSBM 'R'(blackboard ℝ)는 번들 글꼴 어디에도 글리프가 없어 매핑하면 두부가 된다.
+# 평문 'R'로 두는 게 안전하고 읽힌다(R^{d×k}). → 매핑하지 않음.
+_CMMI_FIX = {"↵": "α", "⇡": "π", "✏": "ε"}  # 그리스 α π ε (수식 이탤릭)
 
 
 def _fix_span_text(font, text):
@@ -69,6 +75,10 @@ def _fix_span_text(font, text):
         return "".join(_MATHPI_FIX.get(ch, ch) for ch in text)
     if "CMSY" in f:
         return "".join(_CMSY_FIX.get(ch, ch) for ch in text)
+    if "CMEX" in f:
+        return "".join(_CMEX_FIX.get(ch, ch) for ch in text)
+    if "CMMI" in f:
+        return "".join(_CMMI_FIX.get(ch, ch) for ch in text)
     return text
 
 
@@ -561,6 +571,10 @@ def _detect_align(rect, page_width, single_line=False):
         and abs(left - right) < 0.06 * page_width
     ):
         return fitz.TEXT_ALIGN_CENTER
+    # 좁은 칼럼(저자·소속·짧은 라벨; 본문 단보다 좁음)은 justify 하면 단어가 크게
+    # 벌어진다('Google   Brain') → 가운데 정렬. 본문 단(2단≈0.4W, 1단≈0.7W)은 제외.
+    if w < 0.30 * page_width:
+        return fitz.TEXT_ALIGN_CENTER
     if single_line:
         return (
             fitz.TEXT_ALIGN_CENTER if w < 0.5 * page_width else fitz.TEXT_ALIGN_LEFT
@@ -715,6 +729,31 @@ def cmd_render(pdf_path, out_path, font_path):
     # 폰트는 한 번만 로드해 모든 TextWriter 가 공유한다. (insert_htmlbox 는 호출마다
     # 2MB 폰트를 Story 에 재적재해 24쪽/수백 블록에서 ~1.5GB OOM 을 냈다.)
     font = fitz.Font(fontfile=font_path)
+    # 폴백 글꼴: 주 글꼴(Pretendard)에 없는 글리프(예: ∈)를 가진 블록은 그 블록만
+    # NanumGothic 으로 그려 '두부(□)'를 방지한다. 같은 폴더의 NanumGothic 사용.
+    font_fb = None
+    try:
+        fb_path = os.path.join(
+            os.path.dirname(os.path.abspath(font_path)), "NanumGothic-Regular.ttf"
+        )
+        if os.path.exists(fb_path) and os.path.abspath(fb_path) != os.path.abspath(font_path):
+            font_fb = fitz.Font(fontfile=fb_path)
+    except Exception:
+        font_fb = None
+
+    def _pick_font(text):
+        """블록 글자를 가장 잘 렌더하는 글꼴 선택(주 글꼴 우선, 빠진 글리프가 적은 쪽)."""
+        if not font_fb:
+            return font
+        miss_p = sum(
+            1 for c in set(text) if ord(c) > 0x7F and not font.has_glyph(ord(c))
+        )
+        if miss_p == 0:
+            return font
+        miss_f = sum(
+            1 for c in set(text) if ord(c) > 0x7F and not font_fb.has_glyph(ord(c))
+        )
+        return font_fb if miss_f < miss_p else font
 
     replaced = 0
     shrunk = 0
@@ -749,13 +788,14 @@ def cmd_render(pdf_path, out_path, font_path):
         # 2) 같은(클리핑된) 박스에 번역문 삽입. 본문 양끝맞춤, 제목/한 줄은 가운데/왼쪽.
         page_width = page.rect.width
         for rect, ko, _size, color in clipped:
+            bfont = _pick_font(ko)  # 글리프 빠짐 방지(∈ 등은 폴백 글꼴로)
             try:
                 # 번역문이 한 줄에 다 들어가면 justify 금지(단어 벌어짐 방지).
-                one_line = font.text_length(ko, fontsize=_size) <= (rect.width - 2)
+                one_line = bfont.text_length(ko, fontsize=_size) <= (rect.width - 2)
             except Exception:
                 one_line = False
             align = _detect_align(rect, page_width, single_line=one_line)
-            if _draw_fit(page, rect, ko, _color01(color), font, _size, align):
+            if _draw_fit(page, rect, ko, _color01(color), bfont, _size, align):
                 shrunk += 1
             replaced += 1
 

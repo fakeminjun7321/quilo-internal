@@ -553,6 +553,12 @@ app.post("/api/login", async (req, res) => {
   try {
     const user = await supa.authenticate(name, password);
     if (!user) {
+      supa.recordLogin({
+        userName: name,
+        ip,
+        userAgent: req.get("user-agent"),
+        success: false,
+      });
       return res.status(401).json({ error: "이름 또는 비밀번호가 틀렸습니다." });
     }
     req.session.userInfo = {
@@ -569,6 +575,13 @@ app.post("/api/login", async (req, res) => {
     } else {
       req.session.cookie.expires = false; // 세션 쿠키(닫으면 만료)
     }
+    supa.recordLogin({
+      userId: user.id,
+      userName: user.name,
+      ip,
+      userAgent: req.get("user-agent"),
+      success: true,
+    });
     console.log(`[login] ${user.name} (admin=${user.is_admin})`);
     return res.json({
       ok: true,
@@ -930,6 +943,144 @@ app.post("/api/chat/feedback", async (req, res) => {
     }
   }
   res.json({ ok: true });
+});
+
+// ── 관리자 전용 AI 보조 (로그인 기록·사용로그·사용자 등 관리자 데이터를 읽고 답함) ──
+const CHAT_ADMIN_MODEL = process.env.CHAT_ADMIN_MODEL || CHAT_MEMO_MODEL;
+app.post("/api/admin/chat", requireAdmin, async (req, res) => {
+  if (!CHAT_API_KEY) {
+    return res
+      .status(503)
+      .json({ error: "AI가 아직 준비 중입니다 (CHAT_API_KEY 미설정)." });
+  }
+  const raw = Array.isArray(req.body && req.body.messages)
+    ? req.body.messages
+    : [];
+  const turns = raw
+    .filter(
+      (m) =>
+        m &&
+        (m.role === "user" || m.role === "assistant") &&
+        typeof m.content === "string" &&
+        m.content.trim(),
+    )
+    .slice(-8)
+    .map((m) => ({ role: m.role, content: m.content.slice(0, 3000) }));
+  if (!turns.length || turns[turns.length - 1].role !== "user") {
+    return res.status(400).json({ error: "메시지가 비어 있습니다." });
+  }
+
+  // 관리자 데이터 스냅샷 (모두 graceful)
+  let snapshot = "[데이터 없음]";
+  try {
+    const [users, usage, logins] = await Promise.all([
+      supa.isEnabled() ? supa.listUsers() : [],
+      supa.isEnabled() ? supa.listUsageLogs(60) : [],
+      supa.isEnabled() ? supa.listLoginLogs(120) : [],
+    ]);
+    const userLines = (users || [])
+      .slice(0, 200)
+      .map(
+        (u) =>
+          `- ${u.name}${u.is_admin ? "(관리자)" : ""}: 크레딧 ${u.credits ?? "?"}` +
+          `${u.unlimited ? ", 무제한" : ""}` +
+          `${u.restricted_model ? ", 모델제한=" + u.restricted_model : ""}` +
+          `${u.student_id ? ", 학번 " + u.student_id : ""}` +
+          `${u.created_at ? ", 가입 " + u.created_at : ""}`,
+      );
+    const usageLines = (usage || []).map(
+      (r) =>
+        `- ${r.created_at} · ${r.user_name} · $${Number(r.total_usd || 0).toFixed(4)} · ${JSON.stringify(r.meta || {}).slice(0, 160)}`,
+    );
+    const loginLines = (logins || []).map(
+      (l) =>
+        `- ${l.created_at} · ${l.user_name || "?"} · ${l.success ? "성공" : "실패"} · IP ${l.ip || "?"}`,
+    );
+    const fbLines = chatFeedback
+      .slice(-20)
+      .map(
+        (f) =>
+          `- ${f.at} · ${f.rating}${f.comment ? " · " + f.comment : ""} (Q:${(f.question || "").slice(0, 40)})`,
+      );
+    snapshot =
+      `[사용자 ${(users || []).length}명]\n${userLines.join("\n") || "(없음)"}\n\n` +
+      `[최근 로그인 기록 ${loginLines.length}건]\n${loginLines.join("\n") || "(없음 — login_logs 테이블 생성/적재 확인 필요)"}\n\n` +
+      `[최근 보고서 생성 로그 ${usageLines.length}건]\n${usageLines.join("\n") || "(없음)"}\n\n` +
+      `[최근 AI 도우미 피드백 ${fbLines.length}건]\n${fbLines.join("\n") || "(없음)"}`;
+  } catch (e) {
+    console.error("[admin-chat] snapshot:", e.message);
+    snapshot = "[데이터 조회 실패: " + e.message + "]";
+  }
+
+  const sys = `당신은 Quilo의 '관리자 보조 AI'입니다. 아래 관리자 데이터를 근거로 운영자의 질문에 한국어로 정확히 답합니다.
+- 데이터에 있는 사실만 답하고, 없으면 "데이터에 없음"이라고 하세요. 수치를 지어내지 마세요.
+- 목록/표로 간결하게. 시간은 데이터의 UTC 값을 그대로 쓰되, 필요하면 "약 N시간 전"을 덧붙이세요.
+- 로그인 실패가 몰린 계정/IP, 비정상 사용량 등 이상 신호가 보이면 먼저 짚어주세요.
+
+=== 관리자 데이터 (현재 시각 ${new Date().toISOString()}) ===
+${snapshot}`;
+
+  let upstream;
+  try {
+    upstream = await fetch(`${CHAT_API_BASE}/chat/completions`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${CHAT_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: CHAT_ADMIN_MODEL,
+        max_tokens: 1500,
+        temperature: 0.2,
+        stream: true,
+        messages: [{ role: "system", content: sys }, ...turns],
+      }),
+    });
+  } catch (e) {
+    console.error("[admin-chat] connect:", e.message);
+    return res.status(502).json({ error: "AI 서버 연결 실패." });
+  }
+  if (!upstream.ok || !upstream.body) {
+    const t = await upstream.text().catch(() => "");
+    console.error("[admin-chat] upstream", upstream.status, t.slice(0, 300));
+    return res.status(502).json({ error: "AI 응답 오류." });
+  }
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("X-Accel-Buffering", "no");
+  const decoder = new TextDecoder();
+  let buf = "";
+  try {
+    for await (const chunk of upstream.body) {
+      buf += decoder.decode(chunk, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line.startsWith("data:")) continue;
+        const data = line.slice(5).trim();
+        if (data === "[DONE]") {
+          res.end();
+          return;
+        }
+        try {
+          const j = JSON.parse(data);
+          const tok =
+            j.choices &&
+            j.choices[0] &&
+            j.choices[0].delta &&
+            j.choices[0].delta.content;
+          if (tok) res.write(tok);
+        } catch (_) {}
+      }
+    }
+    res.end();
+  } catch (e) {
+    console.error("[admin-chat] stream:", e.message);
+    try {
+      res.end();
+    } catch (_) {}
+  }
 });
 
 app.patch("/api/me/profile", requireAuth, async (req, res) => {

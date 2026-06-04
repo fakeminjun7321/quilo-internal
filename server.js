@@ -200,6 +200,7 @@ const {
   analyzePdf,
   rasterizePages,
   splitPdf,
+  extractFigures,
 } = require("./lib/pipelines/pdf-translate/pdf-tool");
 const {
   prepareImageForAnthropic,
@@ -1296,10 +1297,50 @@ async function splitPdfToBuffers(pdfBuffer, { signal, onProgress }) {
     fs.writeFileSync(pdfPath, pdfBuffer);
     const meta = await splitPdf(pdfPath, tmpDir, { pagesPerChunk: per, signal });
     if (!meta.chunks || meta.chunks.length <= 1) return null; // 분할 의미 없음
-    return meta.chunks.map((c) => fs.readFileSync(c.path));
+    // 그림을 구간별로 배치하려면 페이지 범위(start/end)가 필요하다.
+    return meta.chunks.map((c) => ({
+      buffer: fs.readFileSync(c.path),
+      start: c.start,
+      end: c.end,
+    }));
   } catch (e) {
     onProgress(`⚠ 구간 분할 건너뜀(단일 처리): ${e.message}`);
     return null;
+  } finally {
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch {
+      /* best-effort */
+    }
+  }
+}
+
+// 텍스트 PDF 재조판 시 원본 그림을 잘라 메모리 버퍼로 돌려준다(LaTeX 복원용).
+// 그림이 없거나 실패하면 빈 배열 — 재조판은 그대로 진행된다.
+async function extractFiguresForRetypeset(pdfBuffer, { signal, onProgress }) {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdffig-"));
+  const pdfPath = path.join(tmpDir, "in.pdf");
+  try {
+    fs.writeFileSync(pdfPath, pdfBuffer);
+    const meta = await extractFigures(pdfPath, tmpDir, { signal });
+    const figs = (meta.figures || [])
+      .map((f) => {
+        try {
+          return {
+            n: f.n,
+            page: f.page,
+            caption: f.caption || "",
+            buffer: fs.readFileSync(f.file),
+          };
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+    return figs;
+  } catch (e) {
+    onProgress(`⚠ 그림 추출 건너뜀(텍스트만 재조판): ${e.message}`);
+    return [];
   } finally {
     try {
       fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -1467,7 +1508,18 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) 
         pushProgress(job, `🖼️ 원본 그림 ${result.figures}개를 본문에 복원했습니다.`);
       }
     } else if (resolvedMode === "retypeset") {
-      // 텍스트 PDF 재조판: 페이지 구간으로 분할해 병렬 번역(Opus 품질 유지·속도↑).
+      // 텍스트 PDF 재조판: 원본 그림을 미리 잘라두고(복원용), 페이지 구간으로 분할해
+      // 병렬 번역(Opus 품질 유지·속도↑). 그림은 %%FIG:n%% 마커 자리에 다시 끼워넣는다.
+      const figures = await extractFiguresForRetypeset(pdfBuffer, {
+        signal: ac.signal,
+        onProgress,
+      });
+      if (figures.length) {
+        pushProgress(
+          job,
+          `🖼️ 본문 그림 ${figures.length}개 추출 — 재조판본에 복원합니다.`,
+        );
+      }
       const pdfChunks = await splitPdfToBuffers(pdfBuffer, {
         signal: ac.signal,
         onProgress,
@@ -1475,10 +1527,17 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) 
       result = await retypesetPdf({
         pdfBuffer,
         pdfChunks,
+        figures,
         model,
         signal: ac.signal,
         onProgress,
       });
+      if (result.figures) {
+        pushProgress(
+          job,
+          `🖼️ 원본 그림 ${result.figures}개를 재조판본에 복원했습니다.`,
+        );
+      }
     } else {
       result = await translatePdf({
         pdfBuffer,

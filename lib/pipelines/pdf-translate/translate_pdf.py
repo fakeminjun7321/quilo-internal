@@ -647,6 +647,113 @@ def cmd_split(pdf_path, out_dir, pages_per_chunk=5):
     )
 
 
+def _figure_caption(tblocks, reg, gap=80.0):
+    """그림 영역 reg 의 캡션(마커 배치 힌트). 'FIGURE/그림/Table/표/Scheme …'으로
+    시작하는, 그림과 가까운(세로로 겹치거나 위/아래 ±gap) 블록만 신뢰한다. 옆에
+    붙은 캡션도 잡고, 본문 문단·저작권 푸터를 캡션으로 오인하지 않는다."""
+    import re as _re
+
+    # 키워드(FIGURE/그림/Table…) + 번호. 블록 앞부분에서만 찾아 본문 중간의
+    # 'see Figure 6' 같은 참조는 캡션으로 오인하지 않는다.
+    pat = _re.compile(
+        r"(FIG(?:URE)?|그림|Figure|Table|TABLE|표|SCHEME|Scheme)\.?\s*[\dIVXP]",
+        _re.I,
+    )
+    cx_r, cy_r = (reg.x0 + reg.x1) / 2.0, (reg.y0 + reg.y1) / 2.0
+    cands = []
+    for b in tblocks:
+        if len(b) < 5:
+            continue
+        x0, y0, x1, y1 = b[0], b[1], b[2], b[3]
+        txt = (b[4] or "").strip()
+        if not txt:
+            continue
+        oneline = " ".join(txt.split())
+        m = pat.search(oneline[:40])  # 캡션은 앞쪽에서 시작
+        if not m:
+            continue
+        if y1 < reg.y0 - gap or y0 > reg.y1 + gap:
+            continue  # 그림에서 세로로 너무 멀면 다른 그림 캡션
+        cap = oneline[m.start() :]  # 키워드부터(앞에 붙은 축 라벨 등 제거)
+        dist = abs((x0 + x1) / 2.0 - cx_r) + abs((y0 + y1) / 2.0 - cy_r)
+        cands.append((dist, cap))
+    if cands:
+        cands.sort(key=lambda t: t[0])
+        return cands[0][1][:90]
+    return ""
+
+
+def cmd_figures(pdf_path, out_dir, zoom=3.0):
+    """텍스트 PDF 의 그림/도표 영역을 PNG 로 잘라 out_dir 에 저장하고 메타데이터를 낸다.
+    재조판(re-typeset) 시 원본 그림을 \\includegraphics 로 복원하기 위한 입력.
+    번호는 페이지 순·세로 위→아래 순으로 매겨 Claude 마커 순서와 맞춘다."""
+    try:
+        zoom = float(zoom)
+    except Exception:
+        zoom = 3.0
+    zoom = max(1.5, min(5.0, zoom))
+    doc = fitz.open(pdf_path)
+    os.makedirs(out_dir, exist_ok=True)
+    figs_out = []
+    n = 0
+    for pno in range(len(doc)):
+        page = doc[pno]
+        regs = _figure_regions(page)
+        if not regs:
+            continue
+        regs = sorted(regs, key=lambda r: (round(r.y0, 1), round(r.x0, 1)))
+        try:
+            tblocks = page.get_text("blocks")
+        except Exception:
+            tblocks = []
+        mat = fitz.Matrix(zoom, zoom)
+        pr = page.rect
+        for reg in regs:
+            if reg.width < 45 or reg.height < 45:
+                continue  # 너무 작음(아이콘·기호 조각) → 그림으로 보지 않음
+            # 축 라벨·화살촉이 잘리지 않게 약간 여백을 주되, 페이지 밖으로 안 나가게.
+            pad = 7.0
+            rr = fitz.Rect(
+                max(pr.x0, reg.x0 - pad),
+                max(pr.y0, reg.y0 - pad),
+                min(pr.x1, reg.x1 + pad),
+                min(pr.y1, reg.y1 + pad),
+            )
+            try:
+                pix = page.get_pixmap(matrix=mat, clip=rr, alpha=False)
+            except Exception:
+                continue
+            if pix.width < 12 or pix.height < 12:
+                continue
+            n += 1
+            fname = os.path.join(out_dir, f"fig-{n}.png")
+            try:
+                pix.save(fname)
+            except Exception:
+                n -= 1
+                continue
+            figs_out.append(
+                {
+                    "n": n,
+                    "page": pno + 1,
+                    "bbox": [
+                        round(reg.x0, 1),
+                        round(reg.y0, 1),
+                        round(reg.x1, 1),
+                        round(reg.y1, 1),
+                    ],
+                    "caption": _figure_caption(tblocks, reg),
+                    "file": os.path.abspath(fname),
+                    "w": pix.width,
+                    "h": pix.height,
+                }
+            )
+    sys.stdout.write(
+        json.dumps({"page_count": len(doc), "figures": figs_out}, ensure_ascii=False)
+    )
+    doc.close()
+
+
 def main():
     if len(sys.argv) < 2:
         sys.stderr.write("usage: translate_pdf.py extract|render ...\n")
@@ -665,6 +772,9 @@ def main():
         elif mode == "split":
             # split <pdf> <out_dir> [pages_per_chunk]
             cmd_split(*sys.argv[2:5])
+        elif mode == "figures":
+            # figures <pdf> <out_dir> [zoom] — 재조판 그림 복원용 크롭 추출
+            cmd_figures(*sys.argv[2:5])
         else:
             sys.stderr.write(f"unknown mode: {mode}\n")
             sys.exit(2)

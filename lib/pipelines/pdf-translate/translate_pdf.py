@@ -430,6 +430,30 @@ def _draw_fit(page, rect, text, color, font, start_size, align, min_size=4.0):
     return True
 
 
+def _clip_out(rect, regions):
+    """rect 에서 figure 영역을 뺀 '그림 밖' 가장 큰 직사각형을 돌려준다(완전히 그림
+    안이면 None). 캡션 bbox 가 그림 위로 뻗쳐도 그림 배경을 덮지 않게(흰 자국 방지) +
+    그림 안 라벨(V(RAB) 등)은 원본 그대로 둔다."""
+    r = fitz.Rect(rect)
+    for f in regions:
+        if not r.intersects(f):
+            continue
+        cands = []
+        if f.x0 > r.x0:
+            cands.append(fitz.Rect(r.x0, r.y0, min(r.x1, f.x0), r.y1))
+        if f.x1 < r.x1:
+            cands.append(fitz.Rect(max(r.x0, f.x1), r.y0, r.x1, r.y1))
+        if f.y0 > r.y0:
+            cands.append(fitz.Rect(r.x0, r.y0, r.x1, min(r.y1, f.y0)))
+        if f.y1 < r.y1:
+            cands.append(fitz.Rect(r.x0, max(r.y0, f.y1), r.x1, r.y1))
+        cands = [c for c in cands if c.width > 2 and c.height > 2]
+        if not cands:
+            return None
+        r = max(cands, key=lambda c: c.width * c.height)
+    return r
+
+
 def cmd_render(pdf_path, out_path, font_path):
     payload = json.loads(sys.stdin.read() or "{}")
     translations = payload.get("translations", {}) or {}
@@ -458,23 +482,30 @@ def cmd_render(pdf_path, out_path, font_path):
         page = doc[pno]
         sample = _sample_pixmap(page)  # redaction 색 맞춤용(원본 배경 샘플)
         page_bg = _page_bg(sample)
+        figs = _figure_regions(page)  # 그림 영역 — 덮기/그리기를 이 밖으로 자른다.
+        # 블록 rect 를 그림 밖으로 클리핑(완전히 그림 안이면 제외). → 그림 배경에 흰 자국
+        # 안 생기고, 캡션에 붙은 축 라벨(V(RAB) 등)도 원본 그대로 유지.
+        clipped = []
+        for rect, ko, sz, col in items:
+            cr = _clip_out(rect, figs) if figs else fitz.Rect(rect)
+            if cr is None or cr.width < 3 or cr.height < 3:
+                continue
+            clipped.append((cr, ko, sz, col))
         # 1) 원문 글자만 지운다. images=NONE 으로 그림은 보존.
-        #    밝은(흰색 계열) 글자 → 어두운 배경 위일 수 있어 fill 생략(배경 비침).
-        #    그 외엔 흰색 박스 대신 **그 자리 배경색**으로 덮어 색이 튀지 않게 한다.
-        for rect, _ko, _sz, _col in items:
+        #    밝은(흰색 계열) 글자 → fill 생략. 그 외엔 '바로 바깥' 정확 배경색으로 덮어
+        #    경계가 안 보이게(상자 느낌 제거).
+        for rect, _ko, _sz, _col in clipped:
             r, g, b = _color01(_col)
             if min(r, g, b) > 0.8:
                 fill = None
             else:
-                # 블록 '바로 바깥'의 정확한 배경색으로 덮어 경계가 안 보이게(상자 느낌 제거).
                 bbg = _bg_around(sample, rect) or page_bg
                 fill = (bbg[0] / 255.0, bbg[1] / 255.0, bbg[2] / 255.0)
             page.add_redact_annot(rect, fill=fill)
         page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
-        # 2) 같은 박스에 번역문 삽입(넘치면 폰트를 줄여 맞춤). TextWriter 가 폰트 임베드.
-        #    본문은 양끝맞춤, 제목류는 가운데 정렬로 LaTeX 조판처럼 단정하게.
+        # 2) 같은(클리핑된) 박스에 번역문 삽입. 본문 양끝맞춤, 제목류 가운데 정렬.
         page_width = page.rect.width
-        for rect, ko, _size, color in items:
+        for rect, ko, _size, color in clipped:
             align = _detect_align(rect, page_width)
             if _draw_fit(page, rect, ko, _color01(color), font, _size, align):
                 shrunk += 1

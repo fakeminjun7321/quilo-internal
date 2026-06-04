@@ -561,6 +561,12 @@ app.post("/api/login", async (req, res) => {
       unlimited: !!user.unlimited,
       restrictedModel: user.restricted_model || null,
     };
+    // 로그인 유지: 체크 시 30일 지속 쿠키, 아니면 브라우저/앱 세션 한정
+    if (req.body && req.body.remember) {
+      req.session.cookie.maxAge = 1000 * 60 * 60 * 24 * 30; // 30일
+    } else {
+      req.session.cookie.expires = false; // 세션 쿠키(닫으면 만료)
+    }
     console.log(`[login] ${user.name} (admin=${user.is_admin})`);
     return res.json({
       ok: true,

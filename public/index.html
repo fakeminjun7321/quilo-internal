@@ -71,6 +71,9 @@
                   <label><span class="field-label">비밀번호</span>
                   <input id="li_password" type="password" required autocomplete="current-password" /></label>
                 </div>
+                <label class="li-remember" style="display:flex;align-items:center;gap:7px;font-size:13px;margin-top:2px;cursor:pointer;user-select:none">
+                  <input id="li_remember" type="checkbox" checked style="width:auto;margin:0" /> 로그인 유지
+                </label>
                 <div class="form-actions" style="margin-top:8px">
                   <button type="submit" id="li_btn" class="btn btn-primary">로그인</button>
                 </div>
@@ -855,6 +858,13 @@
         .then((d) => applyAuth(true, d))
         .catch(() => applyAuth(false));
 
+      // 로그인 유지 사용자: 저장된 이름 미리 채우기
+      try {
+        const _saved = localStorage.getItem("lastUsername");
+        const _u = document.getElementById("li_username");
+        if (_saved && _u && !_u.value) _u.value = _saved;
+      } catch (_) {}
+
       // 로그인 폼(드롭다운) 제출
       document
         .getElementById("loginForm")
@@ -862,9 +872,13 @@
           e.preventDefault();
           const err = document.getElementById("li_err");
           err.style.display = "none";
+          const remember =
+            document.getElementById("li_remember")?.checked !== false;
+          const uname = document.getElementById("li_username").value;
           const body = {
-            username: document.getElementById("li_username").value,
+            username: uname,
             password: document.getElementById("li_password").value,
+            remember,
           };
           const btn = document.getElementById("li_btn");
           btn.disabled = true;
@@ -877,6 +891,10 @@
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || "로그인 실패");
+            try {
+              if (remember) localStorage.setItem("lastUsername", uname);
+              else localStorage.removeItem("lastUsername");
+            } catch (_) {}
             location.reload();
           } catch (ex) {
             err.textContent = ex.message;

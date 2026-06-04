@@ -259,7 +259,24 @@ def cmd_extract(pdf_path):
         blocks.append({"id": bid, "page": pno, "text": text})
     # 텍스트가 거의 없으면 스캔본(글자가 이미지)일 가능성이 높다 → Node가 안내.
     scanned = len(doc) > 0 and total_text_chars < 20 * len(doc)
-    out = {"page_count": len(doc), "scanned": scanned, "blocks": blocks}
+    # 진단: 그림 영역 감지 수 + PyMuPDF 버전(서버/로컬 동작 차이 추적용)
+    fig_regions = 0
+    for pg in range(len(doc)):
+        try:
+            fig_regions += len(_figure_regions(doc[pg]))
+        except Exception:
+            pass
+    try:
+        fitz_ver = fitz.version[0]
+    except Exception:
+        fitz_ver = "?"
+    out = {
+        "page_count": len(doc),
+        "scanned": scanned,
+        "blocks": blocks,
+        "fig_regions": fig_regions,
+        "fitz": fitz_ver,
+    }
     sys.stdout.write(json.dumps(out, ensure_ascii=False))
     doc.close()
 

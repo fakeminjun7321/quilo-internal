@@ -64,9 +64,8 @@
   function restoreConversation() {
     msgsEl.innerHTML = "";
     chipsEl.style.display = "none";
-    panel.querySelectorAll("#qc-modes button").forEach(function (b) {
-      b.classList.toggle("on", b.getAttribute("data-mode") === currentMode);
-    });
+    var _mb = document.getElementById("qc-modebar");
+    if (_mb) _mb.style.display = currentMode === "memo" ? "flex" : "none";
     var isMemo = currentMode === "memo";
     for (var i = 0; i < messages.length; i++) {
       var m = messages[i];
@@ -97,9 +96,9 @@
       "#qc-head{background:#243ba2;color:#fff;padding:13px 16px;display:flex;align-items:center;gap:8px}" +
       "#qc-head b{font-size:15px}#qc-head .qc-sub{font-size:11px;opacity:.8;margin-left:auto;margin-right:8px}" +
       "#qc-close{background:transparent;border:none;color:#fff;font-size:20px;cursor:pointer;line-height:1;padding:0 2px}" +
-      "#qc-modes{display:flex;gap:4px;padding:8px 10px;background:#fff;border-bottom:1px solid #eef0f6}" +
-      "#qc-modes button{flex:1;font-size:12.5px;border:1px solid #e6e8f0;background:#fff;color:#64748b;border-radius:8px;padding:6px 8px;cursor:pointer;font-family:inherit}" +
-      "#qc-modes button.on{background:#243ba2;color:#fff;border-color:#243ba2}" +
+      "#qc-modebar{display:none;align-items:center;justify-content:space-between;gap:8px;padding:7px 12px;background:#eef1fc;border-bottom:1px solid #dfe4fb;font-size:12.5px;color:#243ba2;font-weight:600}" +
+      "#qc-modebar button{background:#fff;border:1px solid #c9d2f7;color:#243ba2;border-radius:7px;font-size:11.5px;padding:3px 9px;cursor:pointer;font-family:inherit;font-weight:500}" +
+      "#qc-modebar button:hover{background:#e4e9fc}" +
       "#qc-msgs{flex:1;overflow-y:auto;padding:14px;background:#f6f7fb;display:flex;flex-direction:column;gap:10px}" +
       ".qc-row{display:flex}.qc-row.me{justify-content:flex-end}.qc-row.ai{flex-direction:column;align-items:flex-start}" +
       ".qc-b{max-width:84%;padding:9px 12px;border-radius:13px;font-size:13.5px;line-height:1.6;white-space:pre-wrap;word-break:break-word}" +
@@ -372,9 +371,8 @@
     if (busy) return;
     currentMode = mode;
     if (mode === "help") memoTarget = null;
-    panel.querySelectorAll("#qc-modes button").forEach(function (b) {
-      b.classList.toggle("on", b.getAttribute("data-mode") === mode);
-    });
+    var _mb = document.getElementById("qc-modebar");
+    if (_mb) _mb.style.display = mode === "memo" ? "flex" : "none";
     messages = [];
     showIntro();
     save();
@@ -395,21 +393,16 @@
     head.appendChild(close);
     panel.appendChild(head);
 
-    var modes = el("div");
-    modes.id = "qc-modes";
-    var mHelp = el("button", "on", "💬 사용법");
-    mHelp.setAttribute("data-mode", "help");
-    var mMemo = el("button", null, "📝 메모 작성");
-    mMemo.setAttribute("data-mode", "memo");
-    mHelp.onclick = function () {
+    // 상시 토글 없음. 메모 모드일 때만 보이는 안내 바(일반 도움말로 돌아가기 포함).
+    var modebar = el("div");
+    modebar.id = "qc-modebar";
+    modebar.appendChild(el("span", null, "📝 메모 작성 도우미"));
+    var mback = el("button", null, "일반 도움말 ✕");
+    mback.onclick = function () {
       setMode("help");
     };
-    mMemo.onclick = function () {
-      setMode("memo");
-    };
-    modes.appendChild(mHelp);
-    modes.appendChild(mMemo);
-    panel.appendChild(modes);
+    modebar.appendChild(mback);
+    panel.appendChild(modebar);
 
     msgsEl = el("div");
     msgsEl.id = "qc-msgs";

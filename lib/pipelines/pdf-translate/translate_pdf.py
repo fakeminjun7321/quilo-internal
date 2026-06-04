@@ -609,56 +609,67 @@ def _has_leftover(ret):
     return bool(ret)
 
 
-def _draw_fit(page, rect, text, color, font, start_size, align, min_size=4.0, italic=False):
+def _draw_fit(
+    page,
+    rect,
+    text,
+    color,
+    font,
+    start_size,
+    align,
+    min_size=4.0,
+    italic=False,
+    max_x=None,
+    max_y=None,
+):
     """rect 안에 번역문을 그린다. TextWriter 는 write_text() 전엔 페이지에 안 그리므로
     fill_textbox 로 '다 들어갔는지' 먼저 확인하고 들어갈 때만 커밋한다(겹침·증발 방지).
 
-    크기 정책:
-    - 제목·헤딩·저자처럼 '짧은 블록'(원래 ≤~2줄)은 번역이 길어져도 **폰트 크기를 유지**
-      하고 아래로 줄을 흘려(wrap) 맞춘다 — 제목이 갑자기 작아지는 것을 막는다.
-    - 본문(여러 줄)은 기존대로 칸에 맞게 약간 축소(레이아웃 유지).
+    크기 정책 — 제목·헤딩이 번역으로 길어져도 작아지지 않게 하되 **이웃 블록을 절대
+    침범하지 않는다**(겹침 방지):
+    - 가로: 번역이 한 줄에 안 들어가면 오른쪽 여유(max_x: 오른쪽 이웃/페이지 여백)까지
+      넓혀 한 줄에 담는다(가운데 정렬 제외). → 제목·헤딩이 크기 유지된 채 한 줄로.
+    - 세로: 그래도 넘치면 아래 여유(max_y: 아래 이웃/페이지 여백)까지만 줄을 흘린다.
+    - 가로·세로 여유로도 안 되면 그때만 폰트를 줄인다(이웃 침범 0).
 
     italic=True 면 전단(shear) morph 로 기울여 그려 원문 이탤릭을 반영한다(faux-oblique).
     """
-    # 뒤집힌/degenerate rect 방어. fill_textbox 는 rect 가 한 줄 높이보다 얇거나
-    # 폭이 거의 없으면 'Text must start in rectangle' 예외를 던진다(반환이 아니라).
     rect = fitz.Rect(rect)
     rect.normalize()
     if rect.width < 2 or rect.height < 1:
         return False
     page_rect = page.rect
-    line_h0 = max(1.0, float(start_size)) * 1.32
-    # 짧은 블록(제목·헤딩·저자·캡션) = 원래 높이가 ~2줄 이하 → 크기 유지(아래로 확장).
-    is_short = rect.height <= 2.4 * line_h0
+    # 확장 상한 = 이웃 블록(없으면 페이지 여백). 최소 원래 크기는 보장.
+    mx = max(rect.x1, max_x if max_x is not None else page_rect.x1 - 6)
+    my = max(rect.y1, max_y if max_y is not None else page_rect.y1 - 6)
 
     morph = None
     if italic:
-        # 베이스라인(좌하단) 기준 전단 → 윗부분이 오른쪽으로 기울어 이탤릭처럼 보인다.
         morph = (fitz.Point(rect.x0, rect.y1), fitz.Matrix(1, 0, -0.28, 1, 0, 0))
 
-    def _fit_rect(r, fs):
-        """얇은 rect 를 한 줄 높이만큼 확장(아래로, 안되면 위로) — 얇은 블록 방어."""
+    def _expand(r, fs):
+        """한 줄에 안 들어가면 가로(→mx) 먼저, 그래도 넘치면 세로(→my)로만 확장.
+        둘 다 이웃 한계 안이라 겹치지 않는다."""
         r = fitz.Rect(r)
-        lh = fs * 1.35
-        if r.height < lh:
-            r.y1 = min(page_rect.y1, r.y0 + lh)
-            if r.height < lh:
-                r.y0 = max(page_rect.y0, r.y1 - lh)
-        return r
-
-    def _grow(r, fs):
-        """짧은 블록: 폰트 크기 유지 위해 텍스트가 들어가도록 아래로 확장(페이지 안)."""
         try:
             tl = font.text_length(text, fontsize=fs)
         except Exception:
-            return r
-        n_lines = int(tl / max(1.0, r.width)) + 2  # 줄바꿈 여유 포함
-        need = n_lines * fs * 1.32
-        if r.height >= need:
-            return r
-        r2 = fitz.Rect(r)
-        r2.y1 = min(page_rect.y1, r.y0 + need)
-        return r2
+            tl = 0.0
+        # 가로 확장(가운데 정렬 제외): 1줄 폭이 모자라면 오른쪽 여유까지.
+        if align != fitz.TEXT_ALIGN_CENTER and tl > r.width - 2 and mx > r.x1 + 1:
+            r.x1 = mx
+        # 한 줄 높이 보장(얇은 블록).
+        lh = fs * 1.35
+        if r.height < lh:
+            r.y1 = max(r.y1, min(my, r.y0 + lh))
+            if r.height < lh:
+                r.y0 = max(page_rect.y0, r.y1 - lh)
+        # 여전히 1줄 초과면 아래 여유까지만 늘려 wrap.
+        if tl > r.width:
+            need = (int(tl / max(1.0, r.width)) + 1) * fs * 1.32
+            if need > r.height:
+                r.y1 = min(my, r.y0 + need)
+        return r
 
     def _try_fill(r, fs):
         try:
@@ -679,19 +690,13 @@ def _draw_fit(page, rect, text, color, font, start_size, align, min_size=4.0, it
 
     fs = max(min_size, min(float(start_size), 400.0))
     while fs >= min_size:
-        r = _fit_rect(rect, fs)
-        if is_short:
-            r = _grow(r, fs)  # 크기 유지 위해 아래로 확장(축소 대신)
-        res = _try_fill(r, fs)
+        res = _try_fill(_expand(rect, fs), fs)
         if res is not None and not _has_leftover(res[1]):
             _commit(res[0])
             return fs < float(start_size) - 0.01
         fs -= 0.5
     # 최소 크기로도 안 들어가면 들어가는 만큼이라도(예외 무시 → render 전체는 계속).
-    r = _fit_rect(rect, min_size)
-    if is_short:
-        r = _grow(r, min_size)
-    res = _try_fill(r, min_size)
+    res = _try_fill(_expand(rect, min_size), min_size)
     if res is not None:
         _commit(res[0])
     return True
@@ -828,6 +833,26 @@ def cmd_render(pdf_path, out_path, font_path):
         # 원본 블록 bbox 가 위/아래첨자 경계에서 겹쳐 두 번역문이 포개지는 것 방지
         # (redaction 전에 해야 한 블록 redaction 이 다른 블록 글자를 지우지 않음).
         clipped = _dedoverlap_column(clipped)
+        # 각 블록의 확장 한계 = 오른쪽/아래 '이웃 블록'까지(없으면 페이지 여백). 제목·헤딩이
+        # 번역으로 길어져 가로·세로로 늘어나도 이웃을 침범해 겹치지 않도록 막는다.
+        crects = [it[0] for it in clipped]
+        nC = len(crects)
+        bounds = []
+        for i in range(nC):
+            ri = crects[i]
+            bx = page.rect.x1 - 6.0
+            by = page.rect.y1 - 6.0
+            for j in range(nC):
+                if j == i:
+                    continue
+                rj = crects[j]
+                oy = min(ri.y1, rj.y1) - max(ri.y0, rj.y0)
+                if rj.x0 >= ri.x1 - 1 and oy > 0.25 * min(ri.height, rj.height):
+                    bx = min(bx, rj.x0 - 2)  # 오른쪽 이웃 → 가로 확장 한계
+                ox = min(ri.x1, rj.x1) - max(ri.x0, rj.x0)
+                if rj.y0 >= ri.y1 - 1 and ox > 0.25 * min(ri.width, rj.width):
+                    by = min(by, rj.y0 - 1)  # 아래 이웃 → 세로 확장 한계
+            bounds.append((max(bx, ri.x1), max(by, ri.y1)))
         # 1) 원문 글자만 지운다. images=NONE 으로 그림은 보존.
         #    밝은(흰색 계열) 글자 → fill 생략. 그 외엔 '바로 바깥' 정확 배경색으로 덮어
         #    경계가 안 보이게(상자 느낌 제거).
@@ -842,16 +867,34 @@ def cmd_render(pdf_path, out_path, font_path):
         page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
         # 2) 같은(클리핑된) 박스에 번역문 삽입. 본문 양끝맞춤, 제목/한 줄은 가운데/왼쪽.
         page_width = page.rect.width
-        for rect, ko, _size, color, is_bold, is_ital in clipped:
+        for idx, (rect, ko, _size, color, is_bold, is_ital) in enumerate(clipped):
             base = font_bold if is_bold else font  # 원문 굵게 → 번역본도 굵게
             bfont = _pick_font(ko, base)  # 글리프 빠짐 방지(∈ 등은 폴백 글꼴로)
+            mx, my = bounds[idx]
             try:
-                # 번역문이 한 줄에 다 들어가면 justify 금지(단어 벌어짐 방지).
-                one_line = bfont.text_length(ko, fontsize=_size) <= (rect.width - 2)
+                # 가로로 넓힐 수 있는 최대 폭 기준 '한 줄 여부' 판정(넓혀서 1줄이면 justify
+                # 금지 → 단어 벌어짐 방지). 가운데 정렬 블록은 원래 폭 기준.
+                avail_w = (
+                    rect.width
+                    if rect.width >= 0.45 * page_width
+                    else (mx - rect.x0)
+                )
+                one_line = bfont.text_length(ko, fontsize=_size) <= (avail_w - 2)
             except Exception:
                 one_line = False
             align = _detect_align(rect, page_width, single_line=one_line)
-            if _draw_fit(page, rect, ko, _color01(color), bfont, _size, align, italic=is_ital):
+            if _draw_fit(
+                page,
+                rect,
+                ko,
+                _color01(color),
+                bfont,
+                _size,
+                align,
+                italic=is_ital,
+                max_x=mx,
+                max_y=my,
+            ):
                 shrunk += 1
             replaced += 1
 

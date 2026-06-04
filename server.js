@@ -728,6 +728,25 @@ const CHAT_SYSTEM = `당신은 "Quilo" 사이트의 한국어 도우미입니다
 - 모르거나 계정/결제/오류 등 운영자 영역이면 추측하지 말고 "운영자 문의 / 건의사항"을 안내.
 - 서비스 이름은 항상 "Quilo"로 표기하세요. '퀄로'·'퀼로'처럼 한글로 풀어쓰지 마세요.`;
 
+// 메모 작성 도우미(더 무거운 모델). 보고서 입력칸의 'AI 참고 메모' 초안을 돕는다.
+const CHAT_MEMO_MODEL = process.env.CHAT_MEMO_MODEL || "openai/gpt-oss-120b";
+const CHAT_MEMO_MAX_TOKENS = parseInt(
+  process.env.CHAT_MEMO_MAX_TOKENS || "1200",
+  10,
+);
+const CHAT_MEMO_SYSTEM = `당신은 "Quilo"의 '실험 메모 작성 도우미'입니다. 사용자가 실험 보고서 생성에 넣을 'AI 참고 메모(실험자 의견)' 초안을 함께 만듭니다.
+
+[역할]
+- 사용자가 말한 실제 실험 내용·관찰·측정값·느낀 점을 바탕으로 보고서에 참고가 될 메모를 한국어로 깔끔히 정리·문장화합니다.
+- 정보가 부족하면 먼저 1~3개의 짧은 질문으로 물어봅니다(무엇을 측정했는지, 어떤 경향이었는지, 특이사항이나 오차로 의심되는 점 등).
+- 메모가 정리되면 마지막에 "메모 초안:" 으로 시작하는 최종본을 제시합니다(보고서 입력칸에 붙여넣기 좋게).
+
+[절대 규칙]
+- 사용자가 말하지 않은 수치·결과·오차 원인·결론을 지어내지 마세요. 가정이 필요하면 "가정"임을 밝히거나 사용자에게 물어보세요.
+- 보고서 본문을 통째로 대필하지 말고 '참고 메모(요점)' 수준으로만 도와주세요.
+- 데이터 조작·허위 작성은 학업 부정행위입니다. 본인의 실제 실험을 정리하는 것만 돕습니다.
+- 한국어로 간결하게.`;
+
 app.get("/api/chat/status", (req, res) => {
   res.json({ enabled: !!CHAT_API_KEY });
 });
@@ -767,6 +786,12 @@ app.post("/api/chat", async (req, res) => {
 
   rateLimit.recordChatAttempt(ip);
 
+  // 모드: memo = 메모 작성 도우미(무거운 모델 + 메모 전용 프롬프트), 그 외 = 사용법 도우미
+  const memoMode = (req.body && req.body.mode) === "memo";
+  const sysPrompt = memoMode ? CHAT_MEMO_SYSTEM : CHAT_SYSTEM;
+  const chatModel = memoMode ? CHAT_MEMO_MODEL : CHAT_MODEL;
+  const maxTok = memoMode ? CHAT_MEMO_MAX_TOKENS : CHAT_MAX_TOKENS;
+
   let upstream;
   try {
     upstream = await fetch(`${CHAT_API_BASE}/chat/completions`, {
@@ -776,11 +801,11 @@ app.post("/api/chat", async (req, res) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: CHAT_MODEL,
-        max_tokens: CHAT_MAX_TOKENS,
-        temperature: 0.3,
+        model: chatModel,
+        max_tokens: maxTok,
+        temperature: memoMode ? 0.5 : 0.3,
         stream: true,
-        messages: [{ role: "system", content: CHAT_SYSTEM }, ...turns],
+        messages: [{ role: "system", content: sysPrompt }, ...turns],
       }),
     });
   } catch (e) {

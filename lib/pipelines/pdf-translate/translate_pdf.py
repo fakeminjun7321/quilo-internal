@@ -135,21 +135,37 @@ def _nonfig_rect(block, figs=None):
     return r if r is not None else fitz.Rect(block["bbox"])
 
 
-def dominant_size_color(block):
-    """글자 수 기준으로 가장 많이 쓰인 폰트 크기와 색을 고른다.
+_BOLD_NAME = ("bold", "black", "heavy", "semibold", "-bd", "-bold", "medi")
+_ITAL_NAME = ("italic", "oblique", "-it", "-ital")
 
-    본문은 보통 단일 크기/색이고, 제목 블록은 그 블록의 크기를 따른다.
+
+def dominant_size_color(block):
+    """글자 수 기준으로 가장 많이 쓰인 폰트 크기·색과, 블록의 볼드/이탤릭 여부를 고른다.
+
+    본문은 보통 단일 크기/색이고, 제목 블록은 그 블록의 크기를 따른다. 굵게/기울임은
+    span flags(16=bold, 2=italic) + 폰트명으로 판정하며, 블록 글자의 과반이 그 스타일일
+    때 True(제목·강조 줄을 번역본에도 굵게/기울임으로 반영).
     """
     sizes = defaultdict(float)
     colors = defaultdict(float)
+    bold_n = ital_n = total_n = 0.0
     for ln in block.get("lines", []):
         for sp in ln.get("spans", []):
             n = max(1, len(sp.get("text", "")))
             sizes[round(float(sp.get("size", 10.0)), 1)] += n
             colors[int(sp.get("color", 0))] += n
+            flags = int(sp.get("flags", 0))
+            fn = (sp.get("font", "") or "").lower()
+            if (flags & 16) or any(k in fn for k in _BOLD_NAME):
+                bold_n += n
+            if (flags & 2) or any(k in fn for k in _ITAL_NAME):
+                ital_n += n
+            total_n += n
     size = max(sizes, key=sizes.get) if sizes else 10.0
     color = max(colors, key=colors.get) if colors else 0
-    return size, color
+    bold = total_n > 0 and bold_n >= 0.6 * total_n
+    italic = total_n > 0 and ital_n >= 0.6 * total_n
+    return size, color, bold, italic
 
 
 def has_letters(s):
@@ -593,17 +609,16 @@ def _has_leftover(ret):
     return bool(ret)
 
 
-def _draw_fit(page, rect, text, color, font, start_size, align, min_size=4.0):
-    """rect 안에 다 들어가도록 폰트 크기를 줄여가며 '한 번만' 그린다.
+def _draw_fit(page, rect, text, color, font, start_size, align, min_size=4.0, italic=False):
+    """rect 안에 번역문을 그린다. TextWriter 는 write_text() 전엔 페이지에 안 그리므로
+    fill_textbox 로 '다 들어갔는지' 먼저 확인하고 들어갈 때만 커밋한다(겹침·증발 방지).
 
-    insert_textbox 는 줄높이를 직접 추정해야 해서, 높이가 한 줄과 비슷한 얇은
-    박스(예: 제목)에서 '맞다고 계산했지만 실제로는 한 줄도 안 들어가 아무것도
-    안 그려지는' 문제가 있었다(제목이 통째로 사라진 버그). TextWriter 는
-    write_text() 전에는 페이지에 그리지 않으므로, fill_textbox 로 '다 들어갔는지'를
-    먼저 확인하고 들어갈 때만 커밋한다 → 겹침·잘림·증발이 없다.
+    크기 정책:
+    - 제목·헤딩·저자처럼 '짧은 블록'(원래 ≤~2줄)은 번역이 길어져도 **폰트 크기를 유지**
+      하고 아래로 줄을 흘려(wrap) 맞춘다 — 제목이 갑자기 작아지는 것을 막는다.
+    - 본문(여러 줄)은 기존대로 칸에 맞게 약간 축소(레이아웃 유지).
 
-    align: 본문은 justify(양끝맞춤), 제목류는 center — fill_textbox 는 마지막 줄
-    /한 줄짜리는 자동으로 좌측 처리하므로 짧은 블록도 어색하지 않다.
+    italic=True 면 전단(shear) morph 로 기울여 그려 원문 이탤릭을 반영한다(faux-oblique).
     """
     # 뒤집힌/degenerate rect 방어. fill_textbox 는 rect 가 한 줄 높이보다 얇거나
     # 폭이 거의 없으면 'Text must start in rectangle' 예외를 던진다(반환이 아니라).
@@ -612,20 +627,40 @@ def _draw_fit(page, rect, text, color, font, start_size, align, min_size=4.0):
     if rect.width < 2 or rect.height < 1:
         return False
     page_rect = page.rect
+    line_h0 = max(1.0, float(start_size)) * 1.32
+    # 짧은 블록(제목·헤딩·저자·캡션) = 원래 높이가 ~2줄 이하 → 크기 유지(아래로 확장).
+    is_short = rect.height <= 2.4 * line_h0
+
+    morph = None
+    if italic:
+        # 베이스라인(좌하단) 기준 전단 → 윗부분이 오른쪽으로 기울어 이탤릭처럼 보인다.
+        morph = (fitz.Point(rect.x0, rect.y1), fitz.Matrix(1, 0, -0.28, 1, 0, 0))
 
     def _fit_rect(r, fs):
-        """rect 가 fs 한 줄을 담기엔 얇으면 한 줄 높이만큼만 확장(원문 얇은 블록 방어).
-        아래로 먼저 늘리고, 페이지 밖이면 위로 늘린다."""
+        """얇은 rect 를 한 줄 높이만큼 확장(아래로, 안되면 위로) — 얇은 블록 방어."""
         r = fitz.Rect(r)
-        lh = fs * 1.35  # 한 줄 높이(여유 포함)
+        lh = fs * 1.35
         if r.height < lh:
             r.y1 = min(page_rect.y1, r.y0 + lh)
             if r.height < lh:
                 r.y0 = max(page_rect.y0, r.y1 - lh)
         return r
 
+    def _grow(r, fs):
+        """짧은 블록: 폰트 크기 유지 위해 텍스트가 들어가도록 아래로 확장(페이지 안)."""
+        try:
+            tl = font.text_length(text, fontsize=fs)
+        except Exception:
+            return r
+        n_lines = int(tl / max(1.0, r.width)) + 2  # 줄바꿈 여유 포함
+        need = n_lines * fs * 1.32
+        if r.height >= need:
+            return r
+        r2 = fitz.Rect(r)
+        r2.y1 = min(page_rect.y1, r.y0 + need)
+        return r2
+
     def _try_fill(r, fs):
-        """fill_textbox 시도 → (TextWriter, leftover) 또는 None(예외/실패)."""
         try:
             tw = fitz.TextWriter(page_rect)
             leftover = tw.fill_textbox(r, text, font=font, fontsize=fs, align=align)
@@ -633,17 +668,32 @@ def _draw_fit(page, rect, text, color, font, start_size, align, min_size=4.0):
         except (ValueError, RuntimeError):
             return None
 
+    def _commit(tw):
+        if morph is not None:
+            try:
+                tw.write_text(page, color=color, morph=morph)
+                return
+            except Exception:
+                pass  # morph 실패 시 일반 그리기로 폴백
+        tw.write_text(page, color=color)
+
     fs = max(min_size, min(float(start_size), 400.0))
     while fs >= min_size:
-        res = _try_fill(_fit_rect(rect, fs), fs)
+        r = _fit_rect(rect, fs)
+        if is_short:
+            r = _grow(r, fs)  # 크기 유지 위해 아래로 확장(축소 대신)
+        res = _try_fill(r, fs)
         if res is not None and not _has_leftover(res[1]):
-            res[0].write_text(page, color=color)
+            _commit(res[0])
             return fs < float(start_size) - 0.01
         fs -= 0.5
-    # 최소 크기에서도 다 안 들어가면 들어가는 만큼이라도(예외는 무시 → render 전체는 계속).
-    res = _try_fill(_fit_rect(rect, min_size), min_size)
+    # 최소 크기로도 안 들어가면 들어가는 만큼이라도(예외 무시 → render 전체는 계속).
+    r = _fit_rect(rect, min_size)
+    if is_short:
+        r = _grow(r, min_size)
+    res = _try_fill(r, min_size)
     if res is not None:
-        res[0].write_text(page, color=color)
+        _commit(res[0])
     return True
 
 
@@ -723,37 +773,42 @@ def cmd_render(pdf_path, out_path, font_path):
         # 블록 전체 bbox 가 아니라 '그림 영역 줄을 뺀' bbox 만 덮는다.
         # → 캡션에 붙은 축 라벨(V(R_AB))을 지우지 않고 영어 그대로 남긴다.
         rect = _nonfig_rect(block, figs_for(pno))
-        size, color = dominant_size_color(block)
-        by_page[pno].append((rect, str(ko).strip(), size, color))
+        size, color, is_bold, is_ital = dominant_size_color(block)
+        by_page[pno].append((rect, str(ko).strip(), size, color, is_bold, is_ital))
 
     # 폰트는 한 번만 로드해 모든 TextWriter 가 공유한다. (insert_htmlbox 는 호출마다
     # 2MB 폰트를 Story 에 재적재해 24쪽/수백 블록에서 ~1.5GB OOM 을 냈다.)
     font = fitz.Font(fontfile=font_path)
-    # 폴백 글꼴: 주 글꼴(Pretendard)에 없는 글리프(예: ∈)를 가진 블록은 그 블록만
-    # NanumGothic 으로 그려 '두부(□)'를 방지한다. 같은 폴더의 NanumGothic 사용.
-    font_fb = None
-    try:
-        fb_path = os.path.join(
-            os.path.dirname(os.path.abspath(font_path)), "NanumGothic-Regular.ttf"
-        )
-        if os.path.exists(fb_path) and os.path.abspath(fb_path) != os.path.abspath(font_path):
-            font_fb = fitz.Font(fontfile=fb_path)
-    except Exception:
-        font_fb = None
+    _fdir = os.path.dirname(os.path.abspath(font_path))
 
-    def _pick_font(text):
-        """블록 글자를 가장 잘 렌더하는 글꼴 선택(주 글꼴 우선, 빠진 글리프가 적은 쪽)."""
+    def _load_sibling(name):
+        try:
+            p = os.path.join(_fdir, name)
+            if os.path.exists(p) and os.path.abspath(p) != os.path.abspath(font_path):
+                return fitz.Font(fontfile=p)
+        except Exception:
+            pass
+        return None
+
+    # 볼드 글꼴(원문 굵게 → 번역본도 굵게). 없으면 본문 글꼴로 대체(graceful).
+    font_bold = _load_sibling("Pretendard-Bold.ttf") or font
+    # 폴백 글꼴: 주 글꼴에 없는 글리프(예: ∈)를 가진 블록은 그 블록만 NanumGothic 으로
+    # 그려 '두부(□)'를 방지한다.
+    font_fb = _load_sibling("NanumGothic-Regular.ttf")
+
+    def _pick_font(text, base):
+        """블록 글자를 가장 잘 렌더하는 글꼴 선택(base 우선, 빠진 글리프가 적은 쪽)."""
         if not font_fb:
-            return font
-        miss_p = sum(
-            1 for c in set(text) if ord(c) > 0x7F and not font.has_glyph(ord(c))
+            return base
+        miss_b = sum(
+            1 for c in set(text) if ord(c) > 0x7F and not base.has_glyph(ord(c))
         )
-        if miss_p == 0:
-            return font
+        if miss_b == 0:
+            return base
         miss_f = sum(
             1 for c in set(text) if ord(c) > 0x7F and not font_fb.has_glyph(ord(c))
         )
-        return font_fb if miss_f < miss_p else font
+        return font_fb if miss_f < miss_b else base
 
     replaced = 0
     shrunk = 0
@@ -765,18 +820,18 @@ def cmd_render(pdf_path, out_path, font_path):
         # 블록 rect 를 그림 밖으로 클리핑(완전히 그림 안이면 제외). → 그림 배경에 흰 자국
         # 안 생기고, 캡션에 붙은 축 라벨(V(RAB) 등)도 원본 그대로 유지.
         clipped = []
-        for rect, ko, sz, col in items:
+        for rect, ko, sz, col, bd, it in items:
             cr = _clip_out(rect, figs) if figs else fitz.Rect(rect)
             if cr is None or cr.width < 3 or cr.height < 3:
                 continue
-            clipped.append((cr, ko, sz, col))
+            clipped.append((cr, ko, sz, col, bd, it))
         # 원본 블록 bbox 가 위/아래첨자 경계에서 겹쳐 두 번역문이 포개지는 것 방지
         # (redaction 전에 해야 한 블록 redaction 이 다른 블록 글자를 지우지 않음).
         clipped = _dedoverlap_column(clipped)
         # 1) 원문 글자만 지운다. images=NONE 으로 그림은 보존.
         #    밝은(흰색 계열) 글자 → fill 생략. 그 외엔 '바로 바깥' 정확 배경색으로 덮어
         #    경계가 안 보이게(상자 느낌 제거).
-        for rect, _ko, _sz, _col in clipped:
+        for rect, _ko, _sz, _col, _bd, _it in clipped:
             r, g, b = _color01(_col)
             if min(r, g, b) > 0.8:
                 fill = None
@@ -787,15 +842,16 @@ def cmd_render(pdf_path, out_path, font_path):
         page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
         # 2) 같은(클리핑된) 박스에 번역문 삽입. 본문 양끝맞춤, 제목/한 줄은 가운데/왼쪽.
         page_width = page.rect.width
-        for rect, ko, _size, color in clipped:
-            bfont = _pick_font(ko)  # 글리프 빠짐 방지(∈ 등은 폴백 글꼴로)
+        for rect, ko, _size, color, is_bold, is_ital in clipped:
+            base = font_bold if is_bold else font  # 원문 굵게 → 번역본도 굵게
+            bfont = _pick_font(ko, base)  # 글리프 빠짐 방지(∈ 등은 폴백 글꼴로)
             try:
                 # 번역문이 한 줄에 다 들어가면 justify 금지(단어 벌어짐 방지).
                 one_line = bfont.text_length(ko, fontsize=_size) <= (rect.width - 2)
             except Exception:
                 one_line = False
             align = _detect_align(rect, page_width, single_line=one_line)
-            if _draw_fit(page, rect, ko, _color01(color), bfont, _size, align):
+            if _draw_fit(page, rect, ko, _color01(color), bfont, _size, align, italic=is_ital):
                 shrunk += 1
             replaced += 1
 

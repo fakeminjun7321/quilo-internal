@@ -71,8 +71,6 @@
                   <label><span class="field-label">비밀번호</span>
                   <input id="li_password" type="password" required autocomplete="current-password" /></label>
                 </div>
-                <label class="check-line"><input type="checkbox" id="li_age14" /> <span>만 14세 이상 <strong>(필수)</strong></span></label>
-                <label class="check-line"><input type="checkbox" id="li_agree" /> <span>약관·개인정보·환불정책 동의 <strong>(필수)</strong></span></label>
                 <div class="form-actions" style="margin-top:8px">
                   <button type="submit" id="li_btn" class="btn btn-primary">로그인</button>
                 </div>
@@ -867,14 +865,7 @@
           const body = {
             username: document.getElementById("li_username").value,
             password: document.getElementById("li_password").value,
-            age14Confirmed: document.getElementById("li_age14").checked,
-            termsAccepted: document.getElementById("li_agree").checked,
           };
-          if (!body.age14Confirmed || !body.termsAccepted) {
-            err.textContent = "만 14세 이상 확인과 약관 동의가 필요합니다.";
-            err.style.display = "block";
-            return;
-          }
           const btn = document.getElementById("li_btn");
           btn.disabled = true;
           btn.textContent = "로그인 중...";

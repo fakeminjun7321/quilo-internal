@@ -533,19 +533,10 @@ app.post("/api/login", async (req, res) => {
   }
   rateLimit.recordLoginAttempt(ip);
 
-  const { username, password, age14Confirmed, termsAccepted } = req.body || {};
+  // 만 14세·약관 동의는 회원가입(/api/signup)에서만 받는다. 로그인은 기존 사용자라 불필요.
+  const { username, password } = req.body || {};
   if (!username || !password) {
     return res.status(400).json({ error: "이름과 비밀번호를 입력하세요." });
-  }
-  if (!age14Confirmed) {
-    return res
-      .status(403)
-      .json({ error: "만 14세 이상인 경우에만 이용할 수 있습니다." });
-  }
-  if (!termsAccepted) {
-    return res
-      .status(403)
-      .json({ error: "이용약관과 개인정보처리방침에 동의해야 합니다." });
   }
   const name = String(username).trim().slice(0, 50);
 

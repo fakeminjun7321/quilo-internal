@@ -1780,6 +1780,31 @@
         return `$${est.lo.toFixed(2)} ~ $${est.hi.toFixed(2)} (약 ₩${krwLo.toLocaleString()} ~ ₩${krwHi.toLocaleString()})`;
       }
 
+      // 생성 예상 시간(초). 출력 토큰량 × 모델 속도 + 기본 오버헤드 + 타입별 추가(웹검색).
+      // 모델별 1k 출력토큰당 초: Opus 가 느리고 Sonnet 이 빠르다. 사진/데이터가 많으면
+      // 입력 처리가 늘어 약간 더 걸린다.
+      const OUTPUT_TOKENS = {
+        "chem-pre": [6000, 10000],
+        "chem-result": [8000, 13000],
+        "phys-result": [6000, 10000],
+      };
+      function estimateGenSeconds(type, modelId, extraInputTokens = 0) {
+        const perK = modelId === "claude-sonnet-4-6" ? 9 : 16; // 초/1k 출력토큰
+        const base = 25; // 입력 처리 + 문서 빌드 + 차트
+        const webSearch = type === "chem-pre" ? 40 : 0; // 시약 물성 웹검색
+        const [oLo, oHi] = OUTPUT_TOKENS[type] || [7000, 11000];
+        const inExtra = (extraInputTokens / 1000) * (perK * 0.25); // 사진·데이터 입력분
+        return {
+          lo: Math.round(base + webSearch + (oLo / 1000) * perK + inExtra),
+          hi: Math.round(base + webSearch + (oHi / 1000) * perK + inExtra),
+        };
+      }
+      function formatDuration(sec) {
+        const f = (s) =>
+          s < 90 ? `${Math.round(s)}초` : `${Math.round(s / 60)}분`;
+        return `약 ${f(sec.lo)} ~ ${f(sec.hi)}`;
+      }
+
       function getUserNotesValue(id) {
         return (document.getElementById(id)?.value || "").trim();
       }
@@ -1901,6 +1926,7 @@
             ["참고 메모", userNotesSummary(userNotes, userNotesFile)],
             ["PDF", `${est.sizeKB}KB`],
             ["예상 비용", costRangeText(est, krwLo, krwHi)],
+            ["예상 시간", formatDuration(estimateGenSeconds("chem-pre", model))],
           ],
           note: `실제 비용은 완료 후 표시됩니다. ${USE_POLICY_NOTE}`,
         });
@@ -2012,6 +2038,7 @@
             ["첨부", `사전보고서${dataFile ? ", 데이터" : ", 데이터 없음"}${(crUserNotes || crUserNotesFile) && !dataFile ? " (메모 활용)" : ""}, 사진 ${photos.length}장${manual ? ", 매뉴얼" : ""}`],
             ["총 크기", `${est.totalKB}KB`],
             ["예상 비용", costRangeText(est, krwLo, krwHi)],
+            ["예상 시간", formatDuration(estimateGenSeconds("chem-result", crModel, photos.length * 1500))],
           ],
           note: `실제 비용은 완료 후 표시됩니다. ${USE_POLICY_NOTE}`,
         });
@@ -2123,6 +2150,7 @@
             ["입력", `${inputLabel}${photos.length > 0 ? `, 사진 ${photos.length}장` : ""}${manual ? ", 매뉴얼" : ""}`],
             ["총 크기", `${est.totalKB}KB`],
             ["예상 비용", costRangeText(est, krwLo, krwHi)],
+            ["예상 시간", formatDuration(estimateGenSeconds("phys-result", prModel, photos.length * 1500))],
           ],
           note: `기본 평가 기준을 적용합니다. ${USE_POLICY_NOTE}`,
         });

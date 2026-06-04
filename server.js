@@ -1407,6 +1407,103 @@ app.delete(
   },
 );
 
+// PDF 통번역 비용·시간 예측. analyze(텍스트량·스캔·수식밀도) → 실제 글자 수 기반
+// 토큰 추정 → calcCost, + 파이프라인 단계별 시간 추정. 변환 방식(auto/inplace/
+// retypeset)이 실제로 어떻게 결정되는지까지 반영한다.
+function estimatePdfTranslation(meta, mode, modelId) {
+  const pages = Math.max(1, Number(meta.page_count) || 1);
+  const chars = Math.max(0, Number(meta.text_chars) || 0);
+  const scanned = !!meta.scanned;
+  const density = Number(meta.math_density) || 0;
+  const AUTO_MATH_THRESHOLD = Number(process.env.PDF_AUTO_MATH_THRESHOLD || 12);
+  const needsRetypeset = scanned || density >= AUTO_MATH_THRESHOLD;
+  const resolvedMode =
+    mode === "retypeset" ? "retypeset" : needsRetypeset ? "retypeset" : "inplace";
+  const isOpus = !/sonnet|haiku/i.test(modelId || "");
+  const charTok = chars / 3.5;
+  const ocrMax = parseInt(process.env.PDF_OCR_MAX_PAGES || "30", 10);
+  // 텍스트 PDF(in-place·재조판)는 페이지 상한이 있어 초과 시 거부된다.
+  const maxPages = parseInt(process.env.PDF_TRANSLATE_MAX_PAGES || "80", 10);
+  const tooManyPages = !scanned && pages > maxPages;
+
+  let inTok = 0;
+  let outTok = 0;
+  let cacheRead = 0;
+  let seconds = 0;
+  let truncated = false;
+
+  if (scanned) {
+    // OCR 재조판: 페이지를 비전 이미지로 읽음(앞 30쪽 상한).
+    const procPages = Math.min(pages, ocrMax);
+    truncated = pages > ocrMax;
+    const tiles = Math.min(100, Math.ceil(procPages * 1.3));
+    inTok = tiles * 1600;
+    outTok = tiles * 900;
+    seconds = 1.5 * procPages + tiles * (isOpus ? 4.0 : 2.6) + 18;
+  } else if (resolvedMode === "retypeset") {
+    // 텍스트 PDF 재조판: 페이지를 문서 블록으로 읽고 한국어 LaTeX 생성.
+    inTok = pages * 2000;
+    outTok = (charTok || pages * 800) * 1.3;
+    const chunks = Math.ceil(pages / 5);
+    const waves = Math.ceil(chunks / 6);
+    seconds = 0.3 * pages + waves * (isOpus ? 45 : 28) + 18;
+  } else {
+    // in-place: 문단을 묶음 번역(동시 10) + 누락 재시도 + 레이아웃 삽입.
+    const batches = Math.max(1, Math.ceil(chars / 3500));
+    inTok = charTok * 1.15;
+    outTok = charTok * 1.15;
+    cacheRead = batches * 400; // 시스템 프롬프트 캐시 재사용
+    const waves = Math.ceil(batches / 10);
+    seconds = 0.5 * pages + (waves + 1) * (isOpus ? 13 : 8) + 0.7 * pages;
+  }
+
+  const usage = {
+    input_tokens: Math.round(inTok),
+    output_tokens: Math.round(outTok),
+    cache_read_input_tokens: Math.round(cacheRead),
+    cache_creation_input_tokens: 0,
+  };
+  const usd = pricing.calcCost({ usage, model: modelId }).total;
+  return {
+    mode: resolvedMode,
+    scanned,
+    pages,
+    chars,
+    truncated,
+    tooManyPages,
+    maxPages,
+    costUsd: { lo: usd * 0.7, hi: usd * 1.45 },
+    seconds: { lo: Math.round(seconds * 0.8), hi: Math.round(seconds * 1.55) },
+  };
+}
+
+// PDF 통번역 — 비용·시간 예측(파일 업로드 시 호출). analyze 만 돌려 빠르고 저렴.
+app.post(
+  "/api/translate-pdf/estimate",
+  requireBeta("pdf-translate"),
+  upload.single("pdf"),
+  async (req, res) => {
+    if (!req.file) return res.status(400).json({ error: "PDF 파일이 필요합니다." });
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdfest-"));
+    const pdfPath = path.join(tmpDir, "in.pdf");
+    try {
+      fs.writeFileSync(pdfPath, req.file.buffer);
+      const meta = await analyzePdf(pdfPath, {});
+      const mode = String(req.body.mode || "auto");
+      const modelId = String(req.body.model || "claude-sonnet-4-6");
+      res.json(estimatePdfTranslation(meta, mode, modelId));
+    } catch (e) {
+      res.status(500).json({ error: e.message || "예측 실패" });
+    } finally {
+      try {
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      } catch {
+        /* best-effort */
+      }
+    }
+  },
+);
+
 // ── PDF 통번역 (베타: 관리자 + 지정 테스터) ──────────────────────────────────
 // DeepL 식 문서 번역: 그림·레이아웃은 그대로 두고 텍스트만 한국어로 교체한다.
 // 외부로 PDF 를 보내지 않고 우리 서버에서만 처리한다 (Claude + PyMuPDF).

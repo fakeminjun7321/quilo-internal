@@ -100,6 +100,12 @@
                 </label>
               </div>
 
+              <div
+                id="trEstimate"
+                class="hint"
+                style="display: none; margin: 4px 0 0; padding: 10px 12px; border: 1px solid var(--border, #e5e7eb); border-radius: 8px; line-height: 1.7"
+              ></div>
+
               <div class="form-actions">
                 <button type="submit" id="trBtn" class="btn btn-primary btn-lg">한국어로 번역</button>
               </div>
@@ -261,6 +267,67 @@
             }
           });
         });
+
+        // ── 예상 비용·시간: 파일을 넣으면 서버 analyze 로 정확히 추정해 보여준다 ──
+        const estEl = document.getElementById("trEstimate");
+        let estSeq = 0;
+        const fmtDur = (s) =>
+          s < 90 ? `${Math.round(s)}초` : `${Math.round(s / 60)}분`;
+        async function updateEstimate() {
+          if (!fileInput.files || !fileInput.files.length) {
+            estEl.style.display = "none";
+            return;
+          }
+          const seq = ++estSeq;
+          estEl.style.display = "block";
+          estEl.textContent = "⏳ 예상 비용·시간 계산 중...";
+          const fd = new FormData();
+          fd.append("pdf", fileInput.files[0]);
+          fd.append("model", document.getElementById("trModel").value);
+          fd.append("mode", document.getElementById("trMode").value);
+          try {
+            const r = await fetch("/api/translate-pdf/estimate", {
+              method: "POST",
+              body: fd,
+            });
+            if (seq !== estSeq) return; // 최신 요청만 반영
+            if (!r.ok) {
+              estEl.style.display = "none";
+              return;
+            }
+            const e = await r.json();
+            if (e.tooManyPages) {
+              estEl.innerHTML =
+                `📄 <b>${e.pages}쪽</b> · ⚠ <b style="color:#b45309">처리 한도(약 ${e.maxPages}쪽) 초과</b>` +
+                `<br><span style="opacity:.7">PDF를 나눠서 업로드하면 번역할 수 있습니다.</span>`;
+              return;
+            }
+            const modeLabel = e.scanned
+              ? "스캔본 OCR 재조판"
+              : e.mode === "retypeset"
+                ? "재조판(수식·정밀)"
+                : "빠른 번역(레이아웃 유지)";
+            const krwLo = Math.round(e.costUsd.lo * 1400);
+            const krwHi = Math.round(e.costUsd.hi * 1400);
+            estEl.innerHTML =
+              `📄 <b>${e.pages}쪽</b> · 변환 방식 <b>${modeLabel}</b>` +
+              (e.truncated
+                ? ` <span style="color:#b45309">(앞 30쪽만 처리)</span>`
+                : ``) +
+              `<br>⏱ 예상 시간 <b>약 ${fmtDur(e.seconds.lo)} ~ ${fmtDur(e.seconds.hi)}</b>` +
+              ` · 💰 예상 비용 <b>약 ₩${krwLo.toLocaleString()} ~ ₩${krwHi.toLocaleString()}</b>` +
+              `<br><span style="opacity:.65">문서 내용·서버 상황에 따라 달라질 수 있습니다(실제 비용은 완료 후 표시).</span>`;
+          } catch {
+            if (seq === estSeq) estEl.style.display = "none";
+          }
+        }
+        fileInput.addEventListener("change", updateEstimate);
+        document
+          .getElementById("trMode")
+          .addEventListener("change", updateEstimate);
+        document
+          .getElementById("trModel")
+          .addEventListener("change", updateEstimate);
 
         function appendLine(text) {
           progressEl.textContent += text + "\n";

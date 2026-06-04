@@ -54,14 +54,22 @@ def iter_text_blocks(doc):
 # /Encoding /Differences 상 실제 글자: 33('!')→'+', 34('"')→Δ, 35('#')→− (U+2212).
 # 그래서 "−458 kJ mol⁻¹" 가 "#458 kJ mol#1" 로, "ΔE" 가 '"E' 로 깨져 나온다.
 _MATHPI_FIX = {"!": "+", '"': "Δ", "#": "−"}  # +  Δ  −
+# Computer Modern Symbol(CMSY) — 각주 별표(*)가 인코딩 깨짐으로 U+21E4(⇤)로 추출된다
+# (예: 저자명 'Ashish Vaswani*' → 'Ashish Vaswani⇤'). †(U+2020)·‡(U+2021)는 정상.
+_CMSY_FIX = {"⇤": "*"}
 
 
 def _fix_span_text(font, text):
     """수식 기호 폰트에서 잘못 디코드된 글자를 실제 유니코드로 되돌린다.
-    폰트명 기준이라 일반 본문 폰트의 진짜 ! " # 는 건드리지 않는다."""
-    if not text or "MathematicalPi" not in (font or ""):
+    폰트명 기준이라 일반 본문 폰트의 진짜 글자는 건드리지 않는다."""
+    if not text:
         return text
-    return "".join(_MATHPI_FIX.get(ch, ch) for ch in text)
+    f = font or ""
+    if "MathematicalPi" in f:
+        return "".join(_MATHPI_FIX.get(ch, ch) for ch in text)
+    if "CMSY" in f:
+        return "".join(_CMSY_FIX.get(ch, ch) for ch in text)
+    return text
 
 
 def _line_in_figs(line_bbox, figs):
@@ -274,6 +282,60 @@ def _figure_regions(page):
     return regions
 
 
+def _table_regions(page, min_rules=2):
+    """가로 rule(테두리 선)로 표 영역을 추정한다. PyMuPDF find_tables 가 못 잡는
+    booktabs형(세로선 없이 가로줄만 있는) 표를 잡기 위함. 인접한(가로로 겹치고 가까운)
+    가로줄 ≥2개가 만드는 세로 구간을 표로 본다 → in-place 가 표 셀을 줄글로 뭉개지
+    않도록 그 영역 텍스트를 영어 원본 그대로 둔다(그림과 동일 취급)."""
+    W = page.rect.width
+    H = page.rect.height
+    rules = []  # (x0, y, x1) 가로줄
+    try:
+        for dr in page.get_drawings():
+            for it in dr.get("items", []):
+                if it[0] == "l":  # line
+                    p1, p2 = it[1], it[2]
+                    if abs(p1.y - p2.y) < 1.6 and abs(p2.x - p1.x) > 0.22 * W:
+                        rules.append(
+                            (min(p1.x, p2.x), (p1.y + p2.y) / 2.0, max(p1.x, p2.x))
+                        )
+                elif it[0] == "re":  # 얇은 사각형 = 가로줄
+                    r = fitz.Rect(it[1])
+                    if r.height < 2.2 and r.width > 0.22 * W:
+                        rules.append((r.x0, (r.y0 + r.y1) / 2.0, r.x1))
+    except Exception:
+        return []
+    if len(rules) < min_rules:
+        return []
+    rules.sort(key=lambda t: t[1])
+    # 가로로 겹치고 세로로 가까운(<230pt) 줄들을 한 표로 묶는다.
+    groups = [[rules[0]]]
+    for r in rules[1:]:
+        prev = groups[-1][-1]
+        ox = min(r[2], prev[2]) - max(r[0], prev[0])
+        minw = max(1.0, min(r[2] - r[0], prev[2] - prev[0]))
+        if ox > 0.5 * minw and (r[1] - prev[1]) < 230:
+            groups[-1].append(r)
+        else:
+            groups.append([r])
+    out = []
+    for g in groups:
+        if len(g) < min_rules:
+            continue
+        x0 = min(r[0] for r in g)
+        x1 = max(r[2] for r in g)
+        y0 = min(r[1] for r in g)
+        y1 = max(r[1] for r in g)
+        if (x1 - x0) > 0.2 * W and 4 < (y1 - y0) < 0.85 * H:
+            out.append(fitz.Rect(x0, y0, x1, y1))
+    return out
+
+
+def _skip_regions(page):
+    """번역 제외 영역 = 그림/그래프 + 표. 두 경우 모두 영역 안 텍스트는 영어 원본 유지."""
+    return _figure_regions(page) + _table_regions(page)
+
+
 def cmd_extract(pdf_path):
     doc = fitz.open(pdf_path)
     blocks = []
@@ -283,7 +345,7 @@ def cmd_extract(pdf_path):
 
     def regions(pno):
         if pno not in page_cache:
-            page_cache[pno] = _figure_regions(doc[pno])
+            page_cache[pno] = _skip_regions(doc[pno])  # 그림 + 표
         return page_cache[pno]
 
     for bid, pno, block in iter_text_blocks(doc):
@@ -309,11 +371,13 @@ def cmd_extract(pdf_path):
         blocks.append({"id": bid, "page": pno, "text": text})
     # 텍스트가 거의 없으면 스캔본(글자가 이미지)일 가능성이 높다 → Node가 안내.
     scanned = len(doc) > 0 and total_text_chars < 20 * len(doc)
-    # 진단: 그림 영역 감지 수 + PyMuPDF 버전(서버/로컬 동작 차이 추적용)
+    # 진단: 그림/표 영역 감지 수 + PyMuPDF 버전(서버/로컬 동작 차이 추적용)
     fig_regions = 0
+    table_regions = 0
     for pg in range(len(doc)):
         try:
             fig_regions += len(_figure_regions(doc[pg]))
+            table_regions += len(_table_regions(doc[pg]))
         except Exception:
             pass
     try:
@@ -325,6 +389,7 @@ def cmd_extract(pdf_path):
         "scanned": scanned,
         "blocks": blocks,
         "fig_regions": fig_regions,
+        "table_regions": table_regions,
         "fitz": fitz_ver,
     }
     sys.stdout.write(json.dumps(out, ensure_ascii=False))
@@ -479,12 +544,13 @@ def _color01(c):
     return (((c >> 16) & 255) / 255, ((c >> 8) & 255) / 255, (c & 255) / 255)
 
 
-def _detect_align(rect, page_width):
+def _detect_align(rect, page_width, single_line=False):
     """원문 블록 위치로 정렬을 추정한다.
 
     제목/저자처럼 '좁고 + 좌우 여백이 거의 대칭'인 블록은 가운데 정렬,
     그 외(본문 컬럼)는 양끝맞춤(justify) — LaTeX 조판처럼 단정해진다.
-    본문은 컬럼 폭을 거의 다 쓰므로 폭 기준으로 제목과 구분된다.
+    단, **한 줄짜리 블록**(저자·소속·짧은 라벨 등)은 justify 하면 단어 사이가
+    크게 벌어진다('Google   Brain') → 좁으면 가운데, 넓으면 왼쪽으로 처리한다.
     """
     w = rect.x1 - rect.x0
     left = rect.x0
@@ -495,6 +561,10 @@ def _detect_align(rect, page_width):
         and abs(left - right) < 0.06 * page_width
     ):
         return fitz.TEXT_ALIGN_CENTER
+    if single_line:
+        return (
+            fitz.TEXT_ALIGN_CENTER if w < 0.5 * page_width else fitz.TEXT_ALIGN_LEFT
+        )
     return fitz.TEXT_ALIGN_JUSTIFY
 
 
@@ -625,7 +695,7 @@ def cmd_render(pdf_path, out_path, font_path):
 
     def figs_for(pno):
         if pno not in fig_cache:
-            fig_cache[pno] = _figure_regions(doc[pno])
+            fig_cache[pno] = _skip_regions(doc[pno])  # 그림 + 표
         return fig_cache[pno]
 
     # 번역이 있는 블록만 (페이지별로) 모은다.
@@ -676,10 +746,15 @@ def cmd_render(pdf_path, out_path, font_path):
                 fill = (bbg[0] / 255.0, bbg[1] / 255.0, bbg[2] / 255.0)
             page.add_redact_annot(rect, fill=fill)
         page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
-        # 2) 같은(클리핑된) 박스에 번역문 삽입. 본문 양끝맞춤, 제목류 가운데 정렬.
+        # 2) 같은(클리핑된) 박스에 번역문 삽입. 본문 양끝맞춤, 제목/한 줄은 가운데/왼쪽.
         page_width = page.rect.width
         for rect, ko, _size, color in clipped:
-            align = _detect_align(rect, page_width)
+            try:
+                # 번역문이 한 줄에 다 들어가면 justify 금지(단어 벌어짐 방지).
+                one_line = font.text_length(ko, fontsize=_size) <= (rect.width - 2)
+            except Exception:
+                one_line = False
+            align = _detect_align(rect, page_width, single_line=one_line)
             if _draw_fit(page, rect, ko, _color01(color), font, _size, align):
                 shrunk += 1
             replaced += 1

@@ -788,7 +788,16 @@ app.post("/api/chat", async (req, res) => {
 
   // 모드: memo = 메모 작성 도우미(무거운 모델 + 메모 전용 프롬프트), 그 외 = 사용법 도우미
   const memoMode = (req.body && req.body.mode) === "memo";
-  const sysPrompt = memoMode ? CHAT_MEMO_SYSTEM : CHAT_SYSTEM;
+  const ctx =
+    !memoMode && req.body && typeof req.body.context === "string"
+      ? req.body.context.slice(0, 300).replace(/[\r\n]+/g, " ").trim()
+      : "";
+  const sysPrompt = memoMode
+    ? CHAT_MEMO_SYSTEM
+    : ctx
+      ? CHAT_SYSTEM +
+        `\n\n[지금 사용자가 보고 있는 화면] ${ctx} — 이 맥락을 고려해 답하세요.`
+      : CHAT_SYSTEM;
   const chatModel = memoMode ? CHAT_MEMO_MODEL : CHAT_MODEL;
   const maxTok = memoMode ? CHAT_MEMO_MAX_TOKENS : CHAT_MAX_TOKENS;
 

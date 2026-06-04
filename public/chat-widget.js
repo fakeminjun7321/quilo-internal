@@ -35,6 +35,59 @@
     return e;
   }
 
+  function pageContext() {
+    try {
+      return (document.title || "Quilo") + " (" + location.pathname + ")";
+    } catch (e) {
+      return "";
+    }
+  }
+  function save() {
+    try {
+      sessionStorage.setItem(
+        "quiloChat",
+        JSON.stringify({ m: messages, mode: currentMode })
+      );
+    } catch (e) {}
+  }
+  function load() {
+    try {
+      var s = JSON.parse(sessionStorage.getItem("quiloChat") || "null");
+      if (s && Array.isArray(s.m)) {
+        messages = s.m;
+        if (s.mode === "memo" || s.mode === "help") currentMode = s.mode;
+        return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+  function restoreConversation() {
+    msgsEl.innerHTML = "";
+    chipsEl.style.display = "none";
+    panel.querySelectorAll("#qc-modes button").forEach(function (b) {
+      b.classList.toggle("on", b.getAttribute("data-mode") === currentMode);
+    });
+    var isMemo = currentMode === "memo";
+    for (var i = 0; i < messages.length; i++) {
+      var m = messages[i];
+      if (m.role === "user") {
+        addUserRow(m.content);
+      } else {
+        var ai = addAiRow();
+        ai.bubble.textContent = m.content;
+        attachBar(
+          ai.row,
+          messages.slice(0, i),
+          (messages[i - 1] || {}).content || "",
+          m.content,
+          false,
+          isMemo
+        );
+      }
+    }
+    msgsEl.scrollTop = msgsEl.scrollHeight;
+  }
+
   function injectStyles() {
     var css =
       "#qc-launch{position:fixed;right:20px;bottom:20px;width:56px;height:56px;border-radius:50%;background:#243ba2;color:#fff;border:none;cursor:pointer;box-shadow:0 8px 24px rgba(36,59,162,.35);font-size:24px;z-index:2147483000;display:flex;align-items:center;justify-content:center;transition:transform .08s}" +
@@ -230,7 +283,11 @@
     fetch("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ messages: snapshot.slice(-8), mode: currentMode }),
+      body: JSON.stringify({
+        messages: snapshot.slice(-8),
+        mode: currentMode,
+        context: pageContext(),
+      }),
     })
       .then(function (resp) {
         if (!resp.ok || !resp.body) {
@@ -264,6 +321,7 @@
         } else {
           messages.push({ role: "assistant", content: acc });
           attachBar(ai.row, snapshot, question, acc, false, isMemo);
+          save();
         }
       })
       .catch(function (e) {
@@ -285,6 +343,7 @@
     if (chipsEl) chipsEl.style.display = "none";
     addUserRow(text);
     messages.push({ role: "user", content: text });
+    save();
     inputEl.value = "";
     inputEl.style.height = "auto";
     streamAssistant();
@@ -318,6 +377,7 @@
     });
     messages = [];
     showIntro();
+    save();
   }
 
   function buildPanel() {
@@ -402,7 +462,8 @@
     panel.classList.toggle("open");
     if (opening && !openedOnce) {
       openedOnce = true;
-      showIntro();
+      if (messages.length) restoreConversation();
+      else showIntro();
     }
     if (opening) setTimeout(function () { inputEl.focus(); }, 50);
   }
@@ -415,6 +476,7 @@
     launch.onclick = toggle;
     document.body.appendChild(launch);
     buildPanel();
+    load();
     // 폼에 있는 'AI 메모 작성 도움' 버튼들을 노출 (챗이 켜졌을 때만)
     var btns = document.querySelectorAll(".qc-memo-btn");
     for (var i = 0; i < btns.length; i++) btns[i].style.display = "";

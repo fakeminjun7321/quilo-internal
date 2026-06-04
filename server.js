@@ -196,6 +196,7 @@ const {
 const { getVersionInfo } = require("./lib/version-info");
 const { translatePdf } = require("./lib/pipelines/pdf-translate/translate");
 const { retypesetPdf } = require("./lib/pipelines/pdf-translate/latex-gen");
+const { convertDocxToHwpx } = require("./lib/pipelines/docx-to-hwpx");
 const {
   analyzePdf,
   rasterizePages,
@@ -1437,6 +1438,38 @@ app.delete(
       res.json({ ok: true });
     } catch (e) {
       res.status(500).json({ error: e.message });
+    }
+  },
+);
+
+// ── DOCX → HWPX 변환 (파일 변환기) ───────────────────────────────────────────
+// pypandoc-hwpx(Pandoc 기반)로 Word(.docx)를 한컴 HWPX 로 변환한다. 서버 처리이므로
+// 로그인 필요. HWPX 는 한컴오피스에서 열리고 거기서 .hwp 로 저장 가능.
+app.post(
+  "/api/convert-docx",
+  requireAuth,
+  upload.single("docx"),
+  async (req, res) => {
+    const file = req.file;
+    if (!file) return res.status(400).json({ error: "DOCX 파일을 업로드하세요." });
+    const name = file.originalname || "document.docx";
+    if (!/\.docx$/i.test(name)) {
+      return res.status(400).json({ error: ".docx 파일만 지원합니다." });
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      return res.status(400).json({ error: "파일이 너무 큽니다(25MB 초과)." });
+    }
+    try {
+      const hwpx = await convertDocxToHwpx(file.buffer);
+      res.setHeader("Content-Type", "application/octet-stream");
+      res.setHeader("X-Filename", encodeURIComponent(name.replace(/\.docx$/i, ".hwpx")));
+      res.send(hwpx);
+    } catch (e) {
+      console.error("[convert-docx]", e.message);
+      res.status(500).json({
+        error:
+          "변환에 실패했습니다. 서버에 변환기(pandoc)가 설치되지 않았거나 문서가 복잡할 수 있습니다.",
+      });
     }
   },
 );

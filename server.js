@@ -1366,15 +1366,18 @@ async function prepareScannedRouting(pdfBuffer, { signal, onProgress }) {
     fs.writeFileSync(pdfPath, pdfBuffer);
     let scanned = false;
     let mathDensity = 0;
+    let twoColumn = false;
     try {
       const a = await analyzePdf(pdfPath, { signal });
       scanned = !!a.scanned;
       mathDensity = Number(a.math_density) || 0;
+      twoColumn = !!a.two_column;
     } catch (e) {
       onProgress(`⚠ 텍스트 레이어 분석을 건너뜁니다: ${e.message}`);
-      return { scanned: false, imageBlocks: null, mathDensity: 0 };
+      return { scanned: false, imageBlocks: null, mathDensity: 0, twoColumn: false };
     }
-    if (!scanned) return { scanned: false, imageBlocks: null, mathDensity };
+    if (!scanned)
+      return { scanned: false, imageBlocks: null, mathDensity, twoColumn };
 
     onProgress(
       "🖼️ 텍스트 레이어가 없는 스캔/이미지 PDF 감지 → 고해상도 OCR 재조판으로 전환",
@@ -1417,6 +1420,7 @@ async function prepareScannedRouting(pdfBuffer, { signal, onProgress }) {
       tiles: meta.tiles,
       pageCount: meta.page_count,
       mathDensity,
+      twoColumn,
     };
   } finally {
     try {
@@ -1520,6 +1524,12 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) 
           `🖼️ 본문 그림 ${figures.length}개 추출 — 재조판본에 복원합니다.`,
         );
       }
+      if (routing.twoColumn) {
+        pushProgress(
+          job,
+          "📐 2단 레이아웃 감지 — 읽기 순서를 좌→우 단으로 맞추고 2단으로 조판합니다.",
+        );
+      }
       const pdfChunks = await splitPdfToBuffers(pdfBuffer, {
         signal: ac.signal,
         onProgress,
@@ -1528,6 +1538,7 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) 
         pdfBuffer,
         pdfChunks,
         figures,
+        twoColumn: routing.twoColumn,
         model,
         signal: ac.signal,
         onProgress,

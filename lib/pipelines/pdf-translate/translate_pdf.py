@@ -334,9 +334,46 @@ def cmd_extract(pdf_path):
 _MATH_SYMS = "∑∫√±×÷≤≥≠≈∞∂∇·°→←↔⟨⟩∝∈∉⊂⊃∪∩∀∃∮∇µΩ"
 
 
+def _detect_two_column(doc, _frac=(0.2, 0.35, 0.5, 0.65, 0.8)):
+    """본문 페이지의 텍스트 줄 가로 분포로 2단 레이아웃을 추정한다(ML 없이).
+
+    전폭(페이지 폭의 60%+) 줄이 거의 없고, 좌측 전용/우측 전용 줄이 양쪽으로
+    충분히 나뉘면 2단으로 본다. 표지·참고문헌 페이지에 흔들리지 않도록 문서 중앙
+    표본 페이지들의 과반 동의가 있을 때만 True.
+    """
+    n = len(doc)
+    if n == 0:
+        return False
+    idxs = sorted(set(min(n - 1, max(0, int(n * f))) for f in _frac))
+    votes = 0
+    counted = 0
+    for pi in idxs:
+        page = doc[pi]
+        W = page.rect.width
+        if W <= 0:
+            continue
+        lines = []
+        for b in page.get_text("dict").get("blocks", []):
+            for l in b.get("lines", []):
+                x0, _, x1, _ = l["bbox"]
+                if x1 - x0 > 2:
+                    lines.append((x0, x1))
+        if len(lines) < 12:
+            continue  # 본문이 적은 페이지는 판정에서 제외
+        counted += 1
+        m = len(lines)
+        full = sum(1 for x0, x1 in lines if (x1 - x0) > 0.6 * W)
+        left = sum(1 for x0, x1 in lines if x1 < 0.55 * W)
+        right = sum(1 for x0, x1 in lines if x0 > 0.45 * W)
+        if full <= 0.08 * m and left >= 0.25 * m and right >= 0.25 * m:
+            votes += 1
+    return counted >= 2 and votes >= max(1, counted // 2 + counted % 2)
+
+
 def cmd_analyze(pdf_path):
-    """텍스트 레이어 유무 + 수식 밀도를 판정(자동 변환방식 선택용).
-    scanned: 텍스트 레이어 없음(스캔/이미지). math_density: 1000자당 수식 지표 점수."""
+    """텍스트 레이어 유무 + 수식 밀도 + 2단 여부를 판정(자동 변환방식 선택용).
+    scanned: 텍스트 레이어 없음(스캔/이미지). math_density: 1000자당 수식 지표 점수.
+    two_column: 본문이 2단 레이아웃인지(재조판 시 2단 보존 + 읽기순서 보정용)."""
     doc = fitz.open(pdf_path)
     total = 0
     parts = []
@@ -347,6 +384,7 @@ def cmd_analyze(pdf_path):
     text = "\n".join(parts)
     n = len(doc)
     scanned = n > 0 and total < 20 * n
+    two_column = (not scanned) and _detect_two_column(doc)
     # 수식 지표: 그리스 문자(U+0370–03FF), 수학 기호, 위/아래 첨자(U+2070–209F), '=' 빈도
     greek = sum(1 for c in text if "Ͱ" <= c <= "Ͽ")
     syms = sum(1 for c in text if c in _MATH_SYMS)
@@ -362,6 +400,7 @@ def cmd_analyze(pdf_path):
                 "scanned": scanned,
                 "math_score": math_score,
                 "math_density": density,
+                "two_column": two_column,
             },
             ensure_ascii=False,
         )

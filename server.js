@@ -833,6 +833,70 @@ app.post("/api/chat", async (req, res) => {
   }
 });
 
+// 챗 답변 피드백: 👍/👎 는 기록만, '의견'(버그/개선)은 기존 건의 파이프라인으로 관리자 전달
+const chatFeedback = []; // 최근 200건(메모리, 관리자 확인용)
+app.post("/api/chat/feedback", async (req, res) => {
+  const rating = ["up", "down", "comment"].includes(req.body && req.body.rating)
+    ? req.body.rating
+    : null;
+  if (!rating) return res.status(400).json({ error: "잘못된 요청입니다." });
+
+  const ip = req.ip || "unknown";
+  const comment = normalizeFeedbackText(req.body && req.body.comment, 2000);
+  const question = normalizeFeedbackText(req.body && req.body.question, 1000);
+  const answer = normalizeFeedbackText(req.body && req.body.answer, 2000);
+  const user = getSessionUser(req);
+
+  const entry = {
+    rating,
+    comment,
+    question,
+    answer,
+    userName: (user && user.name) || "비로그인",
+    at: new Date().toISOString(),
+  };
+  chatFeedback.push(entry);
+  if (chatFeedback.length > 200) chatFeedback.shift();
+  console.log(
+    `[chat-feedback] ${rating}` +
+      (comment ? " · " + comment.slice(0, 80) : "") +
+      (question ? ` (Q: ${question.slice(0, 60)})` : ""),
+  );
+
+  if (rating === "comment" && comment) {
+    const fl = rateLimit.checkFeedbackLimit(ip);
+    if (fl.allowed) {
+      rateLimit.recordFeedbackAttempt(ip);
+      const fb = {
+        category: "AI 도우미",
+        title: "AI 도우미 의견",
+        message: `${comment}\n\n[질문]\n${question}\n\n[답변]\n${answer}`,
+        contactEmail: "",
+        pageUrl: normalizeFeedbackText(req.body && req.body.pageUrl, 500),
+        userAgent: normalizeFeedbackText(req.get("user-agent"), 500),
+        userId: (user && user.id) || "",
+        userName: (user && user.name) || "비로그인",
+        studentId: "",
+        submittedAt: entry.at,
+      };
+      try {
+        await sendFeedbackEmail(fb);
+      } catch (_) {}
+      if (supa.isEnabled()) {
+        try {
+          await supa.recordFeedback({
+            ...fb,
+            emailSent: false,
+            emailError: "",
+            meta: { source: "ai-chat" },
+          });
+        } catch (_) {}
+      }
+    }
+  }
+  res.json({ ok: true });
+});
+
 app.patch("/api/me/profile", requireAuth, async (req, res) => {
   if (!supa.isEnabled()) {
     return res.status(503).json({ error: "DB 미설정" });

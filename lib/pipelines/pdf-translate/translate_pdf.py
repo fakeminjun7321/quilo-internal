@@ -521,18 +521,45 @@ def _draw_fit(page, rect, text, color, font, start_size, align, min_size=4.0):
     align: 본문은 justify(양끝맞춤), 제목류는 center — fill_textbox 는 마지막 줄
     /한 줄짜리는 자동으로 좌측 처리하므로 짧은 블록도 어색하지 않다.
     """
+    # 뒤집힌/degenerate rect 방어. fill_textbox 는 rect 가 한 줄 높이보다 얇거나
+    # 폭이 거의 없으면 'Text must start in rectangle' 예외를 던진다(반환이 아니라).
+    rect = fitz.Rect(rect)
+    rect.normalize()
+    if rect.width < 2 or rect.height < 1:
+        return False
+    page_rect = page.rect
+
+    def _fit_rect(r, fs):
+        """rect 가 fs 한 줄을 담기엔 얇으면 한 줄 높이만큼만 확장(원문 얇은 블록 방어).
+        아래로 먼저 늘리고, 페이지 밖이면 위로 늘린다."""
+        r = fitz.Rect(r)
+        lh = fs * 1.35  # 한 줄 높이(여유 포함)
+        if r.height < lh:
+            r.y1 = min(page_rect.y1, r.y0 + lh)
+            if r.height < lh:
+                r.y0 = max(page_rect.y0, r.y1 - lh)
+        return r
+
+    def _try_fill(r, fs):
+        """fill_textbox 시도 → (TextWriter, leftover) 또는 None(예외/실패)."""
+        try:
+            tw = fitz.TextWriter(page_rect)
+            leftover = tw.fill_textbox(r, text, font=font, fontsize=fs, align=align)
+            return tw, leftover
+        except (ValueError, RuntimeError):
+            return None
+
     fs = max(min_size, min(float(start_size), 400.0))
-    while fs > min_size:
-        tw = fitz.TextWriter(page.rect)
-        leftover = tw.fill_textbox(rect, text, font=font, fontsize=fs, align=align)
-        if not _has_leftover(leftover):
-            tw.write_text(page, color=color)
+    while fs >= min_size:
+        res = _try_fill(_fit_rect(rect, fs), fs)
+        if res is not None and not _has_leftover(res[1]):
+            res[0].write_text(page, color=color)
             return fs < float(start_size) - 0.01
         fs -= 0.5
-    # 최소 크기에서도 넘치면 들어가는 만큼이라도 그린다(빈칸보다 낫다).
-    tw = fitz.TextWriter(page.rect)
-    tw.fill_textbox(rect, text, font=font, fontsize=min_size, align=align)
-    tw.write_text(page, color=color)
+    # 최소 크기에서도 다 안 들어가면 들어가는 만큼이라도(예외는 무시 → render 전체는 계속).
+    res = _try_fill(_fit_rect(rect, min_size), min_size)
+    if res is not None:
+        res[0].write_text(page, color=color)
     return True
 
 

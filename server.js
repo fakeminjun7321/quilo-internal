@@ -696,6 +696,142 @@ app.get("/api/me", async (req, res) => {
   });
 });
 
+// ── AI 도우미 챗 (OpenAI 호환 오픈모델 API; 기본 Groq, 무로그인, 사이트 사용법 안내) ──
+const CHAT_API_KEY = process.env.CHAT_API_KEY || "";
+const CHAT_API_BASE = (
+  process.env.CHAT_API_BASE || "https://api.groq.com/openai/v1"
+).replace(/\/+$/, "");
+const CHAT_MODEL = process.env.CHAT_MODEL || "llama-3.3-70b-versatile";
+const CHAT_MAX_TOKENS = parseInt(process.env.CHAT_MAX_TOKENS || "700", 10);
+const CHAT_DAILY_MAX = parseInt(process.env.CHAT_DAILY_MAX || "1500", 10);
+const CHAT_SYSTEM = `당신은 "Quilo" 사이트의 한국어 도우미입니다. Quilo는 학생의 실험 보고서 작성을 돕는 학습 보조 서비스입니다.
+
+[Quilo가 하는 일]
+- 보고서 초안 생성: 화학 사전보고서, 화학 결과보고서, 물리 결과보고서 (.docx 또는 .hwpx).
+  · 사전보고서 = 실험 전 (목표·이론적 배경·기구/시약·실험 과정). 입력: 실험 매뉴얼 PDF.
+  · 결과보고서 = 실험 후 (데이터 표·그래프·분석·결론·오차). 입력: 화학은 사전보고서 PDF + 데이터(엑셀/CSV/사진) + 실험 사진(+매뉴얼), 물리는 PASCO Capstone(.cap)/엑셀/CSV/매뉴얼/사진.
+- PDF 통번역(베타): 그림·표·레이아웃은 두고 텍스트만 한국어로.
+- 도구 모음: 글자수 세기, LaTeX 수식 변환, 선형회귀·그래프, 이미지 변환·압축, PDF 도구(병합/분할/회전 등).
+- 데스크톱 앱(Quilo, Mac/Windows) 다운로드: https://fakeminjun7321.github.io/quilo-app/
+
+[크레딧] 보고서 1건당 모델만큼 차감: Opus 4.8 = 3크레딧, Sonnet 4.6 = 1크레딧. 신규 계정은 0크레딧이라 운영자 충전 후 사용.
+
+[자주 묻는 것]
+- .hwpx는 한컴오피스/한글에서, .docx는 MS Word(또는 한글)에서 열립니다.
+- 생성/업로드 파일은 24시간만 보관. 본인이 권한을 가진 파일만 업로드.
+- 로그인/회원가입은 우측 상단 메뉴. 학번은 개인 설정에서.
+
+[답변 규칙]
+- 한국어로 짧고 친절하게. 단계가 필요하면 번호로.
+- 범위는 Quilo 사용법과 실험 보고서 작성 안내까지. 그 외 요청(일반 지식 문답, 코딩, 숙제 대신 풀이, 보고서 본문 통째 대필 등)은 정중히 거절하고 Quilo 기능으로 안내.
+- 생성 결과는 AI라 부정확할 수 있으니 필요할 때 "직접 검토·수정하고 학교/교사의 AI 사용 정책을 확인한 뒤 쓰세요, 그대로 제출하지 마세요"라고 안내.
+- 모르거나 계정/결제/오류 등 운영자 영역이면 추측하지 말고 "운영자 문의 / 건의사항"을 안내.`;
+
+app.get("/api/chat/status", (req, res) => {
+  res.json({ enabled: !!CHAT_API_KEY });
+});
+
+app.post("/api/chat", async (req, res) => {
+  if (!CHAT_API_KEY) {
+    return res.status(503).json({ error: "AI 도우미가 아직 준비 중입니다." });
+  }
+  const ip = req.ip || "unknown";
+  const lim = rateLimit.checkChatLimit(ip, CHAT_DAILY_MAX);
+  if (!lim.allowed) {
+    return res.status(429).json({
+      error:
+        lim.reason === "rate"
+          ? "잠시 후 다시 시도해 주세요 (요청이 너무 빠릅니다)."
+          : "오늘 사용량이 많습니다. 잠시 후 다시 시도해 주세요.",
+    });
+  }
+
+  // 최근 대화만, 길이 제한
+  const raw = Array.isArray(req.body && req.body.messages)
+    ? req.body.messages
+    : [];
+  const turns = raw
+    .filter(
+      (m) =>
+        m &&
+        (m.role === "user" || m.role === "assistant") &&
+        typeof m.content === "string" &&
+        m.content.trim(),
+    )
+    .slice(-8)
+    .map((m) => ({ role: m.role, content: m.content.slice(0, 2000) }));
+  if (!turns.length || turns[turns.length - 1].role !== "user") {
+    return res.status(400).json({ error: "메시지가 비어 있습니다." });
+  }
+
+  rateLimit.recordChatAttempt(ip);
+
+  let upstream;
+  try {
+    upstream = await fetch(`${CHAT_API_BASE}/chat/completions`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${CHAT_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: CHAT_MODEL,
+        max_tokens: CHAT_MAX_TOKENS,
+        temperature: 0.3,
+        stream: true,
+        messages: [{ role: "system", content: CHAT_SYSTEM }, ...turns],
+      }),
+    });
+  } catch (e) {
+    console.error("[chat] connect fail:", e.message);
+    return res.status(502).json({ error: "AI 서버에 연결하지 못했습니다." });
+  }
+  if (!upstream.ok || !upstream.body) {
+    const t = await upstream.text().catch(() => "");
+    console.error("[chat] upstream", upstream.status, t.slice(0, 300));
+    return res
+      .status(502)
+      .json({ error: "AI 응답 오류입니다. 잠시 후 다시 시도하세요." });
+  }
+
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("X-Accel-Buffering", "no");
+  const decoder = new TextDecoder();
+  let buf = "";
+  try {
+    for await (const chunk of upstream.body) {
+      buf += decoder.decode(chunk, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line.startsWith("data:")) continue;
+        const data = line.slice(5).trim();
+        if (data === "[DONE]") {
+          res.end();
+          return;
+        }
+        try {
+          const j = JSON.parse(data);
+          const tok =
+            j.choices &&
+            j.choices[0] &&
+            j.choices[0].delta &&
+            j.choices[0].delta.content;
+          if (tok) res.write(tok);
+        } catch (_) {}
+      }
+    }
+    res.end();
+  } catch (e) {
+    console.error("[chat] stream error:", e.message);
+    try {
+      res.end();
+    } catch (_) {}
+  }
+});
+
 app.patch("/api/me/profile", requireAuth, async (req, res) => {
   if (!supa.isEnabled()) {
     return res.status(503).json({ error: "DB 미설정" });

@@ -49,6 +49,21 @@ def iter_text_blocks(doc):
             bid += 1
 
 
+# 일부 PDF의 수식 기호 폰트(MathematicalPi-One 등)는 /ToUnicode 가 깨져 있어
+# (모든 글자 → U+FFFD), MuPDF 가 raw 글자 바이트를 돌려준다. 그 폰트의
+# /Encoding /Differences 상 실제 글자: 33('!')→'+', 34('"')→Δ, 35('#')→− (U+2212).
+# 그래서 "−458 kJ mol⁻¹" 가 "#458 kJ mol#1" 로, "ΔE" 가 '"E' 로 깨져 나온다.
+_MATHPI_FIX = {"!": "+", '"': "Δ", "#": "−"}  # +  Δ  −
+
+
+def _fix_span_text(font, text):
+    """수식 기호 폰트에서 잘못 디코드된 글자를 실제 유니코드로 되돌린다.
+    폰트명 기준이라 일반 본문 폰트의 진짜 ! " # 는 건드리지 않는다."""
+    if not text or "MathematicalPi" not in (font or ""):
+        return text
+    return "".join(_MATHPI_FIX.get(ch, ch) for ch in text)
+
+
 def block_text(block):
     """블록 안의 줄들을 사람이 읽을 한 문단 문자열로 합친다.
 
@@ -57,7 +72,10 @@ def block_text(block):
     """
     lines = []
     for ln in block.get("lines", []):
-        s = "".join(sp.get("text", "") for sp in ln.get("spans", []))
+        s = "".join(
+            _fix_span_text(sp.get("font", ""), sp.get("text", ""))
+            for sp in ln.get("spans", [])
+        )
         if s.strip():
             lines.append(s.strip())
     return " ".join(lines).strip()
@@ -471,6 +489,33 @@ def _clip_out(rect, regions):
     return r
 
 
+def _dedoverlap_column(items):
+    """같은 단(column)에서 세로로 겹치는 블록들을 중점에서 잘라 분리한다.
+    원본 PDF 의 블록 bbox 가 위/아래첨자 경계(예: H₂⁺)에서 서로 겹치는 경우가 있어,
+    그대로 두면 두 번역문이 같은 자리(같은 y 띠)에 겹쳐 그려져 글자가 뭉친다."""
+    order = sorted(range(len(items)), key=lambda i: (items[i][0].y0, items[i][0].x0))
+    rects = [fitz.Rect(items[i][0]) for i in order]
+    for a in range(len(order)):
+        for b in range(a + 1, len(order)):
+            ra, rb = rects[a], rects[b]
+            if ra.y1 <= rb.y0 or rb.y1 <= ra.y0:
+                continue  # 세로로 안 겹침
+            ox = min(ra.x1, rb.x1) - max(ra.x0, rb.x0)
+            if ox <= 0.30 * min(ra.width, rb.width):
+                continue  # 가로로 거의 안 겹침 = 다른 단 → 그대로
+            mid = (max(ra.y0, rb.y0) + min(ra.y1, rb.y1)) / 2.0
+            top, bot = (ra, rb) if ra.y0 <= rb.y0 else (rb, ra)
+            top.y1 = min(top.y1, mid)
+            bot.y0 = max(bot.y0, mid)
+    out = list(items)
+    for k, i in enumerate(order):
+        r = rects[k]
+        if r.height < 3:
+            r.y1 = r.y0 + 3.0
+        out[i] = (r,) + tuple(items[i][1:])
+    return out
+
+
 def cmd_render(pdf_path, out_path, font_path):
     payload = json.loads(sys.stdin.read() or "{}")
     translations = payload.get("translations", {}) or {}
@@ -508,6 +553,9 @@ def cmd_render(pdf_path, out_path, font_path):
             if cr is None or cr.width < 3 or cr.height < 3:
                 continue
             clipped.append((cr, ko, sz, col))
+        # 원본 블록 bbox 가 위/아래첨자 경계에서 겹쳐 두 번역문이 포개지는 것 방지
+        # (redaction 전에 해야 한 블록 redaction 이 다른 블록 글자를 지우지 않음).
+        clipped = _dedoverlap_column(clipped)
         # 1) 원문 글자만 지운다. images=NONE 으로 그림은 보존.
         #    밝은(흰색 계열) 글자 → fill 생략. 그 외엔 '바로 바깥' 정확 배경색으로 덮어
         #    경계가 안 보이게(상자 느낌 제거).

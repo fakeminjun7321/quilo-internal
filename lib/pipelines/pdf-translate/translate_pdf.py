@@ -64,14 +64,35 @@ def _fix_span_text(font, text):
     return "".join(_MATHPI_FIX.get(ch, ch) for ch in text)
 
 
-def block_text(block):
+def _line_in_figs(line_bbox, figs):
+    """줄(line)의 중심이 그림 영역(±18pt) 안이면 True.
+
+    그래프 Y축 라벨 'V(R_AB)' 처럼, PyMuPDF 가 그림 위 텍스트를 캡션과 같은
+    블록으로 묶어버리는 경우가 있다. 그런 줄을 가려내 번역·덮기에서 빼면
+    축 라벨은 영어 그대로 그래프에 남고, 캡션만 깔끔히 번역된다.
+    """
+    if not figs:
+        return False
+    cx = (line_bbox[0] + line_bbox[2]) / 2.0
+    cy = (line_bbox[1] + line_bbox[3]) / 2.0
+    return any(
+        (f.x0 - 18) <= cx <= (f.x1 + 18) and (f.y0 - 18) <= cy <= (f.y1 + 18)
+        for f in figs
+    )
+
+
+def block_text(block, figs=None):
     """블록 안의 줄들을 사람이 읽을 한 문단 문자열로 합친다.
 
     화면상 줄바꿈(wrap)은 공백으로 이어 붙인다 — 한 문장이 여러 줄에 걸쳐도
     번역은 한 단위로 처리해야 자연스럽기 때문이다.
+
+    figs 가 주어지면, 그림 영역에 든 줄(축 라벨 등)은 번역 대상에서 제외한다.
     """
     lines = []
     for ln in block.get("lines", []):
+        if _line_in_figs(ln.get("bbox", (0, 0, 0, 0)), figs):
+            continue
         s = "".join(
             _fix_span_text(sp.get("font", ""), sp.get("text", ""))
             for sp in ln.get("spans", [])
@@ -79,6 +100,21 @@ def block_text(block):
         if s.strip():
             lines.append(s.strip())
     return " ".join(lines).strip()
+
+
+def _nonfig_rect(block, figs=None):
+    """그림 영역 줄을 뺀, '번역 대상 줄들'만의 bbox.
+
+    render 가 이 사각형만 덮고/그리도록 해서, 캡션에 붙어 있던 축 라벨(V(R_AB))을
+    지우거나 그 위에 한글을 그리지 않게 한다(축 라벨은 영어 원본 그대로 유지).
+    """
+    r = None
+    for ln in block.get("lines", []):
+        if _line_in_figs(ln.get("bbox", (0, 0, 0, 0)), figs):
+            continue
+        lr = fitz.Rect(ln["bbox"])
+        r = lr if r is None else (r | lr)
+    return r if r is not None else fitz.Rect(block["bbox"])
 
 
 def dominant_size_color(block):
@@ -251,29 +287,25 @@ def cmd_extract(pdf_path):
         return page_cache[pno]
 
     for bid, pno, block in iter_text_blocks(doc):
-        text = block_text(block)
-        if not text or not has_letters(text):
-            continue
-        total_text_chars += len(text)  # scanned 판정엔 모든 글자 포함
-        # 그림/그래프 영역 안의 텍스트(축 라벨·기호·분자식 등)는 번역하지 않고 영어로 둔다.
-        rect = fitz.Rect(block["bbox"])
-        cx, cy = (rect.x0 + rect.x1) / 2, (rect.y0 + rect.y1) / 2
         regs = regions(pno)
-        on_figure = any(
-            (reg.x0 - 18) <= cx <= (reg.x1 + 18)
-            and (reg.y0 - 18) <= cy <= (reg.y1 + 18)
-            for reg in regs
-        )
-        # 그림 근처의 '짧은' 블록(축 끝 라벨 RAB, V(RAB) 등)도 영어로 둔다.
-        # 긴 캡션·본문은 영향 없음(짧을 때만).
-        if not on_figure and len(text.strip()) <= 8:
-            on_figure = any(
+        # 그림/그래프 영역에 든 '줄'(축 라벨·기호·분자식 등)은 빼고 합친다.
+        # → 캡션과 한 블록에 묶인 'V(R_AB)' 같은 축 라벨이 번역문에 섞이지 않는다.
+        text = block_text(block, regs)
+        if not text or not has_letters(text):
+            continue  # 모든 줄이 그림 영역이면 text 가 비어 자동 제외(그래프 라벨 등)
+        total_text_chars += len(text)  # scanned 판정엔 모든 글자 포함
+        # 그림 근처의 '짧은' 블록(축 끝 라벨 RAB 등)은 그대로 영어로 둔다.
+        # 번역 대상 줄들만의 bbox 로 판정(그림 줄은 이미 빠짐).
+        if len(text.strip()) <= 8:
+            rect = _nonfig_rect(block, regs)
+            cx, cy = (rect.x0 + rect.x1) / 2, (rect.y0 + rect.y1) / 2
+            near_fig = any(
                 (reg.x0 - 40) <= cx <= (reg.x1 + 40)
                 and (reg.y0 - 40) <= cy <= (reg.y1 + 40)
                 for reg in regs
             )
-        if on_figure:
-            continue
+            if near_fig:
+                continue
         blocks.append({"id": bid, "page": pno, "text": text})
     # 텍스트가 거의 없으면 스캔본(글자가 이미지)일 가능성이 높다 → Node가 안내.
     scanned = len(doc) > 0 and total_text_chars < 20 * len(doc)
@@ -522,6 +554,14 @@ def cmd_render(pdf_path, out_path, font_path):
 
     doc = fitz.open(pdf_path)
 
+    # 페이지별 그림 영역 캐시(추출과 동일 기준) — 축 라벨 줄을 덮기/그리기에서 뺀다.
+    fig_cache = {}
+
+    def figs_for(pno):
+        if pno not in fig_cache:
+            fig_cache[pno] = _figure_regions(doc[pno])
+        return fig_cache[pno]
+
     # 번역이 있는 블록만 (페이지별로) 모은다.
     by_page = defaultdict(list)
     for bid, pno, block in iter_text_blocks(doc):
@@ -530,7 +570,9 @@ def cmd_render(pdf_path, out_path, font_path):
             ko = translations.get(bid)
         if not ko or not str(ko).strip():
             continue
-        rect = fitz.Rect(block["bbox"])
+        # 블록 전체 bbox 가 아니라 '그림 영역 줄을 뺀' bbox 만 덮는다.
+        # → 캡션에 붙은 축 라벨(V(R_AB))을 지우지 않고 영어 그대로 남긴다.
+        rect = _nonfig_rect(block, figs_for(pno))
         size, color = dominant_size_color(block)
         by_page[pno].append((rect, str(ko).strip(), size, color))
 
@@ -544,7 +586,7 @@ def cmd_render(pdf_path, out_path, font_path):
         page = doc[pno]
         sample = _sample_pixmap(page)  # redaction 색 맞춤용(원본 배경 샘플)
         page_bg = _page_bg(sample)
-        figs = _figure_regions(page)  # 그림 영역 — 덮기/그리기를 이 밖으로 자른다.
+        figs = figs_for(pno)  # 그림 영역 — 덮기/그리기를 이 밖으로 자른다(캐시 재사용).
         # 블록 rect 를 그림 밖으로 클리핑(완전히 그림 안이면 제외). → 그림 배경에 흰 자국
         # 안 생기고, 캡션에 붙은 축 라벨(V(RAB) 등)도 원본 그대로 유지.
         clipped = []

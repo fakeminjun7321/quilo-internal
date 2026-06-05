@@ -123,7 +123,8 @@ def _merge_superscript_ions(blocks):
     for blk in blocks:
         sp = _first_span(blk)
         lead = (sp.get("text", "").lstrip()[:1] if sp else "")
-        if out and lead and lead in "+-−":
+        # +/−(이온 전하), *(반결합 오비탈 σ*·π*) 위첨자가 떨어져 나온 경우.
+        if out and lead and lead in "+-−*":
             ra = fitz.Rect(out[-1]["bbox"])
             rb = fitz.Rect(blk["bbox"])
             oy = min(ra.y1, rb.y1) - max(ra.y0, rb.y0)  # 세로 겹침(위첨자가 본문에 끼임)
@@ -704,7 +705,38 @@ def cmd_extract(pdf_path):
             page_cache[pno] = _skip_regions(doc[pno])  # 그림 + 표
         return page_cache[pno]
 
-    for bid, pno, block in iter_text_blocks(doc):
+    # 표시수식 band 선계산 — 식 [6.1] 처럼 본체(= 든 수식 줄)는 원본유지(KEEP)되지만
+    # 분자/첨자 조각(en·nn·0·A·B·r 등 Sabon 일반폰트, 수식기호 없음)은 KEEP 에 안
+    # 걸려 번역·재그리기되어 흩어진다. 본체 줄의 y-band 안에 든 '단어 없는' 조각을
+    # 같이 원본유지해 식 전체가 원본대로 보이게 한다.
+    items = list(iter_text_blocks(doc))
+    page_blocks = defaultdict(list)
+    for _bid, _pno, _blk in items:
+        page_blocks[_pno].append(_blk)
+    eq_bands = {}
+    for _pno, _pbs in page_blocks.items():
+        _use_page(_pno)
+        _regs = regions(_pno)
+        bands = []
+        for _blk in _pbs:
+            if not _keep_original_block(_blk):
+                continue
+            _t = block_text(_blk, _regs)
+            if "=" in _t or _MATH_SIGN.search(_t):  # 표시수식 본체(=·그리스·연산자)
+                _r = fitz.Rect(_blk["bbox"])
+                bands.append(
+                    fitz.Rect(_r.x0 - 30, _r.y0 - 13, _r.x1 + 30, _r.y1 + 13)
+                )
+        eq_bands[_pno] = bands
+
+    def _in_eq_band(block, pno):
+        r = fitz.Rect(block["bbox"])
+        cx, cy = (r.x0 + r.x1) / 2, (r.y0 + r.y1) / 2
+        return any(
+            b.x0 <= cx <= b.x1 and b.y0 <= cy <= b.y1 for b in eq_bands.get(pno, [])
+        )
+
+    for bid, pno, block in items:
         _use_page(pno)  # 이 페이지의 폰트 디코더 활성화(깨진 글자 복원)
         regs = regions(pno)
         # 그림/그래프 영역에 든 '줄'(축 라벨·기호·분자식 등)은 빼고 합친다.
@@ -714,6 +746,13 @@ def cmd_extract(pdf_path):
             continue  # 모든 줄이 그림 영역이면 text 가 비어 자동 제외(그래프 라벨 등)
         if _keep_original_block(block):
             continue  # 독립 표시수식·기호/오비탈 라벨([6.1]·1σg 등) → 원본 유지(재그리기·오역 방지)
+        # 표시수식 band 안의 '단어 없는' 조각(흩어진 첨자) → 원본 유지(식이 흩어지지 않게).
+        if (
+            not re.search(r"[A-Za-z]{3,}", text)
+            and not re.search(r"[가-힣]", text)
+            and _in_eq_band(block, pno)
+        ):
+            continue
         total_text_chars += len(text)  # scanned 판정엔 모든 글자 포함
         # 그림 근처의 '짧은' 블록(축 끝 라벨 RAB 등)은 그대로 영어로 둔다.
         # 번역 대상 줄들만의 bbox 로 판정(그림 줄은 이미 빠짐).

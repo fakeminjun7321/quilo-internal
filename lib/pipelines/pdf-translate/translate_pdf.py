@@ -38,6 +38,79 @@ def _first_span(block):
     return None
 
 
+def _block_raw_text(block):
+    return "".join(
+        sp.get("text", "")
+        for ln in block.get("lines", [])
+        for sp in ln.get("spans", [])
+    )
+
+
+def _absorb_tiny_fragments(blocks):
+    """별도 블록으로 떨어진 작은 첨자 조각(이온의 아래첨자 '2', 전하 '+/−' 등)을,
+    그 조각이 공간적으로 속한 host 블록의 해당 줄에 **x-위치 순서로 끼워넣는다**.
+
+    예: 제목 'H₂⁺' 가 PyMuPDF 에서 'H'(+위첨자 ⁺) 와 별도의 '2'(아래첨자) 블록으로
+    쪼개져 제목이 'H⁺' 로 나오던 것을, '2' 를 H 와 ⁺ 사이에 삽입해 'H2⁺' 로 복원."""
+    frags, out = [], []
+    for b in blocks:
+        txt = _block_raw_text(b).strip()
+        sp = _first_span(b)
+        is_frag = bool(
+            sp
+            and 0 < len(txt) <= 2
+            and (sp.get("size", 99) or 99) < 9.0  # 본문보다 작은 위/아래첨자
+            and all(c.isdigit() or c in "+-−" for c in txt)
+        )
+        (frags if is_frag else out).append(b)
+    if not frags:
+        return blocks
+    for frag in frags:
+        fr = fitz.Rect(frag["bbox"])
+        fcx, fcy = (fr.x0 + fr.x1) / 2, (fr.y0 + fr.y1) / 2
+        host = None
+        for h in out:
+            hr = fitz.Rect(h["bbox"])
+            if hr.y0 - 3 <= fcy <= hr.y1 + 3 and hr.x0 - 8 <= fcx <= hr.x1 + 8:
+                host = h
+                break
+        if host is None:
+            out.append(frag)  # 맞는 host 없으면 독립 블록으로 유지
+            continue
+        line = None
+        for ln in host.get("lines", []):
+            lr = fitz.Rect(ln["bbox"])
+            if lr.y0 - 3 <= fcy <= lr.y1 + 3:
+                line = ln
+                break
+        if line is None:
+            out.append(frag)
+            continue
+        is_digit = all(c.isdigit() for c in _block_raw_text(frag).strip())
+        for fsp in [s for fl in frag.get("lines", []) for s in fl.get("spans", [])]:
+            fbox = fsp.get("bbox") or [fcx, fcy, fcx, fcy]
+            fx, fy0 = fbox[0], fbox[1]
+            spans = line.setdefault("spans", [])
+            # 기본은 x-순서. 단 아래첨자 숫자(이온의 '2')는 거의 같은 x 에 겹쳐 쌓인
+            # 위첨자(전하 '+', 더 작고 더 높은 span) '앞'에 와야 한다(H₂⁺ = H, 2, +).
+            pos = len(spans)
+            for k, s in enumerate(spans):
+                sbox = s.get("bbox") or [1e9, 0, 0, 0]
+                sx, sy0 = sbox[0], sbox[1]
+                super_near = (
+                    is_digit
+                    and (s.get("size", 99) or 99) < 9
+                    and sy0 < fy0 - 1
+                    and abs(sx - fx) < 15
+                )
+                if super_near or sx > fx:
+                    pos = k
+                    break
+            spans.insert(pos, fsp)
+        host["bbox"] = list(fitz.Rect(host["bbox"]) | fr)
+    return out
+
+
 def _merge_superscript_ions(blocks):
     """위첨자 전하(H₂⁺의 '+', O₂⁻의 '−')가 별도 블록으로 떨어져 나와 앞 문단과
     세로로 겹치는 경우, 앞 블록에 병합한다.
@@ -84,7 +157,8 @@ def iter_text_blocks(doc):
             for b in data.get("blocks", [])
             if b.get("type") == 0 and any(ln.get("spans") for ln in (b.get("lines") or []))
         ]
-        for block in _merge_superscript_ions(text_blocks):
+        merged = _absorb_tiny_fragments(_merge_superscript_ions(text_blocks))
+        for block in merged:
             yield bid, pno, block
             bid += 1
 
@@ -110,8 +184,11 @@ _LIG = {
 _HCODE = {
     "H9274": "ψ", "H9278": "φ", "H9272": "φ", "H9268": "σ", "H9266": "π",
     "H9280": "ε", "H9258": "θ", "H9004": "Δ", "H11001": "+", "H11002": "−",
-    "H11005": "=", "H11006": "±", "H11021": "<", "H11009": "∞", "H5108": "ℋ",
-    "H11545": "+", "H11546": "−",
+    "H11005": "=", "H11006": "±", "H11021": "<", "H11022": ">", "H11009": "∞",
+    "H5108": "ℋ", "H11545": "+", "H11546": "−", "H20919": "|",
+    # 추가 식별(서브셋별 변형 글리프명; 같은 기호의 다른 인코딩 포함)
+    "H9267": "ψ", "H9254": "θ", "H9251": "φ", "H9255": "±", "H5113": "ℋ",
+    "H5133": "ℓ", "H11011": "≈",
 }
 
 # Adobe Glyph List 부분집합(자주 쓰는 그리스·수학 기호·연산자).
@@ -247,11 +324,18 @@ def build_decoders(doc):
         page_dec = {}
         for name, cmaps in bysub.items():
             is_math = any(k in name for k in _MATH_FONT_KEYS)
-            # 가장 풍부한 서브셋(=본문) 우선, 충돌하지 않는 코드만 다른 서브셋서 보충.
+            # 가장 풍부한 서브셋(=본문) 우선. 단 충돌 코드에서 큰 서브셋의 글리프가
+            # 해석 불가(매핑표에 없음)이고 다른 서브셋의 글리프가 해석되면 그쪽을 쓴다
+            # — 큰 서브셋이 code 35/36 을 미지 글리프로 덮어 θ/π 가 raw '#'/'$' 로
+            # 남던 잔여 깨짐을 줄인다(해석되는 글리프 우선).
             merged = {}
             for cmap in sorted(cmaps, key=lambda m: -len(m)):
                 for code, gname in cmap.items():
-                    merged.setdefault(code, gname)
+                    cur = merged.get(code)
+                    if cur is None:
+                        merged[code] = gname
+                    elif _glyph_to_unicode(cur) is None and _glyph_to_unicode(gname) is not None:
+                        merged[code] = gname
             dec = {}
             for code, gname in merged.items():
                 u = _glyph_to_unicode(gname)

@@ -162,7 +162,19 @@ def _merge_superscript_ions(blocks):
                 rb = fitz.Rect(blk["bbox"])
                 oy = min(ra.y1, rb.y1) - max(ra.y0, rb.y0)  # 세로 겹침(첨자가 본문에 끼임)
                 ox = min(ra.x1, rb.x1) - max(ra.x0, rb.x0)  # 같은 단(가로 겹침)
-                if oy > 2 and ox > 0.3 * min(ra.width, rb.width):
+                # (1) 세로 겹침 병합: 첨자가 본문 중간으로 끌려 내려가 앞 문단과 세로로
+                #     겹치는 경우(H₂⁺·rA 등).
+                vert = oy > 2 and ox > 0.3 * min(ra.width, rb.width)
+                # (2) 같은 줄 오른쪽 연속 병합: 인라인 수식(ψ_MO^cov_el 등)이 한 줄을
+                #     쪼개, 그 뒤를 잇는 본문 조각이 '앞 블록과 같은 줄, 그 가로 범위
+                #     안~바로 오른쪽'에서 시작하는 경우. 이걸 합치지 않으면 dedoverlap 이
+                #     큰 문단 조각을 첫 줄로 잘라(redaction 축소) 뒷부분이 영어로 남는다.
+                #     가드: 첫 span 이 작은 첨자(small) + 본문 단어/크기 + 같은 줄(세로
+                #     거의 완전 겹침) + 새 단/먼 오른쪽이 아님 → 인라인수식 연속만 잡는다.
+                line_h = min(ra.height, rb.height)
+                same_line = line_h > 0 and oy > 0.55 * line_h
+                right_cont = (ra.x0 - 2) <= rb.x0 <= (ra.x1 + 24)
+                if vert or (same_line and right_cont):
                     out[-1]["lines"] = out[-1].get("lines", []) + blk.get("lines", [])
                     out[-1]["bbox"] = [
                         min(ra.x0, rb.x0), min(ra.y0, rb.y0),
@@ -1129,6 +1141,28 @@ def _clip_out(rect, regions):
     return r
 
 
+def _split_out_keeps(rect, keeps):
+    """redaction rect 에서 '원본유지' 블록(표시수식·라벨)과 겹치는 가로띠를 빼고,
+    그 위/아래의 띠만 돌려준다. 번역 블록 bbox 가 인접 식을 세로로 덮어 그 식 글자가
+    지워지는 드문 경우를 막는다(겹치는 식이 없으면 rect 하나 그대로)."""
+    parts = [fitz.Rect(rect)]
+    for k in keeps:
+        nxt = []
+        for r in parts:
+            ox = min(r.x1, k.x1) - max(r.x0, k.x0)
+            oy = min(r.y1, k.y1) - max(r.y0, k.y0)
+            # 가로로 의미있게 겹치고 식이 rect 안쪽 띠를 차지할 때만 분리.
+            if ox <= 0.2 * (r.x1 - r.x0) or oy <= 0:
+                nxt.append(r)
+                continue
+            if k.y0 - r.y0 > 3:  # 식 위쪽 띠
+                nxt.append(fitz.Rect(r.x0, r.y0, r.x1, k.y0 - 1))
+            if r.y1 - k.y1 > 3:  # 식 아래쪽 띠
+                nxt.append(fitz.Rect(r.x0, k.y1 + 1, r.x1, r.y1))
+        parts = nxt
+    return [p for p in parts if p.width > 2 and p.height > 2]
+
+
 def _dedoverlap_column(items):
     """같은 단(column)에서 세로로 겹치는 블록들을 중점에서 잘라 분리한다.
     원본 PDF 의 블록 bbox 가 위/아래첨자 경계(예: H₂⁺)에서 서로 겹치는 경우가 있어,
@@ -1173,11 +1207,14 @@ def cmd_render(pdf_path, out_path, font_path):
 
     # 번역이 있는 블록만 (페이지별로) 모은다.
     by_page = defaultdict(list)
+    kept_by_page = defaultdict(list)  # 원본유지(표시수식·라벨) rect — redaction 보호용
     for bid, pno, block in iter_text_blocks(doc):
         ko = translations.get(str(bid))
         if ko is None:
             ko = translations.get(bid)
         if not ko or not str(ko).strip():
+            if _keep_original_block(block):  # 식·라벨 위치를 기억해 redaction 이 안 지우게
+                kept_by_page[pno].append(fitz.Rect(_nonfig_rect(block, figs_for(pno))))
             continue
         # 블록 전체 bbox 가 아니라 '그림 영역 줄을 뺀' bbox 만 덮는다.
         # → 캡션에 붙은 축 라벨(V(R_AB))을 지우지 않고 영어 그대로 남긴다.
@@ -1234,8 +1271,11 @@ def cmd_render(pdf_path, out_path, font_path):
             if cr is None or cr.width < 3 or cr.height < 3:
                 continue
             clipped.append((cr, ko, sz, col, bd, it))
-        # 원본 블록 bbox 가 위/아래첨자 경계에서 겹쳐 두 번역문이 포개지는 것 방지
-        # (redaction 전에 해야 한 블록 redaction 이 다른 블록 글자를 지우지 않음).
+        # redaction(원문 지우기)은 '겹침 분할 전' 각 블록의 제 bbox 전체로 한다.
+        # dedoverlap 은 '번역문 그리기' 위치만 좁히는 용도 — 그 좁힌 rect 로 redaction 까지
+        # 하면, 큰 문단 조각이 첫 줄로 잘려 뒷부분 원문(영어)이 안 지워지고 남는다
+        # (인라인 수식이 한 줄을 쪼갠 문단에서 흔함). 그리기는 dedoverlap 결과를 쓴다.
+        redact_full = [(fitz.Rect(c[0]), c[3]) for c in clipped]  # (full rect, color)
         clipped = _dedoverlap_column(clipped)
         # 각 블록의 확장 한계 = 오른쪽/아래 '이웃 블록'까지(없으면 페이지 여백). 제목·헤딩이
         # 번역으로 길어져 가로·세로로 늘어나도 이웃을 침범해 겹치지 않도록 막는다.
@@ -1266,14 +1306,18 @@ def cmd_render(pdf_path, out_path, font_path):
         # 1) 원문 글자만 지운다. images=NONE 으로 그림은 보존.
         #    밝은(흰색 계열) 글자 → fill 생략. 그 외엔 '바로 바깥' 정확 배경색으로 덮어
         #    경계가 안 보이게(상자 느낌 제거).
-        for rect, _ko, _sz, _col, _bd, _it in clipped:
-            r, g, b = _color01(_col)
-            if min(r, g, b) > 0.8:
-                fill = None
-            else:
-                bbg = _bg_around(sample, rect) or page_bg
-                fill = (bbg[0] / 255.0, bbg[1] / 255.0, bbg[2] / 255.0)
-            page.add_redact_annot(rect, fill=fill)
+        for rect, _col in redact_full:
+            # 원본유지(표시수식·라벨) 블록과 겹치면, 그 글자를 지우지 않도록 redaction
+            # 을 위/아래로 잘라 보호한다(번역 블록 bbox 가 인접 식을 덮는 드문 경우).
+            sub = _split_out_keeps(rect, kept_by_page.get(pno, []))
+            for sr in sub:
+                r, g, b = _color01(_col)
+                if min(r, g, b) > 0.8:
+                    fill = None
+                else:
+                    bbg = _bg_around(sample, sr) or page_bg
+                    fill = (bbg[0] / 255.0, bbg[1] / 255.0, bbg[2] / 255.0)
+                page.add_redact_annot(sr, fill=fill)
         page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
         # 2) 같은(클리핑된) 박스에 번역문 삽입. 본문 양끝맞춤, 제목/한 줄은 가운데/왼쪽.
         page_width = page.rect.width

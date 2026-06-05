@@ -22,6 +22,23 @@
       })();
     </script>
     <link rel="stylesheet" href="/style.css" />
+    <!-- 코드 에디터(CodeMirror) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/material-darker.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/xml/xml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/css/css.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/htmlmixed/htmlmixed.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/markdown/markdown.min.js"></script>
+    <style>
+      #adminTabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 16px; }
+      #adminTabs button.atab { font: inherit; font-size: 13px; font-weight: 600; padding: 8px 14px; border: 1px solid #d8e0ee; background: #fff; color: #475569; border-radius: 9px; cursor: pointer; }
+      #adminTabs button.atab.on { background: #243ba2; color: #fff; border-color: #243ba2; }
+      #adminTabs button.atab:hover { border-color: #243ba2; }
+      .CodeMirror { height: 360px; border: 1px solid #e6e8f0; border-radius: 10px; font-size: 13.5px; }
+    </style>
   </head>
   <body>
     <header class="app-header">
@@ -54,6 +71,14 @@
         <p id="rateInfo" class="hint">환율 로딩 중...</p>
       </div>
     </header>
+
+    <nav id="adminTabs" aria-label="관리자 섹션">
+      <button class="atab" data-go="ai">🤖 AI 보조</button>
+      <button class="atab" data-go="users">👤 사용자</button>
+      <button class="atab" data-go="beta">🧪 베타</button>
+      <button class="atab" data-go="logs">📊 로그</button>
+      <button class="atab" data-go="editor">🧩 코드 에디터</button>
+    </nav>
 
     <section class="settings-card" id="adminAiSection">
       <h2>🤖 AI 관리자 보조</h2>
@@ -167,6 +192,27 @@
         </table>
       </div>
       <p id="logStatus" class="hint"></p>
+    </section>
+
+    <section class="settings-card" id="adminEditorSection">
+      <h2>🧩 코드 에디터</h2>
+      <p class="hint">간단한 코드 편집기(언어별 하이라이트). JavaScript는 ▶ 실행, HTML은 미리보기, 그 외는 편집·하이라이트만. 모두 브라우저 안에서만 동작합니다.</p>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+        <select id="ceLang" style="padding:7px 10px;border:1px solid #d7dbe8;border-radius:8px;font:inherit">
+          <option value="javascript">JavaScript</option>
+          <option value="htmlmixed">HTML</option>
+          <option value="css">CSS</option>
+          <option value="python">Python</option>
+          <option value="markdown">Markdown</option>
+          <option value="application/json">JSON</option>
+        </select>
+        <button id="ceRun" class="secondary compact">▶ 실행</button>
+        <button id="ceClear" class="secondary compact">지우기</button>
+        <span class="hint" id="ceHint" style="margin-left:auto"></span>
+      </div>
+      <textarea id="ceArea"></textarea>
+      <div id="ceOut" style="margin-top:8px;background:#0f172a;color:#e2e8f0;border-radius:8px;padding:10px 12px;font-family:ui-monospace,Menlo,monospace;font-size:12.5px;white-space:pre-wrap;max-height:220px;overflow:auto;display:none"></div>
+      <iframe id="ceFrame" title="미리보기" style="margin-top:8px;width:100%;height:280px;border:1px solid #e6e8f0;border-radius:8px;background:#fff;display:none"></iframe>
     </section>
 
     <footer class="site-footer">
@@ -813,6 +859,182 @@
           };
           chips.appendChild(btn);
         });
+      })();
+    </script>
+    <script>
+      (function () {
+        // ── 섹션 탭(한 번에 하나씩) ──
+        var TABMAP = {
+          "AI 관리자 보조": "ai",
+          "사용자 추가": "users",
+          "사용자 목록": "users",
+          "베타 기능": "beta",
+          "보고서 생성 로그": "logs",
+          "코드 에디터": "editor",
+        };
+        var sections = Array.prototype.slice.call(
+          document.querySelectorAll("section.settings-card")
+        );
+        sections.forEach(function (s) {
+          var h2 = s.querySelector("h2");
+          if (!h2) return;
+          Object.keys(TABMAP).forEach(function (k) {
+            if (h2.textContent.indexOf(k) >= 0)
+              s.setAttribute("data-atab", TABMAP[k]);
+          });
+        });
+        var tabBtns = Array.prototype.slice.call(
+          document.querySelectorAll("#adminTabs .atab")
+        );
+        function showTab(tab) {
+          sections.forEach(function (s) {
+            s.style.display = s.getAttribute("data-atab") === tab ? "" : "none";
+          });
+          tabBtns.forEach(function (b) {
+            b.classList.toggle("on", b.getAttribute("data-go") === tab);
+          });
+          try {
+            localStorage.setItem("adminTab", tab);
+          } catch (e) {}
+          if (tab === "editor") {
+            initEditor();
+            if (window.__ceCM)
+              setTimeout(function () {
+                window.__ceCM.refresh();
+              }, 30);
+          }
+        }
+        tabBtns.forEach(function (b) {
+          b.onclick = function () {
+            showTab(b.getAttribute("data-go"));
+          };
+        });
+        var start = "ai";
+        try {
+          var st = localStorage.getItem("adminTab");
+          if (st) start = st;
+        } catch (e) {}
+        if (!document.querySelector('#adminTabs .atab[data-go="' + start + '"]'))
+          start = "ai";
+        showTab(start);
+
+        // ── 코드 에디터(CodeMirror) ──
+        var cmReady = false;
+        function initEditor() {
+          if (cmReady) return;
+          cmReady = true;
+          var hint = document.getElementById("ceHint");
+          if (typeof CodeMirror === "undefined") {
+            hint.textContent = "에디터 로드 실패(네트워크 확인)";
+            return;
+          }
+          var langSel = document.getElementById("ceLang");
+          var out = document.getElementById("ceOut");
+          var frame = document.getElementById("ceFrame");
+          var saved = "";
+          try {
+            saved = localStorage.getItem("ceCode") || "";
+          } catch (e) {}
+          if (!saved)
+            saved = '// 여기에 코드를 작성하고 ▶ 실행\nconsole.log("안녕, Quilo!");\n';
+          var cm = CodeMirror.fromTextArea(document.getElementById("ceArea"), {
+            lineNumbers: true,
+            mode: "javascript",
+            theme: "material-darker",
+            indentUnit: 2,
+            tabSize: 2,
+            lineWrapping: true,
+          });
+          cm.setValue(saved);
+          window.__ceCM = cm;
+          try {
+            var sl = localStorage.getItem("ceLang");
+            if (sl) langSel.value = sl;
+          } catch (e) {}
+          cm.setOption("mode", langSel.value);
+          cm.on("change", function () {
+            try {
+              localStorage.setItem("ceCode", cm.getValue());
+            } catch (e) {}
+          });
+          function updateHint() {
+            var l = langSel.value;
+            hint.textContent =
+              l === "javascript"
+                ? "JavaScript — ▶ 실행하면 결과가 아래에"
+                : l === "htmlmixed"
+                  ? "HTML — ▶ 실행하면 아래에 미리보기"
+                  : "이 언어는 편집·하이라이트만 (실행 미지원)";
+          }
+          langSel.onchange = function () {
+            cm.setOption("mode", langSel.value);
+            try {
+              localStorage.setItem("ceLang", langSel.value);
+            } catch (e) {}
+            updateHint();
+          };
+          updateHint();
+          document.getElementById("ceClear").onclick = function () {
+            cm.setValue("");
+            out.style.display = "none";
+            frame.style.display = "none";
+            cm.focus();
+          };
+          document.getElementById("ceRun").onclick = function () {
+            var code = cm.getValue();
+            var l = langSel.value;
+            out.style.display = "none";
+            frame.style.display = "none";
+            if (l === "javascript") {
+              var logs = [];
+              var orig = console.log;
+              console.log = function () {
+                logs.push(
+                  Array.prototype.map
+                    .call(arguments, function (a) {
+                      try {
+                        return typeof a === "object"
+                          ? JSON.stringify(a)
+                          : String(a);
+                      } catch (e) {
+                        return String(a);
+                      }
+                    })
+                    .join(" ")
+                );
+                try {
+                  orig.apply(console, arguments);
+                } catch (e) {}
+              };
+              var result;
+              try {
+                result = (0, eval)(code);
+              } catch (e) {
+                logs.push("⚠ " + (e && e.message ? e.message : e));
+              }
+              console.log = orig;
+              if (result !== undefined) {
+                try {
+                  logs.push(
+                    "→ " +
+                      (typeof result === "object"
+                        ? JSON.stringify(result)
+                        : String(result))
+                  );
+                } catch (e) {}
+              }
+              out.textContent = logs.join("\n") || "(출력 없음)";
+              out.style.display = "block";
+            } else if (l === "htmlmixed") {
+              frame.srcdoc = code;
+              frame.style.display = "block";
+            } else {
+              out.textContent =
+                "이 언어는 브라우저에서 실행할 수 없어요. JavaScript나 HTML로 해보세요.";
+              out.style.display = "block";
+            }
+          };
+        }
       })();
     </script>
 </body>

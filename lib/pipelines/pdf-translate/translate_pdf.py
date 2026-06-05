@@ -112,13 +112,27 @@ def _absorb_tiny_fragments(blocks):
 
 
 def _has_word(block):
-    """블록 안에 '단어'(영문 3글자+ 연속, 한 span 내)가 있는지 = 문단/캡션 연속본문.
-    흩어진 수식 글자(R/V/V 각각 별도 span)는 단어가 아니다."""
+    """블록의 '본문 크기'(가장 큰 span 의 0.8배+) span 에 영문 3글자+ 단어 또는 한글이
+    있는지 = 진짜 산문/문장 연속본문.
+
+    핵심: 작은 위·아래첨자 라벨(ψ_g^bond 의 'bond', ψ_VB^cl 의 'VB'·'cl' 등)은 본문
+    단어로 치지 않는다 → 라벨 달린 표시수식이 '단어 있음'으로 오인되어 번역·흩어지지
+    않게 한다. 흩어진 수식 글자(R/V/V 각각 별도 span)도 단어가 아니다(span 내 연속만)."""
+    sizes = [
+        sp.get("size", 0) or 0
+        for ln in block.get("lines", [])
+        for sp in ln.get("spans", [])
+        if sp.get("text", "").strip()
+    ]
+    if not sizes:
+        return False
+    body = 0.8 * max(sizes)
     for ln in block.get("lines", []):
         for sp in ln.get("spans", []):
-            t = sp.get("text", "")
-            if re.search(r"[A-Za-z]{3,}", t) or re.search(r"[가-힣]", t):
-                return True
+            if (sp.get("size", 0) or 0) >= body:
+                t = sp.get("text", "")
+                if re.search(r"[A-Za-z]{3,}", t) or re.search(r"[가-힣]", t):
+                    return True
     return False
 
 
@@ -138,8 +152,12 @@ def _merge_superscript_ions(blocks):
         sp = _first_span(blk)
         if out and sp and _has_word(blk):
             prev_sz = dominant_size_color(out[-1])[0] or 10.0
-            small = (sp.get("size", 99) or 99) < 0.85 * prev_sz  # 위/아래첨자(본문보다 작음)
-            if small:
+            frag_sz = dominant_size_color(blk)[0] or 10.0
+            small = (sp.get("size", 99) or 99) < 0.85 * prev_sz  # 첫 span=위/아래첨자
+            # 조각 본문이 본문 크기여야(첫 글자만 작은 첨자) — 전체가 작은 각주/캡션
+            # 블록(예: 6pt 각주)을 본문에 잘못 병합하지 않게 한다.
+            body_frag = frag_sz >= 0.85 * prev_sz
+            if small and body_frag:
                 ra = fitz.Rect(out[-1]["bbox"])
                 rb = fitz.Rect(blk["bbox"])
                 oy = min(ra.y1, rb.y1) - max(ra.y0, rb.y0)  # 세로 겹침(첨자가 본문에 끼임)
@@ -491,7 +509,11 @@ def _keep_original_block(block):
       - 영문 3글자+ 연속 단어가 있으면 = 문장(인라인 수식 포함) → 번역(False).
       - 단어가 없고 수식/기호(수식폰트 또는 그리스·연산자·괄호조각·= 등)가 있으면
         = 독립 표시수식([6.1] 같은 박스 식)·오비탈 라벨(1σg)·수식 조각 → 원본 유지(True).
-    원본 유지하면 재그리기를 안 해, 2D 식이 흩어져 깨지던 표시 수식이 원본대로 보인다."""
+    원본 유지하면 재그리기를 안 해, 2D 식이 흩어져 깨지던 표시 수식이 원본대로 보인다.
+    단어 판정은 _has_word(본문 크기 span 만) — ψ^bond 처럼 작은 라벨에 단어가 있어도
+    표시수식을 번역으로 오인하지 않는다."""
+    if _has_word(block):
+        return False  # 본문 문장(인라인 수식 포함) → 번역
     has_math_font = False
     has_sign = False
     nchar = 0
@@ -500,10 +522,6 @@ def _keep_original_block(block):
             fn = sp.get("font", "")
             txt = _fix_span_text(fn, sp.get("text", ""))  # 디코드 후 판정
             nchar += sum(1 for c in txt if not c.isspace())
-            # 단어 판정은 '한 span 안의 3글자+ 연속'으로 — 흩어진 수식 글자(R,V,V 가
-            # 각각 별도 span)는 단어가 아니고, 진짜 단어(quantum)는 한 span 이다.
-            if re.search(r"[A-Za-z]{3,}", txt) or re.search(r"[가-힣]", txt):
-                return False  # 본문 문장(인라인 수식 포함) → 번역
             if any(k in fn for k in _MATH_FONT_KEYS):
                 has_math_font = True
             if _MATH_SIGN.search(txt):

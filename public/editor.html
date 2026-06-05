@@ -5,43 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
     <title>Quilo Code (베타)</title>
     <link rel="icon" href="/favicon.ico" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/material-darker.min.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/eclipse.min.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/foldgutter.min.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/dialog/dialog.min.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.css" />
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/xml/xml.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/css/css.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/htmlmixed/htmlmixed.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/markdown/markdown.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closebrackets.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closetag.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/foldcode.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/foldgutter.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/brace-fold.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/xml-fold.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/indent-fold.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/comment-fold.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/selection/active-line.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/search/searchcursor.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/search/search.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/search/jump-to-line.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/dialog/dialog.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/comment/comment.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/anyword-hint.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/keymap/sublime.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs/loader.js"></script>
     <style>
       *{box-sizing:border-box}
       html,body{height:100%;margin:0}
       body{background:#1e1e1e;color:#ccc;font-family:-apple-system,system-ui,"Segoe UI",sans-serif;overflow:hidden}
       .gate{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:10px;text-align:center;padding:20px;color:#bbb}
-      .gate a.qbtn{margin-top:8px}
       .qbtn{display:inline-flex;align-items:center;gap:7px;justify-content:center;background:#2d2d2d;color:#e8e8e8;border:1px solid #3c3c3c;border-radius:8px;padding:9px 16px;font:inherit;font-size:14px;cursor:pointer;text-decoration:none}
       .qbtn:hover{background:#3a3a3a}
       .qbtn-primary{background:#0e639c;border-color:#0e639c;color:#fff}
@@ -75,17 +44,11 @@
       .ide-tab-x:hover{opacity:1;background:#ffffff22}
       input.ide-rename{background:#3c3c3c;color:#fff;border:1px solid #007acc;border-radius:3px;font:inherit;font-size:12.5px;width:130px;padding:1px 5px;outline:none}
       .ide-stage{flex:1;min-height:0;position:relative}
-      .ide-editorwrap{position:absolute;inset:0;display:flex}
-      .ide-editorhost{flex:1;min-height:0;overflow:hidden}
-      .qide .CodeMirror{height:100%;font-family:Menlo,Consolas,monospace;font-size:14px;line-height:1.5}
-      .ide-minimap{width:90px;flex:0 0 auto;position:relative;background:#1e1e1e;border-left:1px solid #2b2b2b;overflow:hidden;cursor:pointer}
-      .ide-minimap pre{margin:0;padding:4px;font-family:Menlo,Consolas,monospace;font-size:3px;line-height:4px;color:#8a8a8a;white-space:pre;overflow:hidden;pointer-events:none}
-      .ide-mini-view{position:absolute;left:0;right:0;top:0;background:#ffffff14;border:1px solid #ffffff2b;pointer-events:none}
-      .qide.nominimap .ide-minimap{display:none}
+      .ide-monaco{position:absolute;inset:0}
       .ide-welcome{position:absolute;inset:0;background:#1e1e1e;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;text-align:center;font-family:-apple-system,system-ui,sans-serif;z-index:5}
       .ide-welcome-logo{width:84px;height:84px;border-radius:20px;background:linear-gradient(135deg,#0e639c,#1f9cf0);color:#fff;display:flex;align-items:center;justify-content:center;font-size:46px;font-weight:800;margin-bottom:6px}
       .ide-welcome-title{font-size:26px;font-weight:700;color:#eee}
-      .ide-welcome-sub{font-size:13.5px;color:#9aa;margin-bottom:14px;max-width:420px;line-height:1.6}
+      .ide-welcome-sub{font-size:13.5px;color:#9aa;margin-bottom:14px;max-width:430px;line-height:1.6}
       .ide-welcome .qbtn{width:280px}
       .ide-panel{height:200px;flex:0 0 auto;display:flex;flex-direction:column;border-top:1px solid #2b2b2b;background:#1e1e1e}
       .ide-panel-tabs{display:flex;align-items:center;gap:2px;height:30px;background:#252526;padding:0 6px;flex:0 0 auto}
@@ -96,7 +59,6 @@
       .ide-pane.on{display:block}
       pre#ceOut{padding:10px 12px;color:#d4d4d4;font-family:Menlo,Consolas,monospace;font-size:12.5px;white-space:pre-wrap;word-break:break-word}
       iframe#ceFrame{border:none;background:#fff}
-      /* Agent (AI) 패널 */
       .ide-agent{width:340px;flex:0 0 auto;display:flex;flex-direction:column;background:#202021;border-left:1px solid #1a1a1a}
       .qide.noagent .ide-agent{display:none}
       .ide-agent-head{height:38px;display:flex;align-items:center;gap:6px;padding:0 12px;font-family:-apple-system,system-ui,sans-serif;font-size:13px;font-weight:600;color:#ddd;border-bottom:1px solid #1a1a1a}
@@ -114,40 +76,12 @@
       .ide-agent-bar select{flex:1;background:#3c3c3c;color:#ddd;border:1px solid #4a4a4a;border-radius:7px;font:inherit;font-family:-apple-system,system-ui,sans-serif;font-size:12px;padding:5px 7px;min-width:0}
       .ide-agent-bar button{width:34px;height:30px;flex:0 0 auto;background:#0e639c;color:#fff;border:none;border-radius:7px;font-size:15px;cursor:pointer}
       .ide-statusbar{height:24px;flex:0 0 auto;background:#007acc;color:#fff;display:flex;align-items:center;gap:14px;padding:0 12px;font-size:12px;font-family:-apple-system,system-ui,sans-serif}
-      .ide-statusbar #stRun,.ide-statusbar #stSave,.ide-statusbar #stDownload,.ide-statusbar #stMinimap,.ide-statusbar #stTheme{cursor:pointer}
+      .ide-statusbar span[id]{cursor:default}
+      .ide-statusbar #stRun,.ide-statusbar #stSave,.ide-statusbar #stDownload,.ide-statusbar #stPip,.ide-statusbar #stMinimap,.ide-statusbar #stTheme{cursor:pointer}
       .ide-statusbar #stMsg{color:#cfe9ff}
       .ide-statusbar select.ide-lang{background:transparent;color:#fff;border:none;font:inherit;font-size:12px;cursor:pointer}
       .ide-statusbar select.ide-lang option{color:#000}
-      /* VS Code Dark+ 토큰 색 */
-      .cm-s-material-darker.CodeMirror{background:#1e1e1e;color:#d4d4d4}
-      .cm-s-material-darker .CodeMirror-gutters{background:#1e1e1e;border:none}
-      .cm-s-material-darker .CodeMirror-linenumber{color:#858585}
-      .cm-s-material-darker .CodeMirror-cursor{border-left:2px solid #aeafad}
-      .cm-s-material-darker .CodeMirror-activeline-background{background:#2a2d2e}
-      .cm-s-material-darker .CodeMirror-selected{background:#264f78 !important}
-      .cm-s-material-darker .CodeMirror-matchingbracket{color:#ffd700 !important;border-bottom:1px solid #ffd700}
-      .cm-s-material-darker .cm-keyword{color:#569cd6}
-      .cm-s-material-darker .cm-def{color:#dcdcaa}
-      .cm-s-material-darker .cm-variable{color:#9cdcfe}
-      .cm-s-material-darker .cm-variable-2{color:#9cdcfe}
-      .cm-s-material-darker .cm-property{color:#dcdcaa}
-      .cm-s-material-darker .cm-string{color:#ce9178}
-      .cm-s-material-darker .cm-string-2{color:#ce9178}
-      .cm-s-material-darker .cm-number{color:#b5cea8}
-      .cm-s-material-darker .cm-comment{color:#6a9955;font-style:italic}
-      .cm-s-material-darker .cm-atom{color:#569cd6}
-      .cm-s-material-darker .cm-operator{color:#d4d4d4}
-      .cm-s-material-darker .cm-tag{color:#569cd6}
-      .cm-s-material-darker .cm-attribute{color:#9cdcfe}
-      .cm-s-material-darker .cm-builtin{color:#4ec9b0}
-      .cm-s-material-darker .cm-type{color:#4ec9b0}
-      .cm-s-material-darker .CodeMirror-foldmarker{color:#ffd700;background:#333;border-radius:3px;padding:0 4px;text-shadow:none}
-      .CodeMirror-dialog{background:#252526;color:#ccc;border-color:#454545}
-      .CodeMirror-dialog input{background:#3c3c3c;color:#fff;border:1px solid #555;outline:none}
-      .CodeMirror-hints{background:#252526;border:1px solid #454545;color:#d4d4d4;z-index:99999;font-family:Menlo,Consolas,monospace;font-size:13px}
-      .CodeMirror-hint{color:#d4d4d4}
-      li.CodeMirror-hint-active{background:#094771;color:#fff}
-      /* 라이트 테마 */
+      /* 라이트 테마(셸) — Monaco 자체는 'vs' 테마로 전환 */
       .qide.light{background:#fff;color:#333}
       .qide.light .qt-titlebar{background:#dddddd;color:#333;border-bottom-color:#ccc}
       .qide.light .ide-activity{background:#e8e8e8}
@@ -168,8 +102,6 @@
       .qide.light .ide-panel-tabs button{color:#555}
       .qide.light .ide-panel-tabs button.on{color:#111}
       .qide.light pre#ceOut{color:#222}
-      .qide.light .ide-minimap{background:#fafafa;border-left-color:#e0e0e0}
-      .qide.light .ide-minimap pre{color:#bbb}
       .qide.light .ide-agent{background:#f6f7f9;border-left-color:#e0e0e0}
       .qide.light .ide-agent-head{color:#333;border-bottom-color:#e0e0e0}
       .qide.light .ag-ai{background:#fff;border-color:#e0e0e0;color:#222}
@@ -205,14 +137,11 @@
         <div class="ide-main">
           <div class="ide-tabs" id="ideTabs"></div>
           <div class="ide-stage">
-            <div class="ide-editorwrap">
-              <div class="ide-editorhost"><textarea id="ceArea"></textarea></div>
-              <div class="ide-minimap" id="ideMinimap"><pre id="ideMiniCode"></pre><div class="ide-mini-view" id="ideMiniView"></div></div>
-            </div>
+            <div class="ide-monaco" id="monaco"></div>
             <div class="ide-welcome" id="ideWelcome">
               <div class="ide-welcome-logo">Q</div>
               <div class="ide-welcome-title">Quilo Code</div>
-              <div class="ide-welcome-sub">브라우저 안에서 동작하는 코드 에디터입니다. 내 로컬 파일을 열어 직접 편집·저장하고, 오른쪽 Agent에게 코드를 물어보세요.</div>
+              <div class="ide-welcome-sub">VS Code 엔진(Monaco) 기반 코드 에디터입니다. 자동완성·미니맵·찾기(Ctrl/⌘+F)·멀티커서가 내장돼 있고, 내 로컬 파일을 직접 편집·저장하고 Python도 실행됩니다.</div>
               <button class="qbtn qbtn-primary" id="wOpenFolder">📁 폴더 열기</button>
               <button class="qbtn" id="wOpenFile">📂 파일 열기</button>
               <button class="qbtn qbtn-ghost" id="wStart">빈 파일로 시작 →</button>
@@ -257,7 +186,6 @@
         <span id="stMsg"></span>
         <span style="flex:1"></span>
         <span id="stPos">Ln 1, Col 1</span>
-        <span>Spaces: 2</span>
         <select id="ceLang" class="ide-lang" title="언어">
           <option value="javascript">JavaScript</option>
           <option value="htmlmixed">HTML</option>
@@ -276,9 +204,9 @@
     <script>
       function showGate(html) {
         var g = document.getElementById("gate");
-        g.innerHTML = html;
-        g.style.display = "flex";
+        g.innerHTML = html; g.style.display = "flex";
       }
+      var MONACO_BASE = "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/";
       // 접근 게이트: 로그인 + (관리자 또는 'code-editor' 베타 테스터)
       (async function guard() {
         try {
@@ -299,28 +227,42 @@
             showGate('<p>🧩 <b>Quilo Code</b>는 현재 <b>베타 테스터</b>에게만 열려 있습니다.<br>사용을 원하면 운영자에게 요청하세요.</p><a class="qbtn" href="/">메인으로</a>');
             return;
           }
-          document.getElementById("gate").style.display = "none";
-          document.getElementById("app").style.display = "flex";
-          initEditor();
-        } catch (e) {
-          showGate("<p>권한 확인 중 오류가 발생했습니다.</p>");
-        }
+          loadMonaco();
+        } catch (e) { showGate("<p>권한 확인 중 오류가 발생했습니다.</p>"); }
       })();
 
-      function initEditor() {
-        if (typeof CodeMirror === "undefined") {
-          showGate("<p>에디터 로드 실패(네트워크 확인)</p>");
-          return;
-        }
-        var LANGS = {
-          javascript: { label: "JavaScript", mode: "javascript", ext: "js" },
-          htmlmixed: { label: "HTML", mode: "htmlmixed", ext: "html" },
-          css: { label: "CSS", mode: "css", ext: "css" },
-          python: { label: "Python", mode: "python", ext: "py" },
-          markdown: { label: "Markdown", mode: "markdown", ext: "md" },
-          "application/json": { label: "JSON", mode: "application/json", ext: "json" },
+      function loadMonaco() {
+        showGate("Monaco(VS Code 엔진) 로딩 중…");
+        window.MonacoEnvironment = {
+          getWorkerUrl: function () {
+            return ("data:text/javascript;charset=utf-8," + encodeURIComponent(
+              "self.MonacoEnvironment={baseUrl:'" + MONACO_BASE + "'};" +
+              "importScripts('" + MONACO_BASE + "vs/base/worker/workerMain.js');"
+            ));
+          },
         };
-        function modeOf(l) { return LANGS[l] ? LANGS[l].mode : "javascript"; }
+        try {
+          require.config({ paths: { vs: MONACO_BASE + "vs" } });
+          require(["vs/editor/editor.main"], function () {
+            document.getElementById("gate").style.display = "none";
+            document.getElementById("app").style.display = "flex";
+            initEditor();
+          });
+        } catch (e) {
+          showGate("<p>에디터 로드 실패(네트워크 확인): " + (e && e.message ? e.message : e) + "</p>");
+        }
+      }
+
+      function initEditor() {
+        var LANGS = {
+          javascript: { mono: "javascript", ext: "js", label: "JavaScript" },
+          htmlmixed: { mono: "html", ext: "html", label: "HTML" },
+          css: { mono: "css", ext: "css", label: "CSS" },
+          python: { mono: "python", ext: "py", label: "Python" },
+          markdown: { mono: "markdown", ext: "md", label: "Markdown" },
+          "application/json": { mono: "json", ext: "json", label: "JSON" },
+        };
+        function monoOf(l) { return LANGS[l] ? LANGS[l].mono : "plaintext"; }
         function langOfName(name) {
           var ext = (String(name).split(".").pop() || "").toLowerCase();
           for (var k in LANGS) if (LANGS[k].ext === ext) return k;
@@ -341,54 +283,71 @@
         var panel = document.getElementById("idePanel");
         var welcome = document.getElementById("ideWelcome");
 
+        // Python 키워드/내장 자동완성 (JS/TS/HTML/CSS/JSON 은 Monaco 내장 IntelliSense)
+        monaco.languages.registerCompletionItemProvider("python", {
+          provideCompletionItems: function (model, position) {
+            var kw = ["def","class","return","import","from","as","if","elif","else","for","while","try","except","finally","with","lambda","pass","break","continue","global","nonlocal","yield","async","await","raise","assert","del","in","is","and","or","not","True","False","None","self","print","len","range","int","str","float","bool","list","dict","set","tuple","open","enumerate","zip","map","filter","sorted","reversed","sum","min","max","abs","round","input","type","isinstance","format","__init__","__name__","__main__"];
+            var w = model.getWordUntilPosition(position);
+            var range = { startLineNumber: position.lineNumber, endLineNumber: position.lineNumber, startColumn: w.startColumn, endColumn: w.endColumn };
+            return { suggestions: kw.map(function (k) {
+              return { label: k, kind: monaco.languages.CompletionItemKind.Keyword, insertText: k, range: range };
+            }) };
+          },
+        });
+
         var files, active, folderEntries = [], folderName = "";
         try { files = JSON.parse(localStorage.getItem("ceFiles") || "null"); } catch (e) { files = null; }
         if (!files || !files.length) {
-          files = [{ name: "scratch.js", content: '// Quilo Code — 로컬 파일을 열거나(📂/📁) 여기에 작성하세요.\nconsole.log("안녕, Quilo!");\n' }];
+          files = [{ name: "scratch.js", content: '// Quilo Code (Monaco) — 자동완성: 입력 중 자동, 또는 Ctrl/⌘+Space.\n// 로컬 파일 열기 📂 · Python 실행 ▶ · 라이브러리 📦 pip\nconsole.log("안녕, Quilo!");\n' }];
         }
         try { active = parseInt(localStorage.getItem("ceActive"), 10) || 0; } catch (e) { active = 0; }
         if (active < 0 || active >= files.length) active = 0;
         files.forEach(function (f) {
           f.lang = f.lang || langOfName(f.name);
-          f.doc = CodeMirror.Doc(f.content || "", modeOf(f.lang));
+          f.model = monaco.editor.createModel(f.content || "", monoOf(f.lang));
         });
 
-        var cm = CodeMirror.fromTextArea(document.getElementById("ceArea"), {
-          lineNumbers: true, theme: "material-darker", indentUnit: 2, tabSize: 2,
-          lineWrapping: false, matchBrackets: true, autoCloseBrackets: true, autoCloseTags: true,
-          styleActiveLine: true, foldGutter: true,
-          gutters: ["CodeMirror-linenumbers", "CodeMirror-foldgutter"], keyMap: "sublime",
-          extraKeys: {
-            "Ctrl-Space": "autocomplete", "Cmd-Space": "autocomplete",
-            "Ctrl-/": "toggleComment", "Cmd-/": "toggleComment",
-            "Ctrl-S": function () { saveOrLocal(); }, "Cmd-S": function () { saveOrLocal(); },
-            "Ctrl-Enter": function () { runCurrent(); }, "Cmd-Enter": function () { runCurrent(); },
-          },
+        var savedTheme; try { savedTheme = localStorage.getItem("ceTheme"); } catch (e) {}
+        var savedMini; try { savedMini = localStorage.getItem("ceMinimap"); } catch (e) {}
+        var editor = monaco.editor.create(document.getElementById("monaco"), {
+          model: files[active].model,
+          theme: savedTheme === "light" ? "vs" : "vs-dark",
+          automaticLayout: true,
+          fontSize: 14,
+          fontFamily: "Menlo, Consolas, 'Courier New', monospace",
+          tabSize: 2,
+          insertSpaces: true,
+          minimap: { enabled: savedMini !== "0" },
+          scrollBeyondLastLine: false,
+          smoothScrolling: true,
+          cursorBlinking: "smooth",
+          quickSuggestions: true,
+          suggestOnTriggerCharacters: true,
+          wordBasedSuggestions: "allDocuments",
+          tabCompletion: "on",
+          bracketPairColorization: { enabled: true },
+          renderWhitespace: "selection",
+          padding: { top: 8 },
         });
-        window.__qcm = cm;
+        window.__qed = editor;
+        if (savedTheme === "light") ide.classList.add("light");
+        document.getElementById("stTheme").textContent = savedTheme === "light" ? "☀" : "🌙";
 
         function currentLang() { return files[active] ? files[active].lang : "javascript"; }
+        function curValue() { return editor.getValue(); }
         function persist() {
           try {
             localStorage.setItem("ceFiles", JSON.stringify(files.map(function (f) {
-              return { name: f.name, lang: f.lang, content: f.doc.getValue() };
+              return { name: f.name, lang: f.lang, content: f.model.getValue() };
             })));
             localStorage.setItem("ceActive", String(active));
           } catch (e) {}
         }
         var flashT;
-        function flash(msg) {
-          stMsg.textContent = msg;
-          clearTimeout(flashT);
-          flashT = setTimeout(function () { stMsg.textContent = ""; }, 1600);
-        }
+        function flash(msg) { stMsg.textContent = msg; clearTimeout(flashT); flashT = setTimeout(function () { stMsg.textContent = ""; }, 1600); }
         function saveOrLocal() {
           if (files[active] && files[active].handle) saveActiveToDisk();
           else { persist(); flash("로컬 저장됨"); }
-        }
-        function updateStatus() {
-          var c = cm.getCursor();
-          statusPos.textContent = "Ln " + (c.line + 1) + ", Col " + (c.ch + 1);
         }
 
         function renderTabs() {
@@ -399,8 +358,7 @@
             var ic = document.createElement("span"); ic.className = "ide-tab-ic"; ic.textContent = iconFor(f.lang);
             var nm = document.createElement("span"); nm.className = "ide-tab-name"; nm.textContent = f.name;
             var x = document.createElement("span"); x.className = "ide-tab-x";
-            x.textContent = f.dirty ? "●" : "×";
-            x.title = f.dirty ? "저장 안 됨 (Ctrl/⌘+S)" : "닫기";
+            x.textContent = f.dirty ? "●" : "×"; x.title = f.dirty ? "저장 안 됨 (Ctrl/⌘+S)" : "닫기";
             x.onmouseenter = function () { if (f.dirty) x.textContent = "×"; };
             x.onmouseleave = function () { if (f.dirty) x.textContent = "●"; };
             x.onclick = function (e) { e.stopPropagation(); closeFile(i); };
@@ -425,8 +383,7 @@
         function renderFolderList() {
           filesEl.innerHTML = "";
           var head = document.createElement("div");
-          head.className = "ide-folder-name";
-          head.textContent = "📁 " + folderName + "  (닫기 ✕)";
+          head.className = "ide-folder-name"; head.textContent = "📁 " + folderName + "  (닫기 ✕)";
           head.title = "폴더 목록 닫기";
           head.onclick = function () { folderEntries = []; folderName = ""; renderExplorer(); };
           filesEl.appendChild(head);
@@ -434,8 +391,7 @@
             var d = document.createElement("div");
             var openIdx = files.map(function (f) { return f.path; }).indexOf(en.name);
             d.className = "ide-file" + (openIdx >= 0 && openIdx === active ? " on" : "");
-            d.textContent = iconFor(langOfName(en.name)) + " " + en.name;
-            d.title = en.name;
+            d.textContent = iconFor(langOfName(en.name)) + " " + en.name; d.title = en.name;
             d.onclick = function () { openFolderEntry(idx); };
             filesEl.appendChild(d);
           });
@@ -447,31 +403,39 @@
           if (en.handle && en.handle.getFile) {
             en.handle.getFile().then(function (file) { return file.text(); }).then(function (text) {
               var lang = langOfName(en.name);
-              files.push({ name: en.name.split("/").pop(), path: en.name, lang: lang, doc: CodeMirror.Doc(text, modeOf(lang)), handle: en.handle, dirty: false });
-              hideWelcome();
-              openFile(files.length - 1);
+              files.push({ name: en.name.split("/").pop(), path: en.name, lang: lang, model: monaco.editor.createModel(text, monoOf(lang)), handle: en.handle, dirty: false });
+              attachModel(files[files.length - 1]);
+              hideWelcome(); openFile(files.length - 1);
             }).catch(function (e) { flash("열기 실패: " + e.message); });
           }
         }
+        function attachModel(f) {
+          f.model.onDidChangeContent(function () {
+            if (f.handle && !f.dirty) { f.dirty = true; renderTabs(); }
+            persist();
+          });
+        }
+        files.forEach(attachModel);
+
         function openFile(i) {
           if (i < 0 || i >= files.length) return;
           active = i;
-          cm.swapDoc(files[i].doc);
-          cm.setOption("mode", modeOf(files[i].lang));
+          editor.setModel(files[i].model);
           langSel.value = files[i].lang;
-          renderTabs(); renderExplorer(); updateStatus(); persist(); renderMinimap();
-          cm.focus();
+          renderTabs(); renderExplorer(); persist();
+          editor.focus();
         }
         function addFile() {
           var n = 1, base;
           do { base = "untitled-" + n + ".js"; n++; } while (files.some(function (f) { return f.name === base; }));
-          files.push({ name: base, lang: "javascript", doc: CodeMirror.Doc("", modeOf("javascript")), handle: null, dirty: false });
-          active = files.length - 1;
-          cm.swapDoc(files[active].doc); cm.setOption("mode", modeOf("javascript")); langSel.value = "javascript";
-          hideWelcome(); renderTabs(); renderExplorer(); updateStatus(); persist(); renameFile(active);
+          var f = { name: base, lang: "javascript", model: monaco.editor.createModel("", "javascript"), handle: null, dirty: false };
+          files.push(f); attachModel(f);
+          active = files.length - 1; editor.setModel(f.model); langSel.value = "javascript";
+          hideWelcome(); renderTabs(); renderExplorer(); persist(); renameFile(active);
         }
         function closeFile(i) {
           if (files.length <= 1) { flash("마지막 파일은 닫을 수 없어요"); return; }
+          try { files[i].model.dispose(); } catch (e) {}
           files.splice(i, 1);
           if (active >= files.length) active = files.length - 1;
           else if (i < active) active--;
@@ -491,10 +455,11 @@
               if (nm) {
                 files[i].name = nm; files[i].lang = langOfName(nm);
                 if (files[i].path) files[i].path = nm;
-                if (i === active) { cm.setOption("mode", modeOf(files[i].lang)); langSel.value = files[i].lang; }
+                try { monaco.editor.setModelLanguage(files[i].model, monoOf(files[i].lang)); } catch (e) {}
+                if (i === active) langSel.value = files[i].lang;
               }
             }
-            renderTabs(); renderExplorer(); persist(); cm.focus();
+            renderTabs(); renderExplorer(); persist(); editor.focus();
           }
           input.onkeydown = function (e) {
             if (e.key === "Enter") { e.preventDefault(); commit(true); }
@@ -505,21 +470,18 @@
           nameSpan.replaceWith(input); input.focus(); input.select();
         }
 
-        cm.on("cursorActivity", updateStatus);
-        cm.on("change", function () {
-          var f = files[active];
-          if (f && f.handle && !f.dirty) { f.dirty = true; renderTabs(); }
-          persist(); scheduleMinimap();
+        editor.onDidChangeCursorPosition(function (e) {
+          statusPos.textContent = "Ln " + e.position.lineNumber + ", Col " + e.position.column;
         });
         langSel.onchange = function () {
           files[active].lang = langSel.value;
-          cm.setOption("mode", modeOf(langSel.value));
+          try { monaco.editor.setModelLanguage(files[active].model, monoOf(langSel.value)); } catch (e) {}
           renderTabs(); renderExplorer(); persist();
         };
         document.getElementById("ideNewFile").onclick = addFile;
 
         // 환영 화면
-        function hideWelcome() { if (welcome) welcome.style.display = "none"; cm.refresh(); }
+        function hideWelcome() { if (welcome) welcome.style.display = "none"; }
         document.getElementById("wStart").onclick = hideWelcome;
         document.getElementById("wOpenFile").onclick = function () { openLocalFiles(); };
         document.getElementById("wOpenFolder").onclick = function () { openLocalFolder(); };
@@ -533,27 +495,23 @@
             if (btn) btn.classList.toggle("on", p === which);
             if (pane) pane.classList.toggle("on", p === which);
           });
-          cm.refresh();
         }
         Array.prototype.forEach.call(panel.querySelectorAll(".ide-panel-tabs [data-panel]"), function (b) {
           b.onclick = function () { showPanel(b.getAttribute("data-panel")); };
         });
-        document.getElementById("idePanelClose").onclick = function () { panel.style.display = "none"; cm.refresh(); };
+        document.getElementById("idePanelClose").onclick = function () { panel.style.display = "none"; };
 
-        // ── Python 실행 (Pyodide: 브라우저 내 CPython + pip/micropip) ──
+        // ── Python (Pyodide: 브라우저 내 CPython + pip/micropip) ──
         var PYODIDE_VER = "0.26.4";
         var pyReady = null;
         function loadPyodideOnce() {
           if (pyReady) return pyReady;
-          out.textContent = "🐍 Python 런타임(Pyodide) 로딩 중… 최초 1회만, 수십 초 걸릴 수 있어요.";
-          showPanel("output");
+          out.textContent = "🐍 Python 런타임(Pyodide) 로딩 중… 최초 1회만, 수십 초 걸릴 수 있어요."; showPanel("output");
           pyReady = new Promise(function (resolve, reject) {
             var s = document.createElement("script");
             s.src = "https://cdn.jsdelivr.net/pyodide/v" + PYODIDE_VER + "/full/pyodide.js";
             s.onload = function () {
-              loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v" + PYODIDE_VER + "/full/" })
-                .then(resolve)
-                .catch(reject);
+              loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v" + PYODIDE_VER + "/full/" }).then(resolve).catch(reject);
             };
             s.onerror = function () { reject(new Error("Pyodide 로드 실패(네트워크 확인)")); };
             document.head.appendChild(s);
@@ -564,9 +522,7 @@
           if (!pkgs.length) return Promise.resolve();
           return py.loadPackage("micropip").then(function () {
             var mp = py.pyimport("micropip");
-            return pkgs.reduce(function (pr, pkg) {
-              return pr.then(function () { return mp.install(pkg); });
-            }, Promise.resolve());
+            return pkgs.reduce(function (pr, pkg) { return pr.then(function () { return mp.install(pkg); }); }, Promise.resolve());
           });
         }
         function runPython(code) {
@@ -579,22 +535,16 @@
               py.setStdout({ batched: function (s) { buf.push(s + "\n"); flush(); } });
               py.setStderr({ batched: function (s) { buf.push(s + "\n"); flush(); } });
             } catch (e) {}
-            // 매직 주석: "# pip install a b"  /  "# pip: a, b"  /  "# requirements: a b"
             var pipPkgs = [];
             code.split("\n").slice(0, 40).forEach(function (line) {
               var m = line.match(/^#\s*(?:pip\s+install|pip\s*[:=]|requirements?\s*[:=])\s*(.+)$/i);
               if (m) m[1].split(/[\s,]+/).filter(Boolean).forEach(function (p) { pipPkgs.push(p); });
             });
             py.loadPackagesFromImports(code).catch(function () {})
-              .then(function () {
-                if (pipPkgs.length) { buf.push("📦 설치 중: " + pipPkgs.join(", ") + "\n"); flush(); return pipInstall(py, pipPkgs); }
-              })
+              .then(function () { if (pipPkgs.length) { buf.push("📦 설치 중: " + pipPkgs.join(", ") + "\n"); flush(); return pipInstall(py, pipPkgs); } })
               .then(function () { return py.runPythonAsync(code); })
               .then(function (result) {
-                if (result !== undefined && result !== null) {
-                  var r = result; try { r = result.toString(); } catch (e) {}
-                  buf.push("→ " + r);
-                }
+                if (result !== undefined && result !== null) { var r = result; try { r = result.toString(); } catch (e) {} buf.push("→ " + r); }
                 flush();
               })
               .catch(function (e) { buf.push("⚠ " + (e && e.message ? e.message : e)); flush(); });
@@ -603,22 +553,17 @@
         function pipPrompt() {
           var inp = window.prompt("설치할 Python 패키지 이름 (공백/콤마로 여러 개)\n예: numpy pandas requests", "");
           if (!inp) return;
-          var pkgs = inp.split(/[\s,]+/).filter(Boolean);
-          if (!pkgs.length) return;
-          showPanel("output");
-          out.textContent = "🐍 Python 런타임 준비 중…";
+          var pkgs = inp.split(/[\s,]+/).filter(Boolean); if (!pkgs.length) return;
+          showPanel("output"); out.textContent = "🐍 Python 런타임 준비 중…";
           loadPyodideOnce().then(function (py) {
             out.textContent = "📦 설치 중: " + pkgs.join(", ") + " …";
-            return pipInstall(py, pkgs).then(function () {
-              out.textContent = "✓ 설치 완료: " + pkgs.join(", ") + "\n이제 코드에서 import 해서 쓸 수 있어요.";
-              flash("설치 완료");
-            });
+            return pipInstall(py, pkgs).then(function () { out.textContent = "✓ 설치 완료: " + pkgs.join(", ") + "\nimport 해서 쓸 수 있어요."; flash("설치 완료"); });
           }).catch(function (e) { out.textContent = "⚠ 설치 실패: " + (e && e.message ? e.message : e); });
         }
 
         function runCurrent() {
           hideWelcome();
-          var code = cm.getValue(), l = currentLang();
+          var code = curValue(), l = currentLang();
           if (l === "javascript") {
             var logs = [], orig = console.log;
             console.log = function () {
@@ -630,83 +575,54 @@
             var result;
             try { result = (0, eval)(code); } catch (e) { logs.push("⚠ " + (e && e.message ? e.message : e)); }
             console.log = orig;
-            if (result !== undefined) {
-              try { logs.push("→ " + (typeof result === "object" ? JSON.stringify(result) : String(result))); } catch (e) {}
-            }
-            out.textContent = logs.join("\n") || "(출력 없음)";
-            showPanel("output");
+            if (result !== undefined) { try { logs.push("→ " + (typeof result === "object" ? JSON.stringify(result) : String(result))); } catch (e) {} }
+            out.textContent = logs.join("\n") || "(출력 없음)"; showPanel("output");
           } else if (l === "htmlmixed") {
             frame.srcdoc = code; showPanel("preview");
           } else if (l === "python") {
             runPython(code);
           } else {
-            out.textContent = "이 언어(" + (LANGS[l] ? LANGS[l].label : l) + ")는 브라우저 실행을 지원하지 않아요(편집·하이라이트만). JavaScript·HTML·Python을 써보세요.";
-            showPanel("output");
+            out.textContent = "이 언어(" + (LANGS[l] ? LANGS[l].label : l) + ")는 브라우저 실행을 지원하지 않아요(편집·자동완성만). JavaScript·HTML·Python을 써보세요."; showPanel("output");
           }
         }
         document.getElementById("stRun").onclick = runCurrent;
         document.getElementById("stPip").onclick = pipPrompt;
 
-        // 미니맵
-        var minimap = document.getElementById("ideMinimap"), miniCode = document.getElementById("ideMiniCode"), miniView = document.getElementById("ideMiniView"), miniContentH = 0;
-        function renderMinimap() {
-          if (ide.classList.contains("nominimap")) return;
-          miniCode.style.transform = ""; miniCode.textContent = cm.getValue();
-          var natural = miniCode.scrollHeight || 1, ch = minimap.clientHeight || 1;
-          var scale = natural > ch ? ch / natural : 1;
-          miniCode.style.transform = "scaleY(" + scale + ")"; miniCode.style.transformOrigin = "left top";
-          miniContentH = natural * scale; updateMiniView();
-        }
-        function updateMiniView() {
-          if (ide.classList.contains("nominimap")) return;
-          var si = cm.getScrollInfo(), h = si.height || 1;
-          miniView.style.top = (si.top / h) * miniContentH + "px";
-          miniView.style.height = Math.max(14, (si.clientHeight / h) * miniContentH) + "px";
-        }
-        var miniT;
-        function scheduleMinimap() { clearTimeout(miniT); miniT = setTimeout(renderMinimap, 180); }
-        minimap.onclick = function (e) {
-          var si = cm.getScrollInfo();
-          cm.scrollTo(null, Math.max(0, (e.offsetY / (miniContentH || 1)) * si.height - si.clientHeight / 2));
-        };
-        cm.on("scroll", updateMiniView);
+        // 미니맵 / 테마
         function applyMinimap(on) {
-          ide.classList.toggle("nominimap", !on);
+          editor.updateOptions({ minimap: { enabled: on } });
           try { localStorage.setItem("ceMinimap", on ? "1" : "0"); } catch (e) {}
-          cm.refresh(); if (on) renderMinimap();
         }
-
-        // 테마
         function applyTheme(light) {
           ide.classList.toggle("light", light);
-          cm.setOption("theme", light ? "eclipse" : "material-darker");
+          monaco.editor.setTheme(light ? "vs" : "vs-dark");
           document.getElementById("stTheme").textContent = light ? "☀" : "🌙";
           try { localStorage.setItem("ceTheme", light ? "light" : "dark"); } catch (e) {}
-          renderMinimap();
         }
+        document.getElementById("stTheme").onclick = function () { applyTheme(!ide.classList.contains("light")); };
+        document.getElementById("stMinimap").onclick = function () {
+          var on = !(editor.getOption(monaco.editor.EditorOption.minimap).enabled);
+          applyMinimap(on);
+        };
 
         // 로컬 파일 (File System Access API; 폴백: 업로드/다운로드)
         var fileInput = document.getElementById("ideFileInput");
         var hasFSA = !!window.showOpenFilePicker;
         function addDiskFile(name, text, handle) {
           var lang = langOfName(name);
-          files.push({ name: name, lang: lang, doc: CodeMirror.Doc(text, modeOf(lang)), handle: handle || null, dirty: false });
-          hideWelcome(); openFile(files.length - 1); flash("열기: " + name);
+          var f = { name: name, lang: lang, model: monaco.editor.createModel(text, monoOf(lang)), handle: handle || null, dirty: false };
+          files.push(f); attachModel(f); hideWelcome(); openFile(files.length - 1); flash("열기: " + name);
         }
         function openLocalFiles() {
           if (hasFSA) {
             window.showOpenFilePicker({ multiple: true }).then(function (handles) {
-              handles.forEach(function (h) {
-                h.getFile().then(function (file) { file.text().then(function (text) { addDiskFile(file.name, text, h); }); });
-              });
+              handles.forEach(function (h) { h.getFile().then(function (file) { file.text().then(function (text) { addDiskFile(file.name, text, h); }); }); });
             }).catch(function () {});
           } else { fileInput.value = ""; fileInput.click(); }
         }
         fileInput.onchange = function () {
           Array.prototype.forEach.call(fileInput.files, function (file) {
-            var r = new FileReader();
-            r.onload = function () { addDiskFile(file.name, String(r.result || ""), null); };
-            r.readAsText(file);
+            var r = new FileReader(); r.onload = function () { addDiskFile(file.name, String(r.result || ""), null); }; r.readAsText(file);
           });
         };
         function openLocalFolder() {
@@ -720,43 +636,37 @@
                 return it.next().then(function (res) {
                   if (res.done || collected.length >= 300) return;
                   var entry = res.value, p = Promise.resolve();
-                  if (entry.kind === "directory") {
-                    if (!SKIP[entry.name] && entry.name.charAt(0) !== ".") p = walk(entry, prefix + entry.name + "/", depth + 1);
-                  } else { collected.push({ name: prefix + entry.name, handle: entry }); }
+                  if (entry.kind === "directory") { if (!SKIP[entry.name] && entry.name.charAt(0) !== ".") p = walk(entry, prefix + entry.name + "/", depth + 1); }
+                  else { collected.push({ name: prefix + entry.name, handle: entry }); }
                   return p.then(next);
                 });
               }
               return next();
             }
             flash("폴더 읽는 중…");
-            walk(dir, "", 0).then(function () {
-              folderEntries = collected; folderName = dir.name; hideWelcome(); renderExplorer();
-              flash("폴더 열림: " + dir.name + " (" + collected.length + "개)");
-            }).catch(function (e) { flash("폴더 읽기 실패: " + e.message); });
+            walk(dir, "", 0).then(function () { folderEntries = collected; folderName = dir.name; hideWelcome(); renderExplorer(); flash("폴더 열림: " + dir.name + " (" + collected.length + "개)"); })
+              .catch(function (e) { flash("폴더 읽기 실패: " + e.message); });
           }).catch(function () {});
         }
         function saveActiveToDisk() {
           var f = files[active];
           if (f.handle && f.handle.createWritable) {
-            f.handle.createWritable().then(function (w) {
-              return w.write(f.doc.getValue()).then(function () { return w.close(); });
-            }).then(function () { f.dirty = false; renderTabs(); flash("저장됨 → " + f.name); persist(); })
+            f.handle.createWritable().then(function (w) { return w.write(f.model.getValue()).then(function () { return w.close(); }); })
+              .then(function () { f.dirty = false; renderTabs(); flash("저장됨 → " + f.name); persist(); })
               .catch(function (e) { flash("저장 실패: " + e.message); });
           } else if (window.showSaveFilePicker) {
             window.showSaveFilePicker({ suggestedName: f.name }).then(function (h) {
-              return h.createWritable().then(function (w) {
-                return w.write(f.doc.getValue()).then(function () { return w.close(); });
-              }).then(function () {
+              return h.createWritable().then(function (w) { return w.write(f.model.getValue()).then(function () { return w.close(); }); }).then(function () {
                 f.handle = h; f.name = h.name || f.name; f.lang = langOfName(f.name); f.dirty = false;
-                cm.setOption("mode", modeOf(f.lang)); langSel.value = f.lang;
-                renderTabs(); renderExplorer(); flash("저장됨 → " + f.name); persist();
+                try { monaco.editor.setModelLanguage(f.model, monoOf(f.lang)); } catch (e) {}
+                langSel.value = f.lang; renderTabs(); renderExplorer(); flash("저장됨 → " + f.name); persist();
               });
             }).catch(function () {});
           } else { downloadActive(); }
         }
         function downloadActive() {
           var f = files[active];
-          var blob = new Blob([f.doc.getValue()], { type: "text/plain;charset=utf-8" });
+          var blob = new Blob([f.model.getValue()], { type: "text/plain;charset=utf-8" });
           var url = URL.createObjectURL(blob);
           var a = document.createElement("a"); a.href = url; a.download = f.name;
           document.body.appendChild(a); a.click();
@@ -767,8 +677,10 @@
         document.getElementById("ideOpenFolder").onclick = openLocalFolder;
         document.getElementById("stSave").onclick = saveActiveToDisk;
         document.getElementById("stDownload").onclick = downloadActive;
-        document.getElementById("stTheme").onclick = function () { applyTheme(!ide.classList.contains("light")); };
-        document.getElementById("stMinimap").onclick = function () { applyMinimap(ide.classList.contains("nominimap")); };
+
+        // 키보드 단축키 (Monaco 명령)
+        editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, saveOrLocal);
+        editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, runCurrent);
 
         // 액티비티 바
         Array.prototype.forEach.call(document.querySelectorAll(".ide-activity [data-act]"), function (b) {
@@ -777,12 +689,11 @@
             if (a === "explorer") {
               var side = document.getElementById("ideSide");
               var show = side.style.display === "none";
-              side.style.display = show ? "block" : "none"; b.classList.toggle("on", show); cm.refresh();
+              side.style.display = show ? "block" : "none"; b.classList.toggle("on", show);
             } else if (a === "run") { runCurrent(); }
             else if (a === "agent") {
-              var ag = document.getElementById("ideAgent");
               var showA = ide.classList.contains("noagent");
-              ide.classList.toggle("noagent", !showA); b.classList.toggle("on", showA); cm.refresh();
+              ide.classList.toggle("noagent", !showA); b.classList.toggle("on", showA);
               if (showA) document.getElementById("agentPrompt").focus();
             } else if (a === "home") { location.href = "/"; }
           };
@@ -799,14 +710,10 @@
           agentModel.innerHTML = "";
           ms.forEach(function (m) {
             var o = document.createElement("option");
-            o.value = m.id; o.textContent = m.label + (m.available ? "" : " (불가)");
-            if (!m.available) o.disabled = true;
+            o.value = m.id; o.textContent = m.label + (m.available ? "" : " (불가)"); if (!m.available) o.disabled = true;
             agentModel.appendChild(o);
           });
-          try {
-            var sm = localStorage.getItem("caModel");
-            if (sm && ms.some(function (m) { return m.id === sm && m.available; })) agentModel.value = sm;
-          } catch (e) {}
+          try { var sm = localStorage.getItem("caModel"); if (sm && ms.some(function (m) { return m.id === sm && m.available; })) agentModel.value = sm; } catch (e) {}
           var cur = ms.filter(function (m) { return m.id === agentModel.value; })[0];
           if (!cur || !cur.available) { var first = ms.filter(function (m) { return m.available; })[0]; if (first) agentModel.value = first.id; }
         }).catch(function () {});
@@ -814,38 +721,39 @@
 
         function agentBubble(role, text) {
           var d = document.createElement("div");
-          d.className = "ag-bubble " + (role === "user" ? "ag-user" : "ag-ai");
-          d.textContent = text;
-          agentMsgs.appendChild(d); agentMsgs.scrollTop = agentMsgs.scrollHeight;
-          return d;
+          d.className = "ag-bubble " + (role === "user" ? "ag-user" : "ag-ai"); d.textContent = text;
+          agentMsgs.appendChild(d); agentMsgs.scrollTop = agentMsgs.scrollHeight; return d;
         }
         function extractCode(t) { var m = t.match(/```[a-zA-Z0-9_+\-/.]*\n([\s\S]*?)```/); return m ? m[1].replace(/\n$/, "") : null; }
+        function insertCode(code) {
+          var sel = editor.getSelection();
+          editor.executeEdits("agent", [{ range: sel, text: code, forceMoveMarkers: true }]);
+          editor.focus();
+        }
         function agentActions(bubble, code, full) {
           var row = document.createElement("div"); row.className = "ag-actions";
           function mk(label, fn) { var b = document.createElement("button"); b.textContent = label; b.onclick = fn; row.appendChild(b); }
           if (code != null) {
-            mk("커서에 삽입", function () { cm.replaceSelection(code); cm.focus(); });
-            mk("전체 교체", function () { cm.setValue(code); cm.focus(); });
+            mk("커서에 삽입", function () { insertCode(code); });
+            mk("전체 교체", function () { editor.getModel().setValue(code); editor.focus(); });
           }
           mk("복사", function (e) { try { navigator.clipboard.writeText(code != null ? code : full); e.target.textContent = "복사됨!"; setTimeout(function () { e.target.textContent = "복사"; }, 1200); } catch (x) {} });
           bubble.appendChild(row);
         }
         function agentSend() {
-          var p = (agentPrompt.value || "").trim();
-          if (!p || agentBusy) return;
+          var p = (agentPrompt.value || "").trim(); if (!p || agentBusy) return;
           var empty = agentMsgs.querySelector(".ide-agent-empty"); if (empty) empty.remove();
           agentBubble("user", p); agentPrompt.value = "";
           agentBusy = true; agentSendBtn.disabled = true;
           var b = agentBubble("ai", "생각하는 중…");
           fetch("/api/admin/code-assist", {
             method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ prompt: p, code: cm.getValue(), lang: currentLang(), model: agentModel.value }),
+            body: JSON.stringify({ prompt: p, code: curValue(), lang: currentLang(), model: agentModel.value }),
           }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
             .then(function (x) {
               if (!x.ok) { b.textContent = "⚠ " + ((x.j && x.j.error) || "오류"); return; }
               var ans = (x.j && x.j.answer) || "(빈 응답)";
-              b.textContent = ans; agentActions(b, extractCode(ans), ans);
-              agentMsgs.scrollTop = agentMsgs.scrollHeight;
+              b.textContent = ans; agentActions(b, extractCode(ans), ans); agentMsgs.scrollTop = agentMsgs.scrollHeight;
             }).catch(function (e) { b.textContent = "⚠ 요청 실패: " + (e && e.message ? e.message : e); })
             .finally(function () { agentBusy = false; agentSendBtn.disabled = false; });
         }
@@ -853,22 +761,13 @@
         agentPrompt.addEventListener("keydown", function (e) {
           if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); agentSend(); }
         });
-        document.getElementById("agentClear").onclick = function () {
-          agentMsgs.innerHTML = '<div class="ide-agent-empty">코드에 대해 무엇이든 물어보세요.</div>';
-        };
+        document.getElementById("agentClear").onclick = function () { agentMsgs.innerHTML = '<div class="ide-agent-empty">코드에 대해 무엇이든 물어보세요.</div>'; };
         document.getElementById("agentClose").onclick = function () {
           ide.classList.add("noagent");
           var ab = document.querySelector('.ide-activity [data-act="agent"]'); if (ab) ab.classList.remove("on");
-          cm.refresh();
         };
 
-        // 초기 적용
-        var savedTheme, savedMini;
-        try { savedTheme = localStorage.getItem("ceTheme"); savedMini = localStorage.getItem("ceMinimap"); } catch (e) {}
-        applyMinimap(savedMini !== "0");
-        applyTheme(savedTheme === "light");
-        openFile(active);
-        setTimeout(function () { cm.refresh(); renderMinimap(); }, 60);
+        renderTabs(); renderExplorer(); langSel.value = currentLang();
       }
     </script>
   </body>

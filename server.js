@@ -401,6 +401,26 @@ function requireBeta(key) {
   };
 }
 
+// 관리자이거나 해당 베타 테스터면 통과(베타 일일 한도는 적용하지 않음 — 코드 도우미는 무료 모델 위주).
+// 핸들러에서 getSessionUser(req).isAdmin 으로 유료 모델 접근을 추가 제한한다.
+function requireAdminOrBeta(key) {
+  return async (req, res, next) => {
+    const u = getSessionUser(req);
+    if (!u) return res.status(401).json({ error: "로그인이 필요합니다." });
+    if (u.isAdmin) return next();
+    try {
+      if (supa.isEnabled() && u.id && (await supa.userHasBeta(u.id, key))) {
+        return next();
+      }
+    } catch {
+      /* 테이블 없음 → 차단 */
+    }
+    return res
+      .status(403)
+      .json({ error: "이 기능은 베타 테스터에게만 열려 있습니다." });
+  };
+}
+
 function isTruthyPolicyFlag(value) {
   return value === true || value === "true" || value === "1" || value === "on";
 }
@@ -1680,19 +1700,21 @@ const CODE_ASSIST_SYSTEM = `당신은 코드 에디터에 내장된 '코딩 도�
 - 사용자가 지정한 언어를 따르고, 불확실하면 현재 에디터 언어로 작성하세요.`;
 
 // 선택 가능한 모델 목록(관리자 UI 드롭다운용). 키 설정 여부로 available 표시.
-app.get("/api/admin/code-assist/models", requireAdmin, (req, res) => {
+app.get("/api/admin/code-assist/models", requireAdminOrBeta("code-editor"), (req, res) => {
+  const isAdmin = !!(getSessionUser(req) || {}).isAdmin;
   res.json({
+    // 비관리자(베타 테스터)는 비용 보호를 위해 무료(groq) 모델만 사용 가능
     models: CODE_ASSIST_MODELS.map((m) => ({
       id: m.id,
       label: m.label,
       provider: m.provider,
       free: m.provider === "groq",
-      available: codeAssistModelAvailable(m),
+      available: codeAssistModelAvailable(m) && (isAdmin || m.provider === "groq"),
     })),
   });
 });
 
-app.post("/api/admin/code-assist", requireAdmin, async (req, res) => {
+app.post("/api/admin/code-assist", requireAdminOrBeta("code-editor"), async (req, res) => {
   const prompt = String((req.body && req.body.prompt) || "").trim();
   if (!prompt) return res.status(400).json({ error: "요청 내용을 입력하세요." });
   const code = String((req.body && req.body.code) || "").slice(0, 12000);
@@ -1700,6 +1722,13 @@ app.post("/api/admin/code-assist", requireAdmin, async (req, res) => {
   const reqModel = String((req.body && req.body.model) || "").trim();
   const entry =
     CODE_ASSIST_MODELS.find((m) => m.id === reqModel) || CODE_ASSIST_MODELS[0];
+  // 비관리자 베타 테스터는 무료(groq) 모델만
+  const isAdmin = !!(getSessionUser(req) || {}).isAdmin;
+  if (!isAdmin && entry.provider !== "groq") {
+    return res
+      .status(403)
+      .json({ error: "유료 모델은 관리자 전용입니다. 무료 모델을 선택하세요." });
+  }
 
   const userMsg =
     (lang ? `[현재 언어] ${lang}\n` : "") +

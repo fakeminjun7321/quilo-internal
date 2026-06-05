@@ -48,6 +48,7 @@
               <a href="/tools/graph.html">그래프 생성기</a>
               <a href="/tools/convert.html">파일 변환기 <span style="font-size:11px;opacity:.6">· 이미지·PDF·수식</span></a>
               <a href="/translate.html" id="navBetaTranslate" hidden>PDF 통번역 <span class="beta-pill">베타</span></a>
+              <a href="/editor.html" id="navBetaEditor" hidden>Quilo Code <span class="beta-pill">베타</span></a>
             </div>
           </div>
           <div class="nav-dd" data-dd>
@@ -1216,12 +1217,14 @@
       fetch("/api/me/beta")
         .then((r) => (r.ok ? r.json() : { features: [] }))
         .then((b) => {
-          if (
-            Array.isArray(b.features) &&
-            b.features.includes("pdf-translate")
-          ) {
+          const feats = Array.isArray(b.features) ? b.features : [];
+          if (feats.includes("pdf-translate")) {
             const el = document.getElementById("navBetaTranslate");
             if (el) el.hidden = false;
+          }
+          if (feats.includes("code-editor")) {
+            const el2 = document.getElementById("navBetaEditor");
+            if (el2) el2.hidden = false;
           }
         })
         .catch(() => {});

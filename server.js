@@ -2349,7 +2349,7 @@ function estimatePdfTranslation(meta, mode, modelId) {
   const needsRetypeset = scanned || density >= AUTO_MATH_THRESHOLD;
   const resolvedMode =
     mode === "retypeset" ? "retypeset" : needsRetypeset ? "retypeset" : "inplace";
-  const isOpus = !/sonnet|haiku/i.test(modelId || "");
+  const isOpus = /opus/i.test(modelId || ""); // Opus 만 느린 티어(GPT·Sonnet 은 빠름)
   const charTok = chars / 3.5;
   const ocrMax = parseInt(process.env.PDF_OCR_MAX_PAGES || "30", 10);
   // 텍스트 PDF(in-place·재조판)는 페이지 상한이 있어 초과 시 거부된다.
@@ -2462,10 +2462,14 @@ app.post(
     const userInfo = getSessionUser(req);
 
     // 모델 선택(관리자) — 기본은 translate.js 의 기본값(문서 번역엔 Sonnet 으로 충분).
+    // OpenAI GPT 는 PDF 통번역 베타 도입(GPT_API_KEY 필요). gpt-5.4-mini 는 빠르고 저렴.
     const ALLOWED_MODELS = [
       "claude-opus-4-8",
       "claude-opus-4-7",
       "claude-sonnet-4-6",
+      "gpt-5.5",
+      "gpt-5.4",
+      "gpt-5.4-mini",
     ];
     const requested = String(req.body.model || "").trim();
     const model = ALLOWED_MODELS.includes(requested) ? requested : null;

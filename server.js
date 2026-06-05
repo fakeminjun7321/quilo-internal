@@ -1718,7 +1718,9 @@ app.post(
       const meta = await analyzePdf(pdfPath, {});
       const mode = String(req.body.mode || "auto");
       const modelId = String(req.body.model || "claude-sonnet-4-6");
-      res.json(estimatePdfTranslation(meta, mode, modelId));
+      // meta 도 함께 돌려준다 → 클라이언트가 방식·모델만 바꿀 때 PDF 재업로드 없이
+      // 즉시 다시 계산한다(속도↑).
+      res.json({ ...estimatePdfTranslation(meta, mode, modelId), meta });
     } catch (e) {
       res.status(500).json({ error: e.message || "예측 실패" });
     } finally {

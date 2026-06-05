@@ -83,6 +83,11 @@
     <section class="settings-card" id="adminAiSection">
       <h2>🤖 AI 관리자 보조</h2>
       <p class="hint">로그인·사용 로그·통계·베타 현황을 묻고, 크레딧 충전·rate 해제·베타 토글·사용자 생성 등 작업을 <b>확인 후 실행</b>할 수 있습니다. (질문 데이터는 외부 AI로 전송 — 관리자 전용)</p>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 9px">
+        <span style="font-size:12.5px;color:#475569;font-weight:700">모델</span>
+        <select id="aaModel" title="개조(무료) / 똑똑한 모델(유료)" style="padding:6px 9px;border:1px solid #d7dbe8;border-radius:8px;font:inherit;font-size:13px;max-width:300px"></select>
+        <span class="hint" id="aaModelHint" style="font-size:12px;margin:0"></span>
+      </div>
       <div id="aaMsgs" style="border:1px solid #e6e8f0;border-radius:10px;background:#f6f7fb;padding:12px;min-height:110px;max-height:340px;overflow-y:auto;display:flex;flex-direction:column"></div>
       <div id="aaChips" style="margin-top:10px"></div>
       <div style="display:flex;gap:8px;margin-top:8px">
@@ -803,6 +808,52 @@
           input = document.getElementById("aaInput"),
           send = document.getElementById("aaSend");
         if (!box || !send || !input) return;
+        var modelSel = document.getElementById("aaModel");
+        var modelHint = document.getElementById("aaModelHint");
+        if (modelSel) {
+          fetch("/api/admin/chat/models")
+            .then(function (r) {
+              return r.json();
+            })
+            .then(function (d) {
+              var ms = (d && d.models) || [];
+              modelSel.innerHTML = "";
+              ms.forEach(function (m) {
+                var o = document.createElement("option");
+                o.value = m.id;
+                o.textContent = m.label + (m.available ? "" : " (키 없음)");
+                if (!m.available) o.disabled = true;
+                modelSel.appendChild(o);
+              });
+              try {
+                var sm = localStorage.getItem("adminAiModel");
+                if (
+                  sm &&
+                  ms.some(function (m) {
+                    return m.id === sm && m.available;
+                  })
+                )
+                  modelSel.value = sm;
+              } catch (e) {}
+              var cur = ms.filter(function (m) {
+                return m.id === modelSel.value;
+              })[0];
+              if (!cur || !cur.available) {
+                var first = ms.filter(function (m) {
+                  return m.available;
+                })[0];
+                if (first) modelSel.value = first.id;
+              }
+            })
+            .catch(function () {
+              if (modelHint) modelHint.textContent = "모델 목록 로드 실패";
+            });
+          modelSel.onchange = function () {
+            try {
+              localStorage.setItem("adminAiModel", modelSel.value);
+            } catch (e) {}
+          };
+        }
         function bubble(role, text) {
           var d = document.createElement("div");
           d.style.cssText =
@@ -913,7 +964,10 @@
           fetch("/api/admin/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ messages: msgs.slice(-8) }),
+            body: JSON.stringify({
+              messages: msgs.slice(-8),
+              model: modelSel ? modelSel.value : undefined,
+            }),
           })
             .then(function (r) {
               return r.json().then(function (j) {

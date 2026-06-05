@@ -25,6 +25,7 @@
     <!-- 코드 에디터(CodeMirror) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/material-darker.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/eclipse.min.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/xml/xml.min.js"></script>
@@ -129,6 +130,44 @@
       .CodeMirror-hints{background:#252526;border:1px solid #454545;color:#d4d4d4;z-index:99999;font-family:Menlo,Consolas,monospace;font-size:13px}
       .CodeMirror-hint{color:#d4d4d4}
       li.CodeMirror-hint-active{background:#094771;color:#fff}
+      /* 미니맵 */
+      #adminEditorSection .ide-editorwrap{flex:1;min-height:0;display:flex}
+      #adminEditorSection .ide-minimap{width:84px;flex:0 0 auto;position:relative;background:#1e1e1e;border-left:1px solid #2b2b2b;overflow:hidden;cursor:pointer}
+      #adminEditorSection .ide-minimap pre{margin:0;padding:4px;font-family:Menlo,Consolas,monospace;font-size:3px;line-height:4px;color:#8a8a8a;white-space:pre;overflow:hidden;pointer-events:none}
+      #adminEditorSection .ide-mini-view{position:absolute;left:0;right:0;top:0;background:#ffffff14;border:1px solid #ffffff2b;pointer-events:none}
+      #adminEditorSection .ide.nominimap .ide-minimap{display:none}
+      /* 탐색기 액션 / 더티 점 / 인라인 이름변경 / 폴더 */
+      #adminEditorSection .ide-side-actions{display:flex;gap:1px}
+      #adminEditorSection .ide-side-actions button{font-size:15px}
+      #adminEditorSection .ide-tab-name{pointer-events:none}
+      #adminEditorSection .ide-folder-name{padding:5px 10px;font-size:11px;color:#bbb;cursor:pointer;border-bottom:1px solid #1a1a1a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      #adminEditorSection input.ide-rename{background:#3c3c3c;color:#fff;border:1px solid #007acc;border-radius:3px;font:inherit;font-size:12.5px;width:120px;padding:1px 5px;outline:none}
+      #adminEditorSection .ide-statusbar #stSave,#adminEditorSection .ide-statusbar #stDownload,#adminEditorSection .ide-statusbar #stMinimap,#adminEditorSection .ide-statusbar #stTheme{cursor:pointer}
+      /* 라이트 테마 */
+      #adminEditorSection .ide.light{background:#fff;color:#333;border-color:#ddd}
+      #adminEditorSection .ide.light .ide-activity{background:#e8e8e8}
+      #adminEditorSection .ide.light .ide-activity button{color:#666}
+      #adminEditorSection .ide.light .ide-activity button:hover,#adminEditorSection .ide.light .ide-activity button.on{color:#111}
+      #adminEditorSection .ide.light .ide-side{background:#f3f3f3;border-right-color:#e0e0e0}
+      #adminEditorSection .ide.light .ide-side-head,#adminEditorSection .ide.light .ide-side-head button,#adminEditorSection .ide.light .ide-folder-name{color:#555}
+      #adminEditorSection .ide.light .ide-file{color:#333}
+      #adminEditorSection .ide.light .ide-file:hover{background:#e4e6eb}
+      #adminEditorSection .ide.light .ide-file.on{background:#dcdfe6}
+      #adminEditorSection .ide.light .ide-tabs{background:#ececec}
+      #adminEditorSection .ide.light .ide-tab{background:#e4e4e4;color:#555;border-right-color:#dcdcdc}
+      #adminEditorSection .ide.light .ide-tab.on{background:#fff;color:#111}
+      #adminEditorSection .ide.light .ide-panel{background:#fff;border-top-color:#e0e0e0}
+      #adminEditorSection .ide.light .ide-panel-tabs{background:#ececec}
+      #adminEditorSection .ide.light .ide-panel-tabs button{color:#555}
+      #adminEditorSection .ide.light .ide-panel-tabs button.on{color:#111}
+      #adminEditorSection .ide.light pre#ceOut{color:#222}
+      #adminEditorSection .ide.light .ide-minimap{background:#fafafa;border-left-color:#e0e0e0}
+      #adminEditorSection .ide.light .ide-minimap pre{color:#bbb}
+      #adminEditorSection .ide.light .ide-mini-view{background:#00000010;border-color:#00000022}
+      #adminEditorSection .ide.light #ceAi select,#adminEditorSection .ide.light #ceAi textarea{background:#fff;color:#222;border-color:#ccc}
+      #adminEditorSection .ide.light #ceAi #caText{background:#f6f7fb;color:#222;border-color:#e0e0e0}
+      #adminEditorSection .ide.light #ceAi #caActions button{background:#eef0f4;color:#222;border-color:#d0d4dd}
+      #adminEditorSection .ide.light #ceAi label{color:#555}
       @media (max-width:640px){#adminEditorSection .ide-side{display:none}#adminEditorSection .ide{height:480px}}
     </style>
     <style>
@@ -309,12 +348,16 @@
             <button data-act="ai" title="AI 도우미">✨</button>
           </div>
           <div class="ide-side" id="ideSide">
-            <div class="ide-side-head"><span>탐색기</span><button id="ideNewFile" title="새 파일">＋</button></div>
+            <div class="ide-side-head"><span>탐색기</span><span class="ide-side-actions"><button id="ideOpenFile" title="로컬 파일 열기">📂</button><button id="ideOpenFolder" title="로컬 폴더 열기">📁</button><button id="ideNewFile" title="새 파일">＋</button></span></div>
             <div id="ideFiles"></div>
           </div>
           <div class="ide-main">
             <div class="ide-tabs" id="ideTabs"></div>
-            <div class="ide-editorhost"><textarea id="ceArea"></textarea></div>
+            <div class="ide-editorwrap">
+              <div class="ide-editorhost"><textarea id="ceArea"></textarea></div>
+              <div class="ide-minimap" id="ideMinimap"><pre id="ideMiniCode"></pre><div class="ide-mini-view" id="ideMiniView"></div></div>
+            </div>
+            <input type="file" id="ideFileInput" multiple hidden />
             <div class="ide-panel" id="idePanel">
               <div class="ide-panel-tabs">
                 <button data-panel="output" class="on">출력</button>
@@ -348,7 +391,9 @@
           </div>
         </div>
         <div class="ide-statusbar">
-          <span id="stRun" title="실행">▶ 실행</span>
+          <span id="stRun" title="실행 (Ctrl/⌘+Enter)">▶ 실행</span>
+          <span id="stSave" title="디스크에 저장 (Ctrl/⌘+S)">💾 저장</span>
+          <span id="stDownload" title="현재 파일 다운로드">⬇ 다운로드</span>
           <span id="stMsg"></span>
           <span style="flex:1"></span>
           <span id="stPos">Ln 1, Col 1</span>
@@ -361,6 +406,8 @@
             <option value="markdown">Markdown</option>
             <option value="application/json">JSON</option>
           </select>
+          <span id="stMinimap" title="미니맵 토글">🗺</span>
+          <span id="stTheme" title="라이트/다크 전환">🌙</span>
           <span>UTF-8</span>
         </div>
       </div>
@@ -1310,12 +1357,18 @@
               "Ctrl-/": "toggleComment",
               "Cmd-/": "toggleComment",
               "Ctrl-S": function () {
-                persist();
-                flash("저장됨");
+                if (files[active] && files[active].handle) saveActiveToDisk();
+                else {
+                  persist();
+                  flash("로컬 저장됨");
+                }
               },
               "Cmd-S": function () {
-                persist();
-                flash("저장됨");
+                if (files[active] && files[active].handle) saveActiveToDisk();
+                else {
+                  persist();
+                  flash("로컬 저장됨");
+                }
               },
               "Ctrl-Enter": function () {
                 runCurrent();
@@ -1370,11 +1423,18 @@
               ic.className = "ide-tab-ic";
               ic.textContent = iconFor(f.lang);
               var nm = document.createElement("span");
+              nm.className = "ide-tab-name";
               nm.textContent = f.name;
               var x = document.createElement("span");
               x.className = "ide-tab-x";
-              x.textContent = "×";
-              x.title = "닫기";
+              x.textContent = f.dirty ? "●" : "×";
+              x.title = f.dirty ? "저장 안 됨 (Ctrl/⌘+S)" : "닫기";
+              x.onmouseenter = function () {
+                if (f.dirty) x.textContent = "×";
+              };
+              x.onmouseleave = function () {
+                if (f.dirty) x.textContent = "●";
+              };
               x.onclick = function (e) {
                 e.stopPropagation();
                 closeFile(i);
@@ -1391,6 +1451,12 @@
               tabsEl.appendChild(t);
             });
           }
+          var folderEntries = [];
+          var folderName = "";
+          function renderExplorer() {
+            if (folderEntries.length) renderFolderList();
+            else renderFiles();
+          }
           function renderFiles() {
             filesEl.innerHTML = "";
             files.forEach(function (f, i) {
@@ -1406,6 +1472,68 @@
               filesEl.appendChild(d);
             });
           }
+          function renderFolderList() {
+            filesEl.innerHTML = "";
+            var head = document.createElement("div");
+            head.className = "ide-folder-name";
+            head.textContent = "📁 " + folderName + "  (닫기 ✕)";
+            head.title = "폴더 목록 닫기";
+            head.onclick = function () {
+              folderEntries = [];
+              folderName = "";
+              renderExplorer();
+            };
+            filesEl.appendChild(head);
+            folderEntries.forEach(function (en, idx) {
+              var d = document.createElement("div");
+              var paths = files.map(function (f) {
+                return f.path;
+              });
+              var openIdx = paths.indexOf(en.name);
+              d.className =
+                "ide-file" + (openIdx >= 0 && openIdx === active ? " on" : "");
+              d.textContent = iconFor(langOfName(en.name)) + " " + en.name;
+              d.title = en.name;
+              d.onclick = function () {
+                openFolderEntry(idx);
+              };
+              filesEl.appendChild(d);
+            });
+          }
+          function openFolderEntry(idx) {
+            var en = folderEntries[idx];
+            var existing = files
+              .map(function (f) {
+                return f.path;
+              })
+              .indexOf(en.name);
+            if (existing >= 0) {
+              openFile(existing);
+              return;
+            }
+            if (en.handle && en.handle.getFile) {
+              en.handle
+                .getFile()
+                .then(function (file) {
+                  return file.text();
+                })
+                .then(function (text) {
+                  var lang = langOfName(en.name);
+                  files.push({
+                    name: en.name.split("/").pop(),
+                    path: en.name,
+                    lang: lang,
+                    doc: CodeMirror.Doc(text, modeOf(lang)),
+                    handle: en.handle,
+                    dirty: false,
+                  });
+                  openFile(files.length - 1);
+                })
+                .catch(function (e) {
+                  flash("열기 실패: " + e.message);
+                });
+            }
+          }
           function openFile(i) {
             if (i < 0 || i >= files.length) return;
             active = i;
@@ -1413,26 +1541,39 @@
             cm.setOption("mode", modeOf(files[i].lang));
             if (langSel) langSel.value = files[i].lang;
             renderTabs();
-            renderFiles();
+            renderExplorer();
             updateStatus();
             persist();
+            renderMinimap();
             cm.focus();
           }
           function addFile() {
-            var name = window.prompt(
-              "새 파일 이름 (예: app.js, page.html, style.css, notes.md)",
-              "untitled.js"
+            var n = 1,
+              base;
+            do {
+              base = "untitled-" + n + ".js";
+              n++;
+            } while (
+              files.some(function (f) {
+                return f.name === base;
+              })
             );
-            if (!name) return;
-            name = name.trim();
-            if (!name) return;
-            var lang = langOfName(name);
             files.push({
-              name: name,
-              lang: lang,
-              doc: CodeMirror.Doc("", modeOf(lang)),
+              name: base,
+              lang: "javascript",
+              doc: CodeMirror.Doc("", modeOf("javascript")),
+              handle: null,
+              dirty: false,
             });
-            openFile(files.length - 1);
+            active = files.length - 1;
+            cm.swapDoc(files[active].doc);
+            cm.setOption("mode", modeOf("javascript"));
+            if (langSel) langSel.value = "javascript";
+            renderTabs();
+            renderExplorer();
+            updateStatus();
+            persist();
+            renameFile(active);
           }
           function closeFile(i) {
             if (files.length <= 1) {
@@ -1445,24 +1586,62 @@
             openFile(active);
           }
           function renameFile(i) {
-            var name = window.prompt("파일 이름 변경", files[i].name);
-            if (!name) return;
-            name = name.trim();
-            if (!name) return;
-            files[i].name = name;
-            files[i].lang = langOfName(name);
-            if (i === active) {
-              cm.setOption("mode", modeOf(files[i].lang));
-              if (langSel) langSel.value = files[i].lang;
+            var tab = tabsEl.children[i];
+            var nameSpan = tab ? tab.querySelector(".ide-tab-name") : null;
+            if (!nameSpan) return;
+            var input = document.createElement("input");
+            input.className = "ide-rename";
+            input.value = files[i].name;
+            var done = false;
+            function commit(save) {
+              if (done) return;
+              done = true;
+              if (save) {
+                var nm = (input.value || "").trim();
+                if (nm) {
+                  files[i].name = nm;
+                  files[i].lang = langOfName(nm);
+                  if (files[i].path) files[i].path = nm;
+                  if (i === active) {
+                    cm.setOption("mode", modeOf(files[i].lang));
+                    if (langSel) langSel.value = files[i].lang;
+                  }
+                }
+              }
+              renderTabs();
+              renderExplorer();
+              persist();
+              cm.focus();
             }
-            renderTabs();
-            renderFiles();
-            persist();
+            input.onkeydown = function (e) {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commit(true);
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                commit(false);
+              }
+            };
+            input.onblur = function () {
+              commit(true);
+            };
+            input.onclick = function (e) {
+              e.stopPropagation();
+            };
+            nameSpan.replaceWith(input);
+            input.focus();
+            input.select();
           }
 
           cm.on("cursorActivity", updateStatus);
           cm.on("change", function () {
+            var f = files[active];
+            if (f && f.handle && !f.dirty) {
+              f.dirty = true;
+              renderTabs();
+            }
             persist();
+            scheduleMinimap();
           });
 
           if (langSel)
@@ -1470,7 +1649,7 @@
               files[active].lang = langSel.value;
               cm.setOption("mode", modeOf(langSel.value));
               renderTabs();
-              renderFiles();
+              renderExplorer();
               persist();
             };
           var newBtn = document.getElementById("ideNewFile");
@@ -1587,6 +1766,257 @@
               };
             }
           );
+
+          // ── 미니맵 ──
+          var ide = document.getElementById("ide");
+          var minimap = document.getElementById("ideMinimap");
+          var miniCode = document.getElementById("ideMiniCode");
+          var miniView = document.getElementById("ideMiniView");
+          var miniContentH = 0;
+          function renderMinimap() {
+            if (!miniCode || !ide || ide.classList.contains("nominimap")) return;
+            miniCode.style.transform = "";
+            miniCode.textContent = cm.getValue();
+            var natural = miniCode.scrollHeight || 1;
+            var ch = minimap.clientHeight || 1;
+            var scale = natural > ch ? ch / natural : 1;
+            miniCode.style.transform = "scaleY(" + scale + ")";
+            miniCode.style.transformOrigin = "left top";
+            miniContentH = natural * scale;
+            updateMiniView();
+          }
+          function updateMiniView() {
+            if (!miniView || !ide || ide.classList.contains("nominimap")) return;
+            var si = cm.getScrollInfo();
+            var h = si.height || 1;
+            miniView.style.top = (si.top / h) * miniContentH + "px";
+            miniView.style.height =
+              Math.max(14, (si.clientHeight / h) * miniContentH) + "px";
+          }
+          var miniT;
+          function scheduleMinimap() {
+            clearTimeout(miniT);
+            miniT = setTimeout(renderMinimap, 180);
+          }
+          if (minimap)
+            minimap.onclick = function (e) {
+              var si = cm.getScrollInfo();
+              var target =
+                (e.offsetY / (miniContentH || 1)) * si.height -
+                si.clientHeight / 2;
+              cm.scrollTo(null, Math.max(0, target));
+            };
+          cm.on("scroll", updateMiniView);
+          function applyMinimap(on) {
+            if (!ide) return;
+            ide.classList.toggle("nominimap", !on);
+            try {
+              localStorage.setItem("ceMinimap", on ? "1" : "0");
+            } catch (e) {}
+            cm.refresh();
+            if (on) renderMinimap();
+          }
+
+          // ── 라이트/다크 테마 ──
+          function applyTheme(light) {
+            if (!ide) return;
+            ide.classList.toggle("light", light);
+            cm.setOption("theme", light ? "eclipse" : "material-darker");
+            var tb = document.getElementById("stTheme");
+            if (tb) tb.textContent = light ? "☀" : "🌙";
+            try {
+              localStorage.setItem("ceTheme", light ? "light" : "dark");
+            } catch (e) {}
+            renderMinimap();
+          }
+
+          // ── 로컬 파일 (File System Access API; 미지원 시 업로드/다운로드 폴백) ──
+          var fileInput = document.getElementById("ideFileInput");
+          var hasFSA = !!window.showOpenFilePicker;
+          function addDiskFile(name, text, handle) {
+            var lang = langOfName(name);
+            files.push({
+              name: name,
+              lang: lang,
+              doc: CodeMirror.Doc(text, modeOf(lang)),
+              handle: handle || null,
+              dirty: false,
+            });
+            openFile(files.length - 1);
+            flash("열기: " + name);
+          }
+          function openLocalFiles() {
+            if (hasFSA) {
+              window
+                .showOpenFilePicker({ multiple: true })
+                .then(function (handles) {
+                  handles.forEach(function (h) {
+                    h.getFile().then(function (file) {
+                      file.text().then(function (text) {
+                        addDiskFile(file.name, text, h);
+                      });
+                    });
+                  });
+                })
+                .catch(function () {});
+            } else if (fileInput) {
+              fileInput.value = "";
+              fileInput.click();
+            }
+          }
+          if (fileInput)
+            fileInput.onchange = function () {
+              Array.prototype.forEach.call(fileInput.files, function (file) {
+                var r = new FileReader();
+                r.onload = function () {
+                  addDiskFile(file.name, String(r.result || ""), null);
+                };
+                r.readAsText(file);
+              });
+            };
+          function openLocalFolder() {
+            if (!window.showDirectoryPicker) {
+              flash("이 브라우저는 폴더 열기를 지원하지 않아요. '파일 열기'를 쓰세요.");
+              return;
+            }
+            window
+              .showDirectoryPicker()
+              .then(function (dir) {
+                var collected = [];
+                var SKIP = {
+                  node_modules: 1,
+                  ".git": 1,
+                  dist: 1,
+                  build: 1,
+                  ".next": 1,
+                  vendor: 1,
+                };
+                function walk(handle, prefix, depth) {
+                  if (collected.length >= 300 || depth > 6)
+                    return Promise.resolve();
+                  var it = handle.values();
+                  function next() {
+                    return it.next().then(function (res) {
+                      if (res.done || collected.length >= 300) return;
+                      var entry = res.value;
+                      var p = Promise.resolve();
+                      if (entry.kind === "directory") {
+                        if (!SKIP[entry.name] && entry.name.charAt(0) !== ".")
+                          p = walk(entry, prefix + entry.name + "/", depth + 1);
+                      } else {
+                        collected.push({ name: prefix + entry.name, handle: entry });
+                      }
+                      return p.then(next);
+                    });
+                  }
+                  return next();
+                }
+                flash("폴더 읽는 중…");
+                walk(dir, "", 0)
+                  .then(function () {
+                    folderEntries = collected;
+                    folderName = dir.name;
+                    renderExplorer();
+                    flash("폴더 열림: " + dir.name + " (" + collected.length + "개)");
+                  })
+                  .catch(function (e) {
+                    flash("폴더 읽기 실패: " + e.message);
+                  });
+              })
+              .catch(function () {});
+          }
+          function saveActiveToDisk() {
+            var f = files[active];
+            if (f.handle && f.handle.createWritable) {
+              f.handle
+                .createWritable()
+                .then(function (w) {
+                  return w.write(f.doc.getValue()).then(function () {
+                    return w.close();
+                  });
+                })
+                .then(function () {
+                  f.dirty = false;
+                  renderTabs();
+                  flash("저장됨 → " + f.name);
+                  persist();
+                })
+                .catch(function (e) {
+                  flash("저장 실패: " + e.message);
+                });
+            } else if (window.showSaveFilePicker) {
+              window
+                .showSaveFilePicker({ suggestedName: f.name })
+                .then(function (h) {
+                  return h
+                    .createWritable()
+                    .then(function (w) {
+                      return w.write(f.doc.getValue()).then(function () {
+                        return w.close();
+                      });
+                    })
+                    .then(function () {
+                      f.handle = h;
+                      f.name = h.name || f.name;
+                      f.lang = langOfName(f.name);
+                      f.dirty = false;
+                      cm.setOption("mode", modeOf(f.lang));
+                      if (langSel) langSel.value = f.lang;
+                      renderTabs();
+                      renderExplorer();
+                      flash("저장됨 → " + f.name);
+                      persist();
+                    });
+                })
+                .catch(function () {});
+            } else {
+              downloadActive();
+            }
+          }
+          function downloadActive() {
+            var f = files[active];
+            var blob = new Blob([f.doc.getValue()], {
+              type: "text/plain;charset=utf-8",
+            });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement("a");
+            a.href = url;
+            a.download = f.name;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(function () {
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+            }, 100);
+            flash("다운로드: " + f.name);
+          }
+
+          // ── 버튼 배선 + 초기 테마/미니맵 ──
+          var bOpen = document.getElementById("ideOpenFile");
+          if (bOpen) bOpen.onclick = openLocalFiles;
+          var bFolder = document.getElementById("ideOpenFolder");
+          if (bFolder) bFolder.onclick = openLocalFolder;
+          var bSave = document.getElementById("stSave");
+          if (bSave) bSave.onclick = saveActiveToDisk;
+          var bDl = document.getElementById("stDownload");
+          if (bDl) bDl.onclick = downloadActive;
+          var bTheme = document.getElementById("stTheme");
+          if (bTheme)
+            bTheme.onclick = function () {
+              applyTheme(!ide.classList.contains("light"));
+            };
+          var bMini = document.getElementById("stMinimap");
+          if (bMini)
+            bMini.onclick = function () {
+              applyMinimap(ide.classList.contains("nominimap"));
+            };
+          var savedTheme, savedMini;
+          try {
+            savedTheme = localStorage.getItem("ceTheme");
+            savedMini = localStorage.getItem("ceMinimap");
+          } catch (e) {}
+          applyMinimap(savedMini !== "0");
+          applyTheme(savedTheme === "light");
 
           openFile(active);
 

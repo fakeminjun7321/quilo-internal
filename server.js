@@ -1156,6 +1156,145 @@ app.post("/api/admin/chat", requireAdmin, async (req, res) => {
   }
 });
 
+// ── 코드 에디터 'AI 코딩 도우미' (관리자 전용) ──────────────────────────
+// 하이브리드 멀티모델: 무료(Groq, OpenAI 호환) + 유료(Claude).
+// 다른 AI 추가 = 아래 배열에 한 줄만 더. provider 가 groq 면 CHAT_API_KEY,
+// claude 면 ANTHROPIC_API_KEY 로 라우팅된다. (OpenAI/OpenRouter 등도 OpenAI 호환이면 groq 로 추가 가능)
+const CODE_ASSIST_MODELS = [
+  // 무료 (Groq) — CHAT_API_KEY 필요
+  { id: "llama-3.3-70b-versatile", label: "Llama 3.3 70B · 무료(기본)", provider: "groq" },
+  { id: "openai/gpt-oss-120b", label: "GPT-OSS 120B · 무료(고성능)", provider: "groq" },
+  { id: "qwen/qwen3-32b", label: "Qwen3 32B · 무료(코드)", provider: "groq" },
+  { id: "llama-3.1-8b-instant", label: "Llama 3.1 8B · 무료(빠름)", provider: "groq" },
+  // 유료 (Claude) — ANTHROPIC_API_KEY 필요
+  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6 · 유료(정밀)", provider: "claude" },
+  { id: "claude-opus-4-8", label: "Claude Opus 4.8 · 유료(최고)", provider: "claude" },
+];
+function codeAssistModelAvailable(m) {
+  if (m.provider === "groq") return !!CHAT_API_KEY;
+  if (m.provider === "claude") return !!process.env.ANTHROPIC_API_KEY;
+  return false;
+}
+const CODE_ASSIST_SYSTEM = `당신은 코드 에디터에 내장된 '코딩 도우미'입니다. 운영자(개발자)의 요청에 따라 코드를 작성·수정·설명·디버그합니다.
+- 한국어로 간결하게 답하세요.
+- 코드를 제시할 때는 반드시 하나의 \`\`\`<언어> ... \`\`\` 펜스 블록으로 감싸세요(에디터에 그대로 삽입됩니다). 펜스 밖에 코드를 흩뿌리지 마세요.
+- '수정/리팩터/버그수정' 요청이면 일부 조각이 아니라 동작하는 '전체 코드'를 한 블록으로 주세요.
+- '설명/리뷰'만 요청하면 코드 블록 없이 설명만 주세요.
+- 사용자가 지정한 언어를 따르고, 불확실하면 현재 에디터 언어로 작성하세요.`;
+
+// 선택 가능한 모델 목록(관리자 UI 드롭다운용). 키 설정 여부로 available 표시.
+app.get("/api/admin/code-assist/models", requireAdmin, (req, res) => {
+  res.json({
+    models: CODE_ASSIST_MODELS.map((m) => ({
+      id: m.id,
+      label: m.label,
+      provider: m.provider,
+      free: m.provider === "groq",
+      available: codeAssistModelAvailable(m),
+    })),
+  });
+});
+
+app.post("/api/admin/code-assist", requireAdmin, async (req, res) => {
+  const prompt = String((req.body && req.body.prompt) || "").trim();
+  if (!prompt) return res.status(400).json({ error: "요청 내용을 입력하세요." });
+  const code = String((req.body && req.body.code) || "").slice(0, 12000);
+  const lang = String((req.body && req.body.lang) || "").slice(0, 40);
+  const reqModel = String((req.body && req.body.model) || "").trim();
+  const entry =
+    CODE_ASSIST_MODELS.find((m) => m.id === reqModel) || CODE_ASSIST_MODELS[0];
+
+  const userMsg =
+    (lang ? `[현재 언어] ${lang}\n` : "") +
+    (code.trim() ? `[현재 에디터 코드]\n\`\`\`\n${code}\n\`\`\`\n\n` : "") +
+    `[요청]\n${prompt}`;
+
+  try {
+    if (entry.provider === "claude") {
+      if (!process.env.ANTHROPIC_API_KEY) {
+        return res
+          .status(503)
+          .json({ error: "Claude 키(ANTHROPIC_API_KEY)가 설정되지 않았습니다." });
+      }
+      const Anthropic = require("@anthropic-ai/sdk");
+      const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const msg = await client.messages.create({
+        model: entry.id,
+        max_tokens: 2400,
+        system: CODE_ASSIST_SYSTEM,
+        messages: [{ role: "user", content: userMsg }],
+      });
+      const text = (msg.content || [])
+        .filter((b) => b.type === "text")
+        .map((b) => b.text)
+        .join("")
+        .trim();
+      return res.json({
+        answer: text || "(빈 응답)",
+        model: entry.id,
+        provider: "claude",
+      });
+    }
+
+    // 기본: Groq (OpenAI 호환)
+    if (!CHAT_API_KEY) {
+      return res
+        .status(503)
+        .json({ error: "무료 AI 키(CHAT_API_KEY)가 설정되지 않았습니다." });
+    }
+    let resp;
+    try {
+      resp = await fetch(`${CHAT_API_BASE}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${CHAT_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: entry.id,
+          max_tokens: 2400,
+          temperature: 0.2,
+          messages: [
+            { role: "system", content: CODE_ASSIST_SYSTEM },
+            { role: "user", content: userMsg },
+          ],
+        }),
+      });
+    } catch (e) {
+      console.error("[code-assist] connect:", e.message);
+      return res.status(502).json({ error: "AI 서버 연결 실패." });
+    }
+    if (!resp.ok) {
+      const t = await resp.text().catch(() => "");
+      console.error("[code-assist] upstream", resp.status, t.slice(0, 300));
+      const hint =
+        resp.status === 429
+          ? " (무료 사용량 한도 — 잠시 후 다시)"
+          : resp.status === 404 || resp.status === 400
+            ? " (모델명 확인)"
+            : "";
+      return res
+        .status(502)
+        .json({ error: `AI 응답 오류 (${resp.status})${hint}` });
+    }
+    const data = await resp.json();
+    const text =
+      (data.choices &&
+        data.choices[0] &&
+        data.choices[0].message &&
+        data.choices[0].message.content) ||
+      "";
+    return res.json({
+      answer: text.trim() || "(빈 응답)",
+      model: entry.id,
+      provider: "groq",
+    });
+  } catch (e) {
+    console.error("[code-assist] error:", e.message);
+    return res.status(502).json({ error: "AI 처리 중 오류: " + e.message });
+  }
+});
+
 app.patch("/api/me/profile", requireAuth, async (req, res) => {
   if (!supa.isEnabled()) {
     return res.status(503).json({ error: "DB 미설정" });

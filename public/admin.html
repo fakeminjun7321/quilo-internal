@@ -213,6 +213,26 @@
       <textarea id="ceArea"></textarea>
       <div id="ceOut" style="margin-top:8px;background:#0f172a;color:#e2e8f0;border-radius:8px;padding:10px 12px;font-family:ui-monospace,Menlo,monospace;font-size:12.5px;white-space:pre-wrap;max-height:220px;overflow:auto;display:none"></div>
       <iframe id="ceFrame" title="미리보기" style="margin-top:8px;width:100%;height:280px;border:1px solid #e6e8f0;border-radius:8px;background:#fff;display:none"></iframe>
+
+      <!-- AI 코딩 도우미 (하이브리드: 무료 Groq + 유료 Claude, 모델 선택) -->
+      <div id="caBox" style="margin-top:16px;border-top:1px dashed #d7dbe8;padding-top:14px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+          <strong style="font-size:14px">✨ AI 코딩 도우미</strong>
+          <select id="caModel" title="모델 선택(무료/유료)" style="padding:6px 9px;border:1px solid #d7dbe8;border-radius:8px;font:inherit;font-size:13px;max-width:280px"></select>
+          <span class="hint" id="caHint" style="margin-left:auto"></span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap">
+          <textarea id="caPrompt" rows="2" placeholder="예: 이 코드 버그 고쳐줘 · 배열 중복 제거 함수 짜줘 · 이 함수 설명해줘   (Ctrl/⌘+Enter 로 생성)" style="flex:1;min-width:240px;padding:9px 11px;border:1px solid #d7dbe8;border-radius:8px;font:inherit;font-size:13.5px;resize:vertical"></textarea>
+          <div style="display:flex;gap:7px;flex-direction:column;align-items:stretch">
+            <label style="font-size:12px;color:#475569;display:flex;align-items:center;gap:5px;white-space:nowrap"><input type="checkbox" id="caUseCode" checked> 현재 코드 첨부</label>
+            <button id="caGo" style="background:#243ba2;color:#fff;border:none;border-radius:8px;padding:9px 18px;font:inherit;font-weight:600;cursor:pointer">✨ 생성</button>
+          </div>
+        </div>
+        <div id="caResult" style="margin-top:10px;display:none">
+          <div id="caText" style="background:#f8fafc;border:1px solid #e6e8f0;border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.55;white-space:pre-wrap;word-break:break-word;max-height:300px;overflow:auto"></div>
+          <div id="caActions" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"></div>
+        </div>
+      </div>
     </section>
 
     <footer class="site-footer">
@@ -1034,6 +1054,158 @@
               out.style.display = "block";
             }
           };
+
+          // ── AI 코딩 도우미 (하이브리드 멀티모델) ──
+          (function setupAssist() {
+            var modelSel = document.getElementById("caModel");
+            var promptEl = document.getElementById("caPrompt");
+            var goBtn = document.getElementById("caGo");
+            var useCode = document.getElementById("caUseCode");
+            var resBox = document.getElementById("caResult");
+            var resText = document.getElementById("caText");
+            var resActions = document.getElementById("caActions");
+            var caHint = document.getElementById("caHint");
+            if (!modelSel || !goBtn) return;
+
+            fetch("/api/admin/code-assist/models")
+              .then(function (r) {
+                return r.json();
+              })
+              .then(function (d) {
+                var ms = (d && d.models) || [];
+                modelSel.innerHTML = "";
+                ms.forEach(function (m) {
+                  var o = document.createElement("option");
+                  o.value = m.id;
+                  o.textContent = m.label + (m.available ? "" : " (키 없음)");
+                  if (!m.available) o.disabled = true;
+                  modelSel.appendChild(o);
+                });
+                try {
+                  var sm = localStorage.getItem("caModel");
+                  if (
+                    sm &&
+                    ms.some(function (m) {
+                      return m.id === sm && m.available;
+                    })
+                  )
+                    modelSel.value = sm;
+                } catch (e) {}
+                var cur = ms.filter(function (m) {
+                  return m.id === modelSel.value;
+                })[0];
+                if (!cur || !cur.available) {
+                  var first = ms.filter(function (m) {
+                    return m.available;
+                  })[0];
+                  if (first) modelSel.value = first.id;
+                }
+                if (!ms.length) caHint.textContent = "사용 가능한 모델 없음";
+              })
+              .catch(function () {
+                caHint.textContent = "모델 목록 로드 실패";
+              });
+
+            modelSel.onchange = function () {
+              try {
+                localStorage.setItem("caModel", modelSel.value);
+              } catch (e) {}
+            };
+
+            function extractCode(t) {
+              var m = t.match(/```[a-zA-Z0-9_+\-/.]*\n([\s\S]*?)```/);
+              return m ? m[1].replace(/\n$/, "") : null;
+            }
+
+            function mkBtn(label, fn) {
+              var b = document.createElement("button");
+              b.textContent = label;
+              b.className = "secondary compact";
+              b.onclick = fn;
+              resActions.appendChild(b);
+              return b;
+            }
+            function setActions(code, fullText) {
+              resActions.innerHTML = "";
+              if (code != null) {
+                mkBtn("커서에 삽입", function () {
+                  cm.replaceSelection(code);
+                  cm.focus();
+                });
+                mkBtn("전체 교체", function () {
+                  cm.setValue(code);
+                  cm.focus();
+                });
+              }
+              mkBtn("복사", function (e) {
+                try {
+                  navigator.clipboard.writeText(code != null ? code : fullText);
+                  var t = e.target;
+                  t.textContent = "복사됨!";
+                  setTimeout(function () {
+                    t.textContent = "복사";
+                  }, 1200);
+                } catch (x) {}
+              });
+            }
+
+            goBtn.onclick = function () {
+              var prompt = (promptEl.value || "").trim();
+              if (!prompt) {
+                promptEl.focus();
+                return;
+              }
+              goBtn.disabled = true;
+              var origLabel = goBtn.textContent;
+              goBtn.textContent = "생성 중…";
+              caHint.textContent = "";
+              resBox.style.display = "block";
+              resText.textContent = "AI가 생각하는 중…";
+              resActions.innerHTML = "";
+              fetch("/api/admin/code-assist", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  prompt: prompt,
+                  code: useCode.checked ? cm.getValue() : "",
+                  lang: langSel.value,
+                  model: modelSel.value,
+                }),
+              })
+                .then(function (r) {
+                  return r.json().then(function (j) {
+                    return { ok: r.ok, j: j };
+                  });
+                })
+                .then(function (x) {
+                  if (!x.ok) {
+                    resText.textContent =
+                      "⚠ " + ((x.j && x.j.error) || "오류가 발생했습니다.");
+                    return;
+                  }
+                  var ans = (x.j && x.j.answer) || "(빈 응답)";
+                  resText.textContent = ans;
+                  caHint.textContent =
+                    x.j && x.j.model ? "모델: " + x.j.model : "";
+                  setActions(extractCode(ans), ans);
+                })
+                .catch(function (e) {
+                  resText.textContent =
+                    "⚠ 요청 실패: " + (e && e.message ? e.message : e);
+                })
+                .finally(function () {
+                  goBtn.disabled = false;
+                  goBtn.textContent = origLabel;
+                });
+            };
+
+            promptEl.addEventListener("keydown", function (e) {
+              if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+                e.preventDefault();
+                goBtn.click();
+              }
+            });
+          })();
         }
       })();
     </script>

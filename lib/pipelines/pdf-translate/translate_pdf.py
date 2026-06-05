@@ -23,6 +23,7 @@ DeepL 문서 번역과 같은 방식: 디지털 PDF(텍스트 레이어가 있�
 
 import sys
 import os
+import re
 import json
 from collections import defaultdict
 
@@ -49,37 +50,205 @@ def iter_text_blocks(doc):
             bid += 1
 
 
-# 일부 PDF의 수식 기호 폰트(MathematicalPi-One 등)는 /ToUnicode 가 깨져 있어
-# (모든 글자 → U+FFFD), MuPDF 가 raw 글자 바이트를 돌려준다. 그 폰트의
-# /Encoding /Differences 상 실제 글자: 33('!')→'+', 34('"')→Δ, 35('#')→− (U+2212).
-# 그래서 "−458 kJ mol⁻¹" 가 "#458 kJ mol#1" 로, "ΔE" 가 '"E' 로 깨져 나온다.
-_MATHPI_FIX = {"!": "+", '"': "Δ", "#": "−"}  # +  Δ  −
-# Computer Modern / AMS 수식 폰트(LaTeX 논문)는 ToUnicode 가 깨져 기호가 엉뚱한
-# 라틴문자·dingbat 으로 추출된다. 폰트별로 '그 슬롯의 실제 기호'를 매핑한다 —
-# 이 폰트들은 기호 전용이라(진짜 라틴문자가 없음) 안전하다. †·‡·· (cdot)·−·• 는
-# 이미 올바로 추출되므로 건드리지 않는다.
-_CMSY_FIX = {"⇤": "*", "⇥": "×", "2": "∈", "p": "√"}  # 각주* 곱× 원소∈ 근호√
-_CMEX_FIX = {"P": "Σ"}  # 합 Σ
-# MSBM 'R'(blackboard ℝ)는 번들 글꼴 어디에도 글리프가 없어 매핑하면 두부가 된다.
-# 평문 'R'로 두는 게 안전하고 읽힌다(R^{d×k}). → 매핑하지 않음.
-_CMMI_FIX = {"↵": "α", "⇡": "π", "✏": "ε"}  # 그리스 α π ε (수식 이탤릭)
+# 깨진 ToUnicode 복원 — 폰트 자체 인코딩(/Differences)을 읽어 정확히 되돌린다.
+#
+# 일부 PDF(교재·원서)는 본문 합자(fi·fl)나 수식 폰트(MathematicalPi/MathPi)의
+# 그리스·기호가 /ToUnicode 손상으로 ASCII('#', '"', '!' …)로 추출된다. 깨진 추출은
+# ord(글자)==폰트코드 이므로, 그 폰트의 /Encoding /Differences(코드→글리프명)를 읽어
+# 글리프명→유니코드로 매핑하면 서브셋·PDF 와 무관하게 정확히 복원된다(정적 char 맵은
+# 서브셋마다 인코딩이 달라 오작동했음 — 이 방식이 그걸 대체한다).
+
+# 합자(ligature) — 본문 폰트에서 'fi','fl' 등이 한 글리프로 묶인 것.
+_LIG = {
+    "f_i": "fi", "f_l": "fl", "f_f": "ff", "f_f_i": "ffi", "f_f_l": "ffl",
+    "fi": "fi", "fl": "fl", "ff": "ff", "ffi": "ffi", "ffl": "ffl",
+}
+
+# MathematicalPi / MathPi 의 Hxxxxx 글리프명 → 유니코드.
+# Oxtoby 6장에서 임베드 폰트 렌더로 식별(서브셋 무관 고정값). 교차검증:
+#   ℋ_el ψ_el = E_el ψ_el (슈뢰딩거식) · 1σg < 1σu* (에너지 순서) · 4πε₀ (쿨롱)
+#   + chem-pre 정적맵(33→+,34→Δ,35→−)이 H11001/H9004/H11002 와 일치.
+_HCODE = {
+    "H9274": "ψ", "H9278": "φ", "H9272": "φ", "H9268": "σ", "H9266": "π",
+    "H9280": "ε", "H9258": "θ", "H9004": "Δ", "H11001": "+", "H11002": "−",
+    "H11005": "=", "H11006": "±", "H11021": "<", "H11009": "∞", "H5108": "ℋ",
+    "H11545": "+", "H11546": "−",
+}
+
+# Adobe Glyph List 부분집합(자주 쓰는 그리스·수학 기호·연산자).
+_AGL = {
+    "alpha": "α", "beta": "β", "gamma": "γ", "delta": "δ", "epsilon": "ε",
+    "zeta": "ζ", "eta": "η", "theta": "θ", "iota": "ι", "kappa": "κ",
+    "lambda": "λ", "mu": "μ", "nu": "ν", "xi": "ξ", "omicron": "ο", "pi": "π",
+    "rho": "ρ", "sigma": "σ", "tau": "τ", "upsilon": "υ", "phi": "φ", "chi": "χ",
+    "psi": "ψ", "omega": "ω", "varphi": "φ", "varepsilon": "ε", "vartheta": "ϑ",
+    "Gamma": "Γ", "Delta": "Δ", "Theta": "Θ", "Lambda": "Λ", "Xi": "Ξ",
+    "Pi": "Π", "Sigma": "Σ", "Phi": "Φ", "Psi": "Ψ", "Omega": "Ω",
+    "Upsilon": "Υ", "plus": "+", "minus": "−", "equal": "=", "plusminus": "±",
+    "minusplus": "∓", "multiply": "×", "divide": "÷", "less": "<",
+    "greater": ">", "lessequal": "≤", "greaterequal": "≥", "notequal": "≠",
+    "approxequal": "≈", "equivalence": "≡", "proportional": "∝", "infinity": "∞",
+    "partialdiff": "∂", "gradient": "∇", "integral": "∫", "summation": "∑",
+    "product": "∏", "radical": "√", "element": "∈", "notelement": "∉",
+    "arrowright": "→", "arrowleft": "←", "arrowboth": "↔", "arrowup": "↑",
+    "arrowdown": "↓", "asteriskmath": "*", "bullet": "•", "periodcentered": "·",
+    "dotmath": "·", "degree": "°", "minute": "′", "second": "″", "angle": "∠",
+    "bracketleft": "[", "bracketright": "]", "parenleft": "(", "parenright": ")",
+    "braceleft": "{", "braceright": "}",
+}
+
+# 폴백: Computer Modern / AMS 수식 폰트(LaTeX 논문)는 /Differences 글리프명이
+# 비표준일 수 있어 디코더가 못 풀 때만 쓴다. 기호 전용이라 안전.
+_CMSY_FIX = {"⇤": "*", "⇥": "×", "2": "∈", "p": "√"}
+_CMEX_FIX = {"P": "Σ"}
+_CMMI_FIX = {"↵": "α", "⇡": "π", "✏": "ε"}
+
+# 수식·기호 전용 폰트(이 폰트의 슬롯은 전부 기호 → /Differences 전부 적용 안전).
+_MATH_FONT_KEYS = (
+    "MathematicalPi", "MathPi", "Symbol", "Euclid", "MT-Extra",
+    "CMSY", "CMEX", "CMMI", "MSAM", "MSBM",
+)
+
+# 디코더는 페이지별로 만든다 — 같은 수식폰트도 서브셋마다 인코딩이 달라(코드 33이
+# ψ/θ/σ …) 문서 전역 매핑은 오작동한다. 페이지의 폰트(서브셋)만으로 매핑하면 그 페이지
+# 본문은 정확히 복원된다. 같은 페이지에 충돌 서브셋이 여럿이면 가장 풍부한(=본문) 것을
+# 우선한다(span→서브셋 식별은 PyMuPDF API 로 불가능 — 그림 라벨 등은 한계가 남음).
+_DECODERS_BY_PAGE = {}  # {pno: {정규화폰트명: {코드: 유니코드}}}
+_CUR_DEC = {}  # 현재 페이지 디코더
+
+
+def _norm_font(n):
+    return (n or "").split("+")[-1]  # 서브셋 접두사(ABCDEF+) 제거
+
+
+def _use_page(pno):
+    """추출 시 현재 페이지의 디코더를 활성화(_fix_span_text 가 참조)."""
+    global _CUR_DEC
+    _CUR_DEC = _DECODERS_BY_PAGE.get(pno, {})
+
+
+def _glyph_to_unicode(gn):
+    """글리프명 → 유니코드 문자(또는 None: 못 풀면 원본 유지)."""
+    if not gn:
+        return None
+    if gn in _HCODE:
+        return _HCODE[gn]
+    if gn in _LIG:
+        return _LIG[gn]
+    if gn in _AGL:
+        return _AGL[gn]
+    m = re.match(r"^uni([0-9A-Fa-f]{4,6})$", gn) or re.match(r"^u([0-9A-Fa-f]{4,6})$", gn)
+    if m:
+        try:
+            return chr(int(m.group(1), 16))
+        except Exception:
+            return None
+    for k, v in (("bracketleft", "["), ("bracketright", "]"), ("parenleft", "("),
+                 ("parenright", ")"), ("braceleft", "{"), ("braceright", "}"),
+                 ("arrowright", "→"), ("arrowleft", "←"), ("radical", "√")):
+        if gn.startswith(k):
+            return v
+    base = gn.split(".")[0]  # .sc/.sup 등 접미사 제거 후 재시도
+    if base != gn:
+        return _glyph_to_unicode(base)
+    return None
+
+
+def _read_differences(doc, xref):
+    """폰트 객체의 /Encoding /Differences 를 읽어 {코드: 글리프명} 반환."""
+    try:
+        obj = doc.xref_object(xref) or ""
+    except Exception:
+        return {}
+    blob = obj
+    m = re.search(r"/Encoding\s+(\d+)\s+0\s+R", obj)
+    if m:
+        try:
+            blob = doc.xref_object(int(m.group(1))) or obj
+        except Exception:
+            pass
+    dm = re.search(r"/Differences\s*\[(.*?)\]", blob, re.S)
+    if not dm and blob != obj:
+        dm = re.search(r"/Differences\s*\[(.*?)\]", obj, re.S)
+    if not dm:
+        return {}
+    code = None
+    mp = {}
+    for t in dm.group(1).split():
+        if t.isdigit():
+            code = int(t)
+        elif t.startswith("/") and code is not None:
+            mp[code] = t[1:]
+            code += 1
+    return mp
+
+
+def build_decoders(doc):
+    """페이지별로 폰트 /Differences → code→유니코드 디코더를 만든다.
+    - 수식 폰트(MathematicalPi/MathPi/Symbol/Euclid/CM…): /Differences 전부 적용(모두 기호).
+    - 본문 폰트: 합자(다중 글자) 매핑만 적용 — 진짜 따옴표·문장부호 오염 방지.
+    - 같은 페이지에 같은 base 폰트의 서브셋이 여럿이고 코드가 충돌하면, /Differences 가
+      가장 큰(가장 풍부 = 본문) 서브셋을 우선하고 나머지는 비충돌 코드만 보충한다."""
+    global _DECODERS_BY_PAGE
+    _DECODERS_BY_PAGE = {}
+    for pno in range(len(doc)):
+        try:
+            fonts = doc[pno].get_fonts(full=True)
+        except Exception:
+            _DECODERS_BY_PAGE[pno] = {}
+            continue
+        bysub = {}  # 정규화명 -> [cmap(code→글리프명), ...]
+        for f in fonts:
+            name = _norm_font(f[3] if len(f) > 3 else "")
+            if not name:
+                continue
+            cmap = _read_differences(doc, f[0])
+            if cmap:
+                bysub.setdefault(name, []).append(cmap)
+        page_dec = {}
+        for name, cmaps in bysub.items():
+            is_math = any(k in name for k in _MATH_FONT_KEYS)
+            # 가장 풍부한 서브셋(=본문) 우선, 충돌하지 않는 코드만 다른 서브셋서 보충.
+            merged = {}
+            for cmap in sorted(cmaps, key=lambda m: -len(m)):
+                for code, gname in cmap.items():
+                    merged.setdefault(code, gname)
+            dec = {}
+            for code, gname in merged.items():
+                u = _glyph_to_unicode(gname)
+                if u is None:
+                    continue
+                if is_math or len(u) > 1:  # 본문 폰트는 합자(다중 글자)만
+                    dec[code] = u
+            if dec:
+                page_dec[name] = dec
+        _DECODERS_BY_PAGE[pno] = page_dec
+    return _DECODERS_BY_PAGE
 
 
 def _fix_span_text(font, text):
-    """수식 기호 폰트에서 잘못 디코드된 글자를 실제 유니코드로 되돌린다.
-    폰트명 기준이라 일반 본문 폰트의 진짜 글자는 건드리지 않는다."""
+    """깨진 글자를 실제 유니코드로 복원. 폰트 /Differences 디코더 우선,
+    못 풀면 CM 정적맵 폴백. 일반 본문 폰트의 진짜 글자는 건드리지 않는다."""
     if not text:
         return text
     f = font or ""
-    if "MathematicalPi" in f:
-        return "".join(_MATHPI_FIX.get(ch, ch) for ch in text)
-    if "CMSY" in f:
-        return "".join(_CMSY_FIX.get(ch, ch) for ch in text)
-    if "CMEX" in f:
-        return "".join(_CMEX_FIX.get(ch, ch) for ch in text)
-    if "CMMI" in f:
-        return "".join(_CMMI_FIX.get(ch, ch) for ch in text)
-    return text
+    dec = _CUR_DEC.get(_norm_font(f))
+    out = []
+    for ch in text:
+        if dec is not None:
+            u = dec.get(ord(ch))
+            if u is not None:
+                out.append(u)
+                continue
+        if "CMSY" in f:
+            out.append(_CMSY_FIX.get(ch, ch))
+        elif "CMEX" in f:
+            out.append(_CMEX_FIX.get(ch, ch))
+        elif "CMMI" in f:
+            out.append(_CMMI_FIX.get(ch, ch))
+        else:
+            out.append(ch)
+    return "".join(out)
 
 
 def _line_in_figs(line_bbox, figs):
@@ -171,6 +340,35 @@ def dominant_size_color(block):
 def has_letters(s):
     """알파벳/한글 등 '글자'가 하나라도 있는지. 순수 숫자·기호 블록은 번역 제외."""
     return any(ch.isalpha() for ch in s)
+
+
+def _is_symbol_label(block, max_len=10):
+    """짧고 수식폰트 기호를 포함하며 '단어'가 없는 블록 = 오비탈/기호 라벨
+    (예: 1σg, 3σ*u, 1πu, σg1s). 디지트+g/u 첨자가 섞여 기호 비중은 낮지만 라벨이다.
+
+    이런 라벨은 번역이 불필요하고(σ/π 는 한국어도 동일), 깨진 추출+서브셋 충돌로
+    ψ/φ 처럼 오역될 위험이 크다. 추출에서 제외하면 재그리기를 안 해 **원본 글리프가
+    그대로** 보여(σ/π 정확) 그림·본문 기호 라벨이 깨지지 않는다."""
+    has_math = False
+    chars = []
+    for ln in block.get("lines", []):
+        for sp in ln.get("spans", []):
+            is_math = any(k in sp.get("font", "") for k in _MATH_FONT_KEYS)
+            for c in sp.get("text", ""):
+                if c.isspace():
+                    continue
+                chars.append(c)
+                if len(chars) > max_len + 2:
+                    return False  # 길면 일반 본문 — 라벨 아님
+                if is_math:
+                    has_math = True
+    if not chars or not has_math:
+        return False
+    s = "".join(chars)
+    # 3글자 이상 연속 ASCII 알파벳(=단어)이 있으면 본문 문장 — 라벨 아님.
+    if re.search(r"[A-Za-z]{3,}", s):
+        return False
+    return True
 
 
 # ── 배경색 샘플링 (그림/그래프 위 텍스트 판별 + 색 맞춤 redaction) ───────────────
@@ -364,6 +562,7 @@ def _skip_regions(page):
 
 def cmd_extract(pdf_path):
     doc = fitz.open(pdf_path)
+    build_decoders(doc)  # 폰트 /Differences 디코더(깨진 글자 복원) — 추출 전에 준비
     blocks = []
     total_text_chars = 0
     # 페이지별 figure 영역(이미지 + 그래프 라인아트) 캐시 — 그림 위 텍스트 판별용.
@@ -375,12 +574,15 @@ def cmd_extract(pdf_path):
         return page_cache[pno]
 
     for bid, pno, block in iter_text_blocks(doc):
+        _use_page(pno)  # 이 페이지의 폰트 디코더 활성화(깨진 글자 복원)
         regs = regions(pno)
         # 그림/그래프 영역에 든 '줄'(축 라벨·기호·분자식 등)은 빼고 합친다.
         # → 캡션과 한 블록에 묶인 'V(R_AB)' 같은 축 라벨이 번역문에 섞이지 않는다.
         text = block_text(block, regs)
         if not text or not has_letters(text):
             continue  # 모든 줄이 그림 영역이면 text 가 비어 자동 제외(그래프 라벨 등)
+        if _is_symbol_label(block):
+            continue  # 기호/오비탈 라벨(1σg 등) → 원본 글리프 유지(재그리기·오역 방지)
         total_text_chars += len(text)  # scanned 판정엔 모든 글자 포함
         # 그림 근처의 '짧은' 블록(축 끝 라벨 RAB 등)은 그대로 영어로 둔다.
         # 번역 대상 줄들만의 bbox 로 판정(그림 줄은 이미 빠짐).
@@ -468,20 +670,10 @@ def cmd_analyze(pdf_path):
     doc = fitz.open(pdf_path)
     total = 0
     parts = []
-    math_font = False  # 상용 수식폰트(MathematicalPi/MathPi) 사용 여부 — ToUnicode 가 깨짐
     for page in doc:
         t = page.get_text("text") or ""
         total += len(t.strip())
         parts.append(t)
-        if not math_font:
-            try:
-                for f in page.get_fonts(full=False):
-                    fn = f[3] or ""  # basefont(PostScript) 이름
-                    if "MathematicalPi" in fn or "MathPiOne" in fn:
-                        math_font = True
-                        break
-            except Exception:
-                pass
     text = "\n".join(parts)
     n = len(doc)
     scanned = n > 0 and total < 20 * n
@@ -493,17 +685,6 @@ def cmd_analyze(pdf_path):
     eqs = text.count("=")
     math_score = greek * 3 + syms * 3 + subsup * 2 + eqs
     density = round((math_score / max(total, 1)) * 1000, 2)
-    # 깨진 텍스트 레이어 감지(자동 재조판 라우팅용).
-    #   일부 교재 PDF(예: Oxtoby)는 본문 Sabon 리거처(fi/fl)→'#', 상용 수식폰트
-    #   (MathematicalPi)의 그리스/기호→'#'·직선따옴표(") 처럼 ToUnicode 가 깨져 ASCII 로
-    #   추출된다. in-place 가 읽는 원천 텍스트가 깨져 있어 정적 보정으로는 정확 복원이
-    #   불가능 → 재조판(렌더 화면을 Claude 가 재구성)으로 보내야 정확하다.
-    #   신호: '#'·직선따옴표 밀도(정상 산문엔 거의 없음) ≥0.5/1000, 또는 상용 수식폰트
-    #   존재 + 약한 깨짐(≥0.2). (측정: Oxtoby 1.11 · principia 0.74 = 깨짐 / Transformer
-    #   0.18 · 상대성 0.0 = 정상 → 0.5 가 깔끔히 분리.)
-    broken_glyph = text.count("#") + text.count(chr(0x22))
-    broken_density = round((broken_glyph / max(total, 1)) * 1000, 2)
-    broken_text_layer = broken_density >= 0.5 or (math_font and broken_density >= 0.2)
     sys.stdout.write(
         json.dumps(
             {
@@ -513,9 +694,6 @@ def cmd_analyze(pdf_path):
                 "math_score": math_score,
                 "math_density": density,
                 "two_column": two_column,
-                "broken_glyph_density": broken_density,
-                "math_font": math_font,
-                "broken_text_layer": broken_text_layer,
             },
             ensure_ascii=False,
         )
@@ -782,6 +960,7 @@ def cmd_render(pdf_path, out_path, font_path):
     translations = payload.get("translations", {}) or {}
 
     doc = fitz.open(pdf_path)
+    build_decoders(doc)  # 추출과 동일한 디코더 — 블록 텍스트/매칭 일관성 유지
 
     # 페이지별 그림 영역 캐시(추출과 동일 기준) — 축 라벨 줄을 덮기/그리기에서 뺀다.
     fig_cache = {}

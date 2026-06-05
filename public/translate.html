@@ -287,16 +287,13 @@
           const chars = Math.max(0, +meta.text_chars || 0);
           const scanned = !!meta.scanned;
           const density = +meta.math_density || 0;
-          const maxPages = 80;
-          // 깨진 텍스트 레이어(리거처·상용 수식폰트 손상)는 재조판이라야 정확 — 페이지 상한 내일 때만.
-          const brokenLayer = !!meta.broken_text_layer;
-          const brokenFits = brokenLayer && pages <= maxPages;
-          const needs = scanned || density >= 12 || brokenFits;
+          const needs = scanned || density >= 12;
           const rmode =
             mode === "retypeset" ? "retypeset" : needs ? "retypeset" : "inplace";
           const isOpus = !/sonnet|haiku/i.test(modelId || "");
           const charTok = chars / 3.5;
           const ocrMax = 30;
+          const maxPages = 80;
           const tooManyPages = !scanned && pages > maxPages;
           let inTok = 0,
             outTok = 0,
@@ -337,8 +334,6 @@
             truncated,
             tooManyPages,
             maxPages,
-            brokenLayer,
-            brokenFits,
             costUsd: { lo: usd * 0.7, hi: usd * 1.45 },
             seconds: {
               lo: Math.round(seconds * 0.8),
@@ -361,14 +356,6 @@
               : "빠른 번역(레이아웃 유지)";
           const krwLo = Math.round(e.costUsd.lo * 1400);
           const krwHi = Math.round(e.costUsd.hi * 1400);
-          // 텍스트 레이어 손상 안내: 재조판으로 갈 땐 레이아웃이 새로 조판됨을 알리고,
-          // 페이지가 많아 재조판을 못 걸 땐 정확도 저하 가능을 경고한다.
-          const brokenNote =
-            e.brokenLayer && e.brokenFits && !e.scanned
-              ? `<br><span style="color:#b45309">⚠ 글자·수식이 깨져 저장된 PDF입니다(리거처·수식폰트). 정확도를 위해 <b>재조판</b>으로 처리하며, 원본 레이아웃 대신 내용을 새로 조판합니다.</span>`
-              : e.brokenLayer && !e.brokenFits
-                ? `<br><span style="color:#b45309">⚠ 글자·수식이 깨져 저장된 PDF인데 페이지가 많아 재조판을 적용하지 못합니다 — 일부 글자·수식이 부정확할 수 있습니다.</span>`
-                : ``;
           estEl.innerHTML =
             `📄 <b>${e.pages}쪽</b> · 변환 방식 <b>${modeLabel}</b>` +
             (e.truncated
@@ -376,7 +363,6 @@
               : ``) +
             `<br>⏱ 예상 시간 <b>약 ${fmtDur(e.seconds.lo)} ~ ${fmtDur(e.seconds.hi)}</b>` +
             ` · 💰 예상 비용 <b>약 ₩${krwLo.toLocaleString()} ~ ₩${krwHi.toLocaleString()}</b>` +
-            brokenNote +
             `<br><span style="opacity:.65">문서 내용·서버 상황에 따라 달라질 수 있습니다(실제 비용은 완료 후 표시).</span>`;
         }
         const fileKey = (f) =>

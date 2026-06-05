@@ -111,33 +111,46 @@ def _absorb_tiny_fragments(blocks):
     return out
 
 
-def _merge_superscript_ions(blocks):
-    """위첨자 전하(H₂⁺의 '+', O₂⁻의 '−')가 별도 블록으로 떨어져 나와 앞 문단과
-    세로로 겹치는 경우, 앞 블록에 병합한다.
+def _has_word(block):
+    """블록 안에 '단어'(영문 3글자+ 연속, 한 span 내)가 있는지 = 문단/캡션 연속본문.
+    흩어진 수식 글자(R/V/V 각각 별도 span)는 단어가 아니다."""
+    for ln in block.get("lines", []):
+        for sp in ln.get("spans", []):
+            t = sp.get("text", "")
+            if re.search(r"[A-Za-z]{3,}", t) or re.search(r"[가-힣]", t):
+                return True
+    return False
 
-    PyMuPDF 는 H₂⁺ 를 'H2'(본문) + '+'(작은 위첨자, 다음 문장까지 포함) 로 쪼개고,
-    '+' 블록의 bbox 는 본문 중간(겹침)에서 시작한다. 번역하면 짧아진 한국어가 위에서
-    끝나고 '+...' 블록은 원래 위치에서 그려져 **문단 사이에 큰 세로 빈칸**이 생기고
-    문장이 두 동강 난다. 두 블록을 합쳐 한 문단으로 번역·렌더하면 자연스럽게 흐른다."""
+
+def _merge_superscript_ions(blocks):
+    """위/아래첨자(이온 전하 +/−, 반결합 *, 분자 첨자 2·A·B·e·n 등)가 별도 블록으로
+    떨어져 나오면서 '뒤 문단/캡션 전체'를 끌고 가, 앞 블록과 세로로 겹치는 경우 병합한다.
+
+    PyMuPDF 는 H₂⁺·rA·1σu* 같은 첨자에서 블록을 쪼개고, 그 조각 블록의 bbox 가 앞
+    문단 중간(겹침)에서 시작한다. 번역하면 짧아진 한국어가 위에서 끝나고 조각 블록은
+    원래 위치에서 그려져 **문단 사이 큰 세로 빈칸 + 문장 두 동강 + 뒷부분 영어 잔존**이
+    생긴다. 두 블록을 합쳐 한 문단으로 번역·렌더하면 자연스럽게 흐른다.
+
+    판정: 조각의 첫 span 이 작고(위/아래첨자) 앞과 세로 겹치며, 조각에 '단어'가 있어
+    문단 연속본문일 때만 병합한다(단어 없는 짧은 수식 조각은 band 가 원본유지)."""
     out = []
     for blk in blocks:
         sp = _first_span(blk)
-        lead = (sp.get("text", "").lstrip()[:1] if sp else "")
-        # +/−(이온 전하), *(반결합 오비탈 σ*·π*) 위첨자가 떨어져 나온 경우.
-        if out and lead and lead in "+-−*":
-            ra = fitz.Rect(out[-1]["bbox"])
-            rb = fitz.Rect(blk["bbox"])
-            oy = min(ra.y1, rb.y1) - max(ra.y0, rb.y0)  # 세로 겹침(위첨자가 본문에 끼임)
-            ox = min(ra.x1, rb.x1) - max(ra.x0, rb.x0)  # 같은 단(가로 겹침)
+        if out and sp and _has_word(blk):
             prev_sz = dominant_size_color(out[-1])[0] or 10.0
-            small = (sp.get("size", 99) or 99) < 0.85 * prev_sz  # 위첨자(본문보다 작음)
-            if oy > 2 and ox > 0.3 * min(ra.width, rb.width) and small:
-                out[-1]["lines"] = out[-1].get("lines", []) + blk.get("lines", [])
-                out[-1]["bbox"] = [
-                    min(ra.x0, rb.x0), min(ra.y0, rb.y0),
-                    max(ra.x1, rb.x1), max(ra.y1, rb.y1),
-                ]
-                continue
+            small = (sp.get("size", 99) or 99) < 0.85 * prev_sz  # 위/아래첨자(본문보다 작음)
+            if small:
+                ra = fitz.Rect(out[-1]["bbox"])
+                rb = fitz.Rect(blk["bbox"])
+                oy = min(ra.y1, rb.y1) - max(ra.y0, rb.y0)  # 세로 겹침(첨자가 본문에 끼임)
+                ox = min(ra.x1, rb.x1) - max(ra.x0, rb.x0)  # 같은 단(가로 겹침)
+                if oy > 2 and ox > 0.3 * min(ra.width, rb.width):
+                    out[-1]["lines"] = out[-1].get("lines", []) + blk.get("lines", [])
+                    out[-1]["bbox"] = [
+                        min(ra.x0, rb.x0), min(ra.y0, rb.y0),
+                        max(ra.x1, rb.x1), max(ra.y1, rb.y1),
+                    ]
+                    continue
         out.append(blk)
     return out
 

@@ -183,6 +183,7 @@
         <span id="stSave" title="디스크에 저장 (Ctrl/⌘+S)">💾 저장</span>
         <span id="stDownload" title="현재 파일 다운로드">⬇ 다운로드</span>
         <span id="stPip" title="Python 패키지 설치 (pip / micropip)">📦 pip</span>
+        <span id="stFormat" title="문서 포맷 (Shift+⌥+F)">⌗ 포맷</span>
         <span id="stMsg"></span>
         <span style="flex:1"></span>
         <span id="stPos">Ln 1, Col 1</span>
@@ -283,15 +284,40 @@
         var panel = document.getElementById("idePanel");
         var welcome = document.getElementById("ideWelcome");
 
-        // Python 키워드/내장 자동완성 (JS/TS/HTML/CSS/JSON 은 Monaco 내장 IntelliSense)
+        // Python 자동완성: Python 런타임을 한 번 실행하면(또는 pip) jedi 가 깔려
+        // 실제 문맥 기반 자동완성(모듈 멤버·내 함수/변수)이 됩니다. 그 전엔 키워드 제안.
+        var jediReady = null, jediOk = false;
+        var PY_KW = ["def","class","return","import","from","as","if","elif","else","for","while","try","except","finally","with","lambda","pass","break","continue","global","nonlocal","yield","async","await","raise","assert","del","in","is","and","or","not","True","False","None","self","print","len","range","int","str","float","bool","list","dict","set","tuple","open","enumerate","zip","map","filter","sorted","reversed","sum","min","max","abs","round","input","type","isinstance","format"];
+        function pyKeywordSuggestions(model, position) {
+          var w = model.getWordUntilPosition(position);
+          var range = { startLineNumber: position.lineNumber, endLineNumber: position.lineNumber, startColumn: w.startColumn, endColumn: w.endColumn };
+          return PY_KW.map(function (k) {
+            return { label: k, kind: monaco.languages.CompletionItemKind.Keyword, insertText: k, range: range };
+          });
+        }
+        function jediKind(t) {
+          var M = monaco.languages.CompletionItemKind;
+          return ({ module: M.Module, "class": M.Class, "function": M.Function, instance: M.Variable, statement: M.Variable, param: M.Variable, property: M.Property, keyword: M.Keyword, path: M.File }[t]) || M.Text;
+        }
         monaco.languages.registerCompletionItemProvider("python", {
+          triggerCharacters: ["."],
           provideCompletionItems: function (model, position) {
-            var kw = ["def","class","return","import","from","as","if","elif","else","for","while","try","except","finally","with","lambda","pass","break","continue","global","nonlocal","yield","async","await","raise","assert","del","in","is","and","or","not","True","False","None","self","print","len","range","int","str","float","bool","list","dict","set","tuple","open","enumerate","zip","map","filter","sorted","reversed","sum","min","max","abs","round","input","type","isinstance","format","__init__","__name__","__main__"];
             var w = model.getWordUntilPosition(position);
             var range = { startLineNumber: position.lineNumber, endLineNumber: position.lineNumber, startColumn: w.startColumn, endColumn: w.endColumn };
-            return { suggestions: kw.map(function (k) {
-              return { label: k, kind: monaco.languages.CompletionItemKind.Keyword, insertText: k, range: range };
-            }) };
+            if (jediOk && window.__qpy && window.__qpy.globals) {
+              try {
+                var fn = window.__qpy.globals.get("_qc");
+                var res = fn(model.getValue(), position.lineNumber, position.column - 1);
+                if (fn.destroy) fn.destroy();
+                var arr = JSON.parse(res);
+                if (arr && arr.length) {
+                  return { suggestions: arr.map(function (c) {
+                    return { label: c.n, kind: jediKind(c.t), insertText: c.n, range: range, detail: c.t };
+                  }) };
+                }
+              } catch (e) {}
+            }
+            return { suggestions: pyKeywordSuggestions(model, position) };
           },
         });
 
@@ -328,6 +354,20 @@
           bracketPairColorization: { enabled: true },
           renderWhitespace: "selection",
           padding: { top: 8 },
+          formatOnPaste: true,
+          formatOnType: true,
+          autoIndent: "full",
+          autoClosingBrackets: "always",
+          autoClosingQuotes: "always",
+          autoSurround: "languageDefined",
+          matchBrackets: "always",
+          renderLineHighlight: "all",
+          cursorSmoothCaretAnimation: "on",
+          linkedEditing: true,
+          showFoldingControls: "always",
+          stickyScroll: { enabled: true },
+          guides: { bracketPairs: true, indentation: true },
+          suggest: { showWords: true, preview: true, shareSuggestSelections: true },
         });
         window.__qed = editor;
         if (savedTheme === "light") ide.classList.add("light");
@@ -511,18 +551,49 @@
             var s = document.createElement("script");
             s.src = "https://cdn.jsdelivr.net/pyodide/v" + PYODIDE_VER + "/full/pyodide.js";
             s.onload = function () {
-              loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v" + PYODIDE_VER + "/full/" }).then(resolve).catch(reject);
+              loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v" + PYODIDE_VER + "/full/" })
+                .then(function (py) { window.__qpy = py; ensureJedi(py); resolve(py); })
+                .catch(reject);
             };
             s.onerror = function () { reject(new Error("Pyodide 로드 실패(네트워크 확인)")); };
             document.head.appendChild(s);
           });
           return pyReady;
         }
+        // 자동완성용 jedi 를 백그라운드로 설치(실행엔 영향 없음). 완료되면 jediOk=true → 실제 Python 자동완성.
+        function ensureJedi(py) {
+          if (jediReady) return jediReady;
+          jediReady = py.loadPackage("micropip")
+            .then(function () { return py.pyimport("micropip").install("jedi"); })
+            .then(function () {
+              py.runPython(
+                "import jedi, json\n" +
+                "def _qc(src, line, col):\n" +
+                "    try:\n" +
+                "        cs = jedi.Script(src).complete(line, col)\n" +
+                "        return json.dumps([{'n': c.name, 't': c.type, 'p': c.complete} for c in cs[:60]])\n" +
+                "    except Exception:\n" +
+                "        return '[]'\n",
+              );
+              jediOk = true;
+            })
+            .catch(function () { jediOk = false; });
+          return jediReady;
+        }
         function pipInstall(py, pkgs) {
-          if (!pkgs.length) return Promise.resolve();
+          if (!pkgs.length) return Promise.resolve({ ok: [], fail: [] });
           return py.loadPackage("micropip").then(function () {
             var mp = py.pyimport("micropip");
-            return pkgs.reduce(function (pr, pkg) { return pr.then(function () { return mp.install(pkg); }); }, Promise.resolve());
+            var okArr = [], failArr = [];
+            return pkgs.reduce(function (pr, pkg) {
+              return pr.then(function () {
+                return mp.install(pkg).then(function () { okArr.push(pkg); })
+                  .catch(function (e) {
+                    var m = e && e.message ? String(e.message).split("\n")[0] : "실패";
+                    failArr.push(pkg + " (" + m + ")");
+                  });
+              });
+            }, Promise.resolve()).then(function () { return { ok: okArr, fail: failArr }; });
           });
         }
         function runPython(code) {
@@ -541,13 +612,26 @@
               if (m) m[1].split(/[\s,]+/).filter(Boolean).forEach(function (p) { pipPkgs.push(p); });
             });
             py.loadPackagesFromImports(code).catch(function () {})
-              .then(function () { if (pipPkgs.length) { buf.push("📦 설치 중: " + pipPkgs.join(", ") + "\n"); flush(); return pipInstall(py, pipPkgs); } })
+              .then(function () {
+                if (pipPkgs.length) {
+                  buf.push("📦 설치 중: " + pipPkgs.join(", ") + "\n"); flush();
+                  return pipInstall(py, pipPkgs).then(function (r) {
+                    if (r.fail.length) { buf.push("⚠ 설치 실패: " + r.fail.join(", ") + "\n"); flush(); }
+                  });
+                }
+              })
               .then(function () { return py.runPythonAsync(code); })
               .then(function (result) {
                 if (result !== undefined && result !== null) { var r = result; try { r = result.toString(); } catch (e) {} buf.push("→ " + r); }
                 flush();
               })
-              .catch(function (e) { buf.push("⚠ " + (e && e.message ? e.message : e)); flush(); });
+              .catch(function (e) {
+                var msg = e && e.message ? String(e.message) : String(e);
+                buf.push("⚠ " + msg);
+                if (/ModuleNotFoundError|No module named/.test(msg))
+                  buf.push("\n💡 모듈이 없으면 '📦 pip' 버튼 또는 코드 첫 줄 '# pip install 모듈명' 으로 설치하세요.");
+                flush();
+              });
           }).catch(function (e) { out.textContent = "⚠ " + (e && e.message ? e.message : e); });
         }
         function pipPrompt() {
@@ -557,7 +641,13 @@
           showPanel("output"); out.textContent = "🐍 Python 런타임 준비 중…";
           loadPyodideOnce().then(function (py) {
             out.textContent = "📦 설치 중: " + pkgs.join(", ") + " …";
-            return pipInstall(py, pkgs).then(function () { out.textContent = "✓ 설치 완료: " + pkgs.join(", ") + "\nimport 해서 쓸 수 있어요."; flash("설치 완료"); });
+            return pipInstall(py, pkgs).then(function (r) {
+              var s = "";
+              if (r.ok.length) s += "✓ 설치 완료: " + r.ok.join(", ") + "\n";
+              if (r.fail.length) s += "⚠ 실패: " + r.fail.join(", ") + "\n";
+              out.textContent = (s || "완료\n") + "import 해서 쓸 수 있어요.";
+              flash(r.fail.length ? "일부 실패" : "설치 완료");
+            });
           }).catch(function (e) { out.textContent = "⚠ 설치 실패: " + (e && e.message ? e.message : e); });
         }
 
@@ -681,6 +771,13 @@
         // 키보드 단축키 (Monaco 명령)
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, saveOrLocal);
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, runCurrent);
+        function formatDoc() {
+          var a = editor.getAction("editor.action.formatDocument");
+          if (a) a.run().then(function () { editor.focus(); }, function () {});
+          else flash("이 언어는 포맷을 지원하지 않아요");
+        }
+        editor.addCommand(monaco.KeyMod.Shift | monaco.KeyMod.Alt | monaco.KeyCode.KeyF, formatDoc);
+        document.getElementById("stFormat").onclick = formatDoc;
 
         // 액티비티 바
         Array.prototype.forEach.call(document.querySelectorAll(".ide-activity [data-act]"), function (b) {

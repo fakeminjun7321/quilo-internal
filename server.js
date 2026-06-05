@@ -1643,14 +1643,18 @@ function estimatePdfTranslation(meta, mode, modelId) {
   const scanned = !!meta.scanned;
   const density = Number(meta.math_density) || 0;
   const AUTO_MATH_THRESHOLD = Number(process.env.PDF_AUTO_MATH_THRESHOLD || 12);
-  const needsRetypeset = scanned || density >= AUTO_MATH_THRESHOLD;
+  // 텍스트 PDF(in-place·재조판)는 페이지 상한이 있어 초과 시 거부된다.
+  const maxPages = parseInt(process.env.PDF_TRANSLATE_MAX_PAGES || "80", 10);
+  // 깨진 텍스트 레이어(리거처·상용 수식폰트 손상)는 재조판이라야 정확 — 단 페이지 상한 내일 때만.
+  const brokenLayer = !!meta.broken_text_layer;
+  const brokenFits = brokenLayer && pages <= maxPages;
+  const needsRetypeset =
+    scanned || density >= AUTO_MATH_THRESHOLD || brokenFits;
   const resolvedMode =
     mode === "retypeset" ? "retypeset" : needsRetypeset ? "retypeset" : "inplace";
   const isOpus = !/sonnet|haiku/i.test(modelId || "");
   const charTok = chars / 3.5;
   const ocrMax = parseInt(process.env.PDF_OCR_MAX_PAGES || "30", 10);
-  // 텍스트 PDF(in-place·재조판)는 페이지 상한이 있어 초과 시 거부된다.
-  const maxPages = parseInt(process.env.PDF_TRANSLATE_MAX_PAGES || "80", 10);
   const tooManyPages = !scanned && pages > maxPages;
 
   let inTok = 0;
@@ -1699,6 +1703,8 @@ function estimatePdfTranslation(meta, mode, modelId) {
     truncated,
     tooManyPages,
     maxPages,
+    brokenLayer,
+    brokenFits,
     costUsd: { lo: usd * 0.7, hi: usd * 1.45 },
     seconds: { lo: Math.round(seconds * 0.8), hi: Math.round(seconds * 1.55) },
   };
@@ -1894,17 +1900,35 @@ async function prepareScannedRouting(pdfBuffer, { signal, onProgress }) {
     let scanned = false;
     let mathDensity = 0;
     let twoColumn = false;
+    let brokenTextLayer = false;
+    let pageCount = 0;
     try {
       const a = await analyzePdf(pdfPath, { signal });
       scanned = !!a.scanned;
       mathDensity = Number(a.math_density) || 0;
       twoColumn = !!a.two_column;
+      brokenTextLayer = !!a.broken_text_layer;
+      pageCount = Number(a.page_count) || 0;
     } catch (e) {
       onProgress(`⚠ 텍스트 레이어 분석을 건너뜁니다: ${e.message}`);
-      return { scanned: false, imageBlocks: null, mathDensity: 0, twoColumn: false };
+      return {
+        scanned: false,
+        imageBlocks: null,
+        mathDensity: 0,
+        twoColumn: false,
+        brokenTextLayer: false,
+        pageCount: 0,
+      };
     }
     if (!scanned)
-      return { scanned: false, imageBlocks: null, mathDensity, twoColumn };
+      return {
+        scanned: false,
+        imageBlocks: null,
+        mathDensity,
+        twoColumn,
+        brokenTextLayer,
+        pageCount,
+      };
 
     onProgress(
       "🖼️ 텍스트 레이어가 없는 스캔/이미지 PDF 감지 → 고해상도 OCR 재조판으로 전환",
@@ -1948,6 +1972,7 @@ async function prepareScannedRouting(pdfBuffer, { signal, onProgress }) {
       pageCount: meta.page_count,
       mathDensity,
       twoColumn,
+      brokenTextLayer: false, // 스캔본은 어차피 재조판 — 깨짐 신호 무의미
     };
   } finally {
     try {
@@ -1992,28 +2017,49 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) 
     //   in-place 로는 수식이 깨지므로 재조판으로 강제 전환**(캐시된 옛 페이지/오선택
     //   방어 — 이런 문서에서 in-place 는 절대 좋은 결과가 안 나옴).
     const AUTO_MATH_THRESHOLD = Number(process.env.PDF_AUTO_MATH_THRESHOLD || 12);
+    const MAX_RETYPESET_PAGES = parseInt(
+      process.env.PDF_TRANSLATE_MAX_PAGES || "80",
+      10,
+    );
     const isAuto = mode !== "inplace" && mode !== "retypeset";
+    // 깨진 텍스트 레이어(본문 리거처 fi/fl→'#', 상용 수식폰트 MathematicalPi 의 그리스/
+    // 기호→'#'·직선따옴표 등 ToUnicode 손상): in-place 가 읽는 원천 텍스트가 깨져 있어
+    // 정적 보정으로는 복원 불가 → 재조판(렌더 화면을 Claude 가 재구성)이라야 정확하다.
+    // 단 재조판은 페이지 상한이 있어 너무 길면(상한 초과) 적용 못 하고 경고만 한다.
+    const brokenLayer = !!routing.brokenTextLayer;
+    const brokenFits =
+      brokenLayer && (routing.pageCount || 0) <= MAX_RETYPESET_PAGES;
     const needsRetypeset =
-      routing.scanned || (routing.mathDensity || 0) >= AUTO_MATH_THRESHOLD;
+      routing.scanned ||
+      (routing.mathDensity || 0) >= AUTO_MATH_THRESHOLD ||
+      brokenFits;
     let resolvedMode;
     if (mode === "retypeset") {
       resolvedMode = "retypeset";
     } else {
       resolvedMode = needsRetypeset ? "retypeset" : "inplace";
     }
+    const routeReason = routing.scanned
+      ? "스캔본"
+      : brokenFits
+        ? "텍스트 레이어 손상(리거처·수식폰트)"
+        : `수식밀도 ${routing.mathDensity ?? 0}`;
     if (mode === "inplace" && needsRetypeset) {
       pushProgress(
         job,
-        "⚠ 수식이 많은(또는 스캔) 문서는 '빠른 번역'으로 수식이 깨집니다 → '재조판'으로 자동 전환합니다." +
-          (routing.scanned ? " · 스캔본" : ` · 수식밀도 ${routing.mathDensity ?? 0}`),
+        `⚠ 이 문서는 '빠른 번역'으로는 수식·글자가 깨집니다 → '재조판'으로 자동 전환합니다. · ${routeReason}`,
       );
     } else if (isAuto) {
       pushProgress(
         job,
-        `🔎 자동 변환방식 → ${resolvedMode === "retypeset" ? "재조판(수식·정밀)" : "빠른 번역(레이아웃 유지)"}` +
-          (routing.scanned
-            ? " · 스캔본 감지"
-            : ` · 수식밀도 ${routing.mathDensity ?? 0}`),
+        `🔎 자동 변환방식 → ${resolvedMode === "retypeset" ? "재조판(수식·정밀)" : "빠른 번역(레이아웃 유지)"} · ${routeReason}`,
+      );
+    }
+    // 깨졌지만 페이지가 많아 재조판을 못 건 경우(in-place 유지) → 품질 경고.
+    if (brokenLayer && !brokenFits && resolvedMode === "inplace") {
+      pushProgress(
+        job,
+        `⚠ 텍스트 레이어가 손상된 문서입니다(리거처·수식폰트가 깨져 추출됨). 페이지가 많아(${routing.pageCount}쪽 > ${MAX_RETYPESET_PAGES}쪽) 재조판을 적용하지 못해 일부 글자·수식이 부정확할 수 있습니다.`,
       );
     }
 

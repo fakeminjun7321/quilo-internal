@@ -468,10 +468,20 @@ def cmd_analyze(pdf_path):
     doc = fitz.open(pdf_path)
     total = 0
     parts = []
+    math_font = False  # 상용 수식폰트(MathematicalPi/MathPi) 사용 여부 — ToUnicode 가 깨짐
     for page in doc:
         t = page.get_text("text") or ""
         total += len(t.strip())
         parts.append(t)
+        if not math_font:
+            try:
+                for f in page.get_fonts(full=False):
+                    fn = f[3] or ""  # basefont(PostScript) 이름
+                    if "MathematicalPi" in fn or "MathPiOne" in fn:
+                        math_font = True
+                        break
+            except Exception:
+                pass
     text = "\n".join(parts)
     n = len(doc)
     scanned = n > 0 and total < 20 * n
@@ -483,6 +493,17 @@ def cmd_analyze(pdf_path):
     eqs = text.count("=")
     math_score = greek * 3 + syms * 3 + subsup * 2 + eqs
     density = round((math_score / max(total, 1)) * 1000, 2)
+    # 깨진 텍스트 레이어 감지(자동 재조판 라우팅용).
+    #   일부 교재 PDF(예: Oxtoby)는 본문 Sabon 리거처(fi/fl)→'#', 상용 수식폰트
+    #   (MathematicalPi)의 그리스/기호→'#'·직선따옴표(") 처럼 ToUnicode 가 깨져 ASCII 로
+    #   추출된다. in-place 가 읽는 원천 텍스트가 깨져 있어 정적 보정으로는 정확 복원이
+    #   불가능 → 재조판(렌더 화면을 Claude 가 재구성)으로 보내야 정확하다.
+    #   신호: '#'·직선따옴표 밀도(정상 산문엔 거의 없음) ≥0.5/1000, 또는 상용 수식폰트
+    #   존재 + 약한 깨짐(≥0.2). (측정: Oxtoby 1.11 · principia 0.74 = 깨짐 / Transformer
+    #   0.18 · 상대성 0.0 = 정상 → 0.5 가 깔끔히 분리.)
+    broken_glyph = text.count("#") + text.count(chr(0x22))
+    broken_density = round((broken_glyph / max(total, 1)) * 1000, 2)
+    broken_text_layer = broken_density >= 0.5 or (math_font and broken_density >= 0.2)
     sys.stdout.write(
         json.dumps(
             {
@@ -492,6 +513,9 @@ def cmd_analyze(pdf_path):
                 "math_score": math_score,
                 "math_density": density,
                 "two_column": two_column,
+                "broken_glyph_density": broken_density,
+                "math_font": math_font,
+                "broken_text_layer": broken_text_layer,
             },
             ensure_ascii=False,
         )
@@ -846,12 +870,18 @@ def cmd_render(pdf_path, out_path, font_path):
                 if j == i:
                     continue
                 rj = crects[j]
+                # 오른쪽 이웃 → 가로 확장 한계. 세로로 조금이라도 같은 띠에 걸치면(0.10)
+                # 막는다 — 느슨하면(0.25) 수식 영역의 흩어진 블록이 서로를 못 보고 확장해 겹침.
                 oy = min(ri.y1, rj.y1) - max(ri.y0, rj.y0)
-                if rj.x0 >= ri.x1 - 1 and oy > 0.25 * min(ri.height, rj.height):
-                    bx = min(bx, rj.x0 - 2)  # 오른쪽 이웃 → 가로 확장 한계
+                if rj.x0 >= ri.x1 - 1 and oy > 0.10 * min(ri.height, rj.height):
+                    bx = min(bx, rj.x0 - 2)
+                # 아래 이웃 → 세로 확장 한계(가로로 조금이라도 겹치면 막는다).
                 ox = min(ri.x1, rj.x1) - max(ri.x0, rj.x0)
-                if rj.y0 >= ri.y1 - 1 and ox > 0.25 * min(ri.width, rj.width):
-                    by = min(by, rj.y0 - 1)  # 아래 이웃 → 세로 확장 한계
+                if rj.y0 >= ri.y1 - 1 and ox > 0.10 * min(ri.width, rj.width):
+                    by = min(by, rj.y0 - 2)
+            # 세로 확장은 원래 높이의 ~3배까지만(아래 이웃 미검출 시 runaway 방지 — 한
+            # 블록이 페이지 절반을 덮어 다른 글자 위로 흐르는 일 차단).
+            by = min(by, ri.y1 + 3.0 * max(ri.height, 8.0))
             bounds.append((max(bx, ri.x1), max(by, ri.y1)))
         # 1) 원문 글자만 지운다. images=NONE 으로 그림은 보존.
         #    밝은(흰색 계열) 글자 → fill 생략. 그 외엔 '바로 바깥' 정확 배경색으로 덮어

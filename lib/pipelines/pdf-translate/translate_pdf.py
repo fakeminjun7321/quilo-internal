@@ -30,22 +30,61 @@ from collections import defaultdict
 import fitz  # PyMuPDF
 
 
+def _first_span(block):
+    for ln in block.get("lines", []):
+        for sp in ln.get("spans", []):
+            if sp.get("text", "").strip():
+                return sp
+    return None
+
+
+def _merge_superscript_ions(blocks):
+    """위첨자 전하(H₂⁺의 '+', O₂⁻의 '−')가 별도 블록으로 떨어져 나와 앞 문단과
+    세로로 겹치는 경우, 앞 블록에 병합한다.
+
+    PyMuPDF 는 H₂⁺ 를 'H2'(본문) + '+'(작은 위첨자, 다음 문장까지 포함) 로 쪼개고,
+    '+' 블록의 bbox 는 본문 중간(겹침)에서 시작한다. 번역하면 짧아진 한국어가 위에서
+    끝나고 '+...' 블록은 원래 위치에서 그려져 **문단 사이에 큰 세로 빈칸**이 생기고
+    문장이 두 동강 난다. 두 블록을 합쳐 한 문단으로 번역·렌더하면 자연스럽게 흐른다."""
+    out = []
+    for blk in blocks:
+        sp = _first_span(blk)
+        lead = (sp.get("text", "").lstrip()[:1] if sp else "")
+        if out and lead and lead in "+-−":
+            ra = fitz.Rect(out[-1]["bbox"])
+            rb = fitz.Rect(blk["bbox"])
+            oy = min(ra.y1, rb.y1) - max(ra.y0, rb.y0)  # 세로 겹침(위첨자가 본문에 끼임)
+            ox = min(ra.x1, rb.x1) - max(ra.x0, rb.x0)  # 같은 단(가로 겹침)
+            prev_sz = dominant_size_color(out[-1])[0] or 10.0
+            small = (sp.get("size", 99) or 99) < 0.85 * prev_sz  # 위첨자(본문보다 작음)
+            if oy > 2 and ox > 0.3 * min(ra.width, rb.width) and small:
+                out[-1]["lines"] = out[-1].get("lines", []) + blk.get("lines", [])
+                out[-1]["bbox"] = [
+                    min(ra.x0, rb.x0), min(ra.y0, rb.y0),
+                    max(ra.x1, rb.x1), max(ra.y1, rb.y1),
+                ]
+                continue
+        out.append(blk)
+    return out
+
+
 def iter_text_blocks(doc):
     """type=0(텍스트) 블록을 두 모드에서 동일한 순서/id로 순회한다.
 
     span 이 없는 빈 블록과 이미지 블록(type=1)은 건너뛰되, id 카운터는
     '텍스트 블록'에 대해서만 증가시켜 extract/render 간 id 가 일치하게 한다.
+    위첨자 전하 분리 블록은 병합한다(extract/render 동일 로직 → id 일치 유지).
     """
     bid = 0
     for pno in range(len(doc)):
         page = doc[pno]
         data = page.get_text("dict")
-        for block in data.get("blocks", []):
-            if block.get("type") != 0:
-                continue
-            lines = block.get("lines") or []
-            if not any(ln.get("spans") for ln in lines):
-                continue
+        text_blocks = [
+            b
+            for b in data.get("blocks", [])
+            if b.get("type") == 0 and any(ln.get("spans") for ln in (b.get("lines") or []))
+        ]
+        for block in _merge_superscript_ions(text_blocks):
             yield bid, pno, block
             bid += 1
 
@@ -342,31 +381,39 @@ def has_letters(s):
     return any(ch.isalpha() for ch in s)
 
 
-def _is_symbol_label(block, max_len=10):
-    """짧고 수식폰트 기호를 포함하며 '단어'가 없는 블록 = 오비탈/기호 라벨
-    (예: 1σg, 3σ*u, 1πu, σg1s). 디지트+g/u 첨자가 섞여 기호 비중은 낮지만 라벨이다.
+# 수식 신호: 그리스·연산자·괄호조각·관계기호 등(수식폰트 외 ASCII 로 추출되는 식 대비).
+_MATH_SIGN = re.compile(r"[Α-Ωα-ωϑϕϱ϶ϰ=±×÷√∞∫∑∏∂∇≤≥≈≠≡⎛⎝⎞⎠⎜⎟⌈⌉⌊⌋·−→←↔⇌]")
 
-    이런 라벨은 번역이 불필요하고(σ/π 는 한국어도 동일), 깨진 추출+서브셋 충돌로
-    ψ/φ 처럼 오역될 위험이 크다. 추출에서 제외하면 재그리기를 안 해 **원본 글리프가
-    그대로** 보여(σ/π 정확) 그림·본문 기호 라벨이 깨지지 않는다."""
-    has_math = False
-    chars = []
+
+def _keep_original_block(block):
+    """번역하지 않고 **원본 글리프를 그대로 둘** 블록인지 판정.
+
+    원칙(사용자 피드백): 문장 안 인라인 수식은 평소대로 번역하고, **독립(중앙배열)
+    수식·기호 라벨은 원본 그대로 둔다**. 구분 신호는 '본문 단어 유무':
+      - 영문 3글자+ 연속 단어가 있으면 = 문장(인라인 수식 포함) → 번역(False).
+      - 단어가 없고 수식/기호(수식폰트 또는 그리스·연산자·괄호조각·= 등)가 있으면
+        = 독립 표시수식([6.1] 같은 박스 식)·오비탈 라벨(1σg)·수식 조각 → 원본 유지(True).
+    원본 유지하면 재그리기를 안 해, 2D 식이 흩어져 깨지던 표시 수식이 원본대로 보인다."""
+    has_math_font = False
+    has_sign = False
+    nchar = 0
     for ln in block.get("lines", []):
         for sp in ln.get("spans", []):
-            is_math = any(k in sp.get("font", "") for k in _MATH_FONT_KEYS)
-            for c in sp.get("text", ""):
-                if c.isspace():
-                    continue
-                chars.append(c)
-                if len(chars) > max_len + 2:
-                    return False  # 길면 일반 본문 — 라벨 아님
-                if is_math:
-                    has_math = True
-    if not chars or not has_math:
+            fn = sp.get("font", "")
+            txt = _fix_span_text(fn, sp.get("text", ""))  # 디코드 후 판정
+            nchar += sum(1 for c in txt if not c.isspace())
+            # 단어 판정은 '한 span 안의 3글자+ 연속'으로 — 흩어진 수식 글자(R,V,V 가
+            # 각각 별도 span)는 단어가 아니고, 진짜 단어(quantum)는 한 span 이다.
+            if re.search(r"[A-Za-z]{3,}", txt) or re.search(r"[가-힣]", txt):
+                return False  # 본문 문장(인라인 수식 포함) → 번역
+            if any(k in fn for k in _MATH_FONT_KEYS):
+                has_math_font = True
+            if _MATH_SIGN.search(txt):
+                has_sign = True
+    if not nchar:
         return False
-    s = "".join(chars)
-    # 3글자 이상 연속 ASCII 알파벳(=단어)이 있으면 본문 문장 — 라벨 아님.
-    if re.search(r"[A-Za-z]{3,}", s):
+    # 수식/기호 신호가 있어야 '식' — 단순 숫자·문장부호(2 225, [6.1])는 번역(원본유지 아님).
+    if not has_math_font and not has_sign:
         return False
     return True
 
@@ -581,8 +628,8 @@ def cmd_extract(pdf_path):
         text = block_text(block, regs)
         if not text or not has_letters(text):
             continue  # 모든 줄이 그림 영역이면 text 가 비어 자동 제외(그래프 라벨 등)
-        if _is_symbol_label(block):
-            continue  # 기호/오비탈 라벨(1σg 등) → 원본 글리프 유지(재그리기·오역 방지)
+        if _keep_original_block(block):
+            continue  # 독립 표시수식·기호/오비탈 라벨([6.1]·1σg 등) → 원본 유지(재그리기·오역 방지)
         total_text_chars += len(text)  # scanned 판정엔 모든 글자 포함
         # 그림 근처의 '짧은' 블록(축 끝 라벨 RAB 등)은 그대로 영어로 둔다.
         # 번역 대상 줄들만의 bbox 로 판정(그림 줄은 이미 빠짐).

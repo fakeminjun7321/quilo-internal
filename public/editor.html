@@ -253,6 +253,7 @@
         <span id="stRun" title="실행 (Ctrl/⌘+Enter)">▶ 실행</span>
         <span id="stSave" title="디스크에 저장 (Ctrl/⌘+S)">💾 저장</span>
         <span id="stDownload" title="현재 파일 다운로드">⬇ 다운로드</span>
+        <span id="stPip" title="Python 패키지 설치 (pip / micropip)">📦 pip</span>
         <span id="stMsg"></span>
         <span style="flex:1"></span>
         <span id="stPos">Ln 1, Col 1</span>
@@ -539,6 +540,82 @@
         });
         document.getElementById("idePanelClose").onclick = function () { panel.style.display = "none"; cm.refresh(); };
 
+        // ── Python 실행 (Pyodide: 브라우저 내 CPython + pip/micropip) ──
+        var PYODIDE_VER = "0.26.4";
+        var pyReady = null;
+        function loadPyodideOnce() {
+          if (pyReady) return pyReady;
+          out.textContent = "🐍 Python 런타임(Pyodide) 로딩 중… 최초 1회만, 수십 초 걸릴 수 있어요.";
+          showPanel("output");
+          pyReady = new Promise(function (resolve, reject) {
+            var s = document.createElement("script");
+            s.src = "https://cdn.jsdelivr.net/pyodide/v" + PYODIDE_VER + "/full/pyodide.js";
+            s.onload = function () {
+              loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v" + PYODIDE_VER + "/full/" })
+                .then(resolve)
+                .catch(reject);
+            };
+            s.onerror = function () { reject(new Error("Pyodide 로드 실패(네트워크 확인)")); };
+            document.head.appendChild(s);
+          });
+          return pyReady;
+        }
+        function pipInstall(py, pkgs) {
+          if (!pkgs.length) return Promise.resolve();
+          return py.loadPackage("micropip").then(function () {
+            var mp = py.pyimport("micropip");
+            return pkgs.reduce(function (pr, pkg) {
+              return pr.then(function () { return mp.install(pkg); });
+            }, Promise.resolve());
+          });
+        }
+        function runPython(code) {
+          showPanel("output");
+          loadPyodideOnce().then(function (py) {
+            out.textContent = "실행 중…";
+            var buf = [];
+            function flush() { out.textContent = buf.join("") || "(출력 없음)"; }
+            try {
+              py.setStdout({ batched: function (s) { buf.push(s + "\n"); flush(); } });
+              py.setStderr({ batched: function (s) { buf.push(s + "\n"); flush(); } });
+            } catch (e) {}
+            // 매직 주석: "# pip install a b"  /  "# pip: a, b"  /  "# requirements: a b"
+            var pipPkgs = [];
+            code.split("\n").slice(0, 40).forEach(function (line) {
+              var m = line.match(/^#\s*(?:pip\s+install|pip\s*[:=]|requirements?\s*[:=])\s*(.+)$/i);
+              if (m) m[1].split(/[\s,]+/).filter(Boolean).forEach(function (p) { pipPkgs.push(p); });
+            });
+            py.loadPackagesFromImports(code).catch(function () {})
+              .then(function () {
+                if (pipPkgs.length) { buf.push("📦 설치 중: " + pipPkgs.join(", ") + "\n"); flush(); return pipInstall(py, pipPkgs); }
+              })
+              .then(function () { return py.runPythonAsync(code); })
+              .then(function (result) {
+                if (result !== undefined && result !== null) {
+                  var r = result; try { r = result.toString(); } catch (e) {}
+                  buf.push("→ " + r);
+                }
+                flush();
+              })
+              .catch(function (e) { buf.push("⚠ " + (e && e.message ? e.message : e)); flush(); });
+          }).catch(function (e) { out.textContent = "⚠ " + (e && e.message ? e.message : e); });
+        }
+        function pipPrompt() {
+          var inp = window.prompt("설치할 Python 패키지 이름 (공백/콤마로 여러 개)\n예: numpy pandas requests", "");
+          if (!inp) return;
+          var pkgs = inp.split(/[\s,]+/).filter(Boolean);
+          if (!pkgs.length) return;
+          showPanel("output");
+          out.textContent = "🐍 Python 런타임 준비 중…";
+          loadPyodideOnce().then(function (py) {
+            out.textContent = "📦 설치 중: " + pkgs.join(", ") + " …";
+            return pipInstall(py, pkgs).then(function () {
+              out.textContent = "✓ 설치 완료: " + pkgs.join(", ") + "\n이제 코드에서 import 해서 쓸 수 있어요.";
+              flash("설치 완료");
+            });
+          }).catch(function (e) { out.textContent = "⚠ 설치 실패: " + (e && e.message ? e.message : e); });
+        }
+
         function runCurrent() {
           hideWelcome();
           var code = cm.getValue(), l = currentLang();
@@ -560,12 +637,15 @@
             showPanel("output");
           } else if (l === "htmlmixed") {
             frame.srcdoc = code; showPanel("preview");
+          } else if (l === "python") {
+            runPython(code);
           } else {
-            out.textContent = "이 언어(" + (LANGS[l] ? LANGS[l].label : l) + ")는 브라우저에서 실행할 수 없어요. JavaScript나 HTML로 해보세요.";
+            out.textContent = "이 언어(" + (LANGS[l] ? LANGS[l].label : l) + ")는 브라우저 실행을 지원하지 않아요(편집·하이라이트만). JavaScript·HTML·Python을 써보세요.";
             showPanel("output");
           }
         }
         document.getElementById("stRun").onclick = runCurrent;
+        document.getElementById("stPip").onclick = pipPrompt;
 
         // 미니맵
         var minimap = document.getElementById("ideMinimap"), miniCode = document.getElementById("ideMiniCode"), miniView = document.getElementById("ideMiniView"), miniContentH = 0;

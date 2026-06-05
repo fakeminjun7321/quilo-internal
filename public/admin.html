@@ -757,40 +757,24 @@
           input.value = "";
           busy = true;
           send.disabled = true;
-          var b = bubble("ai", "…");
+          var b = bubble("ai", "분석 중…");
           fetch("/api/admin/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ messages: msgs.slice(-8) }),
           })
             .then(function (r) {
-              if (!r.ok || !r.body) {
-                return r
-                  .json()
-                  .catch(function () {
-                    return {};
-                  })
-                  .then(function (j) {
-                    throw new Error(j.error || "오류가 발생했어요.");
-                  });
-              }
-              var rd = r.body.getReader(),
-                dec = new TextDecoder(),
-                acc = "";
-              function pump() {
-                return rd.read().then(function (x) {
-                  if (x.done) return acc;
-                  acc += dec.decode(x.value, { stream: true });
-                  b.textContent = acc;
-                  box.scrollTop = box.scrollHeight;
-                  return pump();
-                });
-              }
-              return pump();
+              return r.json().then(function (j) {
+                return { ok: r.ok, j: j };
+              });
             })
-            .then(function (acc) {
-              if (!acc || !acc.trim()) b.textContent = "(응답이 없습니다.)";
-              else msgs.push({ role: "assistant", content: acc });
+            .then(function (o) {
+              if (!o.ok)
+                throw new Error((o.j && o.j.error) || "오류가 발생했어요.");
+              var ans = (o.j && o.j.answer) || "(응답이 없습니다.)";
+              b.textContent = ans;
+              box.scrollTop = box.scrollHeight;
+              msgs.push({ role: "assistant", content: ans });
             })
             .catch(function (e) {
               b.style.cssText +=

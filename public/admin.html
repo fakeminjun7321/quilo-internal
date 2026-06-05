@@ -32,6 +32,105 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/htmlmixed/htmlmixed.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/markdown/markdown.min.js"></script>
+    <!-- VS Code 스타일 에디터: CodeMirror 애드온 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/foldgutter.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/dialog/dialog.min.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closebrackets.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closetag.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/foldcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/foldgutter.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/brace-fold.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/xml-fold.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/indent-fold.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/comment-fold.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/selection/active-line.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/search/searchcursor.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/search/search.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/search/jump-to-line.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/dialog/dialog.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/comment/comment.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/anyword-hint.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/keymap/sublime.min.js"></script>
+    <style>
+      /* ── VS Code 스타일 코드 에디터 ── */
+      #adminEditorSection .ide{display:flex;flex-direction:column;height:560px;border:1px solid #2b2b2b;border-radius:10px;overflow:hidden;background:#1e1e1e;color:#ccc;font-family:Menlo,Consolas,"Courier New",monospace}
+      #adminEditorSection .ide-top{display:flex;flex:1;min-height:0}
+      #adminEditorSection .ide-activity{width:48px;background:#333;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0;flex:0 0 auto}
+      #adminEditorSection .ide-activity button{width:40px;height:40px;background:none;border:none;color:#858585;font-size:18px;cursor:pointer;border-left:2px solid transparent}
+      #adminEditorSection .ide-activity button:hover{color:#fff}
+      #adminEditorSection .ide-activity button.on{color:#fff;border-left-color:#007acc}
+      #adminEditorSection .ide-side{width:200px;background:#252526;overflow:auto;flex:0 0 auto;border-right:1px solid #1a1a1a}
+      #adminEditorSection .ide-side-head{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#bbb}
+      #adminEditorSection .ide-side-head button{background:none;border:none;color:#bbb;font-size:17px;cursor:pointer;line-height:1}
+      #adminEditorSection .ide-file{padding:4px 12px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#ccc;font-size:13px}
+      #adminEditorSection .ide-file:hover{background:#2a2d2e}
+      #adminEditorSection .ide-file.on{background:#37373d}
+      #adminEditorSection .ide-main{flex:1;display:flex;flex-direction:column;min-width:0}
+      #adminEditorSection .ide-tabs{display:flex;background:#252526;height:36px;overflow-x:auto;flex:0 0 auto}
+      #adminEditorSection .ide-tab{display:flex;align-items:center;gap:6px;padding:0 10px;height:36px;background:#2d2d2d;color:#969696;border-right:1px solid #1a1a1a;cursor:pointer;white-space:nowrap;font-size:12.5px}
+      #adminEditorSection .ide-tab.on{background:#1e1e1e;color:#fff;box-shadow:inset 0 2px 0 #007acc}
+      #adminEditorSection .ide-tab-ic{font-size:10px}
+      #adminEditorSection .ide-tab-x{opacity:.5;font-size:15px;width:16px;text-align:center;border-radius:4px}
+      #adminEditorSection .ide-tab-x:hover{opacity:1;background:#ffffff22}
+      #adminEditorSection .ide-editorhost{flex:1;min-height:0;overflow:hidden}
+      #adminEditorSection .ide .CodeMirror{height:100%;font-family:Menlo,Consolas,monospace;font-size:13.5px;line-height:1.5}
+      #adminEditorSection .ide-panel{height:185px;flex:0 0 auto;display:flex;flex-direction:column;border-top:1px solid #2b2b2b;background:#1e1e1e}
+      #adminEditorSection .ide-panel-tabs{display:flex;align-items:center;gap:2px;height:30px;background:#252526;padding:0 6px;flex:0 0 auto}
+      #adminEditorSection .ide-panel-tabs button{background:none;border:none;color:#969696;font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;padding:6px 10px;cursor:pointer;border-bottom:1px solid transparent}
+      #adminEditorSection .ide-panel-tabs button.on{color:#fff;border-bottom-color:#007acc}
+      #adminEditorSection .ide-panel-body{flex:1;min-height:0;position:relative}
+      #adminEditorSection .ide-pane{display:none;position:absolute;inset:0;width:100%;height:100%;margin:0;overflow:auto;box-sizing:border-box}
+      #adminEditorSection .ide-pane.on{display:block}
+      #adminEditorSection pre#ceOut{padding:10px 12px;color:#d4d4d4;font-family:Menlo,Consolas,monospace;font-size:12.5px;white-space:pre-wrap;word-break:break-word}
+      #adminEditorSection iframe#ceFrame{border:none;background:#fff}
+      #adminEditorSection #ceAi{padding:10px 12px}
+      #adminEditorSection .ide-statusbar{height:24px;flex:0 0 auto;background:#007acc;color:#fff;display:flex;align-items:center;gap:14px;padding:0 12px;font-size:12px;font-family:-apple-system,system-ui,sans-serif}
+      #adminEditorSection .ide-statusbar #stRun{cursor:pointer;font-weight:600}
+      #adminEditorSection .ide-statusbar #stMsg{color:#cfe9ff}
+      #adminEditorSection .ide-statusbar select.ide-lang{background:transparent;color:#fff;border:none;font:inherit;font-size:12px;cursor:pointer}
+      #adminEditorSection .ide-statusbar select.ide-lang option{color:#000}
+      #adminEditorSection #ceAi select,#adminEditorSection #ceAi textarea{background:#3c3c3c;color:#e4e4e4;border:1px solid #555;border-radius:5px;font:inherit;font-size:13px;padding:6px 8px}
+      #adminEditorSection #ceAi textarea{width:100%;box-sizing:border-box;resize:vertical}
+      #adminEditorSection #ceAi .ide-ai-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
+      #adminEditorSection #ceAi button#caGo{background:#0e639c;color:#fff;border:none;border-radius:5px;padding:7px 14px;font-weight:600;cursor:pointer}
+      #adminEditorSection #ceAi #caText{background:#252526;border:1px solid #3c3c3c;border-radius:6px;padding:9px 11px;color:#d4d4d4;white-space:pre-wrap;word-break:break-word;max-height:200px;overflow:auto;font-size:12.5px;line-height:1.5}
+      #adminEditorSection #ceAi #caActions{margin-top:7px;display:flex;gap:6px;flex-wrap:wrap}
+      #adminEditorSection #ceAi #caActions button{background:#3c3c3c;color:#e4e4e4;border:1px solid #555;border-radius:5px;padding:5px 10px;font-size:12px;cursor:pointer}
+      #adminEditorSection #ceAi label{color:#bbb;font-size:12px;display:flex;align-items:center;gap:5px}
+      /* VS Code Dark+ 토큰/구조 색 (material-darker 위에 덮기) */
+      #adminEditorSection .cm-s-material-darker.CodeMirror{background:#1e1e1e;color:#d4d4d4}
+      #adminEditorSection .cm-s-material-darker .CodeMirror-gutters{background:#1e1e1e;border:none}
+      #adminEditorSection .cm-s-material-darker .CodeMirror-linenumber{color:#858585}
+      #adminEditorSection .cm-s-material-darker .CodeMirror-cursor{border-left:2px solid #aeafad}
+      #adminEditorSection .cm-s-material-darker .CodeMirror-activeline-background{background:#2a2d2e}
+      #adminEditorSection .cm-s-material-darker .CodeMirror-selected{background:#264f78 !important}
+      #adminEditorSection .cm-s-material-darker .CodeMirror-matchingbracket{color:#ffd700 !important;border-bottom:1px solid #ffd700}
+      #adminEditorSection .cm-s-material-darker .cm-keyword{color:#569cd6}
+      #adminEditorSection .cm-s-material-darker .cm-def{color:#dcdcaa}
+      #adminEditorSection .cm-s-material-darker .cm-variable{color:#9cdcfe}
+      #adminEditorSection .cm-s-material-darker .cm-variable-2{color:#9cdcfe}
+      #adminEditorSection .cm-s-material-darker .cm-property{color:#dcdcaa}
+      #adminEditorSection .cm-s-material-darker .cm-string{color:#ce9178}
+      #adminEditorSection .cm-s-material-darker .cm-string-2{color:#ce9178}
+      #adminEditorSection .cm-s-material-darker .cm-number{color:#b5cea8}
+      #adminEditorSection .cm-s-material-darker .cm-comment{color:#6a9955;font-style:italic}
+      #adminEditorSection .cm-s-material-darker .cm-atom{color:#569cd6}
+      #adminEditorSection .cm-s-material-darker .cm-operator{color:#d4d4d4}
+      #adminEditorSection .cm-s-material-darker .cm-tag{color:#569cd6}
+      #adminEditorSection .cm-s-material-darker .cm-attribute{color:#9cdcfe}
+      #adminEditorSection .cm-s-material-darker .cm-builtin{color:#4ec9b0}
+      #adminEditorSection .cm-s-material-darker .cm-type{color:#4ec9b0}
+      #adminEditorSection .cm-s-material-darker .CodeMirror-foldmarker{color:#ffd700;background:#333;border-radius:3px;padding:0 4px;text-shadow:none}
+      #adminEditorSection .CodeMirror-dialog{background:#252526;color:#ccc;border-color:#454545}
+      #adminEditorSection .CodeMirror-dialog input{background:#3c3c3c;color:#fff;border:1px solid #555;outline:none}
+      .CodeMirror-hints{background:#252526;border:1px solid #454545;color:#d4d4d4;z-index:99999;font-family:Menlo,Consolas,monospace;font-size:13px}
+      .CodeMirror-hint{color:#d4d4d4}
+      li.CodeMirror-hint-active{background:#094771;color:#fff}
+      @media (max-width:640px){#adminEditorSection .ide-side{display:none}#adminEditorSection .ide{height:480px}}
+    </style>
     <style>
       #adminTabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 16px; }
       #adminTabs button.atab { font: inherit; font-size: 13px; font-weight: 600; padding: 8px 14px; border: 1px solid #d8e0ee; background: #fff; color: #475569; border-radius: 9px; cursor: pointer; }
@@ -201,41 +300,68 @@
 
     <section class="settings-card" id="adminEditorSection">
       <h2>🧩 코드 에디터</h2>
-      <p class="hint">간단한 코드 편집기(언어별 하이라이트). JavaScript는 ▶ 실행, HTML은 미리보기, 그 외는 편집·하이라이트만. 모두 브라우저 안에서만 동작합니다.</p>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
-        <select id="ceLang" style="padding:7px 10px;border:1px solid #d7dbe8;border-radius:8px;font:inherit">
-          <option value="javascript">JavaScript</option>
-          <option value="htmlmixed">HTML</option>
-          <option value="css">CSS</option>
-          <option value="python">Python</option>
-          <option value="markdown">Markdown</option>
-          <option value="application/json">JSON</option>
-        </select>
-        <button id="ceRun" class="secondary compact">▶ 실행</button>
-        <button id="ceClear" class="secondary compact">지우기</button>
-        <span class="hint" id="ceHint" style="margin-left:auto"></span>
-      </div>
-      <textarea id="ceArea"></textarea>
-      <div id="ceOut" style="margin-top:8px;background:#0f172a;color:#e2e8f0;border-radius:8px;padding:10px 12px;font-family:ui-monospace,Menlo,monospace;font-size:12.5px;white-space:pre-wrap;max-height:220px;overflow:auto;display:none"></div>
-      <iframe id="ceFrame" title="미리보기" style="margin-top:8px;width:100%;height:280px;border:1px solid #e6e8f0;border-radius:8px;background:#fff;display:none"></iframe>
-
-      <!-- AI 코딩 도우미 (하이브리드: 무료 Groq + 유료 Claude, 모델 선택) -->
-      <div id="caBox" style="margin-top:16px;border-top:1px dashed #d7dbe8;padding-top:14px">
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-          <strong style="font-size:14px">✨ AI 코딩 도우미</strong>
-          <select id="caModel" title="모델 선택(무료/유료)" style="padding:6px 9px;border:1px solid #d7dbe8;border-radius:8px;font:inherit;font-size:13px;max-width:280px"></select>
-          <span class="hint" id="caHint" style="margin-left:auto"></span>
-        </div>
-        <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap">
-          <textarea id="caPrompt" rows="2" placeholder="예: 이 코드 버그 고쳐줘 · 배열 중복 제거 함수 짜줘 · 이 함수 설명해줘   (Ctrl/⌘+Enter 로 생성)" style="flex:1;min-width:240px;padding:9px 11px;border:1px solid #d7dbe8;border-radius:8px;font:inherit;font-size:13.5px;resize:vertical"></textarea>
-          <div style="display:flex;gap:7px;flex-direction:column;align-items:stretch">
-            <label style="font-size:12px;color:#475569;display:flex;align-items:center;gap:5px;white-space:nowrap"><input type="checkbox" id="caUseCode" checked> 현재 코드 첨부</label>
-            <button id="caGo" style="background:#243ba2;color:#fff;border:none;border-radius:8px;padding:9px 18px;font:inherit;font-weight:600;cursor:pointer">✨ 생성</button>
+      <p class="hint">브라우저 안에서 동작하는 VS Code 스타일 편집기 — 여러 파일·탭, 자동완성(Ctrl/⌘+Space), 찾기(Ctrl/⌘+F), 주석 토글(Ctrl/⌘+/), 저장(Ctrl/⌘+S), 멀티커서. JS는 ▶ 실행, HTML은 미리보기.</p>
+      <div id="ide" class="ide">
+        <div class="ide-top">
+          <div class="ide-activity">
+            <button data-act="explorer" class="on" title="탐색기">🗂</button>
+            <button data-act="run" title="실행 (Ctrl/⌘+Enter)">▶</button>
+            <button data-act="ai" title="AI 도우미">✨</button>
+          </div>
+          <div class="ide-side" id="ideSide">
+            <div class="ide-side-head"><span>탐색기</span><button id="ideNewFile" title="새 파일">＋</button></div>
+            <div id="ideFiles"></div>
+          </div>
+          <div class="ide-main">
+            <div class="ide-tabs" id="ideTabs"></div>
+            <div class="ide-editorhost"><textarea id="ceArea"></textarea></div>
+            <div class="ide-panel" id="idePanel">
+              <div class="ide-panel-tabs">
+                <button data-panel="output" class="on">출력</button>
+                <button data-panel="preview">미리보기</button>
+                <button data-panel="ai">✨ AI 도우미</button>
+                <span style="flex:1"></span>
+                <button id="idePanelClose" title="패널 접기">▾</button>
+              </div>
+              <div class="ide-panel-body">
+                <pre id="ceOut" class="ide-pane on">▶ 실행(또는 Ctrl/⌘+Enter)을 누르면 결과가 여기에 표시됩니다.</pre>
+                <iframe id="ceFrame" class="ide-pane" title="미리보기"></iframe>
+                <div id="ceAi" class="ide-pane">
+                  <div class="ide-ai-row">
+                    <select id="caModel" title="AI 모델(무료/유료)"></select>
+                    <span id="caHint" style="color:#9aa;font-size:12px"></span>
+                  </div>
+                  <div class="ide-ai-row">
+                    <textarea id="caPrompt" rows="2" placeholder="예: 이 코드 버그 고쳐줘 · 함수 짜줘 · 설명해줘   (Ctrl/⌘+Enter)"></textarea>
+                  </div>
+                  <div class="ide-ai-row">
+                    <label><input type="checkbox" id="caUseCode" checked /> 현재 파일 첨부</label>
+                    <button id="caGo">✨ 생성</button>
+                  </div>
+                  <div id="caResult" style="display:none">
+                    <div id="caText"></div>
+                    <div id="caActions"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-        <div id="caResult" style="margin-top:10px;display:none">
-          <div id="caText" style="background:#f8fafc;border:1px solid #e6e8f0;border-radius:8px;padding:10px 12px;font-size:13px;line-height:1.55;white-space:pre-wrap;word-break:break-word;max-height:300px;overflow:auto"></div>
-          <div id="caActions" style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"></div>
+        <div class="ide-statusbar">
+          <span id="stRun" title="실행">▶ 실행</span>
+          <span id="stMsg"></span>
+          <span style="flex:1"></span>
+          <span id="stPos">Ln 1, Col 1</span>
+          <span>Spaces: 2</span>
+          <select id="ceLang" class="ide-lang" title="언어">
+            <option value="javascript">JavaScript</option>
+            <option value="htmlmixed">HTML</option>
+            <option value="css">CSS</option>
+            <option value="python">Python</option>
+            <option value="markdown">Markdown</option>
+            <option value="application/json">JSON</option>
+          </select>
+          <span>UTF-8</span>
         </div>
       </div>
     </section>
@@ -1087,68 +1213,304 @@
         function initEditor() {
           if (cmReady) return;
           cmReady = true;
-          var hint = document.getElementById("ceHint");
           if (typeof CodeMirror === "undefined") {
-            hint.textContent = "에디터 로드 실패(네트워크 확인)";
+            var ideEl = document.getElementById("ide");
+            if (ideEl)
+              ideEl.innerHTML =
+                '<div style="padding:16px;color:#bbb">에디터 로드 실패(네트워크 확인)</div>';
             return;
           }
+
+          var LANGS = {
+            javascript: { label: "JavaScript", mode: "javascript", ext: "js" },
+            htmlmixed: { label: "HTML", mode: "htmlmixed", ext: "html" },
+            css: { label: "CSS", mode: "css", ext: "css" },
+            python: { label: "Python", mode: "python", ext: "py" },
+            markdown: { label: "Markdown", mode: "markdown", ext: "md" },
+            "application/json": { label: "JSON", mode: "application/json", ext: "json" },
+          };
+          function modeOf(l) {
+            return LANGS[l] ? LANGS[l].mode : "javascript";
+          }
+          function langOfName(name) {
+            var ext = (String(name).split(".").pop() || "").toLowerCase();
+            for (var k in LANGS) if (LANGS[k].ext === ext) return k;
+            return "javascript";
+          }
+          function iconFor(l) {
+            return (
+              {
+                javascript: "🟨",
+                htmlmixed: "🟧",
+                css: "🟦",
+                python: "🐍",
+                markdown: "📝",
+                "application/json": "🔧",
+              }[l] || "📄"
+            );
+          }
+
           var langSel = document.getElementById("ceLang");
           var out = document.getElementById("ceOut");
           var frame = document.getElementById("ceFrame");
-          var saved = "";
+          var tabsEl = document.getElementById("ideTabs");
+          var filesEl = document.getElementById("ideFiles");
+          var statusPos = document.getElementById("stPos");
+          var stMsg = document.getElementById("stMsg");
+          var panel = document.getElementById("idePanel");
+
+          // ── 파일 모델(localStorage 영속) ──
+          var files, active;
           try {
-            saved = localStorage.getItem("ceCode") || "";
-          } catch (e) {}
-          if (!saved)
-            saved = '// 여기에 코드를 작성하고 ▶ 실행\nconsole.log("안녕, Quilo!");\n';
+            files = JSON.parse(localStorage.getItem("ceFiles") || "null");
+          } catch (e) {
+            files = null;
+          }
+          if (!files || !files.length) {
+            var legacy = "";
+            try {
+              legacy = localStorage.getItem("ceCode") || "";
+            } catch (e) {}
+            files = [
+              {
+                name: "scratch.js",
+                content:
+                  legacy ||
+                  '// VS Code 스타일 에디터 — 여러 파일·탭·자동완성(Ctrl/⌘+Space)\nconsole.log("안녕, Quilo!");\n',
+              },
+            ];
+          }
+          try {
+            active = parseInt(localStorage.getItem("ceActive"), 10) || 0;
+          } catch (e) {
+            active = 0;
+          }
+          if (active < 0 || active >= files.length) active = 0;
+          files.forEach(function (f) {
+            f.lang = f.lang || langOfName(f.name);
+            f.doc = CodeMirror.Doc(f.content || "", modeOf(f.lang));
+          });
+
           var cm = CodeMirror.fromTextArea(document.getElementById("ceArea"), {
             lineNumbers: true,
-            mode: "javascript",
             theme: "material-darker",
             indentUnit: 2,
             tabSize: 2,
-            lineWrapping: true,
+            lineWrapping: false,
+            matchBrackets: true,
+            autoCloseBrackets: true,
+            autoCloseTags: true,
+            styleActiveLine: true,
+            foldGutter: true,
+            gutters: ["CodeMirror-linenumbers", "CodeMirror-foldgutter"],
+            keyMap: "sublime",
+            extraKeys: {
+              "Ctrl-Space": "autocomplete",
+              "Cmd-Space": "autocomplete",
+              "Ctrl-/": "toggleComment",
+              "Cmd-/": "toggleComment",
+              "Ctrl-S": function () {
+                persist();
+                flash("저장됨");
+              },
+              "Cmd-S": function () {
+                persist();
+                flash("저장됨");
+              },
+              "Ctrl-Enter": function () {
+                runCurrent();
+              },
+              "Cmd-Enter": function () {
+                runCurrent();
+              },
+            },
           });
-          cm.setValue(saved);
           window.__ceCM = cm;
-          try {
-            var sl = localStorage.getItem("ceLang");
-            if (sl) langSel.value = sl;
-          } catch (e) {}
-          cm.setOption("mode", langSel.value);
-          cm.on("change", function () {
-            try {
-              localStorage.setItem("ceCode", cm.getValue());
-            } catch (e) {}
-          });
-          function updateHint() {
-            var l = langSel.value;
-            hint.textContent =
-              l === "javascript"
-                ? "JavaScript — ▶ 실행하면 결과가 아래에"
-                : l === "htmlmixed"
-                  ? "HTML — ▶ 실행하면 아래에 미리보기"
-                  : "이 언어는 편집·하이라이트만 (실행 미지원)";
+
+          function currentLang() {
+            return files[active] ? files[active].lang : "javascript";
           }
-          langSel.onchange = function () {
-            cm.setOption("mode", langSel.value);
+          function persist() {
             try {
-              localStorage.setItem("ceLang", langSel.value);
+              localStorage.setItem(
+                "ceFiles",
+                JSON.stringify(
+                  files.map(function (f) {
+                    return {
+                      name: f.name,
+                      lang: f.lang,
+                      content: f.doc.getValue(),
+                    };
+                  })
+                )
+              );
+              localStorage.setItem("ceActive", String(active));
             } catch (e) {}
-            updateHint();
-          };
-          updateHint();
-          document.getElementById("ceClear").onclick = function () {
-            cm.setValue("");
-            out.style.display = "none";
-            frame.style.display = "none";
+          }
+          var flashT;
+          function flash(msg) {
+            if (!stMsg) return;
+            stMsg.textContent = msg;
+            clearTimeout(flashT);
+            flashT = setTimeout(function () {
+              stMsg.textContent = "";
+            }, 1500);
+          }
+          function updateStatus() {
+            var c = cm.getCursor();
+            statusPos.textContent = "Ln " + (c.line + 1) + ", Col " + (c.ch + 1);
+          }
+
+          function renderTabs() {
+            tabsEl.innerHTML = "";
+            files.forEach(function (f, i) {
+              var t = document.createElement("div");
+              t.className = "ide-tab" + (i === active ? " on" : "");
+              var ic = document.createElement("span");
+              ic.className = "ide-tab-ic";
+              ic.textContent = iconFor(f.lang);
+              var nm = document.createElement("span");
+              nm.textContent = f.name;
+              var x = document.createElement("span");
+              x.className = "ide-tab-x";
+              x.textContent = "×";
+              x.title = "닫기";
+              x.onclick = function (e) {
+                e.stopPropagation();
+                closeFile(i);
+              };
+              t.appendChild(ic);
+              t.appendChild(nm);
+              t.appendChild(x);
+              t.onclick = function () {
+                openFile(i);
+              };
+              t.ondblclick = function () {
+                renameFile(i);
+              };
+              tabsEl.appendChild(t);
+            });
+          }
+          function renderFiles() {
+            filesEl.innerHTML = "";
+            files.forEach(function (f, i) {
+              var d = document.createElement("div");
+              d.className = "ide-file" + (i === active ? " on" : "");
+              d.textContent = iconFor(f.lang) + " " + f.name;
+              d.onclick = function () {
+                openFile(i);
+              };
+              d.ondblclick = function () {
+                renameFile(i);
+              };
+              filesEl.appendChild(d);
+            });
+          }
+          function openFile(i) {
+            if (i < 0 || i >= files.length) return;
+            active = i;
+            cm.swapDoc(files[i].doc);
+            cm.setOption("mode", modeOf(files[i].lang));
+            if (langSel) langSel.value = files[i].lang;
+            renderTabs();
+            renderFiles();
+            updateStatus();
+            persist();
             cm.focus();
-          };
-          document.getElementById("ceRun").onclick = function () {
+          }
+          function addFile() {
+            var name = window.prompt(
+              "새 파일 이름 (예: app.js, page.html, style.css, notes.md)",
+              "untitled.js"
+            );
+            if (!name) return;
+            name = name.trim();
+            if (!name) return;
+            var lang = langOfName(name);
+            files.push({
+              name: name,
+              lang: lang,
+              doc: CodeMirror.Doc("", modeOf(lang)),
+            });
+            openFile(files.length - 1);
+          }
+          function closeFile(i) {
+            if (files.length <= 1) {
+              flash("마지막 파일은 닫을 수 없어요");
+              return;
+            }
+            files.splice(i, 1);
+            if (active >= files.length) active = files.length - 1;
+            else if (i < active) active--;
+            openFile(active);
+          }
+          function renameFile(i) {
+            var name = window.prompt("파일 이름 변경", files[i].name);
+            if (!name) return;
+            name = name.trim();
+            if (!name) return;
+            files[i].name = name;
+            files[i].lang = langOfName(name);
+            if (i === active) {
+              cm.setOption("mode", modeOf(files[i].lang));
+              if (langSel) langSel.value = files[i].lang;
+            }
+            renderTabs();
+            renderFiles();
+            persist();
+          }
+
+          cm.on("cursorActivity", updateStatus);
+          cm.on("change", function () {
+            persist();
+          });
+
+          if (langSel)
+            langSel.onchange = function () {
+              files[active].lang = langSel.value;
+              cm.setOption("mode", modeOf(langSel.value));
+              renderTabs();
+              renderFiles();
+              persist();
+            };
+          var newBtn = document.getElementById("ideNewFile");
+          if (newBtn) newBtn.onclick = addFile;
+
+          // ── 통합 패널(출력/미리보기/AI) ──
+          function showPanel(which) {
+            if (panel) panel.style.display = "flex";
+            ["output", "preview", "ai"].forEach(function (p) {
+              var btn = panel
+                ? panel.querySelector('[data-panel="' + p + '"]')
+                : null;
+              var pane = document.getElementById(
+                p === "output" ? "ceOut" : p === "preview" ? "ceFrame" : "ceAi"
+              );
+              if (btn) btn.classList.toggle("on", p === which);
+              if (pane) pane.classList.toggle("on", p === which);
+            });
+            cm.refresh();
+          }
+          if (panel) {
+            Array.prototype.forEach.call(
+              panel.querySelectorAll(".ide-panel-tabs [data-panel]"),
+              function (b) {
+                b.onclick = function () {
+                  showPanel(b.getAttribute("data-panel"));
+                };
+              }
+            );
+            var pClose = document.getElementById("idePanelClose");
+            if (pClose)
+              pClose.onclick = function () {
+                panel.style.display = "none";
+                cm.refresh();
+              };
+          }
+
+          function runCurrent() {
             var code = cm.getValue();
-            var l = langSel.value;
-            out.style.display = "none";
-            frame.style.display = "none";
+            var l = currentLang();
             if (l === "javascript") {
               var logs = [];
               var orig = console.log;
@@ -1188,16 +1550,45 @@
                 } catch (e) {}
               }
               out.textContent = logs.join("\n") || "(출력 없음)";
-              out.style.display = "block";
+              showPanel("output");
             } else if (l === "htmlmixed") {
               frame.srcdoc = code;
-              frame.style.display = "block";
+              showPanel("preview");
             } else {
               out.textContent =
-                "이 언어는 브라우저에서 실행할 수 없어요. JavaScript나 HTML로 해보세요.";
-              out.style.display = "block";
+                "이 언어(" +
+                (LANGS[l] ? LANGS[l].label : l) +
+                ")는 브라우저에서 실행할 수 없어요. JavaScript나 HTML로 해보세요.";
+              showPanel("output");
             }
-          };
+          }
+          var stRun = document.getElementById("stRun");
+          if (stRun) stRun.onclick = runCurrent;
+
+          // ── 액티비티 바 ──
+          Array.prototype.forEach.call(
+            document.querySelectorAll(".ide-activity [data-act]"),
+            function (b) {
+              b.onclick = function () {
+                var a = b.getAttribute("data-act");
+                if (a === "explorer") {
+                  var side = document.getElementById("ideSide");
+                  var show = side.style.display === "none";
+                  side.style.display = show ? "block" : "none";
+                  b.classList.toggle("on", show);
+                  cm.refresh();
+                } else if (a === "run") {
+                  runCurrent();
+                } else if (a === "ai") {
+                  showPanel("ai");
+                  var pe = document.getElementById("caPrompt");
+                  if (pe) pe.focus();
+                }
+              };
+            }
+          );
+
+          openFile(active);
 
           // ── AI 코딩 도우미 (하이브리드 멀티모델) ──
           (function setupAssist() {
@@ -1312,7 +1703,7 @@
                 body: JSON.stringify({
                   prompt: prompt,
                   code: useCode.checked ? cm.getValue() : "",
-                  lang: langSel.value,
+                  lang: currentLang(),
                   model: modelSel.value,
                 }),
               })

@@ -25,9 +25,23 @@ import sys
 import os
 import re
 import json
+import math
+import html
 from collections import defaultdict
 
 import fitz  # PyMuPDF
+
+
+def _clean_ko(s):
+    """모델 번역 출력 정리 — HTML 엔티티 복원(&gt;→>, &lt;→<, &amp;→&, &#176;→°).
+    모델이 분수/부등호를 '±h&gt;2π'처럼 엔티티로 내보내 raw 로 보이던 문제 수정."""
+    s = str(s)
+    if "&" in s:
+        try:
+            s = html.unescape(s)
+        except Exception:
+            pass
+    return s
 
 
 def _first_span(block):
@@ -185,12 +199,84 @@ def _merge_superscript_ions(blocks):
     return out
 
 
+_SENT_TERMINATORS = ".?!:;。．？！…"
+
+
+def _ends_midsentence(txt):
+    """블록 텍스트가 '문장 중간에서' 끊겼는지 = 종결부호로 끝나지 않았는지.
+    종결부호(. ? ! : ; 및 전각형)로 끝나면 완결된 문단/문장 단위로 본다(병합 안 함)."""
+    t = (txt or "").rstrip().rstrip(" ").rstrip()
+    if not t:
+        return False
+    return t[-1] not in _SENT_TERMINATORS
+
+
+def _coalesce_paragraphs(blocks):
+    """같은 단(column)에서 세로로 인접한 '본문 산문' 블록을, 앞 블록이 문장 중간에서
+    끊겼을 때(종결부호 없이 끝남) 한 문단으로 합친다.
+
+    PyMuPDF 는 걸개들여쓰기 번호목록·양끝맞춤 본문을 줄 경계에서 여러 띠(block)로
+    쪼개는데, 그 띠가 '항목 꼬리 + 다음 항목 머리'처럼 논리 문단을 가로질러 끊긴다.
+    그대로 두면 (1) 미완성 문장을 따로 번역해 모델이 임의로 완성·중복하고, (2) 1줄
+    높이 박스에 긴 한국어가 욱여넣어져 글씨가 깨알같이 작아지며, (3) 조각 사이에 큰
+    세로 빈칸이 생긴다. 문장이 안 끝난 인접 띠를 합쳐 문단 단위로 번역·배치한다.
+
+    보존: 종결부호로 끝난 블록은 합치지 않는다(진짜 문단/문장 경계 유지). 다른
+    단(가로 미겹침)·다른 크기/굵기(제목↔본문)·단어 없는 블록(수식·라벨)은 제외한다.
+    extract/render 가 동일 결과를 내도록 디코더 비의존(원본 span 텍스트·크기·bbox)만 쓴다.
+    """
+    out = []
+    for blk in blocks:
+        if not out:
+            out.append(blk)
+            continue
+        prev = out[-1]
+        # 둘 다 본문 산문(본문 크기 단어 보유)이어야 — 수식·짧은 라벨은 병합 제외.
+        if not (_has_word(prev) and _has_word(blk)):
+            out.append(blk)
+            continue
+        ra = fitz.Rect(prev["bbox"])
+        rb = fitz.Rect(blk["bbox"])
+        # 같은 단: 가로로 충분히 겹침(2단 레이아웃의 좌/우 단은 안 겹쳐 병합 안 됨).
+        ox = min(ra.x1, rb.x1) - max(ra.x0, rb.x0)
+        if ox <= 0.5 * min(ra.width, rb.width):
+            out.append(blk)
+            continue
+        sa, _ca, ba, _ia = dominant_size_color(prev)
+        sb, _cb, bb, _ib = dominant_size_color(blk)
+        sa = sa or 10.0
+        sb = sb or 10.0
+        # 같은 글자 크기·굵기 (제목↔본문, 본문↔각주 혼합 방지).
+        if abs(sa - sb) > 0.15 * max(sa, sb) or ba != bb:
+            out.append(blk)
+            continue
+        # 아래로 인접(작은 간격~약간 겹침). 한 줄 높이의 0.9배 이내여야 같은 문단 흐름.
+        lh = max(sa, sb) * 1.5
+        gap = rb.y0 - ra.y1
+        if gap > 0.9 * lh or gap < -0.6 * lh:
+            out.append(blk)
+            continue
+        # 앞 블록이 문장 중간에서 끊겼을 때만 병합(종결부호로 끝나면 문단 경계 유지).
+        if not _ends_midsentence(_block_raw_text(prev)):
+            out.append(blk)
+            continue
+        # 병합: 줄 이어붙이고 bbox 합침(prev 는 out[-1] 과 동일 객체 → 제자리 갱신).
+        prev["lines"] = prev.get("lines", []) + blk.get("lines", [])
+        prev["bbox"] = [
+            min(ra.x0, rb.x0), min(ra.y0, rb.y0),
+            max(ra.x1, rb.x1), max(ra.y1, rb.y1),
+        ]
+    return out
+
+
 def iter_text_blocks(doc):
     """type=0(텍스트) 블록을 두 모드에서 동일한 순서/id로 순회한다.
 
     span 이 없는 빈 블록과 이미지 블록(type=1)은 건너뛰되, id 카운터는
     '텍스트 블록'에 대해서만 증가시켜 extract/render 간 id 가 일치하게 한다.
-    위첨자 전하 분리 블록은 병합한다(extract/render 동일 로직 → id 일치 유지).
+    위첨자 전하 분리 블록은 병합하고(_merge_superscript_ions), 문장 중간에서 끊긴
+    인접 본문 띠도 한 문단으로 합친다(_coalesce_paragraphs). 모두 extract/render
+    동일 로직 → id 일치 유지.
     """
     bid = 0
     for pno in range(len(doc)):
@@ -202,6 +288,7 @@ def iter_text_blocks(doc):
             if b.get("type") == 0 and any(ln.get("spans") for ln in (b.get("lines") or []))
         ]
         merged = _absorb_tiny_fragments(_merge_superscript_ions(text_blocks))
+        merged = _coalesce_paragraphs(merged)
         for block in merged:
             yield bid, pno, block
             bid += 1
@@ -442,18 +529,48 @@ def block_text(block, figs=None):
     번역은 한 단위로 처리해야 자연스럽기 때문이다.
 
     figs 가 주어지면, 그림 영역에 든 줄(축 라벨 등)은 번역 대상에서 제외한다.
+
+    핵심: PyMuPDF 는 인라인 전자배치((1s)²(2s)²(2pₓ)¹…)나 첨자 많은 식을, 같은
+    시각적 줄인데도 '문자 유형별(괄호/본문숫자/위첨자/아래첨자/글자)'로 쪼개 여러
+    line 으로 내보낸다. 그대로 line 순서로 join 하면 '( )( )( ) 1 2 2 s s p p x y'
+    처럼 뒤섞인다. → y 가 겹치는 line 들을 한 '시각적 줄'로 묶고, 그 안 span 을
+    x 순서로 재정렬해 읽기 순서를 복원한다(번역 입력 정확도↑, 깨진 인라인식 수정).
     """
-    lines = []
+    rows = []  # [{y0, y1, items:[(x0, text)]}]
     for ln in block.get("lines", []):
         if _line_in_figs(ln.get("bbox", (0, 0, 0, 0)), figs):
             continue
-        s = "".join(
-            _fix_span_text(sp.get("font", ""), sp.get("text", ""))
-            for sp in ln.get("spans", [])
-        )
-        if s.strip():
-            lines.append(s.strip())
-    return " ".join(lines).strip()
+        lb = ln.get("bbox", (0, 0, 0, 0))
+        ly0, ly1 = lb[1], lb[3]
+        items = []
+        for sp in ln.get("spans", []):
+            t = _fix_span_text(sp.get("font", ""), sp.get("text", ""))
+            if t == "":
+                continue
+            b = sp.get("bbox", (lb[0], ly0, lb[0], ly1))
+            items.append((b[0], t))
+        if not items:
+            continue
+        placed = False
+        for row in rows:
+            oy = min(ly1, row["y1"]) - max(ly0, row["y0"])
+            mh = max(1.0, min(ly1 - ly0, row["y1"] - row["y0"]))
+            if oy > 0.5 * mh:  # 같은 시각적 줄(세로로 과반 겹침)
+                row["items"].extend(items)
+                row["y0"] = min(row["y0"], ly0)
+                row["y1"] = max(row["y1"], ly1)
+                placed = True
+                break
+        if not placed:
+            rows.append({"y0": ly0, "y1": ly1, "items": list(items)})
+    rows.sort(key=lambda r: r["y0"])
+    out = []
+    for row in rows:
+        row["items"].sort(key=lambda it: it[0])  # 줄 안 x(왼→오) 순서
+        s = "".join(t for _, t in row["items"]).strip()
+        if s:
+            out.append(s)
+    return " ".join(out).strip()
 
 
 def _nonfig_rect(block, figs=None):
@@ -513,6 +630,64 @@ def has_letters(s):
 _MATH_SIGN = re.compile(r"[Α-Ωα-ωϑϕϱ϶ϰ=±×÷√∞∫∑∏∂∇≤≥≈≠≡⎛⎝⎞⎠⎜⎟⌈⌉⌊⌋·−→←↔⇌]")
 
 
+def _is_stacked_math(block):
+    """위아래로 쌓인 2D 수식(분수 num/denom, (m/V), 루이스 점 구조 H:N:N:H 등)인지.
+
+    판정: 같은 x 범위에 '세로로 떨어져 겹치는' 줄(y-band)이 2개 이상이고(=적층),
+    본문 단어가 거의 없을 때(프로즈 제외). 이런 블록은 x-정렬로 한 줄로 못 펴서
+    '( ) 1 atm 32.066' 처럼 깨지므로, 표시수식처럼 **원본 글리프를 보존**한다.
+    인라인 위/아래첨자((1s)² 의 ²)는 첨자가 x 로 밀려 있어 x-overlap 이 작아 여기
+    안 걸린다(그건 block_text 의 x-정렬이 처리). 진짜 분수/루이스만 잡는다."""
+    lines = [
+        ln for ln in block.get("lines", [])
+        if any(s.get("text", "").strip() for s in ln.get("spans", []))
+    ]
+    if len(lines) < 2:
+        return False
+    bands = []  # 시각적 줄(y-band) bbox 들
+    for ln in lines:
+        b = fitz.Rect(ln["bbox"])
+        merged = False
+        for k, bd in enumerate(bands):
+            if min(b.y1, bd.y1) - max(b.y0, bd.y0) > 0.4 * min(
+                max(1.0, b.y1 - b.y0), max(1.0, bd.y1 - bd.y0)
+            ):
+                bands[k] = bd | b
+                merged = True
+                break
+        if not merged:
+            bands.append(b)
+    if len(bands) < 2:
+        return False
+    stacked = False
+    for i in range(len(bands)):
+        for j in range(i + 1, len(bands)):
+            a, c = bands[i], bands[j]
+            if a.y1 <= c.y0 or c.y1 <= a.y0:  # 세로로 분리된 두 band
+                ox = min(a.x1, c.x1) - max(a.x0, c.x0)
+                if ox > 0.3 * min(max(1.0, a.width), max(1.0, c.width)):
+                    stacked = True  # x 로 겹침 = 위아래 적층
+    if not stacked:
+        return False
+    raw = _block_raw_text(block)
+    # 줄바꿈된 표 머리글·라벨('LCAO MO Notation', 'Atomic orbital (Atom A)')은 긴 단어가
+    # 여럿 → 제외(번역 대상). 분수/루이스는 긴 본문 단어가 거의 없다.
+    long_words = len(re.findall(r"[A-Za-z]{5,}|[가-힣]{3,}", raw))
+    if long_words > 1:
+        return False
+    # 추가로 '수식 신호'가 있어야 식으로 본다 — 숫자/수식기호가 있거나, 알파 토큰
+    # 대부분이 1~2글자(변수 m·V, 원소기호 H·N). 이래야 'LCAO MO Notation'(긴단어 1개,
+    # 신호 없음) 같은 머리글이 식으로 오인돼 영어로 남지 않는다.
+    has_digit = bool(re.search(r"\d", raw))
+    has_sign = bool(_MATH_SIGN.search(raw)) or "/" in raw
+    toks = re.findall(r"[A-Za-z가-힣]+", raw)
+    short_ratio = (sum(1 for t in toks if len(t) <= 2) / len(toks)) if toks else 1.0
+    # 소문자가 전혀 없으면 = 전부 대문자 원소기호/식(루이스 H:N:N:H 의 HHNNHH 등).
+    # 머리글('Notation')은 소문자가 있어 여기서 걸러진다.
+    no_lowercase = not re.search(r"[a-z]", raw)
+    return has_digit or has_sign or short_ratio >= 0.6 or no_lowercase
+
+
 def _keep_original_block(block):
     """번역하지 않고 **원본 글리프를 그대로 둘** 블록인지 판정.
 
@@ -524,6 +699,8 @@ def _keep_original_block(block):
     원본 유지하면 재그리기를 안 해, 2D 식이 흩어져 깨지던 표시 수식이 원본대로 보인다.
     단어 판정은 _has_word(본문 크기 span 만) — ψ^bond 처럼 작은 라벨에 단어가 있어도
     표시수식을 번역으로 오인하지 않는다."""
+    if _is_stacked_math(block):
+        return True  # 위아래로 쌓인 2D 수식(분수·루이스) → 원본 보존(x-정렬 불가)
     if _has_word(block):
         return False  # 본문 문장(인라인 수식 포함) → 번역
     has_math_font = False
@@ -730,9 +907,81 @@ def _table_regions(page, min_rules=2):
     return out
 
 
+def _prose_block_rects(page):
+    """페이지의 '본문 산문' 블록 bbox 목록 — 긴 문장(여러 단어)을 담은 블록.
+    그림/표 region 오검출(그래프 축선이 표로, 넓은 그림이 본문을 덮음) 판정용.
+    표 셀·축 라벨·기호 조각처럼 짧은 텍스트는 산문이 아니다(제외)."""
+    out = []
+    try:
+        data = page.get_text("dict")
+    except Exception:
+        return out
+    for b in data.get("blocks", []):
+        if b.get("type") != 0:
+            continue
+        raw = "".join(
+            sp.get("text", "")
+            for ln in (b.get("lines") or [])
+            for sp in (ln.get("spans") or [])
+        )
+        letters = sum(1 for c in raw if c.isalpha())
+        words = len(re.findall(r"[A-Za-z][A-Za-z]+|[가-힣]{2,}", raw))
+        # 진짜 문장: 글자 60+ & 단어 10+ (표 셀/라벨/수식조각은 여기 안 걸린다).
+        if letters >= 60 and words >= 10:
+            out.append(fitz.Rect(b["bbox"]))
+    return out
+
+
+def _validate_regions(page, regions):
+    """그림/표 region 오검출 제거. 본문 산문 블록을 여럿(또는 넓게) 삼키는 region 은
+    버린다 — 안 그러면 그 안의 본문이 '영어 원본 유지'로 분류되어 번역에서 통째로
+    빠진다(분광 그래프의 축선이 거대한 가짜 '표'로 잡혀 페이지 본문이 미번역되던 버그).
+    표 셀·축 라벨만 든 진짜 표/그림은 산문 블록이 0~1개라 그대로 유지된다."""
+    if not regions:
+        return regions
+    proses = _prose_block_rects(page)
+    if not proses:
+        return regions
+    # 실제 이미지가 든 region(진짜 그림)은 절대 버리지 않는다 — 본문 가장자리가 겹쳐도
+    # 그림 보호가 우선. 버리는 건 '이미지 없는' 휴리스틱 region 뿐이다(그래프 축선이
+    # 거대한 가짜 '표'로 잡히거나, 벡터 전용 클러스터가 본문을 덮는 경우).
+    img_rects = []
+    try:
+        for im in page.get_images(full=True):
+            for r in page.get_image_rects(im[0]):
+                img_rects.append(fitz.Rect(r))
+    except Exception:
+        pass
+    out = []
+    for r in regions:
+        has_img = any(
+            min(r.x1, i.x1) - max(r.x0, i.x0) > 2
+            and min(r.y1, i.y1) - max(r.y0, i.y0) > 2
+            for i in img_rects
+        )
+        if not has_img:
+            inside = 0
+            area_prose = 0.0
+            for pr in proses:
+                ix = min(r.x1, pr.x1) - max(r.x0, pr.x0)
+                iy = min(r.y1, pr.y1) - max(r.y0, pr.y0)
+                if ix > 0 and iy > 0:
+                    inter = ix * iy
+                    if inter > 0.5 * pr.width * pr.height:  # 블록 과반이 region 안
+                        inside += 1
+                        area_prose += inter
+            ra = max(1.0, r.width * r.height)
+            # 본문 산문 2개+ 삼키거나 region 면적의 18%+ 가 본문이면 오검출 → 버림.
+            if inside >= 2 or area_prose > 0.18 * ra:
+                continue
+        out.append(r)
+    return out
+
+
 def _skip_regions(page):
-    """번역 제외 영역 = 그림/그래프 + 표. 두 경우 모두 영역 안 텍스트는 영어 원본 유지."""
-    return _figure_regions(page) + _table_regions(page)
+    """번역 제외 영역 = 그림/그래프 + 표. 두 경우 모두 영역 안 텍스트는 영어 원본 유지.
+    단, 본문 산문을 삼키는 오검출 region 은 _validate_regions 가 걸러낸다(미번역 방지)."""
+    return _validate_regions(page, _figure_regions(page) + _table_regions(page))
 
 
 def cmd_extract(pdf_path):
@@ -985,17 +1234,30 @@ def _color01(c):
     return (((c >> 16) & 255) / 255, ((c >> 8) & 255) / 255, (c & 255) / 255)
 
 
-def _detect_align(rect, page_width, single_line=False):
+def _detect_align(rect, page_width, single_line=False, is_heading=False):
     """원문 블록 위치로 정렬을 추정한다.
 
     제목/저자처럼 '좁고 + 좌우 여백이 거의 대칭'인 블록은 가운데 정렬,
     그 외(본문 컬럼)는 양끝맞춤(justify) — LaTeX 조판처럼 단정해진다.
     단, **한 줄짜리 블록**(저자·소속·짧은 라벨 등)은 justify 하면 단어 사이가
     크게 벌어진다('Google   Brain') → 좁으면 가운데, 넓으면 왼쪽으로 처리한다.
+
+    is_heading: 제목·섹션 헤딩은 **절대 양끝맞춤하지 않는다**. 번역으로 길어져 두
+    줄로 넘어가면 첫 줄이 justify 되어 단어가 크게 벌어진다('H₂⁺에   대한   원자').
+    헤딩은 기하적으로 가운데 정렬이면 가운데, 아니면 왼쪽으로 둔다(원문 헤딩과 동일).
     """
     w = rect.x1 - rect.x0
     left = rect.x0
     right = page_width - rect.x1
+    if is_heading:
+        # 헤딩: justify 금지. 좌우 여백이 거의 대칭이면 가운데, 그 외엔 왼쪽.
+        if (
+            w < 0.9 * page_width
+            and left > 0.12 * page_width
+            and abs(left - right) < 0.10 * page_width
+        ):
+            return fitz.TEXT_ALIGN_CENTER
+        return fitz.TEXT_ALIGN_LEFT
     if (
         w < 0.62 * page_width
         and left > 0.15 * page_width
@@ -1104,13 +1366,25 @@ def _draw_fit(
         tw.write_text(page, color=color)
 
     fs = max(min_size, min(float(start_size), 400.0))
-    while fs >= min_size:
+    # 가독성 바닥: 본문(원본 9pt+)은 원래 크기의 62% 아래로는 줄이지 않는다 — '깨알
+    # 글씨(4pt)' 방지. 1차로 [바닥..원래] 범위에서 다 들어가는 가장 큰 크기를 찾는다.
+    floor = max(min_size, round(0.62 * float(start_size), 1)) if start_size >= 9.0 else min_size
+    while fs >= floor:
         res = _try_fill(_expand(rect, fs), fs)
         if res is not None and not _has_leftover(res[1]):
             _commit(res[0])
             return fs < float(start_size) - 0.01
         fs -= 0.5
-    # 최소 크기로도 안 들어가면 들어가는 만큼이라도(예외 무시 → render 전체는 계속).
+    # 바닥에서도 안 들어가면: 글자 잘림(내용 손실)이 깨알보다 나쁘므로 min_size 까지
+    # 더 줄여 전부 담는다(이 경우는 F5 문단병합·F1 세로압축 후엔 드물다).
+    fs = floor - 0.5
+    while fs >= min_size:
+        res = _try_fill(_expand(rect, fs), fs)
+        if res is not None and not _has_leftover(res[1]):
+            _commit(res[0])
+            return True
+        fs -= 0.5
+    # 그래도 안 들어가면 들어가는 만큼이라도(예외 무시 → render 전체는 계속).
     res = _try_fill(_expand(rect, min_size), min_size)
     if res is not None:
         _commit(res[0])
@@ -1190,6 +1464,149 @@ def _dedoverlap_column(items):
     return out
 
 
+def _est_text_height(text, width, fs, font):
+    """번역문이 폭 width 에서 차지할 대략 높이(줄 수 × 줄간격). 겹침 방지를 위해
+    살짝 넉넉히 잡는다(유효폭 90%·줄간격 1.34) — 과소추정하면 다음 블록과 겹친다."""
+    if width < 6 or fs <= 0:
+        return max(fs, 1.0) * 1.34
+    try:
+        tl = font.text_length(text, fontsize=fs)
+    except Exception:
+        tl = len(text) * fs * 0.5
+    eff = max(1.0, width * 0.90)
+    lines = max(1, int(math.ceil(tl / eff)))
+    return lines * fs * 1.34
+
+
+def _rects_overlap(a, b, min_frac=0.12):
+    """두 rect 가 의미있게 2D 로 겹치는지(겹침 면적이 작은 폭의 min_frac 이상)."""
+    ix = min(a.x1, b.x1) - max(a.x0, b.x0)
+    iy = min(a.y1, b.y1) - max(a.y0, b.y0)
+    return ix > 2 and iy > 2 and ix > min_frac * min(a.width, max(b.width, 1.0))
+
+
+def _compact_columns(items, static_rects, figs, page_rect, font):
+    """세로 압축 — 번역문이 원문보다 짧아(한국어 underflow) 블록마다 박스 아래가 비고,
+    그 빈칸이 누적돼 문단 사이가 크게 벌어지는 것을 막는다. 같은 단의 본문 블록을
+    위로 끌어올려 '원래 문단 간격'만 남기고 underflow 빈칸을 없앤다(누적 빈칸은 단
+    아래쪽 한 곳으로 모인다 → 페이지가 자연스러워진다).
+
+    겹침 절대 금지(안전망):
+      - 블록은 위로만 이동(아래로 안 밀어 다른 글자를 침범하지 않음).
+      - cursor: 다음 블록 새 y0 >= 직전 블록 글자 끝 → 같은 단 글자끼리 안 겹침.
+      - **revert-on-overlap**: 새 위치가 어떤 앵커(번역 안 된 블록·수식·라벨·그림)나
+        이미 배치된 다른 번역 글자와 겹치면 그 블록은 원위치로 되돌린다 → 압축이
+        절대 새 겹침을 만들지 않는다(복잡한 수식·그림 페이지에서도 안전).
+      - 머리말/꼬리말·그림과 겹치는 블록(캡션)은 이동 제외(앵커로만 작용).
+    items: [(rect, ko, size, color, bold, ital), ...] (dedoverlap 후). 반환 동일 형식.
+    """
+    if os.environ.get("NO_COMPACT"):
+        return items
+    if len(items) < 2:
+        return items
+    pw = page_rect.width
+    ph = page_rect.height
+    top_margin = page_rect.y0 + 0.07 * ph
+    bot_margin = page_rect.y1 - 0.055 * ph
+    fig_rects = [fitz.Rect(f) for f in figs]
+    static_r = [fitz.Rect(s) for s in static_rects]
+    item_r = [fitz.Rect(it[0]) for it in items]
+
+    def has_orig_overlap(i):
+        # 원위치에서 다른 블록(번역/미번역)과 이미 겹치는 블록 = 깨진 인라인 수식 등
+        # 어수선한 영역 → 이동하면 겹침을 키운다. 압축 대상에서 제외(원위치 유지).
+        ri = item_r[i]
+        for k, o in enumerate(item_r):
+            if k != i and _rects_overlap(ri, o, 0.10):
+                return True
+        for o in static_r:
+            if _rects_overlap(ri, o, 0.10):
+                return True
+        return False
+
+    def excluded(i):
+        r = items[i][0]
+        cy = (r.y0 + r.y1) / 2.0
+        if cy < top_margin or cy > bot_margin:
+            return True  # 머리말/꼬리말 고정
+        if any(_rects_overlap(r, f, 0.0) for f in fig_rects):
+            return True  # 그림에 붙은 블록(캡션 등)은 이동 제외
+        if has_orig_overlap(i):
+            return True  # 원위치부터 겹치는 어수선한 블록(깨진 수식 등) → 이동 제외
+        return False
+
+    movable = [i for i in range(len(items)) if not excluded(i)]
+    if len(movable) < 2:
+        return items
+    movable_set = set(movable)
+    # 고정 장애물 = 번역 안 된 블록 + 그림 + 이동 제외된(머리말/캡션) 블록 원위치.
+    fixed = (
+        [fitz.Rect(s) for s in static_rects]
+        + fig_rects
+        + [fitz.Rect(items[i][0]) for i in range(len(items)) if i not in movable_set]
+    )
+
+    centers = sorted((items[i][0].x0 + items[i][0].x1) / 2.0 for i in movable)
+    split_x = None
+    for a, b in zip(centers, centers[1:]):
+        if b - a > 0.22 * pw:
+            split_x = (a + b) / 2.0
+            break
+
+    def col_of(i):
+        cx = (items[i][0].x0 + items[i][0].x1) / 2.0
+        return 0 if (split_x is None or cx < split_x) else 1
+
+    new_items = list(items)
+    for col in (0, 1):
+        idxs = sorted(
+            [i for i in movable if col_of(i) == col],
+            key=lambda i: items[i][0].y0,
+        )
+        if len(idxs) < 2:
+            continue
+        placed = []  # 이 단에 배치된 (새) 글자 rect 들 — 겹침 검사 대상.
+        cursor = None  # 직전까지 배치된 내용의 아래 끝(단조 증가)
+        prev_orig_y1 = None
+        for i in idxs:
+            r = items[i][0]
+            th = _est_text_height(items[i][1], r.width, items[i][2] or 10.0, font)
+            box_h = min(th, r.height)
+
+            def keep_original():
+                # 원위치 유지(절대 아래로 안 민다). cursor = '번역 글자'의 아래 끝(원위치
+                # 기준) — 원래 박스 끝(r.y1)이 아니라 짧아진 번역 끝이어야 다음 블록이
+                # 그 밑 빈칸으로 올라올 수 있다(세로압축의 핵심).
+                placed.append(fitz.Rect(r.x0, r.y0, r.x1, r.y0 + box_h))
+                return max(cursor or 0.0, r.y0 + box_h)
+
+            if cursor is None or th >= r.height - 1.0:
+                # 첫 블록이거나 underflow 아님 → 원위치 유지.
+                cursor = keep_original()
+                prev_orig_y1 = r.y1
+                continue
+            orig_gap = max(0.0, r.y0 - prev_orig_y1)
+            target = cursor + orig_gap  # 위로 끌어올릴 목표 위치
+            # 끌어올릴 여유가 없으면(겹쳐 있던 블록 등) 원위치 유지 — 절대 아래로 안 민다.
+            if target >= r.y0 - 0.5:
+                cursor = keep_original()
+                prev_orig_y1 = r.y1
+                continue
+            cand = fitz.Rect(r.x0, target, r.x1, target + box_h)
+            # 위로 올린 위치가 고정 앵커/이미 배치된 글자와 겹치면 → 원위치로 되돌림.
+            if any(_rects_overlap(cand, o) for o in fixed) or any(
+                _rects_overlap(cand, o) for o in placed
+            ):
+                cursor = keep_original()
+                prev_orig_y1 = r.y1
+                continue
+            new_items[i] = (cand,) + tuple(items[i][1:])
+            placed.append(fitz.Rect(cand))
+            cursor = target + box_h
+            prev_orig_y1 = r.y1
+    return new_items
+
+
 def cmd_render(pdf_path, out_path, font_path):
     payload = json.loads(sys.stdin.read() or "{}")
     translations = payload.get("translations", {}) or {}
@@ -1208,19 +1625,23 @@ def cmd_render(pdf_path, out_path, font_path):
     # 번역이 있는 블록만 (페이지별로) 모은다.
     by_page = defaultdict(list)
     kept_by_page = defaultdict(list)  # 원본유지(표시수식·라벨) rect — redaction 보호용
+    static_by_page = defaultdict(list)  # 번역 안 된 모든 블록(수식·라벨·미번역) — 압축 앵커
     for bid, pno, block in iter_text_blocks(doc):
         ko = translations.get(str(bid))
         if ko is None:
             ko = translations.get(bid)
         if not ko or not str(ko).strip():
+            # 번역 없는 블록은 원본이 그대로 남으므로(이동 불가) 세로압축의 '고정 앵커'다.
+            r0 = fitz.Rect(_nonfig_rect(block, figs_for(pno)))
+            static_by_page[pno].append(r0)
             if _keep_original_block(block):  # 식·라벨 위치를 기억해 redaction 이 안 지우게
-                kept_by_page[pno].append(fitz.Rect(_nonfig_rect(block, figs_for(pno))))
+                kept_by_page[pno].append(r0)
             continue
         # 블록 전체 bbox 가 아니라 '그림 영역 줄을 뺀' bbox 만 덮는다.
         # → 캡션에 붙은 축 라벨(V(R_AB))을 지우지 않고 영어 그대로 남긴다.
         rect = _nonfig_rect(block, figs_for(pno))
         size, color, is_bold, is_ital = dominant_size_color(block)
-        by_page[pno].append((rect, str(ko).strip(), size, color, is_bold, is_ital))
+        by_page[pno].append((rect, _clean_ko(ko).strip(), size, color, is_bold, is_ital))
 
     # 폰트는 한 번만 로드해 모든 TextWriter 가 공유한다. (insert_htmlbox 는 호출마다
     # 2MB 폰트를 Story 에 재적재해 24쪽/수백 블록에서 ~1.5GB OOM 을 냈다.)
@@ -1277,27 +1698,37 @@ def cmd_render(pdf_path, out_path, font_path):
         # (인라인 수식이 한 줄을 쪼갠 문단에서 흔함). 그리기는 dedoverlap 결과를 쓴다.
         redact_full = [(fitz.Rect(c[0]), c[3]) for c in clipped]  # (full rect, color)
         clipped = _dedoverlap_column(clipped)
+        # F1 세로압축: 한국어가 원문보다 짧아 생긴 문단 사이 빈칸을 없앤다(블록을 위로만
+        # 끌어올림). redaction 은 위 redact_full(원위치)로 이미 잡아둬 영향 없다.
+        # 앵커 = 번역 안 된 모든 블록(수식·라벨·미번역) + 그림 — 그 위로는 안 넘긴다.
+        clipped = _compact_columns(
+            clipped, static_by_page.get(pno, []), figs, page.rect, font
+        )
         # 각 블록의 확장 한계 = 오른쪽/아래 '이웃 블록'까지(없으면 페이지 여백). 제목·헤딩이
         # 번역으로 길어져 가로·세로로 늘어나도 이웃을 침범해 겹치지 않도록 막는다.
         crects = [it[0] for it in clipped]
         nC = len(crects)
+        # 확장을 막는 '장애물' = 다른 번역 블록 + 원본유지(수식·표 셀·라벨) + 그림/표 영역.
+        # 원본유지 블록과 영역을 포함해야, 표 헤딩 번역문이 아래 표 셀 위로 넘치거나
+        # 본문이 인접 수식을 침범하지 않는다(TABLE 6.1 헤딩 겹침 수정).
+        kept = list(kept_by_page.get(pno, []))
+        obstacles = crects + kept + list(figs)
         bounds = []
         for i in range(nC):
             ri = crects[i]
             bx = page.rect.x1 - 6.0
             by = page.rect.y1 - 6.0
-            for j in range(nC):
-                if j == i:
-                    continue
-                rj = crects[j]
+            for rj in obstacles:
+                if rj is ri:
+                    continue  # 자기 자신(번역 블록)만 제외
                 # 오른쪽 이웃 → 가로 확장 한계. 세로로 조금이라도 같은 띠에 걸치면(0.10)
                 # 막는다 — 느슨하면(0.25) 수식 영역의 흩어진 블록이 서로를 못 보고 확장해 겹침.
                 oy = min(ri.y1, rj.y1) - max(ri.y0, rj.y0)
-                if rj.x0 >= ri.x1 - 1 and oy > 0.10 * min(ri.height, rj.height):
+                if rj.x0 >= ri.x1 - 1 and oy > 0.10 * min(ri.height, max(rj.height, 1.0)):
                     bx = min(bx, rj.x0 - 2)
                 # 아래 이웃 → 세로 확장 한계(가로로 조금이라도 겹치면 막는다).
                 ox = min(ri.x1, rj.x1) - max(ri.x0, rj.x0)
-                if rj.y0 >= ri.y1 - 1 and ox > 0.10 * min(ri.width, rj.width):
+                if rj.y0 >= ri.y1 - 1 and ox > 0.10 * min(ri.width, max(rj.width, 1.0)):
                     by = min(by, rj.y0 - 2)
             # 세로 확장은 원래 높이의 ~3배까지만(아래 이웃 미검출 시 runaway 방지 — 한
             # 블록이 페이지 절반을 덮어 다른 글자 위로 흐르는 일 차단).
@@ -1321,10 +1752,20 @@ def cmd_render(pdf_path, out_path, font_path):
         page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
         # 2) 같은(클리핑된) 박스에 번역문 삽입. 본문 양끝맞춤, 제목/한 줄은 가운데/왼쪽.
         page_width = page.rect.width
+        # 페이지 본문 글자 크기(글자 수 최빈) — 헤딩(제목·섹션 제목) 판정 기준.
+        _size_chars = defaultdict(float)
+        for _it in items:
+            _size_chars[round(_it[2], 1)] += max(1, len(_it[1]))
+        body_size = max(_size_chars, key=_size_chars.get) if _size_chars else 10.0
         for idx, (rect, ko, _size, color, is_bold, is_ital) in enumerate(clipped):
             base = font_bold if is_bold else font  # 원문 굵게 → 번역본도 굵게
             bfont = _pick_font(ko, base)  # 글리프 빠짐 방지(∈ 등은 폴백 글꼴로)
             mx, my = bounds[idx]
+            # 헤딩 = 본문보다 확실히 큰 글자, 또는 굵으면서 약간 큰 글자. 헤딩은
+            # justify 금지(번역으로 길어져 두 줄이 되면 첫 줄 단어가 크게 벌어짐).
+            is_heading = (_size >= 1.18 * body_size) or (
+                is_bold and _size >= 1.08 * body_size
+            )
             try:
                 # 가로로 넓힐 수 있는 최대 폭 기준 '한 줄 여부' 판정(넓혀서 1줄이면 justify
                 # 금지 → 단어 벌어짐 방지). 가운데 정렬 블록은 원래 폭 기준.
@@ -1336,7 +1777,9 @@ def cmd_render(pdf_path, out_path, font_path):
                 one_line = bfont.text_length(ko, fontsize=_size) <= (avail_w - 2)
             except Exception:
                 one_line = False
-            align = _detect_align(rect, page_width, single_line=one_line)
+            align = _detect_align(
+                rect, page_width, single_line=one_line, is_heading=is_heading
+            )
             if _draw_fit(
                 page,
                 rect,

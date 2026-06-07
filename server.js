@@ -178,7 +178,75 @@ const PIPELINES = {
     generateDocx: require("./lib/pipelines/phys-result/docx-gen").generateDocx,
     generateHwpx: require("./lib/pipelines/phys-result/hwpx-gen").generateHwpx,
   },
+  // 물리 수행평가 — 일반물리학 탐구 및 사고 과정 성찰 보고서 (베타)
+  // 입력: 주제 + 필기노트 PDF + 참고자료(PDF/이미지/텍스트) + 참고 링크.
+  // 실험 결과보고서가 아니라 사고 과정 성찰 보고서다. FREE_BETA_TYPES 로 무료·테스터 한정.
+  "phys-inquiry": {
+    label: "물리 수행평가",
+    filenamePrefix: "물리수행",
+    filenameSourceField: "notes",
+    creditField: "result",
+    prepareInput(filesByField, body) {
+      const topic = String(body.topic || "").trim();
+      if (!topic) {
+        throw new Error("탐구 주제를 입력하세요.");
+      }
+      const notes = filesByField.notes || [];
+      const refs = filesByField.refs || [];
+      const refLinks = String(body.refLinks || "").trim().slice(0, 4000);
+      for (const f of notes) {
+        const ext = (f.originalname.split(".").pop() || "").toLowerCase();
+        if (!["pdf", "txt", "md"].includes(ext)) {
+          throw new Error("필기노트는 PDF 또는 .txt/.md 파일만 가능합니다.");
+        }
+      }
+      for (const f of refs) {
+        const ext = (f.originalname.split(".").pop() || "").toLowerCase();
+        if (!["pdf", "png", "jpg", "jpeg", "gif", "webp", "txt", "md", "csv"].includes(ext)) {
+          throw new Error(
+            "참고자료는 PDF, 이미지(.png/.jpg), 텍스트(.txt/.md/.csv)만 가능합니다.",
+          );
+        }
+      }
+      if (notes.length === 0 && refs.length === 0 && !refLinks) {
+        throw new Error(
+          "필기노트 PDF, 참고자료 파일, 참고 링크 중 하나는 첨부하세요.",
+        );
+      }
+      const mapFiles = (arr) =>
+        arr.map((f) => ({
+          buffer: f.buffer,
+          name: f.originalname,
+          mimetype: f.mimetype,
+        }));
+      return {
+        topic,
+        notesFiles: mapFiles(notes),
+        refFiles: mapFiles(refs),
+        refLinks,
+        studentId: String(body.studentId || "").trim().slice(0, 20),
+        fontFace: normalizeFontFace(body.fontFace),
+        userNotes: collectUserNotes(body.userNotes, filesByField),
+        style: "default",
+      };
+    },
+    buildFilename(content, ctx) {
+      const id = sanitizeForFilename(ctx.studentId || "");
+      const name = sanitizeForFilename(ctx.userName || "");
+      const prefix = `${id}${name ? "_" + name : ""}`;
+      return prefix
+        ? `${prefix}_일반물리학탐구성찰.docx`
+        : `물리수행_일반물리학탐구성찰.docx`;
+    },
+    generateContent: require("./lib/pipelines/phys-inquiry/generate")
+      .generateReportContent,
+    generateDocx: require("./lib/pipelines/phys-inquiry/docx-gen").generateDocx,
+    generateHwpx: require("./lib/pipelines/phys-inquiry/hwpx-gen").generateHwpx,
+  },
 };
+
+// 베타·무료 보고서 종류 — /api/generate 에서 테스터 한정 접근 + 크레딧 미차감.
+const FREE_BETA_TYPES = new Set(["phys-inquiry"]);
 const pricing = require("./lib/pricing");
 const {
   fmtUSD,
@@ -343,7 +411,10 @@ function getSessionUser(req) {
 
 function requireAuth(req, res, next) {
   if (getSessionUser(req)) return next();
-  if (req.accepts("json") && req.path.startsWith("/api/")) {
+  // /api/* 는 Accept 헤더와 무관하게 **항상 JSON 401** 로 응답한다. (이전엔 EventSource
+  // 처럼 Accept 가 json 이 아니면 빈 본문 302 redirect 가 나가 프런트의 res.json() 이
+  // "Unexpected end of JSON input" 으로 깨졌다.) 페이지(비-/api) 네비게이션만 redirect.
+  if (req.path.startsWith("/api/")) {
     return res.status(401).json({ error: "로그인이 필요합니다." });
   }
   return res.redirect("/login.html");
@@ -2044,6 +2115,39 @@ app.post(
 
     const userInfo = getSessionUser(req);
 
+    // 베타 보고서 종류(예: phys-inquiry) 접근 제한 — 관리자 또는 지정 베타테스터만.
+    // 베타 feature key 는 reportType 과 동일하게 관리(관리자탭 베타 관리에서 지정).
+    if (FREE_BETA_TYPES.has(reportType)) {
+      if (!userInfo.isAdmin) {
+        let hasBeta = false;
+        try {
+          hasBeta =
+            supa.isEnabled() &&
+            userInfo.id &&
+            (await supa.userHasBeta(userInfo.id, reportType));
+        } catch {
+          hasBeta = false;
+        }
+        if (!hasBeta) {
+          return res.status(403).json({
+            error: "이 기능은 현재 베타 테스터에게만 열려 있습니다.",
+          });
+        }
+        const chk = rateLimit.checkBetaUsageLimit(
+          userInfo.id,
+          reportType,
+          getBetaDailyLimit(reportType),
+        );
+        if (!chk.allowed) {
+          return res.status(429).json({
+            error: `오늘 베타 사용 한도(${chk.limit}회)를 모두 사용했습니다. 내일 다시 이용해 주세요.`,
+            limit: chk.limit,
+            used: chk.count,
+          });
+        }
+      }
+    }
+
     // 보고서 종류 접근 제한 (관리자 면제). DB 컬럼 없으면/조회 실패 시 fail-open.
     if (userInfo.id && !userInfo.isAdmin) {
       try {
@@ -2109,10 +2213,13 @@ app.post(
         : "claude-sonnet-4-6";
     }
     if (!model) model = "claude-opus-4-8"; // 기본 = Opus 4.8
-    const creditCost = pricing.getModelCredits(model);
+    // 베타·무료 보고서는 크레딧 미차감(0). 그 외는 모델별 단가.
+    const isFreeBeta = FREE_BETA_TYPES.has(reportType);
+    const creditCost = isFreeBeta ? 0 : pricing.getModelCredits(model);
 
-    // 크레딧 검증 (Supabase + 일반 사용자. admin·무제한 계정은 제외)
+    // 크레딧 검증 (Supabase + 일반 사용자. admin·무제한 계정·무료 베타는 제외)
     if (
+      !isFreeBeta &&
       supa.isEnabled() &&
       userInfo.id &&
       !userInfo.isAdmin &&
@@ -2211,7 +2318,8 @@ app.post(
 // 현재 사용자가 접근 가능한 베타 기능 key 목록(메뉴 노출용). 관리자는 enabled 전부.
 app.get("/api/me/beta", requireAuth, async (req, res) => {
   const u = getSessionUser(req);
-  if (!supa.isEnabled()) return res.json({ features: [] });
+  // Supabase 미사용 환경에서도 관리자는 베타 기능을 볼 수 있게 admin 플래그를 알린다.
+  if (!supa.isEnabled()) return res.json({ features: [], admin: !!u.isAdmin });
   try {
     if (u.isAdmin) {
       const all = await supa.listBetaFeatures();
@@ -3230,11 +3338,25 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
         pushProgress(job, `⚠ 사용량 통계 기록 실패: ${e.message}`);
       }
 
-      // 2) 크레딧 차감 (admin·무제한 계정 제외). 모델별 단가(Opus 3 / Sonnet 1).
+      // 베타·무료 보고서는 크레딧을 차감하지 않는다. 대신 테스터 일일 사용량만 기록.
+      // (job.creditCost 가 0이라 아래 `|| 모델단가` 폴백에 걸려 잘못 과금되는 것도 방지)
+      if (FREE_BETA_TYPES.has(job.reportType)) {
+        if (!job.userInfo.isAdmin && job.userInfo.id) {
+          try {
+            rateLimit.recordBetaUsage(job.userInfo.id, job.reportType);
+          } catch {
+            /* 사용량 기록 실패는 무시 */
+          }
+        }
+        pushProgress(job, "🧪 베타 기능 — 크레딧이 차감되지 않았습니다.");
+      }
+
+      // 2) 크레딧 차감 (admin·무제한 계정·무료 베타 제외). 모델별 단가(Opus 3 / Sonnet 1).
       //    차감 실패는 '미청구 보고서'(손실)이므로 조용히 넘기지 않고 감사 로그 + 사용자 표시.
       const userIsAdmin = !!job.userInfo.isAdmin;
       const userUnlimited = !!job.userInfo.unlimited;
       if (
+        !FREE_BETA_TYPES.has(job.reportType) &&
         !userIsAdmin &&
         !userUnlimited &&
         supa.isEnabled() &&
@@ -3538,7 +3660,7 @@ app.patch("/api/admin/users/:id", requireAdmin, async (req, res) => {
   // 보고서 종류 접근 제한: 허용된 종류 key 배열만
   let normalizedBlocked;
   if (blockedReportTypes !== undefined) {
-    const VALID = ["chem-pre", "chem-result", "phys-result"];
+    const VALID = ["chem-pre", "chem-result", "phys-result", "phys-inquiry"];
     if (!Array.isArray(blockedReportTypes)) {
       return res
         .status(400)
@@ -3790,6 +3912,32 @@ app.get("/api/usage", requireAdmin, (req, res) => {
     totalUSDFormatted: fmtUSD(totalUsage.totalUSD),
     totalKRWFormatted: fmtKRW(totalUsage.totalUSD),
   });
+});
+
+// 알 수 없는 /api 경로는 HTML 404 대신 **JSON 404** 로 — 프런트의 res.json() 이
+// "Unexpected end of JSON input"/"Unexpected token <" 로 깨지지 않게 한다.
+app.use("/api", (req, res) => {
+  res.status(404).json({ error: "요청한 API 경로를 찾을 수 없습니다." });
+});
+
+// 터미널 에러 핸들러: 라우트에서 throw/reject 된 에러나 body-parser 오류(잘못된 JSON,
+// 1MB 초과 등)가 Express 기본(HTML/빈 본문) 핸들러로 빠지지 않게, /api 요청은 항상
+// JSON 으로 응답한다. (이게 없어서 어떤 액션이든 비-JSON 응답이 나오면 전역적으로
+// "Unexpected end of JSON input" 이 떴다.)
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  const status = err.status || err.statusCode || 500;
+  const isApi = req.path && req.path.startsWith("/api/");
+  if (status >= 500) console.error("[unhandled]", req.method, req.path, err);
+  if (isApi || (req.accepts && req.accepts("json") && !req.accepts("html"))) {
+    return res.status(status).json({
+      error: err.expose ? err.message : err.message || "서버 오류가 발생했습니다.",
+    });
+  }
+  return res
+    .status(status)
+    .type("text/plain; charset=utf-8")
+    .send(err.message || "서버 오류가 발생했습니다.");
 });
 
 // ── Start ────────────────────────────────────────────────────────────────────

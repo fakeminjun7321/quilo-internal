@@ -1328,7 +1328,14 @@
               });
           } else {
             statusEl.innerHTML = `연결 안 됨 — 보고서는 <b>24시간 파일함</b>에 저장됩니다.`;
-            actions.innerHTML = `<a class="btn btn-primary" href="/api/cloud/dropbox/connect">Dropbox 연결</a>`;
+            const isElectron = /electron|quilo/i.test(navigator.userAgent || "");
+            if (isElectron) {
+              // 데스크톱 앱(Electron)은 임베디드 브라우저라 Dropbox OAuth 가 막힌다.
+              // 연결은 계정 단위로 저장되므로 웹사이트에서 한 번만 연결하면 앱에도 적용됨.
+              actions.innerHTML = `<p class="hint" style="margin:0">📱 데스크톱 앱에서는 보안상 여기서 바로 연결되지 않습니다. <b>웹사이트(브라우저)</b>에서 같은 계정으로 로그인 후 한 번 연결하면, 이 앱에도 자동으로 적용됩니다.</p>`;
+            } else {
+              actions.innerHTML = `<a class="btn btn-primary" href="/api/cloud/dropbox/connect">Dropbox 연결</a>`;
+            }
           }
         } catch (_) {
           card.hidden = true;

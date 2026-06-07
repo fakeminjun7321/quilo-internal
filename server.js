@@ -3643,6 +3643,38 @@ app.post("/api/cloud/dropbox/disconnect", requireAuth, async (req, res) => {
   }
 });
 
+// 특정 파일의 Dropbox 공유 링크(웹에서 바로 열기). 온디맨드 — 클릭 시 생성/재사용.
+// 앱폴더 토큰이라 path 는 사용자 본인 폴더로 한정됨(타인 파일 접근 불가).
+app.get("/api/cloud/dropbox/link", requireAuth, async (req, res) => {
+  const u = getSessionUser(req);
+  const p = String(req.query.path || "");
+  if (!p) return res.status(400).json({ error: "path가 필요합니다." });
+  if (!dbx.isConfigured() || !supa.isEnabled() || !u.id) {
+    return res.status(503).json({ error: "클라우드 연동을 사용할 수 없습니다." });
+  }
+  try {
+    const conn = await supa.getCloudConnection(u.id, "dropbox");
+    if (!conn || !conn.refresh_token) {
+      return res.status(404).json({ error: "Dropbox 연결이 없습니다." });
+    }
+    const { access_token } = await dbx.refreshAccessToken(
+      dbx.decryptToken(conn.refresh_token),
+    );
+    const url = await dbx.getSharedLink({ accessToken: access_token, path: p });
+    if (!url) return res.status(500).json({ error: "링크 생성 실패" });
+    res.json({ url });
+  } catch (e) {
+    const msg = String((e && e.message) || e);
+    if (/missing_scope|sharing|scope/i.test(msg)) {
+      return res.status(403).json({
+        error:
+          "Dropbox 공유 권한(sharing)이 없습니다 — 앱에 sharing.read·sharing.write 스코프를 추가하고 재연결하세요.",
+      });
+    }
+    res.status(500).json({ error: "링크 생성 실패" });
+  }
+});
+
 app.get("/api/me/files", requireAuth, async (req, res) => {
   const u = getSessionUser(req);
   // Dropbox 연결 사용자 → 본인 클라우드 목록(영구). 24시간 박스 대체.
@@ -3678,6 +3710,7 @@ app.get("/api/me/files", requireAuth, async (req, res) => {
               size_bytes: e.size,
               created_at: e.client_modified,
               download_url,
+              path: e.path_lower, // "Dropbox에서 열기" 공유링크 생성용
               cloud: "dropbox",
             };
           }),

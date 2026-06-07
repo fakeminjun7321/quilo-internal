@@ -1401,6 +1401,32 @@
             }
             actions.append(download);
 
+            // 클라우드 파일: Dropbox 웹에서 바로 열기(온디맨드 공유 링크).
+            if (isCloud && file.path) {
+              const open = document.createElement("button");
+              open.type = "button";
+              open.className = "secondary compact";
+              open.textContent = "Dropbox에서 열기";
+              open.addEventListener("click", async () => {
+                const prev = open.textContent;
+                open.disabled = true;
+                open.textContent = "여는 중…";
+                try {
+                  const r = await fetch(
+                    `/api/cloud/dropbox/link?path=${encodeURIComponent(file.path)}`,
+                  );
+                  const d = await r.json().catch(() => ({}));
+                  if (r.ok && d.url) window.open(d.url, "_blank", "noopener");
+                  else alert(d.error || "링크를 만들 수 없습니다.");
+                } catch (_) {
+                  alert("링크 요청에 실패했습니다.");
+                }
+                open.disabled = false;
+                open.textContent = prev;
+              });
+              actions.append(open);
+            }
+
             // 클라우드 파일은 Dropbox에 영구 보관 — 앱에서 삭제 버튼은 제공하지 않는다.
             if (!isCloud) {
               const del = document.createElement("button");

@@ -464,6 +464,9 @@ body > details,
   letter-spacing: 0.06em;
 }
 
+/* hidden 속성이 label{display:flex} 에 가려지지 않도록(베타 탭 게이트) */
+#reportTypeFieldset label[hidden]{display:none !important;}
+
 #reportTypeFieldset label {
   position: relative;
   display: flex;

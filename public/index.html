@@ -60,6 +60,7 @@
               <a href="/changelog.html">패치노트</a>
             </div>
           </div>
+          <a class="nav-dd-btn" href="/exam-prep.html" id="navExamPrep" hidden style="text-decoration:none">수행평가 도움 <span class="beta-pill">베타</span></a>
           <a class="nav-dd-btn" href="/community.html" style="text-decoration:none">커뮤니티</a>
           <!-- 로그아웃 상태: '로그인' 누르면 로그인 폼이 드롭다운으로 내려온다 -->
           <div class="nav-dd nav-dd-right" data-dd id="loginDd" hidden>
@@ -331,6 +332,7 @@
             <label><span class="field-label">글꼴</span>
               <select id="crFontFace" name="fontFace">
                 <option value="malgun-gothic" selected>맑은 고딕</option>
+                <option value="nanum-gothic">나눔고딕</option>
                 <option value="nanum-myeongjo">나눔명조</option>
                 <option value="hamchorom-batang" data-hwpx-only="true" hidden disabled>함초롬바탕</option>
               </select>
@@ -783,6 +785,7 @@
             <label><span class="field-label">글꼴</span>
               <select id="fontFace" name="fontFace">
                 <option value="malgun-gothic" selected>맑은 고딕</option>
+                <option value="nanum-gothic">나눔고딕</option>
                 <option value="nanum-myeongjo">나눔명조</option>
                 <option value="hamchorom-batang" data-hwpx-only="true" hidden disabled>함초롬바탕</option>
               </select>
@@ -1717,6 +1720,24 @@
             const nav = document.getElementById("navReportPhysInquiry");
             if (nav) nav.hidden = false;
           }
+          // 수행평가 도움(베타 허브): 코딩 테스트 또는 물리 수행평가 권한이 있으면 메뉴 노출
+          if (b.admin === true || feats.includes("coding-test") || feats.includes("phys-inquiry")) {
+            const navEp = document.getElementById("navExamPrep");
+            if (navEp) navEp.hidden = false;
+          }
+          // 허브에서 '/?report=phys-inquiry' 로 들어오면 해당 보고서 종류를 자동 선택.
+          try {
+            const want = new URLSearchParams(location.search).get("report");
+            const radio = want && document.querySelector(
+              'input[name="reportType"][value="' + want + '"]',
+            );
+            if (radio && !radio.disabled && document.body.dataset.auth !== "out") {
+              radio.checked = true;
+              if (typeof updateReportTypeView === "function") updateReportTypeView();
+              const fs = document.getElementById("reportTypeFieldset");
+              if (fs) fs.scrollIntoView({ behavior: "smooth", block: "start" });
+            }
+          } catch (e) {}
         })
         .catch(() => {});
 

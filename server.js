@@ -3726,6 +3726,10 @@ app.use(
 // 랩(기술 공개): 공개 읽기 — 제목 목록 / 상세(본문+코드) / 코드 파일 다운로드(화이트리스트).
 app.use("/api/lab", require("./lib/lab-routes")());
 
+// 코딩 테스트(정보 수행평가 대비, 베타): 문제 본문·테스트·채점 하니스 제공.
+// 채점은 브라우저(Pyodide)에서 수행. 베타 게이트("coding-test") — 관리자/테스터 한정.
+app.use("/api/coding", require("./lib/coding-routes")({ requireAdminOrBeta }));
+
 // 공지사항: 공개 읽기(활성) + 관리자 CRUD. Supabase 테이블 없으면 메모리 fallback.
 app.use("/api/announcements", require("./lib/announcement-routes")({ requireAdmin }));
 

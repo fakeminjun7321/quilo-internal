@@ -4068,7 +4068,12 @@ app.get("/", (req, res) => {
 app.get("/healthz", (req, res) => res.json({ ok: true }));
 
 app.get("/api/version", (req, res) => {
-  res.json(getVersionInfo());
+  // cloud: 서버에 어떤 클라우드 연동 키가 설정됐는지(불리언만 — 비밀값 노출 아님).
+  // "클라우드 저장소 카드가 안 떠요" 디버깅용 공개 플래그.
+  res.json({
+    ...getVersionInfo(),
+    cloud: { dropbox: dbx.isConfigured(), tokenSecret: dbx.canStoreTokens() },
+  });
 });
 
 // Supabase 7일 무활동 자동 pause 방지용 keepalive.

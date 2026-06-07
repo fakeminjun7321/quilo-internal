@@ -38,7 +38,6 @@
               <a href="#" data-report="chem-pre">화학 사전보고서</a>
               <a href="#" data-report="chem-result">화학 결과보고서</a>
               <a href="#" data-report="phys-result">물리 결과보고서</a>
-              <a href="#" data-report="phys-inquiry" id="navReportPhysInquiry" hidden>물리 수행평가 <span class="beta-pill">베타</span></a>
             </div>
           </div>
           <div class="nav-dd" data-dd>
@@ -1713,22 +1712,28 @@
             const el2 = document.getElementById("navBetaEditor");
             if (el2) el2.hidden = false;
           }
-          // 물리 수행평가(베타): 관리자 또는 지정 테스터에게 보고서 종류 탭·메뉴 노출
-          if (b.admin === true || feats.includes("phys-inquiry")) {
-            const tab = document.getElementById("rtPhysInquiry");
-            if (tab) tab.hidden = false;
-            const nav = document.getElementById("navReportPhysInquiry");
-            if (nav) nav.hidden = false;
-          }
-          // 수행평가 도움(베타 허브): 관리자 또는 'coding-test' 베타 테스터에게만 메뉴 노출.
-          // (물리 수행평가 전용 테스터에게는 띄우지 않는다 — 허브는 코딩 테스트 베타에 묶음.)
-          if (b.admin === true || feats.includes("coding-test")) {
+          // 물리 수행평가(베타): 상단 메뉴 바로가기는 제거됨 — 진입은 '수행평가 도움' 허브로 일원화.
+          // 보고서 종류 탭(rtPhysInquiry)은 평소엔 숨기고, 허브에서 '?report=phys-inquiry' 로
+          // 들어올 때만 노출·자동 선택한다(아래 딥링크 처리).
+          // 수행평가 도움(베타 허브): 관리자 또는 베타 테스터(coding-test·phys-inquiry)에게만 메뉴 노출.
+          if (
+            b.admin === true ||
+            feats.includes("coding-test") ||
+            feats.includes("phys-inquiry")
+          ) {
             const navEp = document.getElementById("navExamPrep");
             if (navEp) navEp.hidden = false;
           }
-          // 허브에서 '/?report=phys-inquiry' 로 들어오면 해당 보고서 종류를 자동 선택.
+          // 허브에서 '/?report=phys-inquiry' 로 들어오면 해당 보고서 종류를 노출·자동 선택.
           try {
             const want = new URLSearchParams(location.search).get("report");
+            if (
+              want === "phys-inquiry" &&
+              (b.admin === true || feats.includes("phys-inquiry"))
+            ) {
+              const tab = document.getElementById("rtPhysInquiry");
+              if (tab) tab.hidden = false;
+            }
             const radio = want && document.querySelector(
               'input[name="reportType"][value="' + want + '"]',
             );

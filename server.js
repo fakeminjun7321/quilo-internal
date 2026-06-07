@@ -3707,6 +3707,9 @@ app.use(
   }),
 );
 
+// 랩(기술 공개): 공개 읽기 — 제목 목록 / 상세(본문+코드) / 코드 파일 다운로드(화이트리스트).
+app.use("/api/lab", require("./lib/lab-routes")());
+
 app.get("/api/cloud/status", requireAuth, async (req, res) => {
   const u = getSessionUser(req);
   const out = {

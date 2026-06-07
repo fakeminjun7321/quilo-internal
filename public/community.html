@@ -46,6 +46,33 @@
       .pill-filter button.active { background: #2950e6; color: #fff; border-color: #2950e6; }
       .labbody { white-space: pre-wrap; word-break: break-word; line-height: 1.7; font-size: 14.5px; color: #334155; }
       .labtag { font-size: 11.5px; color: #2950e6; font-weight: 700; letter-spacing: .02em; }
+      /* 랩(기술 공개) 아코디언 + 마크다운 + 코드 */
+      .labitem { border:1px solid #e2e6f3; border-radius:12px; margin-bottom:10px; overflow:hidden; background:var(--card-bg,#fff); }
+      .labhead { width:100%; text-align:left; background:none; border:0; padding:13px 15px; cursor:pointer; display:flex; align-items:center; gap:10px; flex-wrap:wrap; font:inherit; }
+      .labhead:hover { background:#f7f9ff; }
+      .labhead .labtag { font-size:11px; color:#2950e6; font-weight:700; background:#eef2ff; border-radius:999px; padding:2px 9px; white-space:nowrap; }
+      .labhead .labtitle { font-weight:700; font-size:15.5px; color:#1e293b; }
+      .labhead .labsummary { color:#94a3b8; font-size:12.5px; flex-basis:100%; margin-left:2px; }
+      .labhead .labchevron { margin-left:auto; color:#94a3b8; transition:transform .15s; }
+      .labitem.open .labhead .labchevron { transform:rotate(90deg); }
+      .labbodywrap { padding:4px 16px 16px; border-top:1px solid #eef1f8; }
+      .md-h { margin:16px 0 6px; font-weight:700; color:#1e293b; }
+      h3.md-h { font-size:16px; } h4.md-h { font-size:14.5px; color:#334155; }
+      .labbodywrap p { line-height:1.7; font-size:14px; color:#334155; margin:7px 0; }
+      .labbodywrap ul { margin:6px 0 10px 2px; padding-left:18px; }
+      .labbodywrap li { line-height:1.6; font-size:14px; color:#334155; margin:3px 0; }
+      .labbodywrap code { background:#f1f3f9; border-radius:5px; padding:1px 5px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12.5px; color:#b91c5c; }
+      pre.md-code { background:#0f172a; color:#e2e8f0; border-radius:10px; padding:12px 14px; overflow-x:auto; margin:10px 0; }
+      pre.md-code code { background:none; color:inherit; padding:0; font-size:12.5px; line-height:1.55; white-space:pre; }
+      .labfiles { margin-top:14px; border-top:1px dashed #e2e6f3; padding-top:12px; }
+      .labfiles h4 { margin:0 0 8px; font-size:13.5px; color:#475569; }
+      .labfile { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:6px 0; border-bottom:1px solid #f1f4fb; }
+      .labfile .fpath { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12.5px; color:#334155; }
+      .labfile .flabel { color:#94a3b8; font-size:12px; }
+      .labfile .fsize { color:#cbd5e1; font-size:11.5px; }
+      .labfile .fspring { flex:1; }
+      .labfile a.dl, .labfile button.fview { font-size:12px; border:1px solid #d7ddf0; background:#fff; color:#2950e6; border-radius:7px; padding:4px 10px; cursor:pointer; text-decoration:none; }
+      .labfile a.dl:hover, .labfile button.fview:hover { background:#eef2ff; }
     </style>
   </head>
   <body>
@@ -97,50 +124,8 @@
     </div>
 
     <script>
-      // ── 랩(기술 공개): 개발자 작성 정적 콘텐츠. 여기를 수정/추가해 업로드. ──
-      const LAB_POSTS = [
-        {
-          date: "2026-06-07",
-          tag: "PDF 통번역",
-          title: "PDF를 레이아웃 그대로 한국어로 — in-place 번역 엔진",
-          body:
-            "영어 PDF의 그림·표·레이아웃은 그대로 두고 텍스트만 한국어로 바꾸는 엔진을 만들었습니다(PyMuPDF).\n\n" +
-            "• 원리: 페이지에서 텍스트 블록을 추출 → Claude/GPT로 번역 → 원본 글자를 지우고(redaction) 같은 위치(bbox)에 한국어를 다시 그립니다.\n" +
-            "• 수식 위/아래첨자: 추출 시 <sub>/<sup> 태그로 보존해, 번역을 거쳐도 H₂⁺·σ_g·ψ_el 처럼 진짜 첨자로 렌더됩니다.\n" +
-            "• 화학 전하(⁺/⁻)·반결합(σ*): 교과서 전용 기호 폰트(WWDOC) 글리프를 실제 모양대로 매핑해 복원.\n" +
-            "• 한계: 2D로 쌓인 분수·루이스 구조처럼 가로로 못 펴는 식은 원본 그대로 보존하고, 수식 밀집 문서는 아래 '재조판' 모드를 권합니다.",
-        },
-        {
-          date: "2026-06-07",
-          tag: "PDF 통번역",
-          title: "수식이 많은 문서는 '재조판' — LaTeX로 다시 조판 + 자동 수리",
-          body:
-            "논문·문제집처럼 수식이 빽빽한 문서는 레이아웃 위 덮어쓰기로는 한계가 있어, LaTeX로 다시 조판하는 '재조판' 모드를 만들었습니다.\n\n" +
-            "• 모델이 문서를 읽고 수식을 정준형 LaTeX로 복원 → Tectonic으로 PDF 컴파일. 원본 그림은 잘라서 제자리에 복원합니다.\n" +
-            "• Claude·GPT 모두 네이티브 지원(GPT는 OpenAI 파일/이미지 입력으로 직접 처리).\n" +
-            "• 컴파일이 깨지면(미정의 명령·수식모드 누락) 오류를 모델에 돌려줘 자동으로 고쳐 재컴파일(최대 2회), 그래도 안 되면 빠른 번역으로 안전 대체합니다.",
-        },
-        {
-          date: "2026-06-07",
-          tag: "안정성",
-          title: "사이트 전역 'Unexpected end of JSON input' 박멸",
-          body:
-            "어떤 액션이든 가끔 'Unexpected end of JSON input'이 뜨던 문제를 근본 수정했습니다.\n\n" +
-            "• 원인: 일부 응답이 빈 본문/HTML이었는데 프런트가 무조건 JSON으로 파싱 → 깨짐.\n" +
-            "• 수정: 모든 /api 응답을 항상 JSON으로(전역 JSON 에러 핸들러 + JSON 404), 세션 만료 시에도 빈 리다이렉트 대신 JSON 401.\n" +
-            "• 다중 에이전트로 코드 전역을 감사해 빈/비-JSON 응답 지점을 모두 찾아 고쳤습니다.",
-        },
-        {
-          date: "2026-06-07",
-          tag: "클라우드",
-          title: "보고서를 내 Dropbox에 영구 저장 (PKCE 연동)",
-          body:
-            "생성한 보고서를 24시간 임시 보관 대신, 본인 Dropbox 앱 폴더에 영구 저장하는 연동을 추가했습니다.\n\n" +
-            "• PKCE 방식이라 앱 시크릿 없이 안전하게 연결, refresh token은 AES-256-GCM으로 암호화 저장.\n" +
-            "• 사용자별(계정별) 격리 — 각자 본인 Dropbox에만 저장되고 본인 파일만 보입니다.\n" +
-            "• '내 파일'에서 다운로드 + 'Dropbox에서 열기' 직접 링크 제공.",
-        },
-      ];
+      // ── 랩(기술 공개): /api/lab 에서 목록·본문·코드 파일을 불러온다(GitHub식) ──
+      let labLoaded = false;
 
       let me = null; // {id, isAdmin} or null
       let curCat = "";
@@ -159,13 +144,147 @@
         if (t === "lab") renderLab();
       }
 
-      function renderLab() {
+      // ── 랩(기술 공개): 제목 목록 → 클릭 시 본문(마크다운) + 코드(보기·다운로드) ──
+      function fmtSize(n) {
+        n = Number(n) || 0;
+        if (n < 1024) return n + " B";
+        if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+        return (n / 1024 / 1024).toFixed(1) + " MB";
+      }
+
+      // 안전한 마크다운 렌더(먼저 escape → 정해진 태그만 부여). XSS 방지.
+      function mdEsc(s) {
+        return String(s == null ? "" : s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+      }
+      function mdInline(s) {
+        return mdEsc(s)
+          .replace(/`([^`]+)`/g, "<code>$1</code>")
+          .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+      }
+      function mdProse(seg) {
+        const lines = seg.split("\n");
+        let html = "", inList = false, para = [];
+        const flush = () => { if (para.length) { html += "<p>" + mdInline(para.join(" ")) + "</p>"; para = []; } };
+        const closeList = () => { if (inList) { html += "</ul>"; inList = false; } };
+        for (const raw of lines) {
+          const line = raw.replace(/\s+$/, "");
+          if (!line.trim()) { flush(); closeList(); continue; }
+          let m;
+          if ((m = line.match(/^(#{1,6})\s+(.*)$/))) {
+            flush(); closeList();
+            const tag = m[1].length <= 2 ? "h3" : "h4";
+            html += "<" + tag + ' class="md-h">' + mdInline(m[2]) + "</" + tag + ">";
+          } else if ((m = line.match(/^\s*[-•]\s+(.*)$/))) {
+            flush(); if (!inList) { html += "<ul>"; inList = true; }
+            html += "<li>" + mdInline(m[1]) + "</li>";
+          } else { para.push(line.trim()); }
+        }
+        flush(); closeList();
+        return html;
+      }
+      function mdToHtml(md) {
+        const parts = String(md || "").split("```");
+        let out = "";
+        for (let i = 0; i < parts.length; i++) {
+          if (i % 2 === 1) {
+            const code = parts[i].replace(/^(js|javascript|ts|typescript|python|py|json|sql|css|html|bash|sh|text|md)\b[^\n]*\n/i, "");
+            out += '<pre class="md-code"><code>' + mdEsc(code.replace(/\n$/, "")) + "</code></pre>";
+          } else {
+            out += mdProse(parts[i]);
+          }
+        }
+        return out;
+      }
+
+      async function renderLab() {
         const el = document.getElementById("labList");
-        el.innerHTML = LAB_POSTS.map((p) =>
-          `<div class="cmcard"><div class="labtag">${esc(p.tag)} · ${esc(p.date)}</div>` +
-          `<div class="cmpost-title" style="margin-top:4px">${esc(p.title)}</div>` +
-          `<div class="labbody" style="margin-top:8px">${esc(p.body)}</div></div>`
-        ).join("");
+        if (labLoaded) return;
+        el.innerHTML = '<p class="muted">불러오는 중…</p>';
+        try {
+          const r = await fetch("/api/lab/entries");
+          const d = await r.json();
+          if (!r.ok) throw new Error(d.error || "오류");
+          const entries = d.entries || [];
+          if (!entries.length) { el.innerHTML = '<p class="muted">아직 공개된 기술 노트가 없습니다.</p>'; return; }
+          el.innerHTML = "";
+          entries.forEach((e) => {
+            const item = document.createElement("div");
+            item.className = "labitem";
+            item.dataset.id = e.id;
+            item.innerHTML =
+              '<button class="labhead">' +
+                '<span class="labtag">' + esc(e.tag) + " · " + esc(e.date) + "</span>" +
+                '<span class="labtitle">' + esc(e.title) + "</span>" +
+                (e.fileCount ? '<span class="fsize">📎 코드 ' + e.fileCount + "개</span>" : "") +
+                '<span class="labchevron">▸</span>' +
+                (e.summary ? '<span class="labsummary">' + esc(e.summary) + "</span>" : "") +
+              "</button>" +
+              '<div class="labbodywrap" style="display:none"></div>';
+            item.querySelector(".labhead").addEventListener("click", () => toggleLab(e.id, item));
+            el.appendChild(item);
+          });
+          labLoaded = true;
+        } catch (e) {
+          el.innerHTML = '<p class="err">' + esc(e.message) + "</p>";
+        }
+      }
+
+      async function toggleLab(id, item) {
+        const wrap = item.querySelector(".labbodywrap");
+        const isOpen = item.classList.contains("open");
+        if (isOpen) { item.classList.remove("open"); wrap.style.display = "none"; return; }
+        item.classList.add("open");
+        wrap.style.display = "";
+        if (wrap.dataset.loaded) return;
+        wrap.innerHTML = '<p class="muted">불러오는 중…</p>';
+        try {
+          const r = await fetch("/api/lab/entry/" + encodeURIComponent(id));
+          const d = await r.json();
+          if (!r.ok) throw new Error(d.error || "오류");
+          let html = mdToHtml(d.body_markdown);
+          if (d.files && d.files.length) {
+            html += '<div class="labfiles"><h4>📎 코드 파일 (' + d.files.length + "개)</h4>";
+            d.files.forEach((f) => {
+              const q = "/api/lab/file?path=" + encodeURIComponent(f.path);
+              html +=
+                '<div class="labfile">' +
+                  '<span class="fpath">' + esc(f.path) + "</span>" +
+                  '<span class="flabel">' + esc(f.label || "") + "</span>" +
+                  '<span class="fspring"></span>' +
+                  '<span class="fsize">' + fmtSize(f.size) + "</span>" +
+                  '<button class="fview" data-path="' + esc(f.path) + '">코드 보기</button>' +
+                  '<a class="dl" href="' + q + '&download=1">⬇ 다운로드</a>' +
+                "</div>" +
+                '<div class="fcode" style="display:none"></div>';
+            });
+            html += "</div>";
+          }
+          wrap.innerHTML = html;
+          wrap.dataset.loaded = "1";
+          wrap.querySelectorAll(".fview").forEach((btn) =>
+            btn.addEventListener("click", () => viewLabFile(btn))
+          );
+        } catch (e) {
+          wrap.innerHTML = '<p class="err">' + esc(e.message) + "</p>";
+        }
+      }
+
+      async function viewLabFile(btn) {
+        const codeBox = btn.closest(".labfile").nextElementSibling;
+        if (codeBox.style.display !== "none") { codeBox.style.display = "none"; btn.textContent = "코드 보기"; return; }
+        btn.textContent = "닫기";
+        codeBox.style.display = "";
+        if (codeBox.dataset.loaded) return;
+        codeBox.innerHTML = '<p class="muted">불러오는 중…</p>';
+        try {
+          const r = await fetch("/api/lab/file?path=" + encodeURIComponent(btn.dataset.path));
+          const text = await r.text();
+          if (!r.ok) throw new Error("불러오기 실패");
+          codeBox.innerHTML = '<pre class="md-code"><code>' + mdEsc(text) + "</code></pre>";
+          codeBox.dataset.loaded = "1";
+        } catch (e) {
+          codeBox.innerHTML = '<p class="err">코드를 불러오지 못했습니다.</p>';
+        }
       }
 
       async function loadMe() {

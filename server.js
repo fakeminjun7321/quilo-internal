@@ -4352,6 +4352,13 @@ app.listen(PORT, async () => {
     } catch (e) {
       console.warn(`  ⚠ Admin bootstrap 실패: ${e.message}`);
     }
+    // 코드 내장 베타(물리 수행평가)를 관리자 베타 패널에 자동 등록 → 테스터 지정 가능.
+    try {
+      const seeded = await supa.ensureBetaFeature("phys-inquiry", "물리 수행평가");
+      if (seeded) console.log("  ✓ 베타 기능 등록: 물리 수행평가(phys-inquiry)");
+    } catch (e) {
+      console.warn(`  ⚠ 베타 기능 등록 실패: ${e.message}`);
+    }
     try {
       const result = await supa.cleanupExpiredReportFiles(200);
       if (result.deleted) {

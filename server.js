@@ -8,6 +8,7 @@ const {
   normalizeFontFace,
   normalizeFontFaceForFormat,
 } = require("./lib/document-fonts");
+const styleRef = require("./lib/style-ref");
 
 // 프로세스 전역 안전망: 처리되지 않은 예외/거부가 서버 프로세스 전체를 죽여
 // 진행 중인 다른 사용자 작업까지 같이 날리지 않도록, 최후 백스톱으로 로깅만 한다.
@@ -42,7 +43,10 @@ const PIPELINES = {
       const style = String(body.style || "default").trim() === "minimal"
         ? "minimal"
         : "default";
+      const styleInput = styleRef.readStyleInput(filesByField, body);
+      styleRef.validateStyleRefs(styleInput.styleRefs);
       return {
+        ...styleInput,
         pdfBuffer: manual.buffer,
         studentId: String(body.studentId || "").trim(),
         studentName: String(body.studentName || "").trim(),
@@ -79,7 +83,10 @@ const PIPELINES = {
       const style = String(body.style || "default").trim() === "minimal"
         ? "minimal"
         : "default";
+      const styleInput = styleRef.readStyleInput(filesByField, body);
+      styleRef.validateStyleRefs(styleInput.styleRefs);
       return {
+        ...styleInput,
         preReportBuffer: preReport.buffer,
         preReportName: preReport.originalname,
         dataBuffer: data?.buffer || null,
@@ -141,7 +148,10 @@ const PIPELINES = {
 
       const studentId = String(body.studentId || "").trim().slice(0, 20);
 
+      const styleInput = styleRef.readStyleInput(filesByField, body);
+      styleRef.validateStyleRefs(styleInput.styleRefs);
       return {
+        ...styleInput,
         capBuffer: cap?.buffer || null,
         capName: cap?.originalname || "",
         dataFiles: dataFiles.map((data) => ({
@@ -262,6 +272,7 @@ const {
   formatImageCostLine,
 } = pricing;
 const supa = require("./lib/supabase");
+const dbx = require("./lib/cloud/dropbox");
 const { krwToUsd, usdToKrw, getKrwPerUsd } = require("./lib/exchange-rate");
 const rateLimit = require("./lib/rate-limit");
 const {
@@ -3273,32 +3284,62 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
       job.filename = `${prefix}${pipeline.filenamePrefix}_${studentPart}${namePart}.${ext}`;
     }
 
-    if (supa.isEnabled() && job.userInfo?.id) {
-      try {
-        const savedFile = await supa.saveReportFile({
-          userId: job.userInfo.id,
-          jobId: job.id,
-          reportType: job.reportType,
-          filename: job.filename,
-          mimeType: job.mimeType,
-          buffer,
-          meta: {
-            title: content.title_kr || content.title || "",
-            reportLabel: pipeline.label,
-            format,
-            policyAcknowledgement,
-          },
-        });
-        if (savedFile?.id) {
-          job.fileId = savedFile.id;
-          const expires = new Date(savedFile.expires_at).toLocaleString("ko-KR", {
-            dateStyle: "short",
-            timeStyle: "short",
-          });
-          pushProgress(job, `☁ 파일함에 24시간 보관됨 (${expires}까지)`);
+    if (job.userInfo?.id) {
+      // 1) Dropbox 연결 사용자 → 본인 클라우드에 영구 저장(24시간 박스 대체).
+      let cloudSaved = false;
+      if (dbx.isConfigured() && dbx.canStoreTokens() && supa.isEnabled()) {
+        try {
+          const conn = await supa.getCloudConnection(job.userInfo.id, "dropbox");
+          if (conn && conn.refresh_token) {
+            const refreshToken = dbx.decryptToken(conn.refresh_token);
+            const { access_token } = await dbx.refreshAccessToken(refreshToken);
+            const up = await dbx.uploadFile({
+              accessToken: access_token,
+              path: `/${job.filename}`,
+              buffer,
+            });
+            cloudSaved = true;
+            job.cloudProvider = "dropbox";
+            pushProgress(
+              job,
+              `☁ Dropbox에 영구 저장됨: ${up.path_display || job.filename}`,
+            );
+          }
+        } catch (e) {
+          pushProgress(
+            job,
+            `⚠ Dropbox 저장 실패(${String(e.message || e).slice(0, 120)}) → 기본 파일함(24시간)에 저장합니다.`,
+          );
         }
-      } catch (e) {
-        pushProgress(job, `⚠ 파일함 저장 실패: ${e.message}`);
+      }
+      // 2) 미연결(또는 실패) + Supabase 사용 → 기존 24시간 파일함 폴백.
+      if (!cloudSaved && supa.isEnabled()) {
+        try {
+          const savedFile = await supa.saveReportFile({
+            userId: job.userInfo.id,
+            jobId: job.id,
+            reportType: job.reportType,
+            filename: job.filename,
+            mimeType: job.mimeType,
+            buffer,
+            meta: {
+              title: content.title_kr || content.title || "",
+              reportLabel: pipeline.label,
+              format,
+              policyAcknowledgement,
+            },
+          });
+          if (savedFile?.id) {
+            job.fileId = savedFile.id;
+            const expires = new Date(savedFile.expires_at).toLocaleString(
+              "ko-KR",
+              { dateStyle: "short", timeStyle: "short" },
+            );
+            pushProgress(job, `☁ 파일함에 24시간 보관됨 (${expires}까지)`);
+          }
+        } catch (e) {
+          pushProgress(job, `⚠ 파일함 저장 실패: ${e.message}`);
+        }
       }
     }
     job.status = "done";
@@ -3502,7 +3543,157 @@ app.get("/api/jobs/:id/download", requireAuth, (req, res) => {
 });
 
 // Stored files (24h)
+// ── 클라우드 저장소(Dropbox) 연동 ─────────────────────────────────────────────
+function appBaseUrl(req) {
+  const env = (
+    process.env.RENDER_EXTERNAL_URL ||
+    process.env.APP_BASE_URL ||
+    ""
+  ).replace(/\/+$/, "");
+  if (env) return env;
+  const proto = String(
+    req.headers["x-forwarded-proto"] || req.protocol || "http",
+  ).split(",")[0];
+  return `${proto}://${req.get("host")}`;
+}
+const dropboxRedirectUri = (req) => `${appBaseUrl(req)}/api/cloud/dropbox/callback`;
+
+app.get("/api/cloud/status", requireAuth, async (req, res) => {
+  const u = getSessionUser(req);
+  const out = {
+    dropbox: { configured: dbx.isConfigured(), connected: false, email: null },
+  };
+  if (dbx.isConfigured() && supa.isEnabled() && u.id) {
+    try {
+      const conn = await supa.getCloudConnection(u.id, "dropbox");
+      if (conn) {
+        out.dropbox.connected = true;
+        out.dropbox.email = conn.account_email || null;
+      }
+    } catch (_) {
+      /* 미연결로 표시 */
+    }
+  }
+  res.json(out);
+});
+
+app.get("/api/cloud/dropbox/connect", requireAuth, (req, res) => {
+  if (!dbx.isConfigured()) {
+    return res
+      .status(503)
+      .json({ error: "Dropbox 연동이 서버에 설정되지 않았습니다(DROPBOX_APP_KEY)." });
+  }
+  if (!dbx.canStoreTokens()) {
+    return res
+      .status(503)
+      .json({ error: "토큰 암호화 키(CLOUD_TOKEN_SECRET)가 설정되지 않았습니다." });
+  }
+  const { verifier, challenge } = dbx.makePkce();
+  const state = crypto.randomBytes(16).toString("hex");
+  req.session.dropboxOAuth = { verifier, state, ts: Date.now() };
+  res.redirect(
+    dbx.getAuthUrl({ challenge, state, redirectUri: dropboxRedirectUri(req) }),
+  );
+});
+
+app.get("/api/cloud/dropbox/callback", requireAuth, async (req, res) => {
+  const u = getSessionUser(req);
+  const saved = req.session.dropboxOAuth || {};
+  delete req.session.dropboxOAuth;
+  const { code, state, error } = req.query;
+  if (error || !code || !state || state !== saved.state || !saved.verifier) {
+    return res.redirect("/?cloud=error");
+  }
+  try {
+    const tok = await dbx.exchangeCode({
+      code: String(code),
+      verifier: saved.verifier,
+      redirectUri: dropboxRedirectUri(req),
+    });
+    if (!tok.refresh_token) throw new Error("refresh_token 미수신");
+    let email = "";
+    let name = "";
+    try {
+      const acct = await dbx.getAccountInfo(tok.access_token);
+      email = acct.email;
+      name = acct.name;
+    } catch (_) {
+      /* 계정정보 실패해도 연결은 유지 */
+    }
+    await supa.saveCloudConnection(u.id, "dropbox", {
+      refreshToken: dbx.encryptToken(tok.refresh_token),
+      accountEmail: email,
+      accountName: name,
+    });
+    res.redirect("/?cloud=connected");
+  } catch (e) {
+    console.error("[cloud] dropbox callback:", e);
+    res.redirect("/?cloud=error");
+  }
+});
+
+app.post("/api/cloud/dropbox/disconnect", requireAuth, async (req, res) => {
+  const u = getSessionUser(req);
+  try {
+    if (supa.isEnabled() && u.id)
+      await supa.deleteCloudConnection(u.id, "dropbox");
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: "연결 해제 실패" });
+  }
+});
+
 app.get("/api/me/files", requireAuth, async (req, res) => {
+  const u = getSessionUser(req);
+  // Dropbox 연결 사용자 → 본인 클라우드 목록(영구). 24시간 박스 대체.
+  if (dbx.isConfigured() && supa.isEnabled() && u && u.id) {
+    try {
+      const conn = await supa.getCloudConnection(u.id, "dropbox");
+      if (conn && conn.refresh_token) {
+        const { access_token } = await dbx.refreshAccessToken(
+          dbx.decryptToken(conn.refresh_token),
+        );
+        const entries = await dbx.listFolder({ accessToken: access_token });
+        const sorted = entries
+          .sort(
+            (a, b) =>
+              new Date(b.client_modified || 0) -
+              new Date(a.client_modified || 0),
+          )
+          .slice(0, 50);
+        const files = await Promise.all(
+          sorted.map(async (e) => {
+            let download_url = null;
+            try {
+              download_url = await dbx.getTemporaryLink({
+                accessToken: access_token,
+                path: e.path_lower,
+              });
+            } catch (_) {
+              /* 링크 실패해도 목록은 표시 */
+            }
+            return {
+              id: e.id,
+              filename: e.name,
+              size_bytes: e.size,
+              created_at: e.client_modified,
+              download_url,
+              cloud: "dropbox",
+            };
+          }),
+        );
+        return res.json({
+          files,
+          storage: true,
+          cloud: "dropbox",
+          account: conn.account_email || null,
+        });
+      }
+    } catch (e) {
+      console.error("[files] dropbox list error:", e.message);
+      // 폴백: 아래 기본 파일함
+    }
+  }
   if (!supa.isEnabled()) {
     return res.json({
       files: [],
@@ -3511,7 +3702,6 @@ app.get("/api/me/files", requireAuth, async (req, res) => {
       storage: false,
     });
   }
-  const u = getSessionUser(req);
   if (!u.id) return res.status(403).json({ error: "권한 없음" });
   try {
     const cfg = supa.reportStorageConfig();

@@ -265,6 +265,34 @@
 
       <div class="form-section">
         <div class="form-section-head">
+          <span class="form-section-title">내 글 스타일 (선택)</span>
+        </div>
+        <div class="notice" style="margin-bottom:12px">
+          내가 예전에 쓴 글이나 <strong>직접 작성한 예시 보고서</strong>를 올리면, 그 글의 <strong>문체·느낌</strong>으로 작성합니다.
+          <strong>내용·데이터는 가져오지 않고 스타일만</strong> 분석해 흉내 냅니다. (다른 주제·다른 실험 보고서여도 OK)
+        </div>
+        <div class="field-grid">
+          <div class="field">
+            <span class="field-label">내가 쓴 예시 보고서 · 글 스타일 (PDF·이미지·텍스트, 여러 개)</span>
+            <div class="dropzone">
+              <input id="crStyleRefs" name="styleRefs" type="file" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.txt,.md,.csv,application/pdf,image/*" multiple aria-label="내 글 스타일 참고 파일" />
+              <span class="dropzone-icon" aria-hidden="true">✍️</span>
+              <span class="dropzone-title">내 글/예시 보고서를 끌어다 놓거나 클릭</span>
+              <span class="dropzone-sub">문체만 흉내 · 내용 제외</span>
+              <span class="dropzone-file" data-dz-file></span>
+            </div>
+          </div>
+          <div class="field">
+            <label><span class="field-label">문체 메모 (선택)</span>
+              <textarea id="crStyleNote" name="styleNote" rows="3" maxlength="1500" placeholder="예: 구어체로 직관 먼저 설명하고, 헷갈리는 지점을 짚으며 수식은 단계별로 유도하는 느낌"></textarea>
+            </label>
+            <small>샘플 없이 원하는 느낌만 글로 적어도 됩니다.</small>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head">
           <span class="form-section-title">출력 설정</span>
         </div>
         <div class="seg-group" style="margin-bottom: 12px">
@@ -390,6 +418,34 @@
             <label><span class="field-label">날짜 <span class="req">*</span></span>
               <input id="prDate" name="date" type="date" required />
             </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head">
+          <span class="form-section-title">내 글 스타일 (선택)</span>
+        </div>
+        <div class="notice" style="margin-bottom:12px">
+          내가 예전에 쓴 글이나 <strong>직접 작성한 예시 보고서</strong>를 올리면, 그 글의 <strong>문체·느낌</strong>으로 작성합니다.
+          <strong>내용·데이터는 가져오지 않고 스타일만</strong> 분석해 흉내 냅니다. (다른 주제·다른 실험 보고서여도 OK)
+        </div>
+        <div class="field-grid">
+          <div class="field">
+            <span class="field-label">내가 쓴 예시 보고서 · 글 스타일 (PDF·이미지·텍스트, 여러 개)</span>
+            <div class="dropzone">
+              <input id="prStyleRefs" name="styleRefs" type="file" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.txt,.md,.csv,application/pdf,image/*" multiple aria-label="내 글 스타일 참고 파일" />
+              <span class="dropzone-icon" aria-hidden="true">✍️</span>
+              <span class="dropzone-title">내 글/예시 보고서를 끌어다 놓거나 클릭</span>
+              <span class="dropzone-sub">문체만 흉내 · 내용 제외</span>
+              <span class="dropzone-file" data-dz-file></span>
+            </div>
+          </div>
+          <div class="field">
+            <label><span class="field-label">문체 메모 (선택)</span>
+              <textarea id="prStyleNote" name="styleNote" rows="3" maxlength="1500" placeholder="예: 구어체로 직관 먼저 설명하고, 헷갈리는 지점을 짚으며 수식은 단계별로 유도하는 느낌"></textarea>
+            </label>
+            <small>샘플 없이 원하는 느낌만 글로 적어도 됩니다.</small>
           </div>
         </div>
       </div>
@@ -651,6 +707,34 @@
 
       <div class="form-section">
         <div class="form-section-head">
+          <span class="form-section-title">내 글 스타일 (선택)</span>
+        </div>
+        <div class="notice" style="margin-bottom:12px">
+          내가 예전에 쓴 글이나 <strong>직접 작성한 예시 보고서</strong>를 올리면, 그 글의 <strong>문체·느낌</strong>으로 작성합니다.
+          <strong>내용·데이터는 가져오지 않고 스타일만</strong> 분석해 흉내 냅니다. (다른 주제·다른 실험 보고서여도 OK)
+        </div>
+        <div class="field-grid">
+          <div class="field">
+            <span class="field-label">내가 쓴 예시 보고서 · 글 스타일 (PDF·이미지·텍스트, 여러 개)</span>
+            <div class="dropzone">
+              <input id="cpStyleRefs" name="styleRefs" type="file" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.txt,.md,.csv,application/pdf,image/*" multiple aria-label="내 글 스타일 참고 파일" />
+              <span class="dropzone-icon" aria-hidden="true">✍️</span>
+              <span class="dropzone-title">내 글/예시 보고서를 끌어다 놓거나 클릭</span>
+              <span class="dropzone-sub">문체만 흉내 · 내용 제외</span>
+              <span class="dropzone-file" data-dz-file></span>
+            </div>
+          </div>
+          <div class="field">
+            <label><span class="field-label">문체 메모 (선택)</span>
+              <textarea id="cpStyleNote" name="styleNote" rows="3" maxlength="1500" placeholder="예: 구어체로 직관 먼저 설명하고, 헷갈리는 지점을 짚으며 수식은 단계별로 유도하는 느낌"></textarea>
+            </label>
+            <small>샘플 없이 원하는 느낌만 글로 적어도 됩니다.</small>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head">
           <span class="form-section-title">출력 설정</span>
         </div>
         <div class="seg-group" style="margin-bottom: 12px">
@@ -875,6 +959,13 @@
         </form>
       </div>
 
+      <div class="settings-card" id="cloudCard" hidden>
+        <h2>클라우드 저장소</h2>
+        <p class="hint">연결하면 생성한 보고서가 24시간 파일함 대신 내 <b>Dropbox</b>(앱 전용 폴더)에 <b>영구 저장</b>됩니다.</p>
+        <div id="cloudStatus" style="font-size:14px;margin:8px 0">상태 확인 중…</div>
+        <div id="cloudActions"></div>
+      </div>
+
       <div class="settings-card">
         <h2>기본 모델 · 양식 선호</h2>
         <p class="hint">보고서 작성 화면을 열 때 자동으로 선택될 기본값입니다. 생성할 때 언제든 바꿀 수 있습니다.</p>
@@ -1024,6 +1115,7 @@
           applyReportTypeAccess(d.isAdmin ? [] : d.blockedReportTypes);
           if (!d.isAdmin) loadBalance();
           loadFiles();
+          loadCloudStatus();
         } else {
           applyReportTypeAccess([]);
         }
@@ -1034,6 +1126,18 @@
         .then((r) => (r.ok ? r.json() : Promise.reject()))
         .then((d) => applyAuth(true, d))
         .catch(() => applyAuth(false));
+
+      // Dropbox 연결 콜백 결과 안내(+ URL 정리)
+      try {
+        const _cloud = new URLSearchParams(location.search).get("cloud");
+        if (_cloud === "connected") {
+          alert("✅ Dropbox가 연결되었습니다. 이제 생성한 보고서가 Dropbox 앱 폴더에 영구 저장됩니다.");
+          history.replaceState({}, "", location.pathname);
+        } else if (_cloud === "error") {
+          alert("Dropbox 연결에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+          history.replaceState({}, "", location.pathname);
+        }
+      } catch (_) {}
 
       // 로그인 유지 사용자: 저장된 이름 미리 채우기
       try {
@@ -1194,6 +1298,44 @@
         });
       }
 
+      async function loadCloudStatus() {
+        const card = document.getElementById("cloudCard");
+        if (!card) return;
+        const statusEl = document.getElementById("cloudStatus");
+        const actions = document.getElementById("cloudActions");
+        try {
+          const r = await fetch("/api/cloud/status");
+          if (!r.ok) {
+            card.hidden = true;
+            return;
+          }
+          const d = await r.json();
+          const dp = (d && d.dropbox) || {};
+          if (!dp.configured) {
+            card.hidden = true; // 서버에 Dropbox 미설정 → 카드 숨김
+            return;
+          }
+          card.hidden = false;
+          if (dp.connected) {
+            statusEl.innerHTML = `✅ Dropbox 연결됨${dp.email ? " — <b>" + dp.email + "</b>" : ""}<br><span class="hint">생성한 보고서가 Dropbox 앱 폴더에 영구 저장됩니다.</span>`;
+            actions.innerHTML = `<button type="button" id="dbxDisconnectBtn" class="secondary compact">연결 해제</button>`;
+            const btn = document.getElementById("dbxDisconnectBtn");
+            if (btn)
+              btn.addEventListener("click", async () => {
+                if (!confirm("Dropbox 연결을 해제할까요? (이미 저장된 파일은 Dropbox에 그대로 남습니다)")) return;
+                await fetch("/api/cloud/dropbox/disconnect", { method: "POST" });
+                loadCloudStatus();
+                if (typeof loadFiles === "function") loadFiles();
+              });
+          } else {
+            statusEl.innerHTML = `연결 안 됨 — 보고서는 <b>24시간 파일함</b>에 저장됩니다.`;
+            actions.innerHTML = `<a class="btn btn-primary" href="/api/cloud/dropbox/connect">Dropbox 연결</a>`;
+          }
+        } catch (_) {
+          card.hidden = true;
+        }
+      }
+
       async function loadFiles() {
         const status = document.getElementById("filesStatus");
         const list = document.getElementById("filesList");
@@ -1208,13 +1350,18 @@
             status.textContent = "파일 저장소가 아직 설정되지 않았습니다.";
             return;
           }
+          const isCloud = data.cloud === "dropbox";
           const files = data.files || [];
           const maxFiles = data.maxFilesPerUser || 3;
           if (files.length === 0) {
-            status.textContent = `보관 중인 파일이 없습니다. 최대 ${maxFiles}개까지 저장됩니다.`;
+            status.textContent = isCloud
+              ? "Dropbox 앱 폴더에 보관된 보고서가 없습니다."
+              : `보관 중인 파일이 없습니다. 최대 ${maxFiles}개까지 저장됩니다.`;
             return;
           }
-          status.textContent = `${files.length}/${maxFiles}개 보관 중`;
+          status.textContent = isCloud
+            ? `${files.length}개 · ☁ Dropbox(${data.account || "연결됨"})에 영구 저장`
+            : `${files.length}/${maxFiles}개 보관 중`;
           for (const file of files) {
             const item = document.createElement("div");
             item.className = "file-item";
@@ -1226,8 +1373,9 @@
             name.textContent = file.filename || "보고서";
 
             const detail = document.createElement("span");
-            detail.textContent =
-              `${formatBytes(file.size_bytes)} · ${formatDateTime(file.created_at)} 생성 · ${formatDateTime(file.expires_at)} 만료`;
+            detail.textContent = isCloud
+              ? `${formatBytes(file.size_bytes)} · ${formatDateTime(file.created_at)} 생성 · ☁ Dropbox`
+              : `${formatBytes(file.size_bytes)} · ${formatDateTime(file.created_at)} 생성 · ${formatDateTime(file.expires_at)} 만료`;
 
             meta.append(name, detail);
 
@@ -1235,31 +1383,42 @@
             actions.className = "file-actions";
 
             const download = document.createElement("a");
-            download.href = `/api/me/files/${file.id}/download`;
-            download.textContent = "다운로드";
-            download.download = file.filename || "";
+            if (isCloud) {
+              download.href = file.download_url || "#";
+              download.target = "_blank";
+              download.rel = "noopener";
+              download.textContent = file.download_url ? "다운로드" : "링크 없음";
+            } else {
+              download.href = `/api/me/files/${file.id}/download`;
+              download.download = file.filename || "";
+              download.textContent = "다운로드";
+            }
+            actions.append(download);
 
-            const del = document.createElement("button");
-            del.type = "button";
-            del.className = "secondary compact";
-            del.textContent = "삭제";
-            del.addEventListener("click", async () => {
-              const ok = await showConfirmDialog({
-                title: "파일 삭제",
-                rows: [["파일", file.filename || "보고서"]],
-                note: "파일함에서 바로 삭제합니다.",
-                okLabel: "삭제",
+            // 클라우드 파일은 Dropbox에 영구 보관 — 앱에서 삭제 버튼은 제공하지 않는다.
+            if (!isCloud) {
+              const del = document.createElement("button");
+              del.type = "button";
+              del.className = "secondary compact";
+              del.textContent = "삭제";
+              del.addEventListener("click", async () => {
+                const ok = await showConfirmDialog({
+                  title: "파일 삭제",
+                  rows: [["파일", file.filename || "보고서"]],
+                  note: "파일함에서 바로 삭제합니다.",
+                  okLabel: "삭제",
+                });
+                if (!ok) return;
+                const r = await fetch(`/api/me/files/${file.id}`, { method: "DELETE" });
+                if (!r.ok) {
+                  const body = await r.json().catch(() => ({}));
+                  alert(body.error || "삭제 실패");
+                }
+                loadFiles();
               });
-              if (!ok) return;
-              const r = await fetch(`/api/me/files/${file.id}`, { method: "DELETE" });
-              if (!r.ok) {
-                const body = await r.json().catch(() => ({}));
-                alert(body.error || "삭제 실패");
-              }
-              loadFiles();
-            });
+              actions.append(del);
+            }
 
-            actions.append(download, del);
             item.append(meta, actions);
             list.appendChild(item);
           }
@@ -1289,7 +1448,10 @@
           panel.hidden = !active;
         });
         if (tabName === "files") loadFiles();
-        if (tabName === "settings") loadUsage();
+        if (tabName === "settings") {
+          loadUsage();
+          loadCloudStatus();
+        }
       }
       tabButtons.forEach((btn) => {
         btn.addEventListener("click", () => showTab(btn.dataset.tab));
@@ -2178,6 +2340,8 @@
 
         const fd = new FormData();
         fd.append("type", "chem-pre");
+        Array.from(document.getElementById("cpStyleRefs").files).forEach((f) => fd.append("styleRefs", f));
+        { const sn = (document.getElementById("cpStyleNote").value || "").trim(); if (sn) fd.append("styleNote", sn); }
         fd.append("manual", file);
         const dateStr = document.getElementById("date").value;
         const [y, m, d] = dateStr.split("-");
@@ -2290,6 +2454,8 @@
 
         const fd = new FormData();
         fd.append("type", "chem-result");
+        Array.from(document.getElementById("crStyleRefs").files).forEach((f) => fd.append("styleRefs", f));
+        { const sn = (document.getElementById("crStyleNote").value || "").trim(); if (sn) fd.append("styleNote", sn); }
         fd.append("preReport", preReport);
         if (dataFile) fd.append("data", dataFile);
         photos.forEach((p) => fd.append("photos", p));
@@ -2402,6 +2568,8 @@
 
         const fd = new FormData();
         fd.append("type", "phys-result");
+        Array.from(document.getElementById("prStyleRefs").files).forEach((f) => fd.append("styleRefs", f));
+        { const sn = (document.getElementById("prStyleNote").value || "").trim(); if (sn) fd.append("styleNote", sn); }
         if (cap) fd.append("cap", cap);
         dataFiles.forEach((f) => fd.append("data", f));
         if (manual) fd.append("manual", manual);

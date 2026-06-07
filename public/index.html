@@ -1720,8 +1720,9 @@
             const nav = document.getElementById("navReportPhysInquiry");
             if (nav) nav.hidden = false;
           }
-          // 수행평가 도움(베타 허브): 코딩 테스트 또는 물리 수행평가 권한이 있으면 메뉴 노출
-          if (b.admin === true || feats.includes("coding-test") || feats.includes("phys-inquiry")) {
+          // 수행평가 도움(베타 허브): 관리자 또는 'coding-test' 베타 테스터에게만 메뉴 노출.
+          // (물리 수행평가 전용 테스터에게는 띄우지 않는다 — 허브는 코딩 테스트 베타에 묶음.)
+          if (b.admin === true || feats.includes("coding-test")) {
             const navEp = document.getElementById("navExamPrep");
             if (navEp) navEp.hidden = false;
           }

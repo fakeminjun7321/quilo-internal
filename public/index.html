@@ -116,6 +116,11 @@
       </div>
     </header>
 
+    <div id="annTicker" class="ann-ticker" hidden aria-label="공지사항">
+      <span class="ann-bell" aria-hidden="true">🔔</span>
+      <div class="ann-track" id="annTrack"></div>
+    </div>
+
     <p class="slim-disclaimer">
       <strong>학습 보조 초안 생성 도구입니다.</strong>
       본인이 권한을 가진 파일만 올리고, 학교·교사 기준에서 AI 사용이 허용되는지 확인 후 사용하세요. 생성 결과는 반드시 직접 검토·수정하고 그대로 제출하지 마세요. 업로드 파일은 AI 처리 중 외부 처리업체로 전송될 수 있으며, 생성 파일은 24시간만 보관됩니다.
@@ -1159,6 +1164,35 @@
       }
 
       // Confirm session
+      // ── 상단 공지 티커(마퀴) ──────────────────────────────────────────
+      function escAnn(s){return String(s==null?"":s).replace(/[&<>"]/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));}
+      async function loadAnnouncements(){
+        const ticker=document.getElementById("annTicker");
+        const track=document.getElementById("annTrack");
+        if(!ticker||!track) return;
+        try{
+          const r=await fetch("/api/announcements");
+          const d=await r.json();
+          const list=Array.isArray(d.announcements)?d.announcements:[];
+          if(!list.length){ticker.hidden=true;return;}
+          const item=(a)=>{
+            const cat=a.category?`<span class="ann-cat">${escAnn(a.category)}</span>`:"";
+            const inner=cat+`<span>${escAnn(a.title)}</span>`;
+            const body=a.link?`<a class="ann-item" href="${escAnn(a.link)}" target="_blank" rel="noopener">${inner}</a>`:`<span class="ann-item">${inner}</span>`;
+            return body+`<span class="ann-dot">•</span>`;
+          };
+          let one=list.map(item).join("");
+          // 항목이 적으면 화면을 채우도록 반복
+          let reps=1; while(one.length*reps<1600 && reps<12) reps++;
+          const base=one.repeat(reps);
+          track.innerHTML=base+base; // 끊김 없는 루프용 2배 복제
+          const dur=Math.max(20,Math.min(90,list.length*reps*5));
+          track.style.setProperty("--ann-dur",dur+"s");
+          ticker.hidden=false;
+        }catch(e){ticker.hidden=true;}
+      }
+      loadAnnouncements();
+
       fetch("/api/me")
         .then((r) => (r.ok ? r.json() : Promise.reject()))
         .then((d) => applyAuth(true, d))

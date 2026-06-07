@@ -2602,3 +2602,20 @@ textarea.tool-input {
     margin: 6px;
   }
 }
+
+
+/* ── 상단 공지 티커(마퀴) ── */
+.ann-ticker{display:flex;align-items:center;gap:10px;background:linear-gradient(90deg,#eef2ff,#f5f3ff);border-bottom:1px solid #e2e6f3;padding:7px 14px;overflow:hidden;position:relative}
+.ann-ticker[hidden]{display:none}
+.ann-ticker .ann-bell{flex:0 0 auto;font-size:14px;line-height:1}
+.ann-track{display:flex;align-items:center;white-space:nowrap;animation:ann-scroll var(--ann-dur,40s) linear infinite;will-change:transform}
+.ann-ticker:hover .ann-track{animation-play-state:paused}
+.ann-item{display:inline-flex;align-items:center;gap:7px;padding:0 18px;font-size:13px;color:#334155;text-decoration:none}
+.ann-item:hover{color:#2950e6}
+.ann-item .ann-cat{font-size:11px;font-weight:700;color:#2950e6;background:#fff;border:1px solid #dfe4fb;border-radius:999px;padding:1px 8px}
+.ann-dot{color:#c7cce0;font-size:12px}
+@keyframes ann-scroll{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+@media (prefers-reduced-motion: reduce){.ann-track{animation:none}}
+[data-theme="dark"] .ann-ticker{background:linear-gradient(90deg,#1c2233,#241f33);border-color:#2b3350}
+[data-theme="dark"] .ann-item{color:#cbd5e1}
+[data-theme="dark"] .ann-item .ann-cat{background:#161b2b;color:#93a5ff;border-color:#2b3350}

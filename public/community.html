@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#243ba2" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <title>커뮤니티 — Quilo</title>
+    <script>
+      // 다크모드 깜빡임 방지(다른 페이지와 동일 패턴)
+      try {
+        var t = localStorage.getItem("theme");
+        if (t) document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    </script>
+    <link rel="stylesheet" href="/style.css" />
+    <style>
+      .cmwrap { max-width: 860px; margin: 0 auto; padding: 18px 16px 80px; }
+      .cmhead { display: flex; align-items: center; gap: 12px; margin: 8px 0 18px; }
+      .cmhead a.logo { display: flex; align-items: center; gap: 8px; text-decoration: none; color: inherit; font-weight: 800; font-size: 19px; }
+      .cmhead .qmark { width: 30px; height: 30px; border-radius: 8px; background: #2950e6; color: #fff; display: grid; place-items: center; font-weight: 800; }
+      .cmtabs { display: flex; gap: 6px; border-bottom: 1px solid #e2e6f3; margin-bottom: 16px; }
+      .cmtabs button { background: none; border: 0; padding: 10px 14px; font-size: 15px; font-weight: 600; color: #64748b; cursor: pointer; border-bottom: 2px solid transparent; }
+      .cmtabs button.active { color: #2950e6; border-bottom-color: #2950e6; }
+      .cmcard { border: 1px solid #e2e6f3; border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; background: var(--card-bg, #fff); }
+      .cmpost-title { font-weight: 700; font-size: 16px; margin: 0 0 4px; }
+      .cmpost-body { white-space: pre-wrap; word-break: break-word; color: #334155; font-size: 14.5px; line-height: 1.6; }
+      .cmmeta { font-size: 12.5px; color: #94a3b8; margin-top: 8px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+      .cmbadge { display: inline-block; font-size: 11.5px; padding: 1px 8px; border-radius: 999px; background: #eef2ff; color: #3958d6; font-weight: 600; }
+      .cmbadge.suggestion { background: #fff4e5; color: #b45309; }
+      .vote { display: inline-flex; align-items: center; gap: 5px; border: 1px solid #d7ddf0; border-radius: 999px; padding: 3px 11px; background: none; cursor: pointer; font-size: 13px; color: #475569; }
+      .vote.on { background: #2950e6; color: #fff; border-color: #2950e6; }
+      .linkbtn { background: none; border: 0; color: #2950e6; cursor: pointer; font-size: 13px; padding: 0; }
+      .cmtextarea, .cminput { width: 100%; box-sizing: border-box; border: 1px solid #d7ddf0; border-radius: 8px; padding: 9px 11px; font: inherit; font-size: 14px; }
+      .cmtextarea { min-height: 90px; resize: vertical; }
+      .cmrow { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
+      .comments { margin-top: 12px; border-top: 1px dashed #e2e6f3; padding-top: 10px; }
+      .comment { font-size: 13.5px; padding: 6px 0; border-bottom: 1px solid #f1f4fb; }
+      .comment .who { color: #64748b; font-size: 12px; }
+      .muted { color: #94a3b8; font-size: 13px; }
+      .err { color: #dc2626; font-size: 13px; margin: 6px 0; }
+      .pill-filter { display: flex; gap: 6px; margin-bottom: 12px; }
+      .pill-filter button { border: 1px solid #d7ddf0; background: none; border-radius: 999px; padding: 4px 12px; font-size: 13px; cursor: pointer; color: #475569; }
+      .pill-filter button.active { background: #2950e6; color: #fff; border-color: #2950e6; }
+      .labbody { white-space: pre-wrap; word-break: break-word; line-height: 1.7; font-size: 14.5px; color: #334155; }
+      .labtag { font-size: 11.5px; color: #2950e6; font-weight: 700; letter-spacing: .02em; }
+    </style>
+  </head>
+  <body>
+    <div class="cmwrap">
+      <div class="cmhead">
+        <a class="logo" href="/"><span class="qmark">Q</span> Quilo</a>
+        <span class="muted">· 커뮤니티</span>
+        <span style="flex:1"></span>
+        <a href="/" class="muted" style="text-decoration:none">← 홈으로</a>
+      </div>
+
+      <div class="cmtabs">
+        <button id="tabSuggest" class="active" onclick="showTab('suggest')">건의 · 기능요청</button>
+        <button id="tabLab" onclick="showTab('lab')">랩 (기술 공개)</button>
+      </div>
+
+      <!-- 건의 · 기능요청 -->
+      <section id="paneSuggest">
+        <div class="pill-filter">
+          <button data-cat="" class="active">전체</button>
+          <button data-cat="feature">기능 요청</button>
+          <button data-cat="suggestion">건의사항</button>
+        </div>
+
+        <div id="writeBox" class="cmcard" style="display:none">
+          <input id="newTitle" class="cminput" maxlength="200" placeholder="제목" />
+          <textarea id="newBody" class="cmtextarea" maxlength="5000" placeholder="개발자에게 추가했으면 하는 기능이나 건의사항을 적어주세요." style="margin-top:8px"></textarea>
+          <div class="cmrow">
+            <select id="newCat" class="cminput" style="max-width:160px">
+              <option value="feature">기능 요청</option>
+              <option value="suggestion">건의사항</option>
+            </select>
+            <button id="postBtn" class="btn btn-primary" onclick="submitPost()">등록</button>
+            <span id="postErr" class="err"></span>
+          </div>
+        </div>
+        <div id="loginHint" class="cmcard muted" style="display:none">
+          글을 쓰려면 <a href="/">로그인</a>이 필요합니다. (읽기는 누구나 가능)
+        </div>
+
+        <div id="postList"><p class="muted">불러오는 중…</p></div>
+      </section>
+
+      <!-- 랩 -->
+      <section id="paneLab" style="display:none">
+        <p class="muted" style="margin-top:0">개발자가 직접 공개하는 기술·구현 노트입니다.</p>
+        <div id="labList"></div>
+      </section>
+    </div>
+
+    <script>
+      // ── 랩(기술 공개): 개발자 작성 정적 콘텐츠. 여기를 수정/추가해 업로드. ──
+      const LAB_POSTS = [
+        {
+          date: "2026-06-07",
+          tag: "PDF 통번역",
+          title: "PDF를 레이아웃 그대로 한국어로 — in-place 번역 엔진",
+          body:
+            "영어 PDF의 그림·표·레이아웃은 그대로 두고 텍스트만 한국어로 바꾸는 엔진을 만들었습니다(PyMuPDF).\n\n" +
+            "• 원리: 페이지에서 텍스트 블록을 추출 → Claude/GPT로 번역 → 원본 글자를 지우고(redaction) 같은 위치(bbox)에 한국어를 다시 그립니다.\n" +
+            "• 수식 위/아래첨자: 추출 시 <sub>/<sup> 태그로 보존해, 번역을 거쳐도 H₂⁺·σ_g·ψ_el 처럼 진짜 첨자로 렌더됩니다.\n" +
+            "• 화학 전하(⁺/⁻)·반결합(σ*): 교과서 전용 기호 폰트(WWDOC) 글리프를 실제 모양대로 매핑해 복원.\n" +
+            "• 한계: 2D로 쌓인 분수·루이스 구조처럼 가로로 못 펴는 식은 원본 그대로 보존하고, 수식 밀집 문서는 아래 '재조판' 모드를 권합니다.",
+        },
+        {
+          date: "2026-06-07",
+          tag: "PDF 통번역",
+          title: "수식이 많은 문서는 '재조판' — LaTeX로 다시 조판 + 자동 수리",
+          body:
+            "논문·문제집처럼 수식이 빽빽한 문서는 레이아웃 위 덮어쓰기로는 한계가 있어, LaTeX로 다시 조판하는 '재조판' 모드를 만들었습니다.\n\n" +
+            "• 모델이 문서를 읽고 수식을 정준형 LaTeX로 복원 → Tectonic으로 PDF 컴파일. 원본 그림은 잘라서 제자리에 복원합니다.\n" +
+            "• Claude·GPT 모두 네이티브 지원(GPT는 OpenAI 파일/이미지 입력으로 직접 처리).\n" +
+            "• 컴파일이 깨지면(미정의 명령·수식모드 누락) 오류를 모델에 돌려줘 자동으로 고쳐 재컴파일(최대 2회), 그래도 안 되면 빠른 번역으로 안전 대체합니다.",
+        },
+        {
+          date: "2026-06-07",
+          tag: "안정성",
+          title: "사이트 전역 'Unexpected end of JSON input' 박멸",
+          body:
+            "어떤 액션이든 가끔 'Unexpected end of JSON input'이 뜨던 문제를 근본 수정했습니다.\n\n" +
+            "• 원인: 일부 응답이 빈 본문/HTML이었는데 프런트가 무조건 JSON으로 파싱 → 깨짐.\n" +
+            "• 수정: 모든 /api 응답을 항상 JSON으로(전역 JSON 에러 핸들러 + JSON 404), 세션 만료 시에도 빈 리다이렉트 대신 JSON 401.\n" +
+            "• 다중 에이전트로 코드 전역을 감사해 빈/비-JSON 응답 지점을 모두 찾아 고쳤습니다.",
+        },
+        {
+          date: "2026-06-07",
+          tag: "클라우드",
+          title: "보고서를 내 Dropbox에 영구 저장 (PKCE 연동)",
+          body:
+            "생성한 보고서를 24시간 임시 보관 대신, 본인 Dropbox 앱 폴더에 영구 저장하는 연동을 추가했습니다.\n\n" +
+            "• PKCE 방식이라 앱 시크릿 없이 안전하게 연결, refresh token은 AES-256-GCM으로 암호화 저장.\n" +
+            "• 사용자별(계정별) 격리 — 각자 본인 Dropbox에만 저장되고 본인 파일만 보입니다.\n" +
+            "• '내 파일'에서 다운로드 + 'Dropbox에서 열기' 직접 링크 제공.",
+        },
+      ];
+
+      let me = null; // {id, isAdmin} or null
+      let curCat = "";
+
+      function esc(s) {
+        return String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+      }
+      function fmtDate(s) {
+        try { return new Date(s).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" }); } catch (e) { return ""; }
+      }
+      function showTab(t) {
+        document.getElementById("paneSuggest").style.display = t === "suggest" ? "" : "none";
+        document.getElementById("paneLab").style.display = t === "lab" ? "" : "none";
+        document.getElementById("tabSuggest").classList.toggle("active", t === "suggest");
+        document.getElementById("tabLab").classList.toggle("active", t === "lab");
+        if (t === "lab") renderLab();
+      }
+
+      function renderLab() {
+        const el = document.getElementById("labList");
+        el.innerHTML = LAB_POSTS.map((p) =>
+          `<div class="cmcard"><div class="labtag">${esc(p.tag)} · ${esc(p.date)}</div>` +
+          `<div class="cmpost-title" style="margin-top:4px">${esc(p.title)}</div>` +
+          `<div class="labbody" style="margin-top:8px">${esc(p.body)}</div></div>`
+        ).join("");
+      }
+
+      async function loadMe() {
+        try {
+          const r = await fetch("/api/me");
+          if (r.ok) { const d = await r.json(); me = { id: d.id, isAdmin: !!d.isAdmin, name: d.user }; }
+        } catch (e) {}
+        document.getElementById("writeBox").style.display = me ? "" : "none";
+        document.getElementById("loginHint").style.display = me ? "none" : "";
+      }
+
+      async function loadPosts() {
+        const list = document.getElementById("postList");
+        list.innerHTML = '<p class="muted">불러오는 중…</p>';
+        try {
+          const r = await fetch("/api/community/posts" + (curCat ? "?category=" + curCat : ""));
+          const d = await r.json();
+          if (!r.ok) throw new Error(d.error || "오류");
+          if (d.me) me = d.me;
+          const posts = d.posts || [];
+          if (!d.storage) { list.innerHTML = '<p class="muted">커뮤니티 저장소가 아직 설정되지 않았습니다.</p>'; return; }
+          if (!posts.length) { list.innerHTML = '<p class="muted">아직 글이 없습니다. 첫 글을 남겨보세요!</p>'; return; }
+          list.innerHTML = "";
+          posts.forEach((p) => list.appendChild(renderPost(p)));
+        } catch (e) {
+          list.innerHTML = '<p class="err">' + esc(e.message) + "</p>";
+        }
+      }
+
+      function renderPost(p) {
+        const card = document.createElement("div");
+        card.className = "cmcard";
+        const canDel = me && (me.isAdmin || me.id === p.user_id);
+        const catLabel = p.category === "feature" ? "기능 요청" : "건의사항";
+        card.innerHTML =
+          `<div class="cmpost-title">${esc(p.title)} <span class="cmbadge ${p.category === "feature" ? "" : "suggestion"}">${catLabel}</span></div>` +
+          `<div class="cmpost-body">${esc(p.body)}</div>` +
+          `<div class="cmmeta">` +
+            `<button class="vote ${p.voted ? "on" : ""}" data-id="${p.id}">▲ 공감 <b>${p.upvotes || 0}</b></button>` +
+            `<button class="linkbtn toggle-comments" data-id="${p.id}">💬 댓글 ${p.comment_count || 0}</button>` +
+            `<span>${esc(p.author_name || "익명")}</span><span>${fmtDate(p.created_at)}</span>` +
+            (canDel ? `<button class="linkbtn del-post" data-id="${p.id}" style="color:#dc2626">삭제</button>` : "") +
+          `</div>` +
+          `<div class="comments" id="cm-${p.id}" style="display:none"></div>`;
+        card.querySelector(".vote").addEventListener("click", () => votePost(p.id, card));
+        card.querySelector(".toggle-comments").addEventListener("click", () => toggleComments(p.id));
+        const dp = card.querySelector(".del-post");
+        if (dp) dp.addEventListener("click", () => delPost(p.id));
+        return card;
+      }
+
+      async function votePost(id, card) {
+        if (!me) { alert("로그인이 필요합니다."); return; }
+        try {
+          const r = await fetch(`/api/community/posts/${id}/vote`, { method: "POST" });
+          const d = await r.json();
+          if (!r.ok) throw new Error(d.error || "오류");
+          const btn = card.querySelector(".vote");
+          btn.classList.toggle("on", d.voted);
+          btn.querySelector("b").textContent = d.upvotes;
+        } catch (e) { alert(e.message); }
+      }
+
+      async function delPost(id) {
+        if (!confirm("이 글을 삭제할까요?")) return;
+        const r = await fetch(`/api/community/posts/${id}`, { method: "DELETE" });
+        if (r.ok) loadPosts(); else { const d = await r.json().catch(() => ({})); alert(d.error || "삭제 실패"); }
+      }
+
+      async function toggleComments(id) {
+        const box = document.getElementById("cm-" + id);
+        if (box.style.display !== "none") { box.style.display = "none"; return; }
+        box.style.display = "";
+        box.innerHTML = '<p class="muted">댓글 불러오는 중…</p>';
+        try {
+          const r = await fetch(`/api/community/posts/${id}/comments`);
+          const d = await r.json();
+          if (d.me) me = d.me;
+          const cs = d.comments || [];
+          box.innerHTML =
+            cs.map((c) => {
+              const canDel = me && (me.isAdmin || me.id === c.user_id);
+              return `<div class="comment"><span class="who">${esc(c.author_name || "익명")} · ${fmtDate(c.created_at)}</span>` +
+                (canDel ? ` <button class="linkbtn del-cm" data-cid="${c.id}" style="color:#dc2626;font-size:11px">삭제</button>` : "") +
+                `<div>${esc(c.body)}</div></div>`;
+            }).join("") +
+            (me
+              ? `<div class="cmrow"><input class="cminput cm-input" maxlength="2000" placeholder="댓글 달기" style="flex:1" /><button class="btn cm-send">등록</button></div><span class="err cm-err"></span>`
+              : `<p class="muted" style="margin:6px 0 0">댓글을 쓰려면 <a href="/">로그인</a>하세요.</p>`);
+          box.querySelectorAll(".del-cm").forEach((b) =>
+            b.addEventListener("click", async () => {
+              if (!confirm("댓글을 삭제할까요?")) return;
+              const r2 = await fetch(`/api/community/comments/${b.dataset.cid}`, { method: "DELETE" });
+              if (r2.ok) toggleComments(id), toggleComments(id);
+            })
+          );
+          const send = box.querySelector(".cm-send");
+          if (send)
+            send.addEventListener("click", async () => {
+              const input = box.querySelector(".cm-input");
+              const errEl = box.querySelector(".cm-err");
+              const body = input.value.trim();
+              if (!body) return;
+              send.disabled = true;
+              try {
+                const r2 = await fetch(`/api/community/posts/${id}/comments`, {
+                  method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body }),
+                });
+                const d2 = await r2.json();
+                if (!r2.ok) { errEl.textContent = d2.error || "등록 실패"; }
+                else { box.style.display = "none"; toggleComments(id); loadPosts(); }
+              } catch (e) { errEl.textContent = "등록 실패"; }
+              send.disabled = false;
+            });
+        } catch (e) { box.innerHTML = '<p class="err">댓글을 불러오지 못했습니다.</p>'; }
+      }
+
+      async function submitPost() {
+        const title = document.getElementById("newTitle").value.trim();
+        const body = document.getElementById("newBody").value.trim();
+        const category = document.getElementById("newCat").value;
+        const errEl = document.getElementById("postErr");
+        errEl.textContent = "";
+        if (!title || !body) { errEl.textContent = "제목과 내용을 입력하세요."; return; }
+        const btn = document.getElementById("postBtn");
+        btn.disabled = true;
+        try {
+          const r = await fetch("/api/community/posts", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ title, body, category }),
+          });
+          const d = await r.json();
+          if (!r.ok) {
+            errEl.textContent = d.error || "등록 실패";
+            if (d.bannedUntil) errEl.textContent += ` (${fmtDate(d.bannedUntil)}까지)`;
+          } else {
+            document.getElementById("newTitle").value = "";
+            document.getElementById("newBody").value = "";
+            loadPosts();
+          }
+        } catch (e) { errEl.textContent = "등록 실패"; }
+        btn.disabled = false;
+      }
+
+      // 카테고리 필터
+      document.querySelectorAll(".pill-filter button").forEach((b) =>
+        b.addEventListener("click", () => {
+          document.querySelectorAll(".pill-filter button").forEach((x) => x.classList.remove("active"));
+          b.classList.add("active");
+          curCat = b.dataset.cat || "";
+          loadPosts();
+        })
+      );
+
+      (async function init() {
+        await loadMe();
+        await loadPosts();
+      })();
+    </script>
+  </body>
+</html>

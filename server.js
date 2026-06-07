@@ -200,14 +200,19 @@ const PIPELINES = {
           throw new Error("필기노트는 PDF 또는 .txt/.md 파일만 가능합니다.");
         }
       }
-      for (const f of refs) {
-        const ext = (f.originalname.split(".").pop() || "").toLowerCase();
-        if (!["pdf", "png", "jpg", "jpeg", "gif", "webp", "txt", "md", "csv"].includes(ext)) {
-          throw new Error(
-            "참고자료는 PDF, 이미지(.png/.jpg), 텍스트(.txt/.md/.csv)만 가능합니다.",
-          );
+      const styleRefs = filesByField.styleRefs || [];
+      const checkRefExt = (arr, label) => {
+        for (const f of arr) {
+          const ext = (f.originalname.split(".").pop() || "").toLowerCase();
+          if (!["pdf", "png", "jpg", "jpeg", "gif", "webp", "txt", "md", "csv"].includes(ext)) {
+            throw new Error(
+              `${label}는 PDF, 이미지(.png/.jpg), 텍스트(.txt/.md/.csv)만 가능합니다.`,
+            );
+          }
         }
-      }
+      };
+      checkRefExt(refs, "참고자료");
+      checkRefExt(styleRefs, "스타일 참고 자료");
       if (notes.length === 0 && refs.length === 0 && !refLinks) {
         throw new Error(
           "필기노트 PDF, 참고자료 파일, 참고 링크 중 하나는 첨부하세요.",
@@ -224,6 +229,8 @@ const PIPELINES = {
         notesFiles: mapFiles(notes),
         refFiles: mapFiles(refs),
         refLinks,
+        styleRefs: mapFiles(styleRefs),
+        styleNote: String(body.styleNote || "").trim().slice(0, 1500),
         studentId: String(body.studentId || "").trim().slice(0, 20),
         fontFace: normalizeFontFace(body.fontFace),
         userNotes: collectUserNotes(body.userNotes, filesByField),

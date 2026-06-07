@@ -505,6 +505,34 @@
 
       <div class="form-section">
         <div class="form-section-head">
+          <span class="form-section-title">내 글 스타일 (선택)</span>
+        </div>
+        <div class="notice" style="margin-bottom:12px">
+          내가 예전에 쓴 글(필기·노트·보고서 등)을 올리면, 보고서를 <strong>그 글의 문체·느낌</strong>으로 써 줍니다.
+          <strong>내용은 가져오지 않고 스타일만</strong> 흉내 냅니다. (예: 다른 주제 글이어도 OK)
+        </div>
+        <div class="field-grid">
+          <div class="field">
+            <span class="field-label">내 글 스타일 참고 파일 (PDF·이미지·텍스트, 여러 개)</span>
+            <div class="dropzone">
+              <input id="piStyleRefs" name="styleRefs" type="file" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.txt,.md,.csv,application/pdf,image/*" multiple aria-label="내 글 스타일 참고 파일" />
+              <span class="dropzone-icon" aria-hidden="true">✍️</span>
+              <span class="dropzone-title">내 글 샘플을 끌어다 놓거나 클릭</span>
+              <span class="dropzone-sub">문체만 흉내 · 내용 제외</span>
+              <span class="dropzone-file" data-dz-file></span>
+            </div>
+          </div>
+          <div class="field">
+            <label><span class="field-label">문체 메모 (선택, 한 줄)</span>
+              <textarea id="piStyleNote" name="styleNote" rows="3" maxlength="1500" placeholder="예: 영어 소제목 + 구어체로 직관 먼저 설명하고, 사람들이 헷갈리는 지점을 짚으며 수식은 단계별로 유도하는 느낌"></textarea>
+            </label>
+            <small>샘플 없이 원하는 느낌만 글로 적어도 됩니다.</small>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head">
           <span class="form-section-title">보고서 정보</span>
         </div>
         <div class="field-grid">
@@ -2411,6 +2439,8 @@
           const notes = Array.from(document.getElementById("piNotes").files);
           const refs = Array.from(document.getElementById("piRefs").files);
           const refLinks = document.getElementById("piRefLinks").value.trim();
+          const styleRefs = Array.from(document.getElementById("piStyleRefs").files);
+          const styleNote = document.getElementById("piStyleNote").value.trim();
 
           if (!topic) {
             alert("탐구 주제를 입력하세요.");
@@ -2447,6 +2477,7 @@
               ["주제", topic.length > 40 ? topic.slice(0, 40) + "…" : topic],
               ["입력", inputBits.join(", ") || "주제만"],
               ["참고 메모", userNotesSummary(piUserNotes, piUserNotesFile)],
+              ["내 문체", styleRefs.length || styleNote ? `반영${styleRefs.length ? ` (샘플 ${styleRefs.length}개)` : ""}` : "기본"],
               ["예상 비용", "무료 (베타)"],
               ["예상 시간", formatDuration(estimateGenSeconds("phys-inquiry", piModel))],
             ],
@@ -2467,6 +2498,8 @@
           notes.forEach((f) => fd.append("notes", f));
           refs.forEach((f) => fd.append("refs", f));
           fd.append("refLinks", refLinks);
+          styleRefs.forEach((f) => fd.append("styleRefs", f));
+          if (styleNote) fd.append("styleNote", styleNote);
           const piDateStr = document.getElementById("piDate").value;
           if (piDateStr) {
             const [y, m, d] = piDateStr.split("-");

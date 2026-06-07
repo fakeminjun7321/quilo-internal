@@ -275,12 +275,44 @@
                   method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body }),
                 });
                 const d2 = await r2.json();
-                if (!r2.ok) { errEl.textContent = d2.error || "등록 실패"; }
-                else { box.style.display = "none"; toggleComments(id); loadPosts(); }
+                if (!r2.ok) {
+                  errEl.textContent = d2.error || "등록 실패";
+                  if (d2.profanity) showAppeal(errEl.parentNode, "comment", body);
+                } else { box.style.display = "none"; toggleComments(id); loadPosts(); }
               } catch (e) { errEl.textContent = "등록 실패"; }
               send.disabled = false;
             });
         } catch (e) { box.innerHTML = '<p class="err">댓글을 불러오지 못했습니다.</p>'; }
+      }
+
+      // 욕설 오탐으로 차단됐을 때, 사용자가 해명을 보낼 수 있는 폼을 띄운다.
+      function showAppeal(container, kind, blockedText) {
+        if (!container || container.querySelector(".appeal-box")) return;
+        const box = document.createElement("div");
+        box.className = "appeal-box";
+        box.style.cssText =
+          "margin-top:10px;padding:11px 12px;border:1px dashed #e7a3c0;border-radius:9px;background:#fff7fb";
+        box.innerHTML =
+          '<div class="muted" style="margin-bottom:6px">욕설이 아닌데 차단됐다면, 상황을 적어 <b>해명</b>을 보낼 수 있어요. 관리자가 검토 후 해제합니다.</div>' +
+          '<textarea class="cmtextarea appeal-reason" maxlength="2000" placeholder="예: \'시발점\'이라는 단어였는데 욕설로 잘못 감지된 것 같습니다." style="min-height:60px"></textarea>' +
+          '<div class="cmrow"><button type="button" class="btn appeal-send">해명 보내기</button><span class="appeal-msg muted"></span></div>';
+        container.appendChild(box);
+        box.querySelector(".appeal-send").addEventListener("click", async () => {
+          const reason = box.querySelector(".appeal-reason").value.trim();
+          const msg = box.querySelector(".appeal-msg");
+          if (!reason) { msg.textContent = "내용을 입력하세요."; return; }
+          const btn = box.querySelector(".appeal-send");
+          btn.disabled = true;
+          try {
+            const r = await fetch("/api/community/appeal", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ kind, blockedText, reason }),
+            });
+            const d = await r.json().catch(() => ({}));
+            if (r.ok) box.innerHTML = '<div class="muted">✅ 해명이 접수됐습니다. 관리자 검토 후 처리됩니다.</div>';
+            else { msg.textContent = d.error || "제출 실패"; btn.disabled = false; }
+          } catch (e) { msg.textContent = "제출 실패"; btn.disabled = false; }
+        });
       }
 
       async function submitPost() {
@@ -301,6 +333,7 @@
           if (!r.ok) {
             errEl.textContent = d.error || "등록 실패";
             if (d.bannedUntil) errEl.textContent += ` (${fmtDate(d.bannedUntil)}까지)`;
+            if (d.profanity) showAppeal(errEl.parentNode, "post", title + "\n" + body);
           } else {
             document.getElementById("newTitle").value = "";
             document.getElementById("newBody").value = "";

@@ -60,6 +60,7 @@
               <a href="/changelog.html">패치노트</a>
             </div>
           </div>
+          <a class="nav-dd-btn" href="/community.html" style="text-decoration:none">커뮤니티</a>
           <!-- 로그아웃 상태: '로그인' 누르면 로그인 폼이 드롭다운으로 내려온다 -->
           <div class="nav-dd nav-dd-right" data-dd id="loginDd" hidden>
             <button type="button" class="nav-dd-btn nav-login-trigger">로그인 <span class="caret" aria-hidden="true">▾</span></button>
@@ -286,6 +287,7 @@
             <label><span class="field-label">문체 메모 (선택)</span>
               <textarea id="crStyleNote" name="styleNote" rows="3" maxlength="1500" placeholder="예: 구어체로 직관 먼저 설명하고, 헷갈리는 지점을 짚으며 수식은 단계별로 유도하는 느낌"></textarea>
             </label>
+          <button type="button" class="qc-style-btn" style="display:none;align-self:flex-start;margin:6px 0 2px;font-size:12.5px;color:#243ba2;background:#eef1fc;border:1px solid #dfe4fb;border-radius:8px;padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openStyle('crStyleNote')">✨ AI로 내 문체 정리받기</button>
             <small>샘플 없이 원하는 느낌만 글로 적어도 됩니다.</small>
           </div>
         </div>
@@ -445,6 +447,7 @@
             <label><span class="field-label">문체 메모 (선택)</span>
               <textarea id="prStyleNote" name="styleNote" rows="3" maxlength="1500" placeholder="예: 구어체로 직관 먼저 설명하고, 헷갈리는 지점을 짚으며 수식은 단계별로 유도하는 느낌"></textarea>
             </label>
+          <button type="button" class="qc-style-btn" style="display:none;align-self:flex-start;margin:6px 0 2px;font-size:12.5px;color:#243ba2;background:#eef1fc;border:1px solid #dfe4fb;border-radius:8px;padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openStyle('prStyleNote')">✨ AI로 내 문체 정리받기</button>
             <small>샘플 없이 원하는 느낌만 글로 적어도 됩니다.</small>
           </div>
         </div>
@@ -554,6 +557,7 @@
             <span class="field-label">AI 참고 메모 / 내 생각 (선택)</span>
             <textarea id="piUserNotes" name="userNotes" rows="4" maxlength="12000" placeholder="예: 처음엔 시간이 절대적이라고 생각했는데 기차 사고실험을 보고 헷갈렸음. 로런츠 변환으로 풀고 싶음."></textarea>
           </label>
+          <button type="button" class="qc-memo-btn" style="display:none;align-self:flex-start;margin:6px 0 2px;font-size:12.5px;color:#243ba2;background:#eef1fc;border:1px solid #dfe4fb;border-radius:8px;padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openMemo('piUserNotes')">✨ AI로 메모 작성 도움받기</button>
           <small>.md/.txt 파일로 길게 작성한 메모도 함께 첨부할 수 있습니다.</small>
           <input id="piUserNotesFile" name="userNotesFile" type="file" accept=".md,.txt,text/markdown,text/plain" aria-label="참고 메모 파일" />
         </div>
@@ -582,6 +586,7 @@
             <label><span class="field-label">문체 메모 (선택, 한 줄)</span>
               <textarea id="piStyleNote" name="styleNote" rows="3" maxlength="1500" placeholder="예: 영어 소제목 + 구어체로 직관 먼저 설명하고, 사람들이 헷갈리는 지점을 짚으며 수식은 단계별로 유도하는 느낌"></textarea>
             </label>
+          <button type="button" class="qc-style-btn" style="display:none;align-self:flex-start;margin:6px 0 2px;font-size:12.5px;color:#243ba2;background:#eef1fc;border:1px solid #dfe4fb;border-radius:8px;padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openStyle('piStyleNote')">✨ AI로 내 문체 정리받기</button>
             <small>샘플 없이 원하는 느낌만 글로 적어도 됩니다.</small>
           </div>
         </div>
@@ -728,6 +733,7 @@
             <label><span class="field-label">문체 메모 (선택)</span>
               <textarea id="cpStyleNote" name="styleNote" rows="3" maxlength="1500" placeholder="예: 구어체로 직관 먼저 설명하고, 헷갈리는 지점을 짚으며 수식은 단계별로 유도하는 느낌"></textarea>
             </label>
+          <button type="button" class="qc-style-btn" style="display:none;align-self:flex-start;margin:6px 0 2px;font-size:12.5px;color:#243ba2;background:#eef1fc;border:1px solid #dfe4fb;border-radius:8px;padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openStyle('cpStyleNote')">✨ AI로 내 문체 정리받기</button>
             <small>샘플 없이 원하는 느낌만 글로 적어도 됩니다.</small>
           </div>
         </div>
@@ -966,6 +972,21 @@
       </div>
 
       <div class="settings-card">
+        <h2>내 기본 글 스타일</h2>
+        <p class="hint">저장해두면 모든 보고서의 '내 글 스타일' 칸에 자동으로 채워집니다. 생성할 때 바꿀 수 있어요. (문체만 반영 · 내용은 안 들어감)</p>
+        <div class="compact-form">
+          <p>
+            <textarea id="settingsStyleNote" rows="4" maxlength="1500" class="tool-input" style="width:100%;max-width:560px" placeholder="예: 영어 소제목 + 구어체로 직관 먼저 설명하고, 헷갈리는 지점을 짚으며 수식은 단계별로 유도하는 느낌"></textarea>
+          </p>
+          <p>
+            <button type="button" id="styleSaveBtn">저장</button>
+            <button type="button" class="qc-style-btn" style="display:none;margin-left:8px;font-size:12.5px;color:#243ba2;background:#eef1fc;border:1px solid #dfe4fb;border-radius:8px;padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openStyle('settingsStyleNote')">✨ AI로 내 스타일 정리받기</button>
+            <span id="styleSaveStatus" style="margin-left:10px"></span>
+          </p>
+        </div>
+      </div>
+
+      <div class="settings-card">
         <h2>기본 모델 · 양식 선호</h2>
         <p class="hint">보고서 작성 화면을 열 때 자동으로 선택될 기본값입니다. 생성할 때 언제든 바꿀 수 있습니다.</p>
         <div class="compact-form">
@@ -1061,6 +1082,22 @@
         }
       }
 
+      function getLocalStyleNote() {
+        try { return localStorage.getItem("quiloStyleNote") || ""; } catch (_) { return ""; }
+      }
+      function saveLocalStyleNote(value) {
+        try { localStorage.setItem("quiloStyleNote", value || ""); } catch (_) {}
+      }
+      function applySavedStyleNote(serverNote) {
+        var note = serverNote != null && serverNote !== "" ? serverNote : getLocalStyleNote();
+        if (note) saveLocalStyleNote(note);
+        var s = document.getElementById("settingsStyleNote");
+        if (s && !s.value) s.value = note;
+        ["cpStyleNote", "crStyleNote", "prStyleNote", "piStyleNote"].forEach(function (id) {
+          var el = document.getElementById(id);
+          if (el && !el.value) el.value = note;
+        });
+      }
       function saveLocalStudentId(value) {
         try {
           localStorage.setItem("studentId", normalizeStudentId(value));
@@ -1097,6 +1134,7 @@
           document.getElementById("user").textContent = d.user + " 님 ";
           document.getElementById("settingsUserName").textContent = d.user;
           setStudentIdUi(d.studentId || getLocalStudentId());
+          applySavedStyleNote(d.styleNote);
           const piWho = document.getElementById("piWhoPreview");
           if (piWho) {
             const sid = (d.studentId || getLocalStudentId() || "").trim();
@@ -1847,6 +1885,46 @@
           profileBtn.disabled = false;
         }
       });
+
+      // ── 개인 설정: 내 기본 글 스타일 저장 ────────────────────────────────
+      (function () {
+        var btn = document.getElementById("styleSaveBtn");
+        var ta = document.getElementById("settingsStyleNote");
+        var status = document.getElementById("styleSaveStatus");
+        if (!btn || !ta) return;
+        btn.addEventListener("click", async function () {
+          var note = (ta.value || "").trim();
+          btn.disabled = true;
+          status.style.color = "#666";
+          status.textContent = "저장 중...";
+          saveLocalStyleNote(note);
+          ["cpStyleNote", "crStyleNote", "prStyleNote", "piStyleNote"].forEach(function (id) {
+            var e = document.getElementById(id);
+            if (e) e.value = note;
+          });
+          try {
+            var res = await fetch("/api/me/profile", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ studentId: currentStudentId, styleNote: note }),
+            });
+            var data = await res.json();
+            if (!res.ok) throw new Error(data.error || "저장 실패");
+            if (data.styleNotePersisted === false) {
+              status.style.color = "#9a6700";
+              status.textContent = "이 브라우저에 저장됨(서버 컬럼 미설정)";
+            } else {
+              status.style.color = "green";
+              status.textContent = "저장 완료";
+            }
+          } catch (err) {
+            status.style.color = "#9a6700";
+            status.textContent = "이 브라우저에 저장됨";
+          } finally {
+            btn.disabled = false;
+          }
+        });
+      })();
 
       // ── 개인 설정: 기본 모델 · 양식 선호 (이 브라우저에 저장) ──────────────
       (function () {

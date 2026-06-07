@@ -796,12 +796,15 @@ app.get("/api/me", async (req, res) => {
 
   let studentId = normalizeStudentId(u.studentId);
   let blockedReportTypes = [];
+  let styleNote = "";
   if (supa.isEnabled() && u.id) {
     try {
       const freshUser = await supa.findUserById(u.id);
       if (freshUser) {
         studentId = normalizeStudentId(freshUser.student_id);
         req.session.userInfo.studentId = studentId;
+        // style_note 컬럼이 없으면 undefined → 빈 문자열로 graceful 처리
+        styleNote = String(freshUser.style_note || "");
         // 기존 freshUser 조회 재사용 — 추가 쿼리 없이 차단 목록도 같이 반영
         blockedReportTypes = supa.normalizeBlockedTypes
           ? supa.normalizeBlockedTypes(freshUser.blocked_report_types)
@@ -815,6 +818,7 @@ app.get("/api/me", async (req, res) => {
     user: u.name,
     isAdmin: !!u.isAdmin,
     studentId,
+    styleNote,
     blockedReportTypes,
   });
 });
@@ -870,12 +874,56 @@ const CHAT_MEMO_SYSTEM = `당신은 "Quilo"의 '실험 메모 작성 도우미'�
 - 데이터 조작·허위 작성은 학업 부정행위입니다. 본인의 실제 실험을 정리하는 것만 돕습니다.
 - 한국어로 간결하게.`;
 
+// ── 글쓰기 도우미(write-assist): 보고서 입력·문체 메모 작성을 Sonnet / GPT-5.4-mini 로 돕는다.
+// 메모/스타일 모드에서만 쓰며, 유료 모델이라 로그인 사용자 한정. 키 라우팅은 CODE_ASSIST_PROVIDERS 재사용.
+const WRITE_ASSIST_MODELS = [
+  { id: "claude-sonnet-4-6", label: "Sonnet 4.6", provider: "claude" },
+  {
+    id: process.env.WRITE_ASSIST_GPT_MODEL || "gpt-5.4-mini",
+    label: "GPT-5.4 mini",
+    provider: "openai",
+  },
+];
+const WRITE_ASSIST_MAX_TOKENS = parseInt(
+  process.env.WRITE_ASSIST_MAX_TOKENS || "1500",
+  10,
+);
+const WRITE_ASSIST_STYLE_SYSTEM = `당신은 "Quilo"의 '내 글 스타일 도우미'입니다. 사용자가 자기 글의 **문체(스타일) 메모**를 한국어로 정리하도록 돕습니다. 이 메모는 나중에 보고서를 그 사람 문체로 쓰는 데 쓰입니다.
+
+[역할]
+- 사용자가 어떤 식으로 글을 쓰는지(말투: 격식체/구어체, 설명 방식: 직관 먼저/정의 먼저, 비유 사용, "대부분 여기서 헷갈린다"식 짚기, 소제목·번호 습관, 수식 제시 방식, 문장 길이, 강조 방식 등)를 1~3개의 짧은 질문으로 파악합니다.
+- 사용자가 자기 글 샘플을 붙여넣으면 그 문체 특징을 분석해 요약합니다.
+- 정리되면 마지막에 "스타일 메모:" 로 시작하는 3~6줄짜리 최종 문체 메모를 제시합니다(설정/보고서 입력칸에 붙여넣기 좋게).
+
+[절대 규칙]
+- 문체(어떻게 쓰는지)만 기술하고, 특정 주제의 내용·수치·데이터는 메모에 넣지 마세요.
+- 한국어로 간결하게.`;
+
+function writeAssistModelsFor(req) {
+  return WRITE_ASSIST_MODELS.map((m) => {
+    const p = CODE_ASSIST_PROVIDERS[m.provider];
+    return { id: m.id, label: m.label, provider: m.provider, available: !!(p && p.key()) };
+  }).filter((m) => m.available);
+}
+
+app.get("/api/write-assist/models", (req, res) => {
+  const u = getSessionUser(req);
+  const models = writeAssistModelsFor(req);
+  res.json({ loggedIn: !!u, enabled: models.length > 0, models });
+});
+
 app.get("/api/chat/status", (req, res) => {
   res.json({ enabled: !!CHAT_API_KEY });
 });
 
 app.post("/api/chat", async (req, res) => {
-  if (!CHAT_API_KEY) {
+  const sessionUser = getSessionUser(req);
+  const reqModel = String((req.body && req.body.model) || "").trim();
+  const waEntry = WRITE_ASSIST_MODELS.find((m) => m.id === reqModel);
+  const waProv = waEntry ? CODE_ASSIST_PROVIDERS[waEntry.provider] : null;
+  // 유료 글쓰기 도우미(Sonnet/GPT)는 로그인 사용자 + provider 키가 있을 때만 라우팅.
+  const usePaid = !!(waEntry && sessionUser && waProv && waProv.key());
+  if (!CHAT_API_KEY && !usePaid) {
     return res.status(503).json({ error: "AI 도우미가 아직 준비 중입니다." });
   }
   const ip = req.ip || "unknown";
@@ -909,36 +957,100 @@ app.post("/api/chat", async (req, res) => {
 
   rateLimit.recordChatAttempt(ip);
 
-  // 모드: memo = 메모 작성 도우미(무거운 모델 + 메모 전용 프롬프트), 그 외 = 사용법 도우미
-  const memoMode = (req.body && req.body.mode) === "memo";
+  // 모드: memo/style = 작성 도우미(전용 프롬프트), 그 외 = 사용법 도우미
+  const assistKind = String((req.body && req.body.assistKind) || "").trim();
+  const memoMode =
+    (req.body && req.body.mode) === "memo" ||
+    assistKind === "memo" ||
+    assistKind === "style";
   const ctx =
     !memoMode && req.body && typeof req.body.context === "string"
       ? req.body.context.slice(0, 300).replace(/[\r\n]+/g, " ").trim()
       : "";
-  const sysPrompt = memoMode
-    ? CHAT_MEMO_SYSTEM
-    : ctx
-      ? CHAT_SYSTEM +
-        `\n\n[지금 사용자가 보고 있는 화면] ${ctx} — 이 맥락을 고려해 답하세요.`
-      : CHAT_SYSTEM;
-  const chatModel = memoMode ? CHAT_MEMO_MODEL : CHAT_MODEL;
-  const maxTok = memoMode ? CHAT_MEMO_MAX_TOKENS : CHAT_MAX_TOKENS;
+  const sysPrompt =
+    assistKind === "style"
+      ? WRITE_ASSIST_STYLE_SYSTEM
+      : memoMode
+        ? CHAT_MEMO_SYSTEM
+        : ctx
+          ? CHAT_SYSTEM +
+            `\n\n[지금 사용자가 보고 있는 화면] ${ctx} — 이 맥락을 고려해 답하세요.`
+          : CHAT_SYSTEM;
+
+  // 모델·provider 결정: usePaid 면 Sonnet/GPT-5.4-mini, 아니면 기존 Groq.
+  let effBase = CHAT_API_BASE;
+  let effKey = CHAT_API_KEY;
+  let effModel = memoMode ? CHAT_MEMO_MODEL : CHAT_MODEL;
+  let effMaxTok = memoMode ? CHAT_MEMO_MAX_TOKENS : CHAT_MAX_TOKENS;
+  let effAnthropic = false;
+  if (usePaid) {
+    effModel = waEntry.id;
+    effMaxTok = WRITE_ASSIST_MAX_TOKENS;
+    if (waProv.kind === "anthropic") {
+      effAnthropic = true;
+      effKey = waProv.key();
+    } else {
+      effBase = waProv.base;
+      effKey = waProv.key();
+    }
+  }
+
+  // Anthropic(Sonnet) 스트리밍 경로 — 평문 토큰을 그대로 흘려보낸다(위젯이 평문 스트림을 읽음).
+  if (effAnthropic) {
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("X-Accel-Buffering", "no");
+    let wrote = false;
+    try {
+      const Anthropic = require("@anthropic-ai/sdk");
+      const client = new Anthropic({ apiKey: effKey });
+      const stream = client.messages.stream({
+        model: effModel,
+        max_tokens: effMaxTok,
+        temperature: 0.5,
+        system: sysPrompt,
+        messages: turns,
+      });
+      stream.on("text", (t) => {
+        wrote = true;
+        try {
+          res.write(t);
+        } catch (_) {}
+      });
+      await stream.finalMessage();
+      res.end();
+    } catch (e) {
+      console.error("[chat] anthropic stream:", e.message);
+      try {
+        if (!wrote) res.write("죄송해요, 도우미 응답에 오류가 났어요. 잠시 후 다시 시도해 주세요.");
+        res.end();
+      } catch (_) {}
+    }
+    return;
+  }
 
   let upstream;
   try {
-    upstream = await fetch(`${CHAT_API_BASE}/chat/completions`, {
+    // GPT-5.x 계열은 max_tokens 대신 max_completion_tokens 사용 + 커스텀 temperature 미지원.
+    const isGpt5 = /^gpt-5/.test(effModel);
+    const body = {
+      model: effModel,
+      stream: true,
+      messages: [{ role: "system", content: sysPrompt }, ...turns],
+    };
+    if (isGpt5) {
+      body.max_completion_tokens = effMaxTok;
+    } else {
+      body.max_tokens = effMaxTok;
+      body.temperature = memoMode ? 0.5 : 0.3;
+    }
+    upstream = await fetch(`${effBase}/chat/completions`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${CHAT_API_KEY}`,
+        Authorization: `Bearer ${effKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        model: chatModel,
-        max_tokens: maxTok,
-        temperature: memoMode ? 0.5 : 0.3,
-        stream: true,
-        messages: [{ role: "system", content: sysPrompt }, ...turns],
-      }),
+      body: JSON.stringify(body),
     });
   } catch (e) {
     console.error("[chat] connect fail:", e.message);
@@ -1924,14 +2036,41 @@ app.patch("/api/me/profile", requireAuth, async (req, res) => {
   }
 
   const studentId = normalizeStudentId(req.body?.studentId);
+  const hasStyleNote = typeof req.body?.styleNote === "string";
+  const styleNote = hasStyleNote
+    ? String(req.body.styleNote).slice(0, 4000)
+    : undefined;
   try {
-    await supa.updateUser(userInfo.id, { studentId });
+    const patch = { studentId };
+    if (hasStyleNote) patch.styleNote = styleNote;
+    await supa.updateUser(userInfo.id, patch);
     req.session.userInfo.studentId = studentId;
-    return res.json({ ok: true, studentId });
+    return res.json({
+      ok: true,
+      studentId,
+      styleNote: hasStyleNote ? styleNote : undefined,
+      styleNotePersisted: hasStyleNote,
+    });
   } catch (e) {
+    // style_note 컬럼이 아직 없으면(스키마 미적용) 학번만 저장하고, 스타일은
+    // 클라이언트 localStorage 로 보관하도록 styleNotePersisted:false 로 알린다.
+    if (hasStyleNote && /style_note|column|schema/i.test(e.message || "")) {
+      try {
+        await supa.updateUser(userInfo.id, { studentId });
+        req.session.userInfo.studentId = studentId;
+        return res.json({
+          ok: true,
+          studentId,
+          styleNotePersisted: false,
+          note: "style_note 컬럼이 없어 서버 저장을 건너뜀(로컬에 저장됨). 관리자에게 스키마 갱신 요청.",
+        });
+      } catch (e2) {
+        console.error("[profile] fallback error:", e2);
+      }
+    }
     console.error("[profile] error:", e);
     return res.status(500).json({
-      error: "학번 저장 중 오류가 발생했습니다. Supabase 스키마가 최신인지 확인하세요.",
+      error: "프로필 저장 중 오류가 발생했습니다. Supabase 스키마가 최신인지 확인하세요.",
     });
   }
 });
@@ -3557,6 +3696,16 @@ function appBaseUrl(req) {
   return `${proto}://${req.get("host")}`;
 }
 const dropboxRedirectUri = (req) => `${appBaseUrl(req)}/api/cloud/dropbox/callback`;
+
+// 커뮤니티 API (건의·기능요청 게시판) — 라우터 모듈 마운트(읽기 공개, 작성/공감/댓글 로그인).
+app.use(
+  "/api/community",
+  require("./lib/community-routes")({
+    requireAuth,
+    requireAdmin,
+    getSessionUser,
+  }),
+);
 
 app.get("/api/cloud/status", requireAuth, async (req, res) => {
   const u = getSessionUser(req);

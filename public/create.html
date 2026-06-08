@@ -140,7 +140,7 @@
         } catch (e) { canCreate = false; }
         if (canCreate) {
           $("builderWrap").style.display = "block";
-          try { const m = await api("/api/artifacts/models"); $("model").innerHTML = m.models.map((x)=>`<option${x===m.default?" selected":""}>${x}</option>`).join(""); } catch {}
+          try { const m = await api("/api/artifacts/models"); $("model").innerHTML = m.models.map((x)=>`<option value="${x}"${x===m.default?" selected":""}>${x==="auto"?"⚡ 자동 (비용 최소)":x}</option>`).join(""); } catch {}
           loadMine();
         } else {
           $("betaNotice").style.display = "block";
@@ -159,7 +159,7 @@
           const body={ prompt, model:$("model").value };
           if(iterate && currentHtml) body.currentHtml=currentHtml;
           const j=await api("/api/artifacts/build",{method:"POST",body:JSON.stringify(body)});
-          setPreview(j.html); $("pvmodel").textContent="· "+(j.model||"");
+          setPreview(j.html); $("pvmodel").textContent="· "+(j.model||"")+(j.auto?" (자동)":"");
           $("status").textContent="완성! 미리보기 확인 후 게시하세요.";
           if(!$("title").value.trim()) $("title").value=prompt.slice(0,30);
         }catch(e){ $("status").textContent = e.status===429 ? "오늘 베타 사용 한도를 다 썼어요." : ("오류: "+e.message); }

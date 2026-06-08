@@ -2401,6 +2401,10 @@ textarea.tool-input {
   align-items: center;
   gap: 6px;
 }
+/* hidden 속성이 .nav-dd-btn 의 display:inline-flex 에 덮이지 않도록(베타 메뉴 가림 보장) */
+.nav-dd-btn[hidden] {
+  display: none !important;
+}
 .nav-dd-btn:hover,
 .nav-dd.open .nav-dd-btn {
   background: var(--surface-2);

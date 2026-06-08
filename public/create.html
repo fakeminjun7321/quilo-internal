@@ -128,7 +128,9 @@
       </div>
 
       <!-- 갤러리 (모두 공개) -->
-      <div class="secthead"><h2>🌐 모두의 창작</h2><span class="muted" id="galcount"></span></div>
+      <div class="secthead"><h2>🌐 모두의 창작</h2><span class="muted" id="galcount"></span>
+        <select id="sort" style="margin-left:auto"><option value="new">최신순</option><option value="likes">인기순(좋아요)</option><option value="views">조회순</option></select>
+      </div>
       <div id="chips" class="row" style="margin-bottom:12px"></div>
       <div class="gallery" id="gallery"><span class="muted">불러오는 중…</span></div>
     </div>
@@ -188,7 +190,8 @@
         if(!currentHtml) return;
         $("saveBtn").disabled=true; $("saveStatus").innerHTML=`<span class="spin"></span> 게시 중…`;
         try{
-          const j=await api("/api/artifacts",{method:"POST",body:JSON.stringify({ title:$("title").value.trim(), slug:$("slug").value.trim(), html:currentHtml, isPublic:$("pub").checked, category:$("category").value, overwrite:$("slug").value.trim()&&$("slug").value.trim()===lastSlug })});
+          const j=await api("/api/artifacts",{method:"POST",body:JSON.stringify({ title:$("title").value.trim(), slug:$("slug").value.trim(), html:currentHtml, isPublic:$("pub").checked, category:$("category").value, forkedFrom:window._forkedFrom||null, overwrite:$("slug").value.trim()&&$("slug").value.trim()===lastSlug })});
+          window._forkedFrom=null;
           lastSlug=j.slug; const full=location.origin+j.url;
           $("saveStatus").innerHTML=`게시됨 → <a href="${j.url}" target="_blank">${full}</a>`+(j.persistent?"":" <span class='muted'>(임시 저장)</span>");
           $("openBtn").disabled=false; $("openBtn").onclick=()=>window.open(j.url,"_blank"); $("slug").value=j.slug;
@@ -232,22 +235,40 @@
         $("chips").querySelectorAll("[data-cat]").forEach((b)=>b.onclick=()=>{ curCat=b.dataset.cat; renderChips(); renderGallery(); });
       }
       function renderGallery(){
-        const items=galItems.filter((x)=>curCat==="전체"||(x.category||"기타")===curCat);
+        let items=galItems.filter((x)=>curCat==="전체"||(x.category||"기타")===curCat);
+        const sort=$("sort").value;
+        if(sort==="likes") items=items.slice().sort((a,b)=>(b.likes||0)-(a.likes||0));
+        else if(sort==="views") items=items.slice().sort((a,b)=>(b.views||0)-(a.views||0));
         if(!items.length){ $("gallery").innerHTML=`<span class="muted">아직 없어요.</span>`; return; }
-        const liked=JSON.parse(localStorage.getItem("quilo_liked")||"{}");
         $("gallery").innerHTML = items.map((x)=>`
           <div class="g-card">
             <a href="/p/${encodeURIComponent(x.slug)}" target="_blank" style="text-decoration:none;color:inherit">
               <div class="g-thumb"><iframe loading="lazy" sandbox="allow-scripts" src="/p/${encodeURIComponent(x.slug)}"></iframe></div>
-              <div class="g-meta"><div class="t">${esc(x.title)}</div><div class="b">${esc(x.owner||"")} · <span class="pill">${esc(x.category||"기타")}</span></div></div>
+              <div class="g-meta"><div class="t">${esc(x.title)}${x.forked_from?' <span class="pill">리믹스</span>':''}</div><div class="b">${esc(x.owner||"")} · <span class="pill">${esc(x.category||"기타")}</span> · 👁 ${x.views||0}</div></div>
             </a>
             <div class="myrow" style="padding:0 12px 10px">
               <button class="ghost" data-like="${esc(x.slug)}">❤ <span>${x.likes||0}</span></button>
+              ${canCreate?`<button class="ghost" data-remix="${esc(x.slug)}">🔀 리믹스</button>`:""}
               <button class="ghost" data-embed="${esc(x.slug)}">📋 임베드</button>
+              <button class="ghost" data-report="${esc(x.slug)}" style="margin-left:auto">🚩</button>
             </div>
           </div>`).join("");
         $("gallery").querySelectorAll("[data-like]").forEach((b)=>b.onclick=()=>like(b.dataset.like,b));
         $("gallery").querySelectorAll("[data-embed]").forEach((b)=>b.onclick=()=>embed(b.dataset.embed));
+        $("gallery").querySelectorAll("[data-remix]").forEach((b)=>b.onclick=()=>remix(b.dataset.remix));
+        $("gallery").querySelectorAll("[data-report]").forEach((b)=>b.onclick=()=>report(b.dataset.report));
+      }
+      async function remix(slug){
+        try{ const j=await api("/api/artifacts/"+encodeURIComponent(slug)+"/remix");
+          $("title").value=j.title||""; $("slug").value=""; lastSlug=""; if($("category")) $("category").value=j.category||"기타";
+          window._forkedFrom=j.forkedFrom; setPreview(j.html);
+          $("status").textContent="리믹스로 불러왔어요. 수정 후 새 작품으로 게시하세요."; window.scrollTo({top:0,behavior:"smooth"});
+        }catch(e){ alert("리믹스 오류: "+e.message); }
+      }
+      async function report(slug){
+        const reason=prompt("신고 사유(선택):"); if(reason===null) return;
+        try{ await api("/api/artifacts/"+encodeURIComponent(slug)+"/report",{method:"POST",body:JSON.stringify({reason})}); alert("신고가 접수되었습니다."); }
+        catch(e){ alert("신고 오류: "+e.message); }
       }
       async function like(slug,btn){
         const liked=JSON.parse(localStorage.getItem("quilo_liked")||"{}");
@@ -284,6 +305,7 @@
       $("imgGenBtn").onclick=genImage;
       $("imgUpBtn").onclick=()=>$("imgFile").click();
       $("imgFile").onchange=uploadImage;
+      $("sort").onchange=renderGallery;
       $("genBtn").onclick=()=>build(false);
       $("iterBtn").onclick=()=>build(true);
       $("saveBtn").onclick=save;

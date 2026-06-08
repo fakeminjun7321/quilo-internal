@@ -141,6 +141,22 @@
       <div class="gallery" id="gallery"><span class="muted">불러오는 중…</span></div>
     </div>
 
+    <!-- 댓글 모달 -->
+    <div id="cmtModal" style="display:none;position:fixed;inset:0;background:#0008;z-index:50;align-items:center;justify-content:center;padding:16px">
+      <div class="card" style="width:min(520px,100%);max-height:84vh;display:flex;flex-direction:column">
+        <div class="row" style="justify-content:space-between;align-items:center">
+          <b id="cmtTitle">💬 댓글</b>
+          <button id="cmtClose" class="ghost" style="padding:3px 10px">✕</button>
+        </div>
+        <input type="hidden" id="cmtSlug" />
+        <div id="cmtList" style="flex:1;overflow:auto;margin:10px 0;min-height:120px;max-height:46vh"></div>
+        <div class="row" style="gap:8px">
+          <input id="cmtText" placeholder="댓글을 입력하세요 (로그인 필요)" maxlength="1000" style="flex:1" />
+          <button id="cmtSend">등록</button>
+        </div>
+      </div>
+    </div>
+
     <script>
       const $ = (id) => document.getElementById(id);
       let currentHtml = "", lastSlug = "", canCreate = false;
@@ -262,6 +278,7 @@
             <div class="myrow" style="padding:0 12px 10px">
               <button class="ghost" data-like="${esc(x.slug)}">❤ <span>${x.likes||0}</span></button>
               ${canCreate?`<button class="ghost" data-remix="${esc(x.slug)}">🔀 리믹스</button>`:""}
+              <button class="ghost" data-cmt="${esc(x.slug)}" data-title="${esc(x.title)}">💬</button>
               <button class="ghost" data-embed="${esc(x.slug)}">📋 임베드</button>
               <button class="ghost" data-report="${esc(x.slug)}" style="margin-left:auto">🚩</button>
             </div>
@@ -270,6 +287,36 @@
         $("gallery").querySelectorAll("[data-embed]").forEach((b)=>b.onclick=()=>embed(b.dataset.embed));
         $("gallery").querySelectorAll("[data-remix]").forEach((b)=>b.onclick=()=>remix(b.dataset.remix));
         $("gallery").querySelectorAll("[data-report]").forEach((b)=>b.onclick=()=>report(b.dataset.report));
+        $("gallery").querySelectorAll("[data-cmt]").forEach((b)=>b.onclick=()=>openComments(b.dataset.cmt,b.dataset.title));
+      }
+      // ── 댓글 모달 ──────────────────────────────────────────────
+      async function openComments(slug,title){
+        $("cmtTitle").textContent="💬 "+(title||"댓글");
+        $("cmtSlug").value=slug; $("cmtList").innerHTML='<span class="muted">불러오는 중…</span>';
+        $("cmtModal").style.display="flex";
+        await loadComments(slug);
+      }
+      async function loadComments(slug){
+        try{
+          const j=await api("/api/artifacts/"+encodeURIComponent(slug)+"/comments");
+          const cs=j.comments||[];
+          $("cmtList").innerHTML = cs.length ? cs.map((c)=>`
+            <div style="padding:8px 0;border-bottom:1px solid var(--bd)">
+              <div style="font-weight:600;font-size:13px">${esc(c.author||"익명")} <span class="muted" style="font-weight:400">· ${esc((c.at||"").slice(0,10))}</span></div>
+              <div style="white-space:pre-wrap;font-size:14px;margin-top:2px">${esc(c.text||"")}</div>
+            </div>`).join("") : '<span class="muted">첫 댓글을 남겨보세요.</span>';
+          $("cmtList").scrollTop=$("cmtList").scrollHeight;
+        }catch(e){ $("cmtList").innerHTML='<span class="muted">불러오지 못했습니다.</span>'; }
+      }
+      async function sendComment(){
+        const slug=$("cmtSlug").value, text=$("cmtText").value.trim();
+        if(!text) return;
+        $("cmtSend").disabled=true;
+        try{
+          await api("/api/artifacts/"+encodeURIComponent(slug)+"/comments",{method:"POST",body:JSON.stringify({text})});
+          $("cmtText").value=""; await loadComments(slug);
+        }catch(e){ alert(/401/.test(e.message)?"로그인 후 댓글을 쓸 수 있어요.":"댓글 오류: "+e.message); }
+        finally{ $("cmtSend").disabled=false; }
       }
       async function remix(slug){
         try{ const j=await api("/api/artifacts/"+encodeURIComponent(slug)+"/remix");
@@ -326,6 +373,10 @@
       $("genBtn").onclick=()=>build(false);
       $("iterBtn").onclick=()=>build(true);
       $("saveBtn").onclick=save;
+      $("cmtClose").onclick=()=>$("cmtModal").style.display="none";
+      $("cmtModal").onclick=(e)=>{ if(e.target===$("cmtModal")) $("cmtModal").style.display="none"; };
+      $("cmtSend").onclick=sendComment;
+      $("cmtText").onkeydown=(e)=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); sendComment(); } };
       init();
     </script>
   </body>

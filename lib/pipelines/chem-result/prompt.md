@@ -273,8 +273,8 @@ JSON 스키마:
 
 각 차트의 필드:
 - `type`: `"bar"` | `"line"` | `"scatter"`
-- `title`: 차트 제목 — **반드시 한국어**(서버 렌더러가 NanumGothic 한글 폰트 지원). 영어 제목 금지.
-- `x_label`, `y_label`, `series[].label`: 축·계열 레이블 — **한국어**로(단위·변수 기호는 그대로: mL, °C, ln P, 1/T). 영어 라벨 금지.
+- `title`: 차트 제목 — **반드시 영어**로 작성(예: "Average Volume by Apparatus"). 한국어 제목 금지.
+- `x_label`, `y_label`, `series[].label`: 축·계열 레이블 — **영어**로(단위·변수 기호는 그대로: mL, °C, ln P, 1/T). 한국어 라벨 금지(예: "Apparatus", "Mean Volume (mL)", "Measured", "Theory").
 - `x_values`: x축 카테고리 배열 (예: `["피펫", "뷰렛"]`)
 - `series`: `[{ "label": "...", "values": [숫자, 숫자, ...] }]` — values는 숫자만 (string 금지)
 - 산점도/검량선처럼 x가 숫자인 경우 `series`: `[{ "label": "측정값", "points": [{"x": 10, "y": 0.195}, {"x": 15, "y": 0.251}] }]` 형태를 우선 사용한다.

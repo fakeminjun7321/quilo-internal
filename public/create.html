@@ -93,6 +93,8 @@
               <input type="text" id="title" placeholder="예: 실험 일정 위젯" />
               <label>주소(slug) — 비우면 자동</label>
               <input type="text" id="slug" placeholder="exp-schedule" />
+              <label>분류</label>
+              <select id="category" style="width:100%"></select>
               <div class="row" style="margin-top:10px; justify-content:space-between">
                 <label class="toggle"><input type="checkbox" id="pub" checked /> 공개</label>
                 <button id="saveBtn" disabled>게시</button>
@@ -116,12 +118,15 @@
 
       <!-- 갤러리 (모두 공개) -->
       <div class="secthead"><h2>🌐 모두의 창작</h2><span class="muted" id="galcount"></span></div>
+      <div id="chips" class="row" style="margin-bottom:12px"></div>
       <div class="gallery" id="gallery"><span class="muted">불러오는 중…</span></div>
     </div>
 
     <script>
       const $ = (id) => document.getElementById(id);
       let currentHtml = "", lastSlug = "", canCreate = false;
+      let galItems = [], curCat = "전체";
+      const CATS = ["학습도구", "게임", "위젯", "계산기", "데이터/차트", "기타"];
 
       async function api(path, opts) {
         const r = await fetch(path, { credentials: "same-origin", headers: { "Content-Type": "application/json" }, ...opts });
@@ -140,6 +145,7 @@
         } catch (e) { canCreate = false; }
         if (canCreate) {
           $("builderWrap").style.display = "block";
+          $("category").innerHTML = CATS.map((c)=>`<option>${c}</option>`).join("");
           try { const m = await api("/api/artifacts/models"); $("model").innerHTML = m.models.map((x)=>`<option value="${x}"${x===m.default?" selected":""}>${x==="auto"?"⚡ 자동 (비용 최소)":x}</option>`).join(""); } catch {}
           loadMine();
         } else {
@@ -170,7 +176,7 @@
         if(!currentHtml) return;
         $("saveBtn").disabled=true; $("saveStatus").innerHTML=`<span class="spin"></span> 게시 중…`;
         try{
-          const j=await api("/api/artifacts",{method:"POST",body:JSON.stringify({ title:$("title").value.trim(), slug:$("slug").value.trim(), html:currentHtml, isPublic:$("pub").checked, overwrite:$("slug").value.trim()&&$("slug").value.trim()===lastSlug })});
+          const j=await api("/api/artifacts",{method:"POST",body:JSON.stringify({ title:$("title").value.trim(), slug:$("slug").value.trim(), html:currentHtml, isPublic:$("pub").checked, category:$("category").value, overwrite:$("slug").value.trim()&&$("slug").value.trim()===lastSlug })});
           lastSlug=j.slug; const full=location.origin+j.url;
           $("saveStatus").innerHTML=`게시됨 → <a href="${j.url}" target="_blank">${full}</a>`+(j.persistent?"":" <span class='muted'>(임시 저장)</span>");
           $("openBtn").disabled=false; $("openBtn").onclick=()=>window.open(j.url,"_blank"); $("slug").value=j.slug;
@@ -203,15 +209,45 @@
       async function loadGallery(){
         try{
           const j=await api("/api/artifacts/gallery");
-          const items=j.items||[];
-          $("galcount").textContent = items.length ? `· ${items.length}개` : "";
-          if(!items.length){ $("gallery").innerHTML=`<span class="muted">아직 만든 것이 없어요.</span>`; return; }
-          $("gallery").innerHTML = items.map((x)=>`
-            <a class="g-card" href="/p/${encodeURIComponent(x.slug)}" target="_blank">
-              <div class="g-thumb"><iframe loading="lazy" sandbox="allow-scripts" src="/p/${encodeURIComponent(x.slug)}"></iframe></div>
-              <div class="g-meta"><div class="t">${esc(x.title)}</div><div class="b">${esc(x.owner||"")}</div></div>
-            </a>`).join("");
+          galItems=j.items||[];
+          $("galcount").textContent = galItems.length ? `· ${galItems.length}개` : "";
+          renderChips(); renderGallery();
         }catch(e){ $("gallery").innerHTML=`<span class="muted">갤러리 오류: ${esc(e.message)}</span>`; }
+      }
+      function renderChips(){
+        const cats=["전체",...CATS.filter((c)=>galItems.some((x)=>(x.category||"기타")===c))];
+        $("chips").innerHTML=cats.map((c)=>`<button class="${c===curCat?'sec':'ghost'}" data-cat="${esc(c)}" style="padding:5px 12px;font-size:13px">${esc(c)}</button>`).join("");
+        $("chips").querySelectorAll("[data-cat]").forEach((b)=>b.onclick=()=>{ curCat=b.dataset.cat; renderChips(); renderGallery(); });
+      }
+      function renderGallery(){
+        const items=galItems.filter((x)=>curCat==="전체"||(x.category||"기타")===curCat);
+        if(!items.length){ $("gallery").innerHTML=`<span class="muted">아직 없어요.</span>`; return; }
+        const liked=JSON.parse(localStorage.getItem("quilo_liked")||"{}");
+        $("gallery").innerHTML = items.map((x)=>`
+          <div class="g-card">
+            <a href="/p/${encodeURIComponent(x.slug)}" target="_blank" style="text-decoration:none;color:inherit">
+              <div class="g-thumb"><iframe loading="lazy" sandbox="allow-scripts" src="/p/${encodeURIComponent(x.slug)}"></iframe></div>
+              <div class="g-meta"><div class="t">${esc(x.title)}</div><div class="b">${esc(x.owner||"")} · <span class="pill">${esc(x.category||"기타")}</span></div></div>
+            </a>
+            <div class="myrow" style="padding:0 12px 10px">
+              <button class="ghost" data-like="${esc(x.slug)}">❤ <span>${x.likes||0}</span></button>
+              <button class="ghost" data-embed="${esc(x.slug)}">📋 임베드</button>
+            </div>
+          </div>`).join("");
+        $("gallery").querySelectorAll("[data-like]").forEach((b)=>b.onclick=()=>like(b.dataset.like,b));
+        $("gallery").querySelectorAll("[data-embed]").forEach((b)=>b.onclick=()=>embed(b.dataset.embed));
+      }
+      async function like(slug,btn){
+        const liked=JSON.parse(localStorage.getItem("quilo_liked")||"{}");
+        if(liked[slug]){ return; }
+        try{ const j=await api("/api/artifacts/"+encodeURIComponent(slug)+"/like",{method:"POST"});
+          liked[slug]=1; localStorage.setItem("quilo_liked",JSON.stringify(liked));
+          btn.querySelector("span").textContent=j.likes; btn.classList.add("sec");
+        }catch{}
+      }
+      function embed(slug){
+        const code=`<iframe src="${location.origin}/p/${encodeURIComponent(slug)}" style="width:100%;height:600px;border:0"></iframe>`;
+        navigator.clipboard?.writeText(code).then(()=>alert("임베드 코드를 복사했어요:\n\n"+code),()=>prompt("임베드 코드",code));
       }
 
       $("genBtn").onclick=()=>build(false);

@@ -985,17 +985,21 @@ def build_header(doc, content):
     )
 
 
-def add_photo_blocks(doc, photo_indices, photos, fig_counter, caption_prefix, target=None):
+def add_photo_blocks(doc, photo_indices, photos, fig_counter, caption_prefix, target=None, photo_captions=None):
     target = target or doc
+    caps = photo_captions if isinstance(photo_captions, list) else []
     selected = []
-    for idx in as_list(photo_indices):
+    for pos, idx in enumerate(as_list(photo_indices)):
         try:
             photo = photos[int(idx)]
         except Exception:
             continue
         blob = decode_base64(photo.get("data_base64"))
         if blob:
-            selected.append((photo, blob))
+            per = caps[pos].strip() if pos < len(caps) and isinstance(caps[pos], str) else ""
+            selected.append((photo, blob, per))
+    multiple = len(selected) > 1
+    gpos = -1
     for start in range(0, len(selected), 3):
         group = selected[start:start + 3]
         if not group:
@@ -1011,10 +1015,18 @@ def add_photo_blocks(doc, photo_indices, photos, fig_counter, caption_prefix, ta
         image_max_width = max(col_width - 540, 3000)
         image_max_height = 7500 if len(group) >= 3 else 9900
         captions = []
-        for col, (photo, blob) in enumerate(group):
+        for col, (photo, blob, per) in enumerate(group):
+            gpos += 1
             fmt = image_format(photo.get("name"), photo.get("mimetype"), blob)
             fig_counter["value"] += 1
-            caption = f"[그림 {fig_counter['value']}] {caption_prefix or '실험 사진'}"
+            # 사진별 캡션 우선. 없으면 여러 장일 땐 라벨을 첫 사진에만 달아 중복 방지.
+            if per:
+                desc = per
+            elif multiple:
+                desc = (caption_prefix or "실험 사진") if gpos == 0 else ""
+            else:
+                desc = caption_prefix or "실험 사진"
+            caption = f"[그림 {fig_counter['value']}] {desc}".rstrip()
             captions.append(caption)
 
             img_cell = table.cell(0, col)
@@ -1098,7 +1110,7 @@ def build_results(doc, content, target=None, include_heading=True):
     add_heading_to(doc, target, "1.1 실험 장치 및 세팅", size=pre.SIZE_HEADING, space_after=pre.SPACE_BODY)
     if setup.get("description"):
         add_para_to(doc, target, setup.get("description"), indent_left=pre.INDENT_5MM)
-    add_photo_blocks(doc, setup.get("photo_indices"), photos, fig_counter, "실험 장치", target=target)
+    add_photo_blocks(doc, setup.get("photo_indices"), photos, fig_counter, "실험 장치", target=target, photo_captions=setup.get("photo_captions"))
 
     for idx, exp in enumerate(as_list(content.get("experiments")), 1):
         subnum = f"1.{idx + 1}"
@@ -1130,7 +1142,7 @@ def build_results(doc, content, target=None, include_heading=True):
         if exp.get("analysis"):
             add_para_to(doc, target, exp.get("analysis"), indent_left=pre.INDENT_5MM)
 
-        add_photo_blocks(doc, exp.get("photo_indices"), photos, fig_counter, title, target=target)
+        add_photo_blocks(doc, exp.get("photo_indices"), photos, fig_counter, title, target=target, photo_captions=exp.get("photo_captions"))
 
 
 def add_conclusion_block(doc, target, label, value):

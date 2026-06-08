@@ -94,6 +94,23 @@
       .ct-case.ok { border-color: #bbf7d0; }
       .ct-case.no { border-color: #fecaca; }
 
+      /* ── AI 코딩 도우미(튜터) ── */
+      .ct-assist { margin-top: 18px; border: 1px solid #d7e0f5; border-radius: 12px; background: #f8faff; overflow: hidden; }
+      .ct-assist-head { padding: 9px 13px; font-size: 13px; font-weight: 700; color: #2950e6; background: #eef3ff; border-bottom: 1px solid #e0e8fb; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+      .ct-assist-head .muted { font-weight: 500; font-size: 11.5px; }
+      .ct-assist-msgs { max-height: 320px; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 9px; }
+      .ct-assist-empty { color: #94a3b8; font-size: 13px; text-align: center; padding: 10px 6px; line-height: 1.7; }
+      .ct-amsg { max-width: 92%; padding: 8px 11px; border-radius: 12px; font-size: 13.5px; line-height: 1.6; word-break: break-word; }
+      .ct-amsg.user { align-self: flex-end; background: #2950e6; color: #fff; white-space: pre-wrap; }
+      .ct-amsg.ai { align-self: flex-start; background: #fff; border: 1px solid #e2e6f3; color: #1e293b; }
+      .ct-amsg.ai p { margin: 5px 0; }
+      .ct-amsg.ai code { background: #f1f3f9; border-radius: 4px; padding: 1px 5px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: #b91c5c; }
+      .ct-amsg.ai pre { background: #0f172a; color: #e2e8f0; border-radius: 8px; padding: 8px 10px; overflow-x: auto; font-size: 12px; }
+      .ct-amsg.ai pre code { background: none; color: inherit; padding: 0; }
+      .ct-assist-input { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid #e0e8fb; background: #fff; }
+      .ct-assist-input textarea { flex: 1; resize: none; min-height: 38px; max-height: 130px; box-sizing: border-box; border: 1px solid #d7ddf0; border-radius: 8px; padding: 9px 11px; font: inherit; font-size: 13.5px; }
+      .ct-assist-input button { flex: 0 0 auto; align-self: flex-end; }
+
       /* ── 물리 수행평가 탭 ── */
       .pi-card { border: 1px solid #e2e6f3; border-radius: 14px; padding: 22px; background: var(--card-bg, #fff); }
       .pi-card h2 { margin: 0 0 6px; font-size: 19px; color: #1e293b; }
@@ -340,6 +357,19 @@
           '<span class="muted" id="ctStatus"></span></div>';
         html += '<div class="ct-results" id="ctResults"></div>';
 
+        html += '<div class="ct-assist" id="ctAssist">' +
+          '<div class="ct-assist-head">🤖 코딩 도우미' +
+            '<span class="muted">— 답(코드)은 안 알려줘요. 스스로 풀도록 옆에서 도와줘요 · GPT-5.4 mini</span>' +
+          "</div>" +
+          '<div class="ct-assist-msgs" id="ctAssistMsgs">' +
+            '<div class="ct-assist-empty">막히는 부분을 물어보세요.<br>예: "이 문제 어디서부터 생각해야 할지 모르겠어요" · "왜 자꾸 빈 리스트가 나올까요?"</div>' +
+          "</div>" +
+          '<div class="ct-assist-input">' +
+            '<textarea id="ctAssistInput" rows="1" placeholder="질문하기 (Ctrl/⌘+Enter 전송) — 답은 스스로!"></textarea>' +
+            '<button class="qbtn primary" id="ctAssistSend">보내기</button>' +
+          "</div>" +
+        "</div>";
+
         document.getElementById("ctDetail").innerHTML = html;
 
         var saved = null;
@@ -353,6 +383,67 @@
           if (editor) editor.setValue(p.starter);
           try { localStorage.removeItem("codingCode:" + p.id); } catch (e) {}
         };
+
+        // AI 코딩 도우미(튜터) — 문제마다 대화 새로 시작
+        assistHistory = [];
+        var aSend = document.getElementById("ctAssistSend");
+        var aInput = document.getElementById("ctAssistInput");
+        if (aSend) aSend.onclick = function () { sendAssist(p); };
+        if (aInput)
+          aInput.addEventListener("keydown", function (e) {
+            if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); sendAssist(p); }
+          });
+      }
+
+      // ── AI 코딩 도우미: 정답을 주지 않고 옆에서 돕는 튜터(GPT-5.4 mini) ──
+      var assistHistory = [], assistBusy = false;
+      function appendAssist(role, text) {
+        var box = document.getElementById("ctAssistMsgs");
+        if (!box) return null;
+        var empty = box.querySelector(".ct-assist-empty");
+        if (empty) empty.remove();
+        var d = document.createElement("div");
+        d.className = "ct-amsg " + (role === "user" ? "user" : "ai");
+        if (role === "ai") d.innerHTML = mdToHtml(text);
+        else d.textContent = text;
+        box.appendChild(d);
+        box.scrollTop = box.scrollHeight;
+        return d;
+      }
+      function sendAssist(p) {
+        var input = document.getElementById("ctAssistInput");
+        var q = (input && input.value || "").trim();
+        if (!q || assistBusy) return;
+        appendAssist("user", q);
+        input.value = "";
+        assistBusy = true;
+        var btn = document.getElementById("ctAssistSend");
+        if (btn) btn.disabled = true;
+        var bubble = appendAssist("ai", "생각 중…");
+        fetch("/api/coding/assist", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            problemId: p.id,
+            code: getCode(),
+            question: q,
+            history: assistHistory.slice(-6),
+          }),
+        })
+          .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+          .then(function (x) {
+            if (!x.ok) {
+              bubble.innerHTML = '<span style="color:#dc2626">⚠ ' + esc((x.j && x.j.error) || "오류") + "</span>";
+              return;
+            }
+            var ans = (x.j && x.j.answer) || "(빈 응답)";
+            bubble.innerHTML = mdToHtml(ans);
+            assistHistory.push({ role: "user", content: q }, { role: "assistant", content: ans });
+            var box = document.getElementById("ctAssistMsgs");
+            if (box) box.scrollTop = box.scrollHeight;
+          })
+          .catch(function () { bubble.innerHTML = '<span style="color:#dc2626">⚠ 요청 실패</span>'; })
+          .finally(function () { assistBusy = false; if (btn) btn.disabled = false; });
       }
 
       // ── Monaco 에디터(Quilo Code 와 동일 엔진) ──

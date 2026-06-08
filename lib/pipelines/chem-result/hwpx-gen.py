@@ -436,7 +436,12 @@ def build_data(doc, content):
             if not pre.add_numbered_item(doc, counter, text):
                 counter -= 1
 
-        for photo_idx in as_list(exp.get("photo_indices")):
+        photo_indices = as_list(exp.get("photo_indices"))
+        photo_captions = exp.get("photo_captions")
+        if not isinstance(photo_captions, list):
+            photo_captions = []
+        multiple = len(photo_indices) > 1
+        for pos, photo_idx in enumerate(photo_indices):
             try:
                 photo = photos[int(photo_idx)]
             except Exception:
@@ -444,7 +449,18 @@ def build_data(doc, content):
             blob = decode_base64(photo.get("data_base64"))
             fmt = image_format(photo.get("name"), photo.get("mimetype"), blob)
             fig_counter += 1
-            caption = f"[그림 {fig_counter}] {exp.get('photo_caption') or exp.get('name') or '실험 사진'}"
+            # 사진마다 다른 캡션: photo_captions[위치] 우선. 없으면 단일 사진은 통합 캡션/실험명을,
+            # 여러 장이면 같은 통합 캡션을 모든 사진에 반복하지 않도록 첫 사진에만 단다.
+            per_photo = ""
+            if pos < len(photo_captions) and isinstance(photo_captions[pos], str):
+                per_photo = photo_captions[pos].strip()
+            if per_photo:
+                desc = per_photo
+            elif multiple:
+                desc = (exp.get("photo_caption") or exp.get("name") or "실험 사진") if pos == 0 else ""
+            else:
+                desc = exp.get("photo_caption") or exp.get("name") or "실험 사진"
+            caption = f"[그림 {fig_counter}] {desc}".rstrip()
             add_picture(doc, blob, fmt=fmt, caption=caption)
 
     summary_table = data.get("summary_table") or {}

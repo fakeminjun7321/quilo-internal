@@ -115,9 +115,15 @@
             </div>
           </div>
           <div class="preview">
-            <div class="bar"><span>미리보기 (sandbox)</span><span id="pvmodel" class="muted"></span>
-              <button id="openBtn" class="ghost" style="margin-left:auto;padding:4px 10px;font-size:12px" disabled>새 탭</button></div>
+            <div class="bar">
+              <button id="tabPreview" class="sec" style="padding:3px 10px;font-size:12px">미리보기</button>
+              <button id="tabCode" class="ghost" style="padding:3px 10px;font-size:12px">코드</button>
+              <span id="pvmodel" class="muted"></span>
+              <button id="undoBtn" class="ghost" style="margin-left:auto;padding:3px 10px;font-size:12px" disabled>↶ 되돌리기<span id="verN"></span></button>
+              <button id="openBtn" class="ghost" style="padding:3px 10px;font-size:12px" disabled>새 탭</button>
+            </div>
             <iframe id="preview" sandbox="allow-scripts allow-forms allow-popups allow-modals" srcdoc="<!doctype html><meta charset=utf-8><body style='font-family:sans-serif;color:#9aa1b2;display:grid;place-items:center;height:80vh'>왼쪽에서 설명을 적고 <b>생성</b>을 누르세요.</body>"></iframe>
+            <textarea id="code" spellcheck="false" style="display:none;flex:1;border:0;outline:0;font-family:Menlo,Consolas,monospace;font-size:12px;line-height:1.5;padding:12px;resize:none;background:#1e1e1e;color:#d4d4d4"></textarea>
           </div>
         </div>
       </div>
@@ -167,7 +173,14 @@
         loadGallery();
       }
 
-      function setPreview(html){ currentHtml=html; $("preview").srcdoc=html; $("iterBtn").disabled=!html; $("saveBtn").disabled=!html; $("openBtn").disabled=true; }
+      let versions=[];
+      function setPreview(html, snapshot){ currentHtml=html; $("preview").srcdoc=html; $("code").value=html||""; $("iterBtn").disabled=!html; $("saveBtn").disabled=!html; $("openBtn").disabled=true; if(snapshot!==false) pushVersion(html); }
+      function pushVersion(html){ if(!html) return; if(versions[versions.length-1]===html) return; versions.push(html); if(versions.length>25) versions.shift(); updateUndo(); }
+      function updateUndo(){ $("undoBtn").disabled=versions.length<2; $("verN").textContent=versions.length>1?` (${versions.length})`:""; }
+      function undo(){ if(versions.length<2) return; versions.pop(); setPreview(versions[versions.length-1], false); updateUndo(); }
+      let codeT;
+      function onCodeInput(){ clearTimeout(codeT); codeT=setTimeout(()=>{ currentHtml=$("code").value; $("preview").srcdoc=currentHtml; $("iterBtn").disabled=$("saveBtn").disabled=!currentHtml; }, 500); }
+      function showTab(which){ const code=which==="code"; $("code").style.display=code?"block":"none"; $("preview").style.display=code?"none":"block"; $("tabCode").className=code?"sec":"ghost"; $("tabPreview").className=code?"ghost":"sec"; if(code){ $("code").value=currentHtml; } else if(currentHtml && currentHtml!==versions[versions.length-1]){ pushVersion(currentHtml); } }
 
       async function build(iterate){
         const prompt=$("prompt").value.trim();
@@ -305,6 +318,10 @@
       $("imgGenBtn").onclick=genImage;
       $("imgUpBtn").onclick=()=>$("imgFile").click();
       $("imgFile").onchange=uploadImage;
+      $("tabPreview").onclick=()=>showTab("preview");
+      $("tabCode").onclick=()=>showTab("code");
+      $("code").oninput=onCodeInput;
+      $("undoBtn").onclick=undo;
       $("sort").onchange=renderGallery;
       $("genBtn").onclick=()=>build(false);
       $("iterBtn").onclick=()=>build(true);

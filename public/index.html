@@ -2934,6 +2934,31 @@
           link.download = data.filename;
           resultArea.appendChild(link);
 
+          // 데이터·메모 이상 점검 결과(참고 사항) — 결과 아래에 표시
+          if (Array.isArray(data.warnings) && data.warnings.length) {
+            const box = document.createElement("div");
+            box.style.cssText =
+              "margin-top:12px;padding:12px 14px;border:1px solid #f0c36d;background:#fff8e6;border-radius:10px;color:#7a5b00;font-size:14px;line-height:1.6";
+            const head = document.createElement("div");
+            head.style.cssText = "font-weight:700;margin-bottom:6px";
+            head.textContent = "⚠️ 참고 사항 — 업로드한 데이터/메모에서 확인이 필요한 점";
+            box.appendChild(head);
+            const ul = document.createElement("ul");
+            ul.style.cssText = "margin:0;padding-left:18px";
+            data.warnings.forEach((w) => {
+              const li = document.createElement("li");
+              li.textContent = w;
+              ul.appendChild(li);
+            });
+            box.appendChild(ul);
+            const note = document.createElement("div");
+            note.style.cssText = "margin-top:8px;font-size:12px;color:#9a7b1a";
+            note.textContent =
+              "보고서는 정상 생성되었습니다. 위 사항이 의도한 것이면 무시해도 되고, 데이터·메모를 고쳐 다시 생성하면 더 정확해집니다.";
+            box.appendChild(note);
+            resultArea.appendChild(box);
+          }
+
           es.close();
           resetForm();
           // 작업 후 잔액 자동 새로고침

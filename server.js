@@ -3339,6 +3339,23 @@ function collectUserNotes(textValue, filesByField = {}) {
   return normalizeUserNotes(parts.join("\n\n---\n\n"));
 }
 
+// 데이터/메모 이상 점검 결과(data_warnings)를 UI 표시용 문자열 배열로 정규화.
+// 보고서 본문엔 넣지 않고, 사이트 결과 아래 "참고 사항"으로만 보여준다(B안).
+function normalizeWarnings(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const w of raw) {
+    let s = "";
+    if (typeof w === "string") s = w;
+    else if (w && typeof w === "object")
+      s = w.issue || w.message || w.detail || w.text || w.warning || "";
+    s = String(s || "").replace(/\s+/g, " ").trim();
+    if (s) out.push(s.slice(0, 300));
+    if (out.length >= 10) break;
+  }
+  return out;
+}
+
 async function runGeneration(job, pipeline, pipelineInput, meta) {
   const {
     date,
@@ -3374,6 +3391,17 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
       onProgress: (msg) => pushProgress(job, msg),
     });
     content.__allowHighlights = !!pipelineInput.allowHighlights;
+
+    // 데이터·사용자 메모 이상 점검(B안): 보고서엔 넣지 않고 사이트 결과 아래 표시.
+    job.warnings = normalizeWarnings(content.data_warnings);
+    if (job.warnings.length) {
+      pushProgress(
+        job,
+        `⚠️ 데이터·메모 점검 ${job.warnings.length}건 — 결과 아래 '참고 사항'을 확인하세요.`,
+      );
+      job.warnings.forEach((w) => pushProgress(job, `   • ${w}`));
+    }
+
     const fontFace = normalizeFontFace(pipelineInput.fontFace);
     Object.defineProperty(content, "__fontFace", {
       value: fontFace,
@@ -3611,7 +3639,7 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
   }
 
   job.listeners.forEach((r) => {
-    sendSse(r, "done", { filename: job.filename, fileId: job.fileId });
+    sendSse(r, "done", { filename: job.filename, fileId: job.fileId, warnings: job.warnings || [] });
     r.end();
   });
   job.listeners = [];
@@ -3655,7 +3683,7 @@ app.get("/api/jobs/:id/stream", requireAuth, (req, res) => {
   job.progress.forEach((p) => sendSse(res, "progress", p));
 
   if (job.status === "done") {
-    sendSse(res, "done", { filename: job.filename, fileId: job.fileId });
+    sendSse(res, "done", { filename: job.filename, fileId: job.fileId, warnings: job.warnings || [] });
     return res.end();
   }
   if (job.status === "error") {

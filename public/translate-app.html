@@ -85,7 +85,11 @@
           </div>
         </div>
         <div class="est" id="est"></div>
-        <div style="margin-top:14px;display:flex;gap:10px;align-items:center">
+        <label style="display:flex;gap:8px;align-items:flex-start;margin-top:14px;font-size:12.5px;color:#475067;cursor:pointer;line-height:1.55">
+          <input type="checkbox" id="agree" style="margin-top:2px;width:auto;flex:none" />
+          <span>업로드하는 문서를 <b>번역·복제할 권리가 있으며</b>, <b>개인·학습 목적</b>으로만 사용합니다. 저작권 준수 책임은 이용자 본인에게 있고, 권리 없는 저작물은 올리지 않습니다. <a href="#" id="termsLink" style="color:#3b5bdb">이용약관·개인정보</a></span>
+        </label>
+        <div style="margin-top:12px;display:flex;gap:10px;align-items:center">
           <button id="go" disabled>번역하기</button>
           <button id="logout" class="ghost" style="margin-left:auto;font-size:13px;padding:8px 12px">로그아웃</button>
         </div>
@@ -94,7 +98,26 @@
       <pre id="log"></pre>
       <div id="result" class="card"></div>
 
-      <div class="foot">Quilo · PDF 통번역 — 처리한 PDF는 24시간 후 자동 삭제됩니다.</div>
+      <div class="foot">
+        업로드한 파일과 번역 결과는 서버에서만 처리되며 <b>약 24시간 후 자동 삭제</b>됩니다(외부 전송·영구 저장·공유 없음). 번역 정확성은 보장되지 않습니다.<br />
+        원문 저작권은 원저작자에게 있으며, 번역·이용에 따른 책임은 이용자에게 있습니다. · <a href="#" id="termsLink2" style="color:#6b7280;text-decoration:underline">이용약관·개인정보</a>
+      </div>
+    </div>
+
+    <!-- 이용약관·개인정보 모달 -->
+    <div id="terms" style="display:none;position:fixed;inset:0;background:#0007;z-index:20;align-items:center;justify-content:center;padding:18px">
+      <div style="background:#fff;border-radius:14px;max-width:560px;width:100%;max-height:84vh;overflow:auto;padding:22px 24px;font-size:13px;line-height:1.7;color:#2a3145">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <b style="font-size:15px">이용약관 · 개인정보 안내</b>
+          <button id="termsClose" class="ghost" style="padding:4px 10px">닫기</button>
+        </div>
+        <p><b>1. 목적·용도.</b> 본 도구는 PDF 문서를 한국어로 번역하는 개인·학습용 도구입니다. 상업적 재배포를 위한 서비스가 아닙니다.</p>
+        <p><b>2. 저작권·이용자 책임.</b> 업로드하는 문서의 저작권은 원저작자에게 있습니다. 이용자는 해당 문서를 번역·복제할 적법한 권리(본인 저작물, 권리자 허락, 또는 저작권법상 허용되는 사적 이용·교육 목적 등)가 있는 경우에만 사용해야 합니다. 권리 없는 저작물의 업로드·번역·배포로 인한 모든 법적 책임은 이용자 본인에게 있으며, 운영자는 이에 대해 책임지지 않습니다.</p>
+        <p><b>3. 개인정보·파일 처리.</b> 업로드한 PDF와 번역 결과는 번역 처리를 위해서만 서버에서 일시적으로 사용되며, 약 24시간 후 자동 삭제됩니다. 운영자는 파일 내용을 영구 저장·외부 전송·제3자 공유하지 않습니다(단, 번역 엔진 처리를 위해 번역 AI 제공사로 텍스트가 전송됩니다).</p>
+        <p><b>4. 무보증·면책.</b> 번역 결과의 정확성·완전성·적합성을 보장하지 않습니다. 본 도구 이용으로 발생한 직접·간접 손해에 대해 운영자는 책임지지 않습니다.</p>
+        <p><b>5. 금지.</b> 불법 콘텐츠, 타인의 권리를 침해하는 자료, 법령에 반하는 용도로의 사용을 금합니다.</p>
+        <p style="color:#6b7280;font-size:12px;margin-top:12px">본 안내는 일반적 고지이며 법률 자문이 아닙니다. 구체적 사안은 전문가 검토가 필요할 수 있습니다.</p>
+      </div>
     </div>
 
     <script>
@@ -134,9 +157,23 @@
         if (!/\.pdf$/i.test(f.name) && f.type !== "application/pdf") { alert("PDF 파일만 가능합니다."); return; }
         picked = f;
         drop.innerHTML = `<b>${f.name}</b> · ${(f.size / 1024 / 1024).toFixed(1)}MB <span style="color:#3b5bdb">(다른 파일 선택)</span>`;
-        $("go").disabled = false;
+        updateGo();
         estimate();
       }
+
+      // 번역 버튼은 파일 선택 + 약관 동의 둘 다 돼야 활성화(저작권 책임 동의 필수).
+      function updateGo() { $("go").disabled = !(picked && $("agree").checked); }
+      $("agree").checked = localStorage.getItem("tr_agree") === "1";
+      $("agree").addEventListener("change", () => {
+        localStorage.setItem("tr_agree", $("agree").checked ? "1" : "0");
+        updateGo();
+      });
+      // 이용약관 모달
+      const openTerms = (e) => { if (e) e.preventDefault(); $("terms").style.display = "flex"; };
+      $("termsLink").onclick = openTerms;
+      $("termsLink2").onclick = openTerms;
+      $("termsClose").onclick = () => ($("terms").style.display = "none");
+      $("terms").onclick = (e) => { if (e.target === $("terms")) $("terms").style.display = "none"; };
       async function estimate() {
         $("est").innerHTML = `<span class="spin"></span> 분석 중…`;
         try {

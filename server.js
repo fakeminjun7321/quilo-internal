@@ -3443,12 +3443,34 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
       if (detectedFont && detectedFont.face) {
         content.detected_font_face = detectedFont.face;
         if (detectedFont.sizePt) content.detected_font_size_pt = detectedFont.sizePt;
+        job.styleFont = {
+          bodyFace: detectedFont.face,
+          bodySizePt: detectedFont.sizePt || 0,
+          headingFace: detectedFont.headingFace || "",
+          headingSizePt: detectedFont.headingSizePt || 0,
+          headingBold: !!detectedFont.headingBold,
+          profile: Array.isArray(detectedFont.profile) ? detectedFont.profile : [],
+        };
         pushProgress(
           job,
-          `🖊 업로드한 한글파일(.hwpx) 글꼴 감지: ${detectedFont.face}${
-            detectedFont.sizePt ? ` (본문 약 ${detectedFont.sizePt}pt)` : ""
-          } — 보고서 글꼴에 적용`,
+          `🖊 한글파일(.hwpx) 글꼴 상세 분석 — 본문 글꼴로 ${detectedFont.face}${
+            detectedFont.sizePt ? ` ${detectedFont.sizePt}pt` : ""
+          } 적용`,
         );
+        if (detectedFont.headingFace) {
+          pushProgress(
+            job,
+            `   · 제목/소제목: ${detectedFont.headingFace}${
+              detectedFont.headingSizePt ? ` ${detectedFont.headingSizePt}pt` : ""
+            }${detectedFont.headingBold ? " 굵게" : ""}`,
+          );
+        }
+        (detectedFont.profile || []).forEach((c) => {
+          pushProgress(
+            job,
+            `   · ${c.face} ${c.sizePt}pt${c.bold ? " 굵게" : ""} — ${c.share}%`,
+          );
+        });
       }
     } catch (e) {
       pushProgress(job, `⚠ 스타일 글꼴 감지 건너뜀: ${e.message}`);
@@ -3661,7 +3683,7 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
   }
 
   job.listeners.forEach((r) => {
-    sendSse(r, "done", { filename: job.filename, fileId: job.fileId, warnings: job.warnings || [] });
+    sendSse(r, "done", { filename: job.filename, fileId: job.fileId, warnings: job.warnings || [], styleFont: job.styleFont || null });
     r.end();
   });
   job.listeners = [];
@@ -3705,7 +3727,7 @@ app.get("/api/jobs/:id/stream", requireAuth, (req, res) => {
   job.progress.forEach((p) => sendSse(res, "progress", p));
 
   if (job.status === "done") {
-    sendSse(res, "done", { filename: job.filename, fileId: job.fileId, warnings: job.warnings || [] });
+    sendSse(res, "done", { filename: job.filename, fileId: job.fileId, warnings: job.warnings || [], styleFont: job.styleFont || null });
     return res.end();
   }
   if (job.status === "error") {

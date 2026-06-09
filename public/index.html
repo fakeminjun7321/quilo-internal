@@ -2959,6 +2959,48 @@
             resultArea.appendChild(box);
           }
 
+          // 업로드한 .hwpx 글꼴 상세 분석 결과 — 결과 아래에 표시
+          const sf = data.styleFont;
+          if (sf && (sf.bodyFace || (sf.profile && sf.profile.length))) {
+            const fb = document.createElement("div");
+            fb.style.cssText =
+              "margin-top:12px;padding:12px 14px;border:1px solid #cdd6f4;background:#f5f7ff;border-radius:10px;color:#2a3556;font-size:13.5px;line-height:1.7";
+            const h = document.createElement("div");
+            h.style.cssText = "font-weight:700;margin-bottom:4px";
+            h.textContent = "🖊 감지된 글꼴 구성 (업로드한 한글파일 기준)";
+            fb.appendChild(h);
+            const sum = document.createElement("div");
+            sum.innerHTML =
+              `<b>본문</b> ${sf.bodyFace || "-"}${sf.bodySizePt ? " " + sf.bodySizePt + "pt" : ""}` +
+              (sf.headingFace
+                ? ` &nbsp;·&nbsp; <b>제목/소제목</b> ${sf.headingFace}${sf.headingSizePt ? " " + sf.headingSizePt + "pt" : ""}${sf.headingBold ? " 굵게" : ""}`
+                : "");
+            fb.appendChild(sum);
+            if (sf.profile && sf.profile.length) {
+              const det = document.createElement("details");
+              det.style.cssText = "margin-top:6px";
+              const sm = document.createElement("summary");
+              sm.style.cssText = "cursor:pointer;color:#465089;font-size:12.5px";
+              sm.textContent = `텍스트별 글꼴 상세 (${sf.profile.length}종)`;
+              det.appendChild(sm);
+              const ul2 = document.createElement("ul");
+              ul2.style.cssText = "margin:6px 0 0;padding-left:18px;font-size:12.5px;color:#4a5578";
+              sf.profile.forEach((c) => {
+                const li = document.createElement("li");
+                li.textContent = `${c.face} ${c.sizePt}pt${c.bold ? " 굵게" : ""} — ${c.share}%`;
+                ul2.appendChild(li);
+              });
+              det.appendChild(ul2);
+              fb.appendChild(det);
+            }
+            const fn = document.createElement("div");
+            fn.style.cssText = "margin-top:7px;font-size:12px;color:#6b76a8";
+            fn.textContent =
+              "보고서는 본문 글꼴로 출력했습니다(그 글꼴이 PC에 설치돼 있어야 그대로 보입니다). 글자 크기·제목 글꼴까지 맞추려면 알려주세요.";
+            fb.appendChild(fn);
+            resultArea.appendChild(fb);
+          }
+
           es.close();
           resetForm();
           // 작업 후 잔액 자동 새로고침

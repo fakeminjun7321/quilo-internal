@@ -2358,7 +2358,6 @@ app.post(
     // 화이트리스트 검증으로 임의 모델 주입 차단. 기본 Opus 4.8.
     const ALLOWED_MODELS = [
       "claude-opus-4-8",
-      "claude-opus-4-7",
       "claude-sonnet-4-6",
     ];
     // GPT(OpenAI) 보고서 생성은 배선 완료된 종류에만 허용(phys-inquiry 는 추후 배선).
@@ -3803,7 +3802,7 @@ app.use(require("./lib/artifacts-routes")({ requireAdmin, requireAdminOrBeta, ge
 
 // 코딩 테스트(정보 수행평가 대비, 베타): 문제 본문·테스트·채점 하니스 제공.
 // 채점은 브라우저(Pyodide)에서 수행. 베타 게이트("coding-test") — 관리자/테스터 한정.
-app.use("/api/coding", require("./lib/coding-routes")({ requireAdminOrBeta }));
+app.use("/api/coding", require("./lib/coding-routes")({ requireAdminOrBeta, getSessionUser }));
 
 // 공지사항: 공개 읽기(활성) + 관리자 CRUD. Supabase 테이블 없으면 메모리 fallback.
 app.use("/api/announcements", require("./lib/announcement-routes")({ requireAdmin }));

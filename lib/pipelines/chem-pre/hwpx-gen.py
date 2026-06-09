@@ -1322,7 +1322,7 @@ def build_table_of_contents(doc, content):
     procedure titles), not from headings already in the doc, since hwpx
     doesn't expose page numbers from Python.
     """
-    has_refs = bool(_ref_url_index(content))
+    has_refs = bool(_ref_url_index(content)) or bool(_url_less_references(content))
     has_chemicals = bool(content.get("chemicals_summary_table"))
 
     add_heading(doc, "목차", size=SIZE_TITLE,
@@ -1381,6 +1381,20 @@ def _ref_url_index(content):
     return out
 
 
+def _url_less_references(content):
+    """references 중 URL 이 없는 항목(교과서·논문 문자열, url 없는 객체)을
+    문자열 리스트로 반환한다. DOCX 는 이런 항목도 `[N] 텍스트`로 렌더하므로
+    HWPX default 모드도 동일하게 출력해 포맷 간 출처 누락을 막는다."""
+    out = []
+    for ref in content.get("references", []) or []:
+        if isinstance(ref, dict) and (ref.get("url") or "").strip():
+            continue  # url 있는 항목은 _ref_url_index 에서 이미 처리
+        text = ref_to_string(ref).strip()
+        if text:
+            out.append(text)
+    return out
+
+
 def _ref_label_for(url, content):
     """find a human label for a URL (from references[] or chemicals[])."""
     for ref in content.get("references", []) or []:
@@ -1418,15 +1432,18 @@ def build_references(doc, content):
     end of the document. Skips entirely if there are no sources.
     """
     ref_index = _ref_url_index(content)
-    if not ref_index:
+    extra_refs = _url_less_references(content)
+    if not ref_index and not extra_refs:
         return
 
     add_heading(doc, "참고문헌", size=SIZE_TITLE,
                 space_before=SPACE_HEADING_LV1, space_after=SPACE_HEADING_LV2)
 
     # ordered by index
+    last_idx = 0
     for url in sorted(ref_index.keys(), key=lambda u: ref_index[u]):
         idx = ref_index[url]
+        last_idx = max(last_idx, idx)
         label = _ref_label_for(url, content)
 
         # Render as: "[1] PubChem — Water (CID 962): https://..."
@@ -1444,6 +1461,16 @@ def build_references(doc, content):
             p.add_hyperlink(url, url, char_pr_id_ref=cp_link)
         except Exception:
             p.add_run(url, char_pr_id_ref=cp_link)
+
+    # URL 없는 참고문헌(교과서·논문 문자열 등)을 이어지는 번호로 평문 표시.
+    for text in extra_refs:
+        last_idx += 1
+        para_pr = make_para_pr(
+            doc, indent_left=INDENT_5MM, line_spacing=LINE_SPACING_PERCENT
+        )
+        p = doc.add_paragraph("", para_pr_id_ref=para_pr, inherit_style=False)
+        cp = make_char_pr(doc, size=SIZE_BODY)
+        p.add_run(f"[{last_idx}] {text}", char_pr_id_ref=cp)
 
 
 def is_minimal_style(content):
@@ -1619,43 +1646,6 @@ def build_procedure(doc, procedure):
 
 
 # ── Footer with auto page number ───────────────────────────────────────────
-
-
-def add_page_number_to_footer(doc):
-    try:
-        sec = doc.oxml.sections[0]
-    except (IndexError, AttributeError):
-        return
-    sec_elem = getattr(sec, "element", None)
-    if sec_elem is None:
-        return
-    # ⚠️ HWPX 는 페이지 유형별로 footer 가 여러 개(BOTH/ODD/EVEN/FIRST)일 수 있다.
-    # 첫 footer 에서 return 하면 나머지 footer 에 placeholder "- 사전보고서 -" 가
-    # 그대로 남아 일부 페이지에 노출된다. 그래서 모든 footer 를 처리한다.
-    for footer in sec_elem.iter(f"{NS_HP}footer"):
-        replaced = False
-        for run in footer.iter(f"{NS_HP}run"):
-            t = run.find(f"{NS_HP}t")
-            if t is None or t.text is None or "사전보고서" not in t.text:
-                continue
-            t.text = "- "
-            etree.SubElement(
-                run,
-                f"{NS_HP}pageNum",
-                attrib={"pageStartsOn": "BOTH", "pageNumberFormat": "DIGIT"},
-            )
-            tail = etree.SubElement(run, f"{NS_HP}t")
-            tail.text = " -"
-            replaced = True
-            break
-        # 안전망: pageNum 치환을 못 한 footer(텍스트가 run 여러 개로 쪼개진 경우 등)
-        # 라도 "사전보고서" 리터럴은 절대 남기지 않는다.
-        if not replaced:
-            for t in footer.iter(f"{NS_HP}t"):
-                if t.text and "사전보고서" in t.text:
-                    t.text = t.text.replace("사전보고서", "").strip()
-    if hasattr(sec, "mark_dirty"):
-        sec.mark_dirty()
 
 
 # ── Top-level ─────────────────────────────────────────────────────────────

@@ -1113,6 +1113,17 @@ def inspect_equations(input_hwpx: Path) -> list[tuple[str, str]]:
     return found
 
 
+# 최종 HWPX에 절대 남아서는 안 되는 금지 수식 마커(CLAUDE.md "절대 하지 말 것").
+# 변환기가 없어 raw 텍스트로 노출되므로, 발견되면 postprocess를 fatal 처리한다.
+FORBIDDEN_EQUATION_MARKERS = ("{{MATH:", "{{FORMULA:", "{{EQUATION:", "[[수식")
+
+
+def _forbidden_markers_in(text: str) -> list[str]:
+    if not text:
+        return []
+    return [m for m in FORBIDDEN_EQUATION_MARKERS if m in text]
+
+
 def validate_hwpx_equations(input_hwpx: Path) -> list[str]:
     issues: list[str] = []
     try:
@@ -1133,6 +1144,10 @@ def validate_hwpx_equations(input_hwpx: Path) -> list[str]:
                 for t in root.findall(f".//{{{HP_NS}}}t"):
                     if t.text and "{{EQ" in t.text:
                         issues.append(f"{section_name}: unresolved placeholder: {t.text}")
+                    for marker in _forbidden_markers_in(t.text or ""):
+                        issues.append(
+                            f"{section_name}: forbidden equation marker {marker!r}: {t.text}"
+                        )
 
                 for para in root.findall(f".//{{{HP_NS}}}p"):
                     children = list(para)
@@ -1149,6 +1164,10 @@ def validate_hwpx_equations(input_hwpx: Path) -> list[str]:
                         if "{{EQ" in group_text:
                             issues.append(
                                 f"{section_name}: unresolved split placeholder: {group_text}"
+                            )
+                        for marker in _forbidden_markers_in(group_text):
+                            issues.append(
+                                f"{section_name}: forbidden equation marker {marker!r} (split): {group_text}"
                             )
 
                 for script in root.findall(f".//{{{HP_NS}}}script"):

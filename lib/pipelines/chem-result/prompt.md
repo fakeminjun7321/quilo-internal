@@ -235,15 +235,15 @@ JSON 스키마:
     },
     "charts": [
       {
-        "title": "기구별 평균 부피 비교",
+        "title": "Mean Volume by Apparatus",
         "type": "bar",
-        "x_label": "기구",
-        "y_label": "평균 부피 (mL)",
-        "x_values": ["피펫", "뷰렛"],
+        "x_label": "Apparatus",
+        "y_label": "Mean Volume (mL)",
+        "x_values": ["Pipette", "Buret"],
         "series": [
-          { "label": "평균값", "values": [10.0090, 10.0234] }
+          { "label": "Measured", "values": [10.0090, 10.0234] }
         ],
-        "reference_line": { "value": 10.0, "label": "이론값 (10.00 mL)" },
+        "reference_line": { "value": 10.0, "label": "Theory (10.00 mL)" },
         "caption": "각 기구의 평균값과 이론값(빨간 점선) 비교. 표준편차: 피펫 ±0.0094 mL, 뷰렛 ±0.0156 mL."
       }
     ]

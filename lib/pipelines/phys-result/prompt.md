@@ -287,14 +287,14 @@ JSON을 닫기 전에 스스로 다음을 확인한 뒤 부족하면 보강하�
         ]
       },
       "chart": {
-        "title": "초기 vs 나중 에너지",
+        "title": "Initial vs Final Energy",
         "type": "bar",
-        "x_label": "시행",
-        "y_label": "에너지 (J)",
-        "x_values": ["1차 37.6g", "2차 37.6g", "3차 37.6g"],
+        "x_label": "Trial",
+        "y_label": "Energy (J)",
+        "x_values": ["Trial 1 (37.6g)", "Trial 2 (37.6g)", "Trial 3 (37.6g)"],
         "series": [
-          { "label": "초기", "values": [0.1796, 0.1796, 0.1796] },
-          { "label": "나중", "values": [0.1668, 0.1678, 0.1698] }
+          { "label": "Initial", "values": [0.1796, 0.1796, 0.1796] },
+          { "label": "Final", "values": [0.1668, 0.1678, 0.1698] }
         ],
         "caption": "37.6 g 시행에서 평균 손실률 6.4%."
       },
@@ -363,16 +363,16 @@ JSON 안의 모든 텍스트 필드에서:
 {
   "type": "scatter",
   "x_label": "mω² (kg/s²)",
-  "y_label": "구심력 F_{c} (N)",
+  "y_label": "Centripetal Force F_{c} (N)",
   "series": [
-    { "label": "측정값", "points": [{"x": 0.42, "y": 0.40}, {"x": 0.55, "y": 0.53}] }
+    { "label": "Measured", "points": [{"x": 0.42, "y": 0.40}, {"x": 0.55, "y": 0.53}] }
   ],
   "trendline": {
     "slope": 0.96,
     "intercept": 0.01,
     "x_min": 0.42,
     "x_max": 0.55,
-    "label": "선형 회귀"
+    "label": "Linear Fit"
   },
   "caption": "기울기 0.96, 절편 0.01 N으로 *F_{c} = mω^{2}r*의 선형성을 확인하였다."
 }

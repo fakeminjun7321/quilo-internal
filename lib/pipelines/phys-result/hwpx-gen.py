@@ -216,7 +216,13 @@ def make_template_title_header_first_page_only(doc):
 
 
 def move_template_title_header_to_first_body_anchor(doc):
-    """Render the template title box only once by anchoring it in body text.
+    """⚠️ 사용 금지(DEAD CODE) — 호출하지 말 것.
+    이 함수는 제목 박스를 header 에서 body 로 옮긴다. CLAUDE.md "HWPX 생성 규칙"과
+    docs/phys-result-pipeline.md §19.3 가 명시적으로 금지한 동작이며, 과거 macOS/
+    Windows 한컴에서 파일이 열리지 않는 회귀를 일으켰다. 제목 반복 문제는
+    make_template_title_header_first_page_only() 로 해결한다. 참고용으로만 남겨 둔다.
+
+    Render the template title box only once by anchoring it in body text.
 
     HWPX headers support odd/even/both page types, but not a reliable
     first-page-only header. Hancom may therefore repeat the template title box
@@ -309,7 +315,12 @@ def _assign_fresh_ids(root, subtree):
 
 
 def move_template_title_header_to_body(doc):
-    """Keep the template title box on page 1 without repeating it as a header."""
+    """⚠️ 사용 금지(DEAD CODE) — 호출하지 말 것.
+    header subList 를 top-level body 로 옮기는 동작은 CLAUDE.md "HWPX 생성 규칙"과
+    docs/phys-result-pipeline.md §19.3 가 금지한다(한컴 열림 실패 회귀). 제목 반복은
+    make_template_title_header_first_page_only() 로 처리한다.
+
+    Keep the template title box on page 1 without repeating it as a header."""
     moved = False
     for sec in getattr(doc.oxml, "sections", []):
         element = getattr(sec, "element", None)

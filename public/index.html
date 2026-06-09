@@ -3001,6 +3001,41 @@
             resultArea.appendChild(fb);
           }
 
+          // AI로 이어서 편집 — 인수인계 프롬프트(복사용)
+          if (typeof data.handoff === "string" && data.handoff.trim()) {
+            const hb = document.createElement("div");
+            hb.style.cssText =
+              "margin-top:12px;padding:12px 14px;border:1px solid #cde3d2;background:#f3fbf5;border-radius:10px;color:#214a31;font-size:13.5px;line-height:1.6";
+            const hh = document.createElement("div");
+            hh.style.cssText = "display:flex;align-items:center;gap:8px;margin-bottom:6px";
+            hh.innerHTML = '<b>🤝 AI로 이어서 편집하기</b>';
+            const copyBtn = document.createElement("button");
+            copyBtn.textContent = "프롬프트 복사";
+            copyBtn.style.cssText =
+              "margin-left:auto;font-size:12.5px;padding:5px 12px;border:1px solid #2f9e57;background:#2f9e57;color:#fff;border-radius:8px;cursor:pointer";
+            hh.appendChild(copyBtn);
+            hb.appendChild(hh);
+            const desc = document.createElement("div");
+            desc.style.cssText = "font-size:12.5px;color:#4a6b54;margin-bottom:7px";
+            desc.textContent =
+              "아래 안내문을 복사해 ChatGPT·Claude 등에 붙여넣고, 그 아래에 다운로드한 보고서 내용을 붙이면 이어서 다듬을 수 있어요(주의사항·다듬을 포인트 포함).";
+            hb.appendChild(desc);
+            const ta = document.createElement("textarea");
+            ta.readOnly = true;
+            ta.value = data.handoff;
+            ta.style.cssText =
+              "width:100%;min-height:160px;font-size:12.5px;line-height:1.55;padding:10px;border:1px solid #cde3d2;border-radius:8px;background:#fff;color:#214a31;resize:vertical;white-space:pre-wrap";
+            hb.appendChild(ta);
+            copyBtn.onclick = () => {
+              ta.select();
+              navigator.clipboard?.writeText(data.handoff).then(
+                () => { copyBtn.textContent = "복사됨 ✓"; setTimeout(() => (copyBtn.textContent = "프롬프트 복사"), 1500); },
+                () => { try { document.execCommand("copy"); copyBtn.textContent = "복사됨 ✓"; } catch {} },
+              );
+            };
+            resultArea.appendChild(hb);
+          }
+
           es.close();
           resetForm();
           // 작업 후 잔액 자동 새로고침

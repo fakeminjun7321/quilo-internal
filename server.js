@@ -3401,6 +3401,13 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
       job.warnings.forEach((w) => pushProgress(job, `   • ${w}`));
     }
 
+    // AI 이어쓰기 인수인계 프롬프트(다른 AI에 붙여넣어 이어 편집용) — 문서엔 안 넣고 UI에만.
+    job.handoff =
+      typeof content.ai_handoff === "string"
+        ? content.ai_handoff.replace(/\r\n/g, "\n").trim().slice(0, 6000)
+        : "";
+    if (job.handoff) pushProgress(job, "🤝 'AI로 이어서 편집' 인수인계 프롬프트 생성됨 — 결과 아래에서 복사하세요.");
+
     const fontFace = normalizeFontFace(pipelineInput.fontFace);
     Object.defineProperty(content, "__fontFace", {
       value: fontFace,
@@ -3682,7 +3689,7 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
   }
 
   job.listeners.forEach((r) => {
-    sendSse(r, "done", { filename: job.filename, fileId: job.fileId, warnings: job.warnings || [], styleFont: job.styleFont || null });
+    sendSse(r, "done", { filename: job.filename, fileId: job.fileId, warnings: job.warnings || [], styleFont: job.styleFont || null, handoff: job.handoff || "" });
     r.end();
   });
   job.listeners = [];
@@ -3726,7 +3733,7 @@ app.get("/api/jobs/:id/stream", requireAuth, (req, res) => {
   job.progress.forEach((p) => sendSse(res, "progress", p));
 
   if (job.status === "done") {
-    sendSse(res, "done", { filename: job.filename, fileId: job.fileId, warnings: job.warnings || [], styleFont: job.styleFont || null });
+    sendSse(res, "done", { filename: job.filename, fileId: job.fileId, warnings: job.warnings || [], styleFont: job.styleFont || null, handoff: job.handoff || "" });
     return res.end();
   }
   if (job.status === "error") {

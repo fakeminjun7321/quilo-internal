@@ -8,19 +8,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       python3 python3-venv python3-pip fontconfig curl ca-certificates xz-utils \
     && rm -rf /var/lib/apt/lists/*
 
-# HF Spaces 권장: uid 1000 비루트 사용자 + 쓰기 가능한 홈.
-RUN useradd -m -u 1000 user
-USER user
-ENV HOME=/home/user \
-    PATH=/home/user/app/bin:/home/user/.local/bin:/usr/local/bin:$PATH \
+# node:20 이미지엔 이미 uid 1000 'node' 사용자가 있으므로 그걸 그대로 사용
+# (HF Spaces 권장 uid 1000과 동일 — 새로 useradd 하면 UID 충돌로 빌드 실패).
+USER node
+ENV HOME=/home/node \
+    PATH=/home/node/app/bin:/home/node/.local/bin:/usr/local/bin:$PATH \
     NODE_ENV=production \
     PORT=7860 \
     TRANSLATE_PORT=7860 \
-    XDG_CACHE_HOME=/home/user/.cache
-WORKDIR /home/user/app
+    XDG_CACHE_HOME=/home/node/.cache
+WORKDIR /home/node/app
 
 # 앱 + 엔진 복사(빌드 컨텍스트는 build-staging.sh 가 만든 최소 세트).
-COPY --chown=user:user . /home/user/app
+COPY --chown=node:node . /home/node/app
 
 # npm install → postinstall: python venv(pymupdf) + tectonic(재조판) 설치.
 RUN npm install

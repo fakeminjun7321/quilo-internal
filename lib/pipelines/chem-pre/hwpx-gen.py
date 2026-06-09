@@ -173,6 +173,15 @@ def normalize_font_face(face):
     return DEFAULT_FONT_FACE
 
 
+def resolve_font_face(content):
+    """업로드한 .hwpx 에서 감지한 글꼴(detected_font_face)이 있으면 그대로 사용
+    (그 사람 글꼴 — 설치돼 있어야 표시). 없으면 드롭다운 값을 4종 프리셋으로 정규화."""
+    detected = (content or {}).get("detected_font_face")
+    if detected and str(detected).strip():
+        return str(detected).strip()
+    return normalize_font_face((content or {}).get("font_face") or (content or {}).get("__fontFace"))
+
+
 # ── Unicode super/subscript ────────────────────────────────────────────────
 # Digits/signs render cleanly as Unicode glyphs. Alphabetic subscripts such as
 # m_{exp} use real charPr offset+relSz runs instead; Unicode letter subscripts
@@ -1656,9 +1665,9 @@ def generate_hwpx(content):
     doc = HwpxDocument.new()
     doc._v5_allow_highlights = bool(content.get("__allowHighlights", True))
     apply_page_layout(doc)
-    apply_default_font(
+    apply_default_font(  # chem-pre
         doc,
-        normalize_font_face(content.get("font_face") or content.get("__fontFace")),
+        resolve_font_face(content),
     )
 
     if is_minimal_style(content):

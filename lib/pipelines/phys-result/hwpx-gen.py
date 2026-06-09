@@ -1265,7 +1265,7 @@ def generate_hwpx(content):
         # fonts are preserved.
         pre.apply_body_font(
             doc,
-            pre.normalize_font_face(content.get("font_face") or content.get("__fontFace")),
+            pre.resolve_font_face(content),
         )
         if result_cell is not None and conclusion_cell is not None:
             clear_cell(result_cell)
@@ -1281,7 +1281,7 @@ def generate_hwpx(content):
         apply_phys_page_layout(doc)
         pre.apply_default_font(
             doc,
-            pre.normalize_font_face(content.get("font_face") or content.get("__fontFace")),
+            pre.resolve_font_face(content),
         )
         build_header(doc, content)
     build_results(doc, content)

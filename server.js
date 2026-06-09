@@ -222,7 +222,7 @@ const PIPELINES = {
         }
       };
       checkRefExt(refs, "참고자료");
-      checkRefExt(styleRefs, "스타일 참고 자료");
+      styleRef.validateStyleRefs(styleRefs); // 스타일 참고는 .hwpx 허용(.hwp 거부)
       if (notes.length === 0 && refs.length === 0 && !refLinks) {
         throw new Error(
           "필기노트 PDF, 참고자료 파일, 참고 링크 중 하나는 첨부하세요.",
@@ -3431,6 +3431,28 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
     content.temperature = String(pipelineInput.temperature || "").trim();
     content.pressure = String(pipelineInput.pressure || "").trim();
     content.report_number = extractReportLabel(sourceFilename);
+
+    // 업로드한 .hwpx 스타일 참고 자료가 있으면 그 사람 글꼴을 감지해 출력에 적용.
+    // (글꼴 family 는 그대로 적용 — 설치돼 있어야 표시. 크기는 분량/양식 보호를 위해
+    //  자동 적용하지 않고 안내만 한다.) detected_font_face 는 enumerable 이라
+    //  hwpx 직렬화(JSON.stringify)에도 그대로 실린다.
+    try {
+      const detectedFont = await styleRef.detectStyleFont(
+        pipelineInput.styleRefs || [],
+      );
+      if (detectedFont && detectedFont.face) {
+        content.detected_font_face = detectedFont.face;
+        if (detectedFont.sizePt) content.detected_font_size_pt = detectedFont.sizePt;
+        pushProgress(
+          job,
+          `🖊 업로드한 한글파일(.hwpx) 글꼴 감지: ${detectedFont.face}${
+            detectedFont.sizePt ? ` (본문 약 ${detectedFont.sizePt}pt)` : ""
+          } — 보고서 글꼴에 적용`,
+        );
+      }
+    } catch (e) {
+      pushProgress(job, `⚠ 스타일 글꼴 감지 건너뜀: ${e.message}`);
+    }
 
     const ext = format === "hwpx" ? "hwpx" : "docx";
     pushProgress(job, `📄 .${ext} 파일 빌드 중...`);

@@ -218,7 +218,7 @@ def generate_hwpx(content):
     phys.apply_phys_page_layout(doc)
     pre.apply_default_font(
         doc,
-        pre.normalize_font_face(content.get("font_face") or content.get("__fontFace")),
+        pre.resolve_font_face(content),
     )
     build_title(doc, content)
     build_problem_setup(doc, content)

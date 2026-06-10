@@ -42,6 +42,7 @@
     if (id.indexOf("cr") === 0) return "chem-result";
     if (id.indexOf("pr") === 0) return "phys-result";
     if (id.indexOf("pi") === 0) return "phys-inquiry";
+    if (id.indexOf("mi") === 0) return "math-inquiry";
     return "";
   }
   var waEnabled = false; // 유료 글쓰기 도우미(Sonnet/GPT) + 로그인 사용 가능

@@ -260,10 +260,81 @@ const PIPELINES = {
     generateDocx: require("./lib/pipelines/phys-inquiry/docx-gen").generateDocx,
     generateHwpx: require("./lib/pipelines/phys-inquiry/hwpx-gen").generateHwpx,
   },
+  // 수학 수행평가 — 수학Ⅲ 급수 탐구보고서 (베타)
+  // 입력: 주제 + 필기노트/공부자료 + 참고자료 + 참고 링크. FREE_BETA_TYPES 로 무료·테스터 한정.
+  "math-inquiry": {
+    label: "수학 수행평가",
+    filenamePrefix: "수학수행",
+    filenameSourceField: "notes",
+    creditField: "result",
+    prepareInput(filesByField, body) {
+      const topic = String(body.topic || "").trim();
+      if (!topic) {
+        throw new Error("탐구 주제를 입력하세요.");
+      }
+      const notes = filesByField.notes || [];
+      const refs = filesByField.refs || [];
+      const refLinks = String(body.refLinks || "").trim().slice(0, 4000);
+      for (const f of notes) {
+        const ext = (f.originalname.split(".").pop() || "").toLowerCase();
+        if (!["pdf", "txt", "md"].includes(ext)) {
+          throw new Error("필기노트는 PDF 또는 .txt/.md 파일만 가능합니다.");
+        }
+      }
+      const styleRefs = filesByField.styleRefs || [];
+      const checkRefExt = (arr, label) => {
+        for (const f of arr) {
+          const ext = (f.originalname.split(".").pop() || "").toLowerCase();
+          if (!["pdf", "png", "jpg", "jpeg", "gif", "webp", "txt", "md", "csv"].includes(ext)) {
+            throw new Error(
+              `${label}는 PDF, 이미지(.png/.jpg), 텍스트(.txt/.md/.csv)만 가능합니다.`,
+            );
+          }
+        }
+      };
+      checkRefExt(refs, "참고자료");
+      styleRef.validateStyleRefs(styleRefs); // 스타일 참고는 .hwpx 허용(.hwp 거부)
+      if (notes.length === 0 && refs.length === 0 && !refLinks) {
+        throw new Error(
+          "필기노트 PDF, 참고자료 파일, 참고 링크 중 하나는 첨부하세요.",
+        );
+      }
+      const mapFiles = (arr) =>
+        arr.map((f) => ({
+          buffer: f.buffer,
+          name: f.originalname,
+          mimetype: f.mimetype,
+        }));
+      return {
+        topic,
+        notesFiles: mapFiles(notes),
+        refFiles: mapFiles(refs),
+        refLinks,
+        styleRefs: mapFiles(styleRefs),
+        styleNote: String(body.styleNote || "").trim().slice(0, 1500),
+        studentId: String(body.studentId || "").trim().slice(0, 20),
+        fontFace: normalizeFontFace(body.fontFace),
+        userNotes: collectUserNotes(body.userNotes, filesByField),
+        style: "default",
+      };
+    },
+    buildFilename(content, ctx) {
+      const id = sanitizeForFilename(ctx.studentId || "");
+      const name = sanitizeForFilename(ctx.userName || "");
+      const prefix = `${id}${name ? "_" + name : ""}`;
+      return prefix
+        ? `${prefix}_급수탐구보고서.docx`
+        : `수학수행_급수탐구보고서.docx`;
+    },
+    generateContent: require("./lib/pipelines/math-inquiry/generate")
+      .generateReportContent,
+    generateDocx: require("./lib/pipelines/math-inquiry/docx-gen").generateDocx,
+    generateHwpx: require("./lib/pipelines/math-inquiry/hwpx-gen").generateHwpx,
+  },
 };
 
 // 베타·무료 보고서 종류 — /api/generate 에서 테스터 한정 접근 + 크레딧 미차감.
-const FREE_BETA_TYPES = new Set(["phys-inquiry"]);
+const FREE_BETA_TYPES = new Set(["phys-inquiry", "math-inquiry"]);
 const pricing = require("./lib/pricing");
 const {
   fmtUSD,
@@ -919,6 +990,12 @@ const CHAT_MEMO_TYPE_GUIDES = {
 - 입력: 탐구 주제 + 본인 필기노트 PDF + 참고자료. 생성 AI가 "초기 오개념 → 오류 인식 → 정확한 개념으로 해결 → 성찰" 서사로 학교 양식(I~IV)을 채웁니다.
 - 메모로 도울 수 있는 것(특히 중요): **처음에 무엇을 어떻게 잘못 생각했는지(오개념)**, 무엇을 계기로 깨달았는지, 노트 속 어떤 문제/유도를 꼭 포함할지, 분량 희망(자료 많으면 길게 가능), 결론에서 강조할 통찰.
 - 오개념 서사가 이 보고서의 핵심 평가 요소이므로, 사용자에게 "처음에 뭐라고 생각했었는지"를 꼭 물어보세요.`,
+  "math-inquiry": `
+[지금 사용자가 만들려는 것: 수학 수행평가 — 수학Ⅲ 급수 탐구보고서]
+- 입력: 급수 관련 탐구 주제 + 본인 필기노트/공부자료 PDF + 참고자료. 생성 AI가 학교 양식(Ⅰ.탐구 주제 / Ⅱ.탐구 목적 / Ⅲ.선행연구 분석 / Ⅳ.탐구 과정 및 탐구 내용 / Ⅴ.탐구 결과 정리 및 반성)을 채웁니다. Ⅳ가 핵심(표·그래프·수식 풀전개)입니다.
+- 메모로 도울 수 있는 것: 왜 이 주제가 궁금했는지(동기), 노트 속 어떤 유도/예시를 꼭 포함할지, 직접 계산해 본 것(부분합·오차 비교 등), 어떤 표·그래프를 넣고 싶은지, 창의적으로 시도한 연결(다른 분야·실생활).
+- 평가 기준이 "수학적 타당성·창의성 40 / 논리성·구성력(자료 활용) 40 / 발표 20"이므로, 본인만의 계산·예시(창의성)와 표·그래프 계획을 꼭 물어보세요.
+- 메모에 넣지 말 것: 확인 안 된 수치·가짜 문헌. 수식·계산은 생성 AI가 정확히 다시 전개합니다.`,
 };
 
 // ── 글쓰기 도우미(write-assist): 보고서 입력·문체 메모 작성을 Sonnet / GPT-5.4-mini 로 돕는다.
@@ -4229,7 +4306,7 @@ app.patch("/api/admin/users/:id", requireAdmin, async (req, res) => {
   // 보고서 종류 접근 제한: 허용된 종류 key 배열만
   let normalizedBlocked;
   if (blockedReportTypes !== undefined) {
-    const VALID = ["chem-pre", "chem-result", "phys-result", "phys-inquiry"];
+    const VALID = ["chem-pre", "chem-result", "phys-result", "phys-inquiry", "math-inquiry"];
     if (!Array.isArray(blockedReportTypes)) {
       return res
         .status(400)
@@ -4542,6 +4619,12 @@ app.listen(PORT, async () => {
       if (seeded) console.log("  ✓ 베타 기능 등록: 물리 수행평가(phys-inquiry)");
     } catch (e) {
       console.warn(`  ⚠ 베타 기능 등록 실패: ${e.message}`);
+    }
+    try {
+      const seeded = await supa.ensureBetaFeature("math-inquiry", "수학 수행평가");
+      if (seeded) console.log("  ✓ 베타 기능 등록: 수학 수행평가(math-inquiry)");
+    } catch (e) {
+      console.warn(`  ⚠ 베타 기능 등록 실패(math-inquiry): ${e.message}`);
     }
     try {
       const seeded = await supa.ensureBetaFeature("create", "창작(만들기)");

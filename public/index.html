@@ -181,6 +181,12 @@
           <span class="rt-title">물리 수행평가 <span class="beta-pill">베타</span></span>
           <span class="rt-tag">주제·필기노트 → 탐구 성찰 보고서</span>
         </label>
+        <label id="rtMathInquiry" hidden>
+          <input type="radio" name="reportType" value="math-inquiry" />
+          <span class="rt-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16"/><path d="M6 4l6 8-6 8"/><path d="M4 20h16"/></svg></span>
+          <span class="rt-title">수학 수행평가 <span class="beta-pill">베타</span></span>
+          <span class="rt-tag">주제·필기노트 → 급수 탐구보고서</span>
+        </label>
       </div>
     </div>
 
@@ -689,6 +695,169 @@
       </div>
     </form>
 
+    <form id="mathInquiryForm" class="report-form" data-report-form="math-inquiry" hidden>
+      <div class="notice">
+        <strong>수학 수행평가 「수학Ⅲ 급수 탐구보고서」 초안 (베타·무료).</strong>
+        급수 관련 탐구 주제 + 내가 공부한 필기노트·자료를 주면, 학교 양식(Ⅰ.탐구 주제 ~ Ⅴ.결과 정리 및 반성)에 맞춰
+        표·그래프·수식이 들어간 초안을 만들어 줍니다. <strong>그대로 제출하지 말고 본인 글로 다듬어 쓰세요.</strong>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head">
+          <span class="form-section-title">탐구 주제</span>
+        </div>
+        <div class="field">
+          <label><span class="field-label">급수 탐구 주제 <span class="req">*</span></span>
+            <input id="miTopic" name="topic" type="text" maxlength="300" required
+              placeholder="예: 제논의 역설과 무한등비급수의 수렴 / 계산기는 sin을 어떻게 계산할까(테일러 급수) / 조화급수는 왜 발산할까" />
+          </label>
+          <small>수열의 극한·무한급수와 연결되는 탐구 주제를 한 줄로.</small>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head">
+          <span class="form-section-title">자료 업로드</span>
+        </div>
+        <div class="field-grid">
+          <div class="field">
+            <span class="field-label">필기노트·공부자료 PDF (여러 개)</span>
+            <div class="dropzone">
+              <input id="miNotes" name="notes" type="file" accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown" multiple aria-label="필기노트 파일" />
+              <span class="dropzone-icon" aria-hidden="true">📓</span>
+              <span class="dropzone-title">필기노트를 끌어다 놓거나 클릭</span>
+              <span class="dropzone-sub">.pdf · .txt · .md</span>
+              <span class="dropzone-file" data-dz-file></span>
+            </div>
+          </div>
+          <div class="field">
+            <span class="field-label">참고자료 (PDF·이미지·텍스트, 여러 개)</span>
+            <div class="dropzone">
+              <input id="miRefs" name="refs" type="file" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.txt,.md,.csv,application/pdf,image/*" multiple aria-label="참고자료 파일" />
+              <span class="dropzone-icon" aria-hidden="true">📎</span>
+              <span class="dropzone-title">참고자료를 끌어다 놓거나 클릭</span>
+              <span class="dropzone-sub">.pdf · .png/.jpg · .txt/.md</span>
+              <span class="dropzone-file" data-dz-file></span>
+            </div>
+          </div>
+        </div>
+        <div class="field">
+          <label><span class="field-label">참고 링크 (선택, 한 줄에 하나)</span>
+            <textarea id="miRefLinks" name="refLinks" rows="3" maxlength="4000" placeholder="https://en.wikipedia.org/wiki/Taylor_series&#10;https://... (참고한 웹페이지·강의 자료 주소)"></textarea>
+          </label>
+          <small>링크 내용은 선행연구 분석·참고문헌에 정리됩니다. 필요하면 AI가 웹 검색으로 확인합니다.</small>
+        </div>
+        <div class="field user-notes-field">
+          <label>
+            <span class="field-label">AI 참고 메모 / 내 생각 (선택)</span>
+            <textarea id="miUserNotes" name="userNotes" rows="4" maxlength="12000" placeholder="예: 계산기가 sin을 어떻게 구하는지 궁금해서 골랐음. 노트의 테일러 전개 유도 꼭 포함. x=1에서 부분합을 직접 계산했더니 N=4부터 소수 5째자리까지 맞았음 — 이 표 넣어줘."></textarea>
+          </label>
+          <span data-memo-guide="miUserNotes"></span><details class="memo-guide" style="margin-top:6px"><summary style="cursor:pointer;font-size:12.5px;color:#243ba2;user-select:none">📋 메모 작성 가이드 · 좋은 예시 + AI에게 줄 기본 프롬프트</summary><div style="font-size:12.5px;color:#475569;margin-top:6px;line-height:1.55"><b>좋은 AI 참고 메모 예시</b><div style="background:#f7f9ff;border:1px solid #e2e6f3;border-radius:8px;padding:8px 10px;margin:4px 0;white-space:pre-wrap">- 동기: 계산기·AI가 초월함수를 어떻게 계산하는지 궁금했음
+- 노트의 테일러 급수 유도(라그랑주 나머지항 포함)를 Ⅲ.이론적 배경에 꼭 넣어줘
+- 직접 계산: x=1에서 sin의 부분합 N=1~6 비교했음 — 오차 표랑 수렴 그래프로 보여줘
+- 창의적 시도: 같은 방법으로 e^x도 계산해서 두 급수의 수렴 속도를 비교</div><b style="display:block;margin-top:6px">AI(ChatGPT·Claude 등)에게 물어볼 때 복사해 쓰는 기본 프롬프트</b><textarea readonly rows="6" style="width:100%;box-sizing:border-box;font-size:12px;background:#fff;border:1px solid #dfe4fb;border-radius:8px;padding:7px 9px;margin-top:4px">나는 Quilo로 '수학 수행평가(수학Ⅲ 급수 탐구보고서)'를 만들려고 해. 급수 관련 주제와 필기노트를 올리면 AI가 Ⅰ.탐구 주제 / Ⅱ.탐구 목적 / Ⅲ.선행연구 분석 / Ⅳ.탐구 과정 및 탐구 내용 / Ⅴ.결과 정리 및 반성 양식으로 써 줘. 평가 기준이 '수학적 타당성·창의성 40점 / 논리성·자료(표·그래프) 활용 40점 / 발표 20점'이라 내가 직접 계산해 본 것과 창의적인 연결이 중요해. 'AI 참고 메모'에 탐구 동기, 노트에서 꼭 포함할 유도/예시, 직접 계산해 본 것, 넣고 싶은 표·그래프를 정리하고 싶어. 내 상황을 듣고 메모 초안을 불릿으로 만들어줘. 없는 수치는 지어내지 마.
+
+[내 상황]: </textarea><button type="button" onclick="(function(b){var t=b.previousElementSibling;t.focus();t.select();try{navigator.clipboard.writeText(t.value);}catch(e){try{document.execCommand('copy');}catch(_){}}b.textContent='복사됨!';setTimeout(function(){b.textContent='📋 프롬프트 복사';},1200);})(this)" style="margin-top:4px;font-size:12px;color:#243ba2;background:#eef1fc;border:1px solid #dfe4fb;border-radius:7px;padding:4px 10px;cursor:pointer">📋 프롬프트 복사</button></div></details>
+          <button type="button" class="qc-memo-btn" style="display:none;align-self:flex-start;margin:6px 0 2px;font-size:12.5px;color:#243ba2;background:#eef1fc;border:1px solid #dfe4fb;border-radius:8px;padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openMemo('miUserNotes')">✨ AI로 메모 작성 도움받기</button>
+          <small>.md/.txt 파일로 길게 작성한 메모도 함께 첨부할 수 있습니다.</small>
+          <input id="miUserNotesFile" name="userNotesFile" type="file" accept=".md,.txt,text/markdown,text/plain" aria-label="참고 메모 파일" />
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head">
+          <span class="form-section-title">내 글 스타일 (선택)</span>
+        </div>
+        <div class="notice" style="margin-bottom:12px">
+          내가 예전에 쓴 글(필기·노트·보고서 등)을 올리면, 보고서를 <strong>그 글의 문체·느낌</strong>으로 써 줍니다.
+          <strong>내용은 가져오지 않고 스타일만</strong> 흉내 냅니다. (예: 다른 주제 글이어도 OK)
+        </div>
+        <div class="field-grid">
+          <div class="field">
+            <span class="field-label">내 글 스타일 참고 파일 (PDF·이미지·텍스트·한글 .hwpx, 여러 개)</span>
+            <div class="dropzone">
+              <input id="miStyleRefs" name="styleRefs" type="file" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.txt,.md,.csv,.hwpx,application/pdf,image/*" multiple aria-label="내 글 스타일 참고 파일" />
+              <span class="dropzone-icon" aria-hidden="true">✍️</span>
+              <span class="dropzone-title">내 글 샘플을 끌어다 놓거나 클릭</span>
+              <span class="dropzone-sub">문체 흉내 · 한글(.hwpx)이면 글꼴까지 · 내용 제외</span>
+              <span class="dropzone-file" data-dz-file></span>
+            </div>
+          </div>
+          <div class="field">
+            <label><span class="field-label">문체 메모 (선택, 한 줄)</span>
+              <textarea id="miStyleNote" name="styleNote" rows="3" maxlength="1500" placeholder="예: 정의를 먼저 쓰고 직관적 설명을 덧붙이는 차분한 문어체, 수식은 단계별 유도, 소제목은 Step 1처럼 번호로"></textarea>
+            </label>
+          <button type="button" class="qc-style-btn" style="display:none;align-self:flex-start;margin:6px 0 2px;font-size:12.5px;color:#243ba2;background:#eef1fc;border:1px solid #dfe4fb;border-radius:8px;padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openStyle('miStyleNote')">✨ AI로 내 문체 정리받기</button>
+            <small>샘플 없이 원하는 느낌만 글로 적어도 됩니다.</small>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head">
+          <span class="form-section-title">보고서 정보</span>
+        </div>
+        <div class="field-grid">
+          <div class="field">
+            <label><span class="field-label">날짜</span>
+              <input id="miDate" name="date" type="date" />
+            </label>
+          </div>
+          <div class="field">
+            <span class="field-label">표지에 출력될 이름 · 학번</span>
+            <div id="miWhoPreview" style="padding:9px 12px;border:1px solid #e2e6f3;border-radius:8px;background:#f7f9ff;color:#243b5e;font-size:13.5px;min-height:38px;display:flex;align-items:center">개인 설정에 저장된 값으로 출력됩니다.</div>
+            <small>이름·학번은 <a href="#" data-tab="settings">개인 설정</a>에 저장한 값으로 자동 출력됩니다.</small>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head">
+          <span class="form-section-title">출력 설정</span>
+        </div>
+        <div class="seg-group" style="margin-bottom: 12px">
+          <span class="field-label">AI 모델 (베타 기간 무료)</span>
+          <div class="segmented">
+            <label class="fable-model" hidden><input type="radio" name="miModel" value="claude-fable-5" /> Fable 5 · 9크레딧 (관리자)</label>
+            <label><input type="radio" name="miModel" value="claude-opus-4-8" checked /> Opus 4.8 · 무료(베타)</label>
+            <label><input type="radio" name="miModel" value="claude-sonnet-4-6" /> Sonnet 4.6 · 무료(베타)</label>
+          </div>
+        </div>
+        <div class="field-grid">
+          <div class="seg-group">
+            <span class="field-label">출력 형식</span>
+            <div class="segmented">
+              <label><input type="radio" name="miFormat" value="hwpx" checked /> .hwpx</label>
+              <label><input type="radio" name="miFormat" value="docx" /> .docx</label>
+            </div>
+          </div>
+          <div class="field">
+            <label><span class="field-label">글꼴</span>
+              <select id="miFontFace" name="fontFace">
+                <option value="malgun-gothic" selected>맑은 고딕</option>
+                <option value="nanum-gothic">나눔고딕</option>
+                <option value="nanum-myeongjo">나눔명조</option>
+                <option value="hamchorom-batang" data-hwpx-only="true" hidden disabled>함초롬바탕</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="policy-check">
+        <label>
+          <input type="checkbox" required />
+          본인이 이용 권한을 가진 파일만 업로드하며, 학교·교사·평가기준의 AI 사용 규정을 확인했고,
+          생성물은 학습 보조 초안으로만 사용합니다. 그대로 제출하지 않습니다.
+        </label>
+      </div>
+
+      <div class="form-actions">
+        <span class="hint">베타 기능입니다. 크레딧이 차감되지 않습니다. 생성에는 보통 1~3분 걸립니다.</span>
+        <button type="submit" id="miBtn">수학 수행평가 초안 생성</button>
+      </div>
+    </form>
+
     <form id="form" class="report-form" data-report-form="chem-pre">
       <div class="form-section">
         <div class="form-section-head">
@@ -1181,13 +1350,14 @@
           document.getElementById("settingsUserName").textContent = d.user;
           setStudentIdUi(d.studentId || getLocalStudentId());
           applySavedStyleNote(d.styleNote);
-          const piWho = document.getElementById("piWhoPreview");
-          if (piWho) {
+          ["piWhoPreview", "miWhoPreview"].forEach((pid) => {
+            const whoEl = document.getElementById(pid);
+            if (!whoEl) return;
             const sid = (d.studentId || getLocalStudentId() || "").trim();
-            piWho.textContent = sid
+            whoEl.textContent = sid
               ? `${sid} ${d.user || ""}`.trim()
               : `${d.user || "이름"} (학번 미설정 — 개인 설정에서 저장하세요)`;
-          }
+          });
           document.getElementById("settingsUserRole").textContent = d.isAdmin
             ? "관리자"
             : "일반 사용자";
@@ -1756,7 +1926,8 @@
           if (
             b.admin === true ||
             feats.includes("coding-test") ||
-            feats.includes("phys-inquiry")
+            feats.includes("phys-inquiry") ||
+            feats.includes("math-inquiry")
           ) {
             const navEp = document.getElementById("navExamPrep");
             if (navEp) navEp.hidden = false;
@@ -1769,6 +1940,13 @@
               (b.admin === true || feats.includes("phys-inquiry"))
             ) {
               const tab = document.getElementById("rtPhysInquiry");
+              if (tab) tab.hidden = false;
+            }
+            if (
+              want === "math-inquiry" &&
+              (b.admin === true || feats.includes("math-inquiry"))
+            ) {
+              const tab = document.getElementById("rtMathInquiry");
               if (tab) tab.hidden = false;
             }
             const radio = want && document.querySelector(
@@ -1865,6 +2043,8 @@
       const prBtn = document.getElementById("prBtn");
       const piForm = document.getElementById("physInquiryForm");
       const piBtn = document.getElementById("piBtn");
+      const miForm = document.getElementById("mathInquiryForm");
+      const miBtn = document.getElementById("miBtn");
 
       document
         .querySelectorAll('#form input[name="format"]')
@@ -1882,6 +2062,10 @@
         .querySelectorAll('#physInquiryForm input[name="piFormat"]')
         .forEach((el) => el.addEventListener("change", updatePhysInquiryFontOptions));
       updatePhysInquiryFontOptions();
+      document
+        .querySelectorAll('#mathInquiryForm input[name="miFormat"]')
+        .forEach((el) => el.addEventListener("change", updateMathInquiryFontOptions));
+      updateMathInquiryFontOptions();
 
       // 파일 입력 → 드롭존: 파일명 표시 + 드래그 상태.
       // 네이티브 <input type=file>가 영역을 덮고 있어 클릭/드롭을 그대로 처리한다.
@@ -2402,6 +2586,17 @@
         updateHwpxOnlyFontOptions("piFontFace", getPhysInquiryFormat());
       }
 
+      function getMathInquiryFormat() {
+        const formatEl = document.querySelector(
+          '#mathInquiryForm input[name="miFormat"]:checked, #mathInquiryForm input[name="miFormat"][type="hidden"]'
+        );
+        return formatEl ? formatEl.value : "hwpx";
+      }
+
+      function updateMathInquiryFontOptions() {
+        updateHwpxOnlyFontOptions("miFontFace", getMathInquiryFormat());
+      }
+
       function costRangeText(est, krwLo, krwHi) {
         return `$${est.lo.toFixed(2)} ~ $${est.hi.toFixed(2)} (약 ₩${krwLo.toLocaleString()} ~ ₩${krwHi.toLocaleString()})`;
       }
@@ -2414,6 +2609,7 @@
         "chem-result": [8000, 13000],
         "phys-result": [6000, 10000],
         "phys-inquiry": [6000, 11000],
+        "math-inquiry": [6000, 11000],
       };
       function estimateGenSeconds(type, modelId, extraInputTokens = 0) {
         const isGpt = /^gpt/i.test(modelId || "");
@@ -2936,6 +3132,103 @@
         });
       }
 
+      // ── 수학 수행평가(베타) submit ───────────────────────────────────────
+      if (miForm) {
+        miForm.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          if (currentJobId) return;
+
+          const topic = document.getElementById("miTopic").value.trim();
+          const notes = Array.from(document.getElementById("miNotes").files);
+          const refs = Array.from(document.getElementById("miRefs").files);
+          const refLinks = document.getElementById("miRefLinks").value.trim();
+          const styleRefs = Array.from(document.getElementById("miStyleRefs").files);
+          const styleNote = document.getElementById("miStyleNote").value.trim();
+
+          if (!topic) {
+            alert("탐구 주제를 입력하세요.");
+            document.getElementById("miTopic").focus();
+            return;
+          }
+          if (notes.length === 0 && refs.length === 0 && !refLinks) {
+            alert("필기노트 PDF, 참고자료 파일, 참고 링크 중 하나는 첨부하세요.");
+            return;
+          }
+
+          const miModel =
+            document.querySelector('input[name="miModel"]:checked')?.value ||
+            "claude-opus-4-8";
+          const modelLabel = getModelLabel(miModel);
+          const miFormat = getMathInquiryFormat();
+          updateMathInquiryFontOptions();
+          const miFontFace = document.getElementById("miFontFace").value;
+          const miUserNotes = getUserNotesValue("miUserNotes");
+          const miUserNotesFile = getUserNotesFile("miUserNotesFile");
+          if (!validateUserNotesFile(miUserNotesFile)) return;
+
+          const inputBits = [];
+          if (notes.length) inputBits.push(`필기노트 ${notes.length}개`);
+          if (refs.length) inputBits.push(`참고자료 ${refs.length}개`);
+          if (refLinks) inputBits.push(`링크 ${refLinks.split(/\s*\n\s*/).filter(Boolean).length}개`);
+
+          const ok = await showConfirmDialog({
+            title: "수학 수행평가 초안 생성 (베타)",
+            rows: [
+              ["모델", modelLabel],
+              ["형식", miFormat === "hwpx" ? ".hwpx (한글)" : ".docx (MS Word)"],
+              ["글꼴", getFontLabel(miFontFace)],
+              ["주제", topic.length > 40 ? topic.slice(0, 40) + "…" : topic],
+              ["입력", inputBits.join(", ") || "주제만"],
+              ["참고 메모", userNotesSummary(miUserNotes, miUserNotesFile)],
+              ["내 문체", styleRefs.length || styleNote ? `반영${styleRefs.length ? ` (샘플 ${styleRefs.length}개)` : ""}` : "기본"],
+              ["예상 비용", "무료 (베타)"],
+              ["예상 시간", formatDuration(estimateGenSeconds("math-inquiry", miModel))],
+            ],
+            note: `수학Ⅲ 급수 탐구보고서 양식(Ⅰ~Ⅴ)으로 작성합니다. ${USE_POLICY_NOTE}`,
+          });
+          if (!ok) return;
+
+          lockForm(miForm);
+          miBtn.textContent = "생성 중...";
+          progressArea.style.display = "block";
+          progressEl.textContent = "";
+          resultArea.innerHTML = "";
+          statusTitle.textContent = "생성 중...";
+
+          const fd = new FormData();
+          fd.append("type", "math-inquiry");
+          fd.append("topic", topic);
+          notes.forEach((f) => fd.append("notes", f));
+          refs.forEach((f) => fd.append("refs", f));
+          fd.append("refLinks", refLinks);
+          styleRefs.forEach((f) => fd.append("styleRefs", f));
+          if (styleNote) fd.append("styleNote", styleNote);
+          const miDateStr = document.getElementById("miDate").value;
+          if (miDateStr) {
+            const [y, m, d] = miDateStr.split("-");
+            fd.append("date", `${y}/ ${m} / ${d}`);
+          }
+          if (currentStudentId) fd.append("studentId", currentStudentId);
+          fd.append("model", miModel);
+          fd.append("format", miFormat);
+          fd.append("fontFace", miFontFace);
+          fd.append("userNotes", miUserNotes);
+          if (miUserNotesFile) fd.append("userNotesFile", miUserNotesFile);
+          appendPolicyAcknowledgements(fd);
+
+          try {
+            const res = await fetch("/api/generate", { method: "POST", body: fd });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "요청 실패");
+            currentJobId = data.jobId;
+            streamJob(data.jobId);
+          } catch (err) {
+            appendLine("오류: " + err.message);
+            resetForm();
+          }
+        });
+      }
+
       function appendLine(text) {
         progressEl.textContent += text + "\n";
         progressEl.scrollTop = progressEl.scrollHeight;
@@ -2947,6 +3240,7 @@
         if (crBtn) crBtn.textContent = "결과보고서 생성";
         if (prBtn) prBtn.textContent = "물리 결과보고서 생성";
         if (piBtn) piBtn.textContent = "물리 수행평가 초안 생성";
+        if (miBtn) miBtn.textContent = "수학 수행평가 초안 생성";
         stopBtn.textContent = "중지";
         const genSpinner = document.getElementById("genSpinner");
         if (genSpinner) genSpinner.style.display = "none";

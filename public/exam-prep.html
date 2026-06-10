@@ -130,6 +130,7 @@
       <div class="eptabs">
         <button id="tabCoding" class="active" onclick="showTab('coding')">💻 코딩 테스트 <span class="muted" style="font-weight:500">(정보)</span></button>
         <button id="tabPhys" onclick="showTab('phys')">🔭 물리 수행평가</button>
+        <button id="tabMath" onclick="showTab('math')">📐 수학 수행평가</button>
       </div>
 
       <!-- ── 코딩 테스트 ── -->
@@ -166,6 +167,25 @@
           <a class="qbtn primary" href="/?report=phys-inquiry">물리 수행평가 보고서 만들기 →</a>
         </div>
       </section>
+
+      <!-- ── 수학 수행평가 ── -->
+      <section id="paneMath" style="display:none">
+        <div id="mathGate" class="locked" style="display:none"></div>
+        <div id="mathMain" class="pi-card" style="display:none">
+          <h2>수학 수행평가 「수학Ⅲ 급수 탐구보고서」</h2>
+          <p>
+            급수(수열의 극한·무한급수) 관련 탐구 주제와 필기 노트(PDF)를 올리면 AI가
+            학교 양식(Ⅰ.탐구 주제 ~ Ⅴ.결과 정리 및 반성)에 맞춰 표·그래프·수식이 들어간
+            탐구보고서 초안을 만들어 줍니다. (베타·무료)
+          </p>
+          <ul>
+            <li>입력: 급수 탐구 주제 + 필기노트/공부자료 PDF</li>
+            <li>출력: 학교 양식 <b>.docx / .hwpx</b> 초안 (부분합 표·수렴 그래프·수식 포함)</li>
+          </ul>
+          <p class="muted">보고서 생성은 홈 화면의 생성기에서 이어집니다.</p>
+          <a class="qbtn primary" href="/?report=math-inquiry">수학 수행평가 보고서 만들기 →</a>
+        </div>
+      </section>
     </div>
 
     <script>
@@ -179,8 +199,10 @@
       function showTab(t) {
         document.getElementById("paneCoding").style.display = t === "coding" ? "" : "none";
         document.getElementById("panePhys").style.display = t === "phys" ? "" : "none";
+        document.getElementById("paneMath").style.display = t === "math" ? "" : "none";
         document.getElementById("tabCoding").classList.toggle("active", t === "coding");
         document.getElementById("tabPhys").classList.toggle("active", t === "phys");
+        document.getElementById("tabMath").classList.toggle("active", t === "math");
         if (t === "coding") initCoding();
       }
       function lockedHtml(name) {
@@ -643,6 +665,17 @@
         }
       }
 
+      // ───────────────────────── 수학 수행평가 ─────────────────────────
+      function initMath() {
+        if (hasBeta("math-inquiry")) {
+          document.getElementById("mathMain").style.display = "";
+          document.getElementById("mathGate").style.display = "none";
+        } else {
+          document.getElementById("mathGate").style.display = "";
+          document.getElementById("mathGate").innerHTML = lockedHtml("수학 수행평가");
+        }
+      }
+
       // ───────────────────────── 초기화 ─────────────────────────
       (function init() {
         fetch("/api/me")
@@ -653,8 +686,10 @@
           .catch(function () {})
           .finally(function () {
             initPhys();
-            // 해시(#phys)로 들어오면 물리 탭부터
+            initMath();
+            // 해시(#phys/#math)로 들어오면 해당 탭부터
             if (location.hash === "#phys") showTab("phys");
+            else if (location.hash === "#math") showTab("math");
             else showTab("coding");
           });
       })();

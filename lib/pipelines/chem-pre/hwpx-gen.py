@@ -677,14 +677,30 @@ def brace_unbraced_scripts(script):
     return s
 
 
+# 한컴 수식 키워드 보호 — lib/equation/hwpx_equation_tool.py 의 동일 로직 미러.
+# 키워드(DELTA/Delta/LEFT(/RIGHT) 등)를 통째로 보호한 뒤 화학식 압축을 하고
+# 복원한다. 종전 정규식은 키워드 중간 글자에서 매칭해 'DELTA G'→'DELTAG' 처럼
+# 키워드를 파손했다(깁스 식). 대소문자 구분이라 In(인듐)·Ta(탄탈럼)은 안전.
+EQ_SCRIPT_KEYWORD = (
+    r"\b(?:BUILDREL|TIMES|DIV|APPROX|INF|DELTA|SIGMA|GAMMA|THETA|LAMBDA|XI|PI|"
+    r"OMEGA|PHI|PSI|LEFT|RIGHT|IN|DEG|CASES|"
+    r"Alpha|Beta|Gamma|Delta|Epsilon|Zeta|Eta|Theta|Iota|Kappa|Lambda|Mu|Nu|"
+    r"Xi|Pi|Rho|Sigma|Tau|Upsilon|Phi|Chi|Psi|Omega)\b"
+)
+
+
 def compact_chemical_spacing(script):
+    text = str(script or "")
+    protected = []
+
+    def _protect(match):
+        protected.append(match.group(0))
+        return "\x00%d\x00" % (len(protected) - 1)
+
+    text = re.sub(EQ_SCRIPT_KEYWORD, _protect, text)
     token = r"(?:[A-Z][a-z]?|\)(?:_\{[^}]+\})?)(?:_\{[^}]+\})?"
-    command = r"(?:BUILDREL|TIMES|DIV|APPROX|INF|DELTA|SIGMA|GAMMA|THETA|LAMBDA|XI|PI|OMEGA|PHI|PSI)\b"
-    return re.sub(
-        rf"({token})\s+(?!{command})(?=[A-Z][a-z]?|\()",
-        r"\1",
-        str(script or ""),
-    )
+    text = re.sub(rf"({token})\s+(?=[A-Z][a-z]?|\()", r"\1", text)
+    return re.sub(r"\x00(\d+)\x00", lambda m: protected[int(m.group(1))], text)
 
 
 def lift_functional_group_subscripts(script):

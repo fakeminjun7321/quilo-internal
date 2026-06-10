@@ -20,7 +20,10 @@ from __future__ import annotations
 
 import argparse
 import copy
+import json
+import os
 import re
+import subprocess
 import sys
 import xml.etree.ElementTree as ET
 import zipfile
@@ -318,7 +321,9 @@ class LatexToHwpConverter:
         text = self._strip_math_delimiters(text)
         text = self._convert_structures(text)
         for src, dst in sorted(self.COMMANDS.items(), key=lambda item: -len(item[0])):
-            text = text.replace(src, dst)
+            # 양쪽 공백 패딩: `T\Delta S` 처럼 명령이 변수에 붙어 있으면 평치환 시
+            # `TDELTA` 로 키워드가 파손된다(깁스 식). 잉여 공백은 아래에서 정리.
+            text = text.replace(src, f" {dst.strip()} " if dst.strip() else dst)
         text = text.replace(r"\{", "{").replace(r"\}", "}")
         text = text.replace(r"\%", "%")
         text = text.replace(r"\_", "_")
@@ -518,14 +523,41 @@ def brace_unbraced_scripts(script: str) -> str:
     return text
 
 
+# 한컴 수식 키워드는 화학식 원소처럼 보여도 절대 앞뒤 토큰과 붙이면 안 된다.
+# 빌트인 변환기는 전대문자 키워드를 내고(DELTA), hwip 엔진은 첫대문자 키워드도
+# 낸다(Delta, LEFT(, RIGHT)). 종전 lookahead 가드는 키워드 '중간' 글자에서
+# 시작하는 매칭(DELTA G 의 끝 'A' + 공백 + G → DELTAG)을 못 막아 깁스 식
+# 'DELTA G = DELTA H - T DELTA S' 가 'DELTAG = DELTAH - TDELTAS' 로 깨졌다.
+# → 키워드 구간을 통째로 보호(placeholder 치환)한 뒤 압축하고 복원한다.
+# 대소문자 구분이라 원소 In(인듐)·Ta(탄탈럼)와 키워드 IN·Tau 는 충돌하지 않는다.
+EQ_SCRIPT_KEYWORD = (
+    r"\b(?:BUILDREL|TIMES|DIV|APPROX|INF|DELTA|SIGMA|GAMMA|THETA|LAMBDA|XI|PI|"
+    r"OMEGA|PHI|PSI|LEFT|RIGHT|IN|DEG|CASES|"
+    r"Alpha|Beta|Gamma|Delta|Epsilon|Zeta|Eta|Theta|Iota|Kappa|Lambda|Mu|Nu|"
+    r"Xi|Pi|Rho|Sigma|Tau|Upsilon|Phi|Chi|Psi|Omega)\b"
+)
+
+
 def compact_chemical_spacing(script: str) -> str:
+    text = str(script or "")
+    protected: list[str] = []
+
+    def _protect(match: re.Match[str]) -> str:
+        protected.append(match.group(0))
+        return f"\x00{len(protected) - 1}\x00"
+
+    text = re.sub(EQ_SCRIPT_KEYWORD, _protect, text)
     token = r"(?:[A-Z][a-z]?|\)(?:_\{[^}]+\})?)(?:_\{[^}]+\})?"
-    command = r"(?:BUILDREL|TIMES|DIV|APPROX|INF|DELTA|SIGMA|GAMMA|THETA|LAMBDA|XI|PI|OMEGA|PHI|PSI)\b"
-    return re.sub(
-        rf"({token})\s+(?!{command})(?=[A-Z][a-z]?|\()",
-        r"\1",
-        str(script or ""),
-    )
+    text = re.sub(rf"({token})\s+(?=[A-Z][a-z]?|\()", r"\1", text)
+    return re.sub(r"\x00(\d+)\x00", lambda m: protected[int(m.group(1))], text)
+
+
+# 첨자 본문에 이 키워드들이 토큰으로 들어 있으면 텍스트 라벨이 아니라 수학식이다
+# (예: lim 의 `n rarrow inf` — hwip 엔진이 \to/\infty 를 rarrow/inf 로 변환).
+# 이를 인용해 버리면 화살표·∞ 가 문자 그대로 노출되므로 인용에서 제외한다.
+_SUBSCRIPT_MATH_TOKENS = frozenset(
+    {"rarrow", "larrow", "lrarrow", "uparrow", "downarrow", "inf", "infty"}
+)
 
 
 def quote_textual_subscripts(script: str) -> str:
@@ -545,6 +577,9 @@ def quote_textual_subscripts(script: str) -> str:
             body,
         )
         if textual_label and len(body) >= 2:
+            tokens = re.split(r"[,\s_-]+", body)
+            if any(t.lower() in _SUBSCRIPT_MATH_TOKENS for t in tokens):
+                return match.group(0)
             return f'_{{"{body}"}}'
         return match.group(0)
 
@@ -652,10 +687,89 @@ def normalize_hwp_script(script: str) -> str:
     return text.strip()
 
 
+# ── hwip 엔진 브리지 (LaTeX → 한컴 수식 스크립트) ──────────────────────────
+# vendor/hwip-converter.js (latex-to-hwp by 신민규 @minigu5, 사용 허락 받음 —
+# vendor/NOTICE 참조)를 node 로 호출해 변환 품질을 올린다. 한컴 공식 명세 기반
+# 파서라 빌트인 문자열 치환기보다 \cdot(내적), \left/\right(괄호 자동크기),
+# \text{한글} 인용 등에서 정확하다.
+#
+# 동작 원칙:
+#  - {{EQ-LATEX:}} / {{EQN-LATEX:}} 만 hwip 우선, 실패한 식은 빌트인 변환기 폴백.
+#  - {{EQ:}}(이미 한컴 스크립트) 경로는 건드리지 않는다.
+#  - node 실행 불가/오류 → 프로세스 단위로 조용히 비활성(빌트인 폴백). 최종
+#    fatal 검증(validate_hwpx_equations)은 기존 정책 그대로 유지된다.
+#  - EQUATION_ENGINE=builtin (또는 off) 으로 즉시 롤백 가능. 기본값은 hwip.
+_HWIP_CLI = Path(__file__).resolve().parent / "vendor" / "hwip-cli.js"
+_hwip_cache: dict[str, str] = {}
+_hwip_failed: set[str] = set()
+_hwip_disabled = False
+
+
+def hwip_engine_enabled() -> bool:
+    if os.environ.get("EQUATION_ENGINE", "hwip").strip().lower() in (
+        "builtin",
+        "off",
+        "0",
+    ):
+        return False
+    return not _hwip_disabled and _HWIP_CLI.exists()
+
+
+def hwip_convert_batch(latex_list: Iterable[str]) -> None:
+    """unique LaTeX 들을 node 1회 호출로 변환해 캐시에 채운다(성공분만).
+
+    실패(null)·오류는 빌트인 폴백으로 흘러가므로 이 함수는 절대 예외를 던지지
+    않는다. 문서당 1회 프리워밍 + 캐시 미스 시 단건 호출 양쪽에서 쓰인다.
+    """
+    global _hwip_disabled
+    if not hwip_engine_enabled():
+        return
+    todo = [
+        t
+        for t in dict.fromkeys(s.strip() for s in latex_list if s and s.strip())
+        if t not in _hwip_cache and t not in _hwip_failed
+    ]
+    if not todo:
+        return
+    try:
+        proc = subprocess.run(
+            ["node", str(_HWIP_CLI)],
+            input=json.dumps({"latex": todo}).encode("utf-8"),
+            capture_output=True,
+            timeout=30,
+        )
+        scripts = json.loads(proc.stdout.decode("utf-8", "replace"))["scripts"]
+        if len(scripts) != len(todo):
+            raise ValueError("hwip output length mismatch")
+        for tex, script in zip(todo, scripts):
+            if isinstance(script, str) and script.strip():
+                _hwip_cache[tex] = script.strip()
+            else:
+                _hwip_failed.add(tex)
+    except Exception as exc:  # node 없음/타임아웃/깨진 출력 → 빌트인으로
+        _hwip_disabled = True
+        print(
+            f"[equation] hwip engine unavailable, using builtin converter: {exc}",
+            file=sys.stderr,
+        )
+
+
+def latex_to_script(raw_latex: str) -> str:
+    """LaTeX → 한컴 스크립트. hwip 우선, 식 단위로 빌트인 폴백."""
+    raw_latex = raw_latex.strip()
+    if hwip_engine_enabled():
+        if raw_latex not in _hwip_cache and raw_latex not in _hwip_failed:
+            hwip_convert_batch([raw_latex])
+        script = _hwip_cache.get(raw_latex)
+        if script is not None:
+            return script
+    return LatexToHwpConverter().convert(raw_latex)
+
+
 def placeholder_to_script(kind: str, raw_script: str) -> str:
     raw_script = raw_script.strip()
     if kind.endswith("-LATEX"):
-        return normalize_hwp_script(LatexToHwpConverter().convert(raw_script))
+        return normalize_hwp_script(latex_to_script(raw_script))
     return normalize_hwp_script(raw_script)
 
 
@@ -1018,6 +1132,21 @@ def replace_equation_placeholders(
         sections = [section] if section else find_section_files(zf)
         if not sections:
             raise FileNotFoundError("No Contents/section*.xml files found in HWPX.")
+
+        # hwip 프리워밍: 문서 전체의 {{EQ-LATEX}} 본문을 node 1회 호출로 미리 변환.
+        # 실패해도 무해 — 캐시 미스 식은 단건 호출/빌트인으로 폴백된다.
+        if hwip_engine_enabled():
+            bodies: list[str] = []
+            for section_name in sections:
+                try:
+                    root = ET.fromstring(zf.read(section_name))
+                    text = "".join(root.itertext())
+                    for ph in find_equation_placeholders(text, strict=False):
+                        if ph.kind.endswith("-LATEX"):
+                            bodies.append(ph.body)
+                except Exception:
+                    continue
+            hwip_convert_batch(bodies)
 
         updates: dict[str, bytes] = {}
         total = 0

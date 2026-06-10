@@ -105,7 +105,7 @@
     <script>
       const $ = (id) => document.getElementById(id);
       let galItems = [], curCat = "전체", canCreate = false;
-      const CATS = ["학습도구", "게임", "위젯", "계산기", "데이터/차트", "기타"];
+      const CATS = ["학습도구", "게임", "위젯", "계산기", "데이터/차트", "이미지", "기타"];
 
       async function api(path, opts) {
         const r = await fetch(path, { credentials: "same-origin", headers: { "Content-Type": "application/json" }, ...opts });

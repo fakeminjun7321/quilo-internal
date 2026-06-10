@@ -318,6 +318,9 @@ const PDF_TRANSLATE_TIMEOUT_MS = parseInt(
 // ── Middleware ───────────────────────────────────────────────────────────────
 
 app.set("trust proxy", 1);
+// 창작(artifacts)은 생성·업로드 이미지(데이터 URL)나 임베드 미디어로 본문이 커질 수
+// 있어 별도로 상향(8MB). 전역 파서보다 먼저 매칭돼 해당 경로만 큰 본문을 허용한다.
+app.use("/api/artifacts", express.json({ limit: "8mb" }));
 // JSON/URL-encoded body는 비번 변경 등 작은 요청만 — 1MB로 충분
 // (파일 업로드는 multer가 별도로 25MB 한도 처리)
 app.use(express.json({ limit: "1mb" }));

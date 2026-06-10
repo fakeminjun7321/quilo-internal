@@ -261,44 +261,19 @@ const PIPELINES = {
     generateHwpx: require("./lib/pipelines/phys-inquiry/hwpx-gen").generateHwpx,
   },
   // 수학 수행평가 — 수학Ⅲ 급수 탐구보고서 (베타)
-  // 입력: 주제 + 필기노트/공부자료 + 참고자료 + 참고 링크. FREE_BETA_TYPES 로 무료·테스터 한정.
+  // 입력: 주제 + (선택) 메모·내 글 스타일만. 필기노트·참고자료 업로드는 받지 않는다 —
+  // 수학 내용은 모델이 직접 구성하고 선행연구는 web_search 로 확인. FREE_BETA_TYPES 로 무료·테스터 한정.
   "math-inquiry": {
     label: "수학 수행평가",
     filenamePrefix: "수학수행",
-    filenameSourceField: "notes",
     creditField: "result",
     prepareInput(filesByField, body) {
       const topic = String(body.topic || "").trim();
       if (!topic) {
         throw new Error("탐구 주제를 입력하세요.");
       }
-      const notes = filesByField.notes || [];
-      const refs = filesByField.refs || [];
-      const refLinks = String(body.refLinks || "").trim().slice(0, 4000);
-      for (const f of notes) {
-        const ext = (f.originalname.split(".").pop() || "").toLowerCase();
-        if (!["pdf", "txt", "md"].includes(ext)) {
-          throw new Error("필기노트는 PDF 또는 .txt/.md 파일만 가능합니다.");
-        }
-      }
       const styleRefs = filesByField.styleRefs || [];
-      const checkRefExt = (arr, label) => {
-        for (const f of arr) {
-          const ext = (f.originalname.split(".").pop() || "").toLowerCase();
-          if (!["pdf", "png", "jpg", "jpeg", "gif", "webp", "txt", "md", "csv"].includes(ext)) {
-            throw new Error(
-              `${label}는 PDF, 이미지(.png/.jpg), 텍스트(.txt/.md/.csv)만 가능합니다.`,
-            );
-          }
-        }
-      };
-      checkRefExt(refs, "참고자료");
       styleRef.validateStyleRefs(styleRefs); // 스타일 참고는 .hwpx 허용(.hwp 거부)
-      if (notes.length === 0 && refs.length === 0 && !refLinks) {
-        throw new Error(
-          "필기노트 PDF, 참고자료 파일, 참고 링크 중 하나는 첨부하세요.",
-        );
-      }
       const mapFiles = (arr) =>
         arr.map((f) => ({
           buffer: f.buffer,
@@ -307,9 +282,6 @@ const PIPELINES = {
         }));
       return {
         topic,
-        notesFiles: mapFiles(notes),
-        refFiles: mapFiles(refs),
-        refLinks,
         styleRefs: mapFiles(styleRefs),
         styleNote: String(body.styleNote || "").trim().slice(0, 1500),
         studentId: String(body.studentId || "").trim().slice(0, 20),
@@ -382,7 +354,8 @@ const JOB_TIMEOUT_MS = parseInt(
 // Fable 5는 최상위 대형 모델이라 토큰 생성이 훨씬 느리다(긴 보고서 = 10~20분+).
 // Fable 작업은 별도의 넉넉한 타임아웃을 쓴다.
 const JOB_TIMEOUT_FABLE_MS = parseInt(
-  process.env.JOB_TIMEOUT_FABLE_MS || String(25 * 60 * 1000),
+  // Fable은 적응형 추론이 길어 25분으로도 시간초과가 났음(수행평가 보고서) → 45분.
+  process.env.JOB_TIMEOUT_FABLE_MS || String(45 * 60 * 1000),
   10,
 );
 function jobTimeoutForModel(model) {
@@ -992,10 +965,10 @@ const CHAT_MEMO_TYPE_GUIDES = {
 - 오개념 서사가 이 보고서의 핵심 평가 요소이므로, 사용자에게 "처음에 뭐라고 생각했었는지"를 꼭 물어보세요.`,
   "math-inquiry": `
 [지금 사용자가 만들려는 것: 수학 수행평가 — 수학Ⅲ 급수 탐구보고서]
-- 입력: 급수 관련 탐구 주제 + 본인 필기노트/공부자료 PDF + 참고자료. 생성 AI가 학교 양식(Ⅰ.탐구 주제 / Ⅱ.탐구 목적 / Ⅲ.선행연구 분석 / Ⅳ.탐구 과정 및 탐구 내용 / Ⅴ.탐구 결과 정리 및 반성)을 채웁니다. Ⅳ가 핵심(표·그래프·수식 풀전개)입니다.
-- 메모로 도울 수 있는 것: 왜 이 주제가 궁금했는지(동기), 노트 속 어떤 유도/예시를 꼭 포함할지, 직접 계산해 본 것(부분합·오차 비교 등), 어떤 표·그래프를 넣고 싶은지, 창의적으로 시도한 연결(다른 분야·실생활).
-- 평가 기준이 "수학적 타당성·창의성 40 / 논리성·구성력(자료 활용) 40 / 발표 20"이므로, 본인만의 계산·예시(창의성)와 표·그래프 계획을 꼭 물어보세요.
-- 메모에 넣지 말 것: 확인 안 된 수치·가짜 문헌. 수식·계산은 생성 AI가 정확히 다시 전개합니다.`,
+- 입력: 급수 관련 탐구 주제 한 줄(파일 업로드 없음). 생성 AI가 정확한 수학 지식과 웹 검색으로 학교 양식(Ⅰ.탐구 주제 / Ⅱ.탐구 목적 / Ⅲ.선행연구 분석 / Ⅳ.탐구 과정 및 탐구 내용 / Ⅴ.탐구 결과 정리 및 반성)을 채웁니다. Ⅳ가 핵심(표·그래프·수식 풀전개)입니다.
+- 입력 파일이 없으므로 **메모가 방향을 정하는 유일한 수단**입니다. 메모로 도울 수 있는 것: 왜 이 주제가 궁금했는지(동기), 꼭 다루고 싶은 개념/유도, 직접 계산해 보고 싶은 것(부분합·오차 비교 등), 어떤 표·그래프를 넣고 싶은지, 창의적 연결(다른 분야·실생활).
+- 평가 기준이 "수학적 타당성·창의성 40 / 논리성·구성력(자료 활용) 40 / 발표 20"이고 만점이 목표이므로, 본인만의 동기·창의적 접근 방향을 꼭 물어보세요.
+- 메모에 넣지 말 것: 확인 안 된 수치·가짜 문헌. 수식·계산은 생성 AI가 정확히 전개합니다.`,
 };
 
 // ── 글쓰기 도우미(write-assist): 보고서 입력·문체 메모 작성을 Sonnet / GPT-5.4-mini 로 돕는다.

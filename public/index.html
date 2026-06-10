@@ -185,7 +185,7 @@
           <input type="radio" name="reportType" value="math-inquiry" />
           <span class="rt-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16"/><path d="M6 4l6 8-6 8"/><path d="M4 20h16"/></svg></span>
           <span class="rt-title">수학 수행평가 <span class="beta-pill">베타</span></span>
-          <span class="rt-tag">주제·필기노트 → 급수 탐구보고서</span>
+          <span class="rt-tag">주제 한 줄 → 급수 탐구보고서</span>
         </label>
       </div>
     </div>
@@ -698,8 +698,8 @@
     <form id="mathInquiryForm" class="report-form" data-report-form="math-inquiry" hidden>
       <div class="notice">
         <strong>수학 수행평가 「수학Ⅲ 급수 탐구보고서」 초안 (베타·무료).</strong>
-        급수 관련 탐구 주제 + 내가 공부한 필기노트·자료를 주면, 학교 양식(Ⅰ.탐구 주제 ~ Ⅴ.결과 정리 및 반성)에 맞춰
-        표·그래프·수식이 들어간 초안을 만들어 줍니다. <strong>그대로 제출하지 말고 본인 글로 다듬어 쓰세요.</strong>
+        급수 관련 탐구 주제만 입력하면, AI가 정확한 수학 전개와 웹 검색(선행연구)으로 학교 양식(Ⅰ.탐구 주제 ~ Ⅴ.결과 정리 및 반성)에 맞춰
+        채점 기준 만점을 노린 초안(표·그래프·수식 풀유도 포함)을 만들어 줍니다. <strong>그대로 제출하지 말고 본인 글로 다듬어 쓰세요.</strong>
       </div>
 
       <div class="form-section">
@@ -717,45 +717,17 @@
 
       <div class="form-section">
         <div class="form-section-head">
-          <span class="form-section-title">자료 업로드</span>
-        </div>
-        <div class="field-grid">
-          <div class="field">
-            <span class="field-label">필기노트·공부자료 PDF (여러 개)</span>
-            <div class="dropzone">
-              <input id="miNotes" name="notes" type="file" accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown" multiple aria-label="필기노트 파일" />
-              <span class="dropzone-icon" aria-hidden="true">📓</span>
-              <span class="dropzone-title">필기노트를 끌어다 놓거나 클릭</span>
-              <span class="dropzone-sub">.pdf · .txt · .md</span>
-              <span class="dropzone-file" data-dz-file></span>
-            </div>
-          </div>
-          <div class="field">
-            <span class="field-label">참고자료 (PDF·이미지·텍스트, 여러 개)</span>
-            <div class="dropzone">
-              <input id="miRefs" name="refs" type="file" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.txt,.md,.csv,application/pdf,image/*" multiple aria-label="참고자료 파일" />
-              <span class="dropzone-icon" aria-hidden="true">📎</span>
-              <span class="dropzone-title">참고자료를 끌어다 놓거나 클릭</span>
-              <span class="dropzone-sub">.pdf · .png/.jpg · .txt/.md</span>
-              <span class="dropzone-file" data-dz-file></span>
-            </div>
-          </div>
-        </div>
-        <div class="field">
-          <label><span class="field-label">참고 링크 (선택, 한 줄에 하나)</span>
-            <textarea id="miRefLinks" name="refLinks" rows="3" maxlength="4000" placeholder="https://en.wikipedia.org/wiki/Taylor_series&#10;https://... (참고한 웹페이지·강의 자료 주소)"></textarea>
-          </label>
-          <small>링크 내용은 선행연구 분석·참고문헌에 정리됩니다. 필요하면 AI가 웹 검색으로 확인합니다.</small>
+          <span class="form-section-title">AI 참고 메모</span>
         </div>
         <div class="field user-notes-field">
           <label>
             <span class="field-label">AI 참고 메모 / 내 생각 (선택)</span>
-            <textarea id="miUserNotes" name="userNotes" rows="4" maxlength="12000" placeholder="예: 계산기가 sin을 어떻게 구하는지 궁금해서 골랐음. 노트의 테일러 전개 유도 꼭 포함. x=1에서 부분합을 직접 계산했더니 N=4부터 소수 5째자리까지 맞았음 — 이 표 넣어줘."></textarea>
+            <textarea id="miUserNotes" name="userNotes" rows="4" maxlength="12000" placeholder="예: 계산기가 sin을 어떻게 구하는지 궁금해서 골랐음. 테일러 전개 유도는 풀버전으로, x=1 부분합 오차 표와 수렴 그래프 꼭 넣어줘. e^x와 수렴 속도 비교처럼 창의적인 시도도 하나 들어가면 좋겠어."></textarea>
           </label>
           <span data-memo-guide="miUserNotes"></span><details class="memo-guide" style="margin-top:6px"><summary style="cursor:pointer;font-size:12.5px;color:#243ba2;user-select:none">📋 메모 작성 가이드 · 좋은 예시 + AI에게 줄 기본 프롬프트</summary><div style="font-size:12.5px;color:#475569;margin-top:6px;line-height:1.55"><b>좋은 AI 참고 메모 예시</b><div style="background:#f7f9ff;border:1px solid #e2e6f3;border-radius:8px;padding:8px 10px;margin:4px 0;white-space:pre-wrap">- 동기: 계산기·AI가 초월함수를 어떻게 계산하는지 궁금했음
-- 노트의 테일러 급수 유도(라그랑주 나머지항 포함)를 Ⅲ.이론적 배경에 꼭 넣어줘
-- 직접 계산: x=1에서 sin의 부분합 N=1~6 비교했음 — 오차 표랑 수렴 그래프로 보여줘
-- 창의적 시도: 같은 방법으로 e^x도 계산해서 두 급수의 수렴 속도를 비교</div><b style="display:block;margin-top:6px">AI(ChatGPT·Claude 등)에게 물어볼 때 복사해 쓰는 기본 프롬프트</b><textarea readonly rows="6" style="width:100%;box-sizing:border-box;font-size:12px;background:#fff;border:1px solid #dfe4fb;border-radius:8px;padding:7px 9px;margin-top:4px">나는 Quilo로 '수학 수행평가(수학Ⅲ 급수 탐구보고서)'를 만들려고 해. 급수 관련 주제와 필기노트를 올리면 AI가 Ⅰ.탐구 주제 / Ⅱ.탐구 목적 / Ⅲ.선행연구 분석 / Ⅳ.탐구 과정 및 탐구 내용 / Ⅴ.결과 정리 및 반성 양식으로 써 줘. 평가 기준이 '수학적 타당성·창의성 40점 / 논리성·자료(표·그래프) 활용 40점 / 발표 20점'이라 내가 직접 계산해 본 것과 창의적인 연결이 중요해. 'AI 참고 메모'에 탐구 동기, 노트에서 꼭 포함할 유도/예시, 직접 계산해 본 것, 넣고 싶은 표·그래프를 정리하고 싶어. 내 상황을 듣고 메모 초안을 불릿으로 만들어줘. 없는 수치는 지어내지 마.
+- 테일러 급수 유도(라그랑주 나머지항 포함)를 Ⅲ.이론적 배경에 풀버전으로 넣어줘
+- Ⅳ에서 x=1의 sin 부분합 N=1~6을 계산해 오차 표랑 수렴 그래프로 보여줘
+- 창의적 시도: 같은 방법으로 e^x도 계산해서 두 급수의 수렴 속도를 비교</div><b style="display:block;margin-top:6px">AI(ChatGPT·Claude 등)에게 물어볼 때 복사해 쓰는 기본 프롬프트</b><textarea readonly rows="6" style="width:100%;box-sizing:border-box;font-size:12px;background:#fff;border:1px solid #dfe4fb;border-radius:8px;padding:7px 9px;margin-top:4px">나는 Quilo로 '수학 수행평가(수학Ⅲ 급수 탐구보고서)'를 만들려고 해. 급수 관련 주제 한 줄만 입력하면 AI가 Ⅰ.탐구 주제 / Ⅱ.탐구 목적 / Ⅲ.선행연구 분석 / Ⅳ.탐구 과정 및 탐구 내용 / Ⅴ.결과 정리 및 반성 양식으로 써 줘. 평가 기준이 '수학적 타당성·창의성 40점 / 논리성·자료(표·그래프) 활용 40점 / 발표 20점'이고 만점이 목표라, 메모가 방향을 정하는 유일한 수단이야. 'AI 참고 메모'에 탐구 동기, 꼭 다루고 싶은 개념/유도, 넣고 싶은 표·그래프, 창의적 연결 아이디어를 정리하고 싶어. 내 상황을 듣고 메모 초안을 불릿으로 만들어줘. 없는 수치는 지어내지 마.
 
 [내 상황]: </textarea><button type="button" onclick="(function(b){var t=b.previousElementSibling;t.focus();t.select();try{navigator.clipboard.writeText(t.value);}catch(e){try{document.execCommand('copy');}catch(_){}}b.textContent='복사됨!';setTimeout(function(){b.textContent='📋 프롬프트 복사';},1200);})(this)" style="margin-top:4px;font-size:12px;color:#243ba2;background:#eef1fc;border:1px solid #dfe4fb;border-radius:7px;padding:4px 10px;cursor:pointer">📋 프롬프트 복사</button></div></details>
           <button type="button" class="qc-memo-btn" style="display:none;align-self:flex-start;margin:6px 0 2px;font-size:12.5px;color:#243ba2;background:#eef1fc;border:1px solid #dfe4fb;border-radius:8px;padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openMemo('miUserNotes')">✨ AI로 메모 작성 도움받기</button>
@@ -3132,26 +3104,19 @@
         });
       }
 
-      // ── 수학 수행평가(베타) submit ───────────────────────────────────────
+      // ── 수학 수행평가(베타) submit — 주제(+선택 메모·문체)만 입력 ─────────
       if (miForm) {
         miForm.addEventListener("submit", async (e) => {
           e.preventDefault();
           if (currentJobId) return;
 
           const topic = document.getElementById("miTopic").value.trim();
-          const notes = Array.from(document.getElementById("miNotes").files);
-          const refs = Array.from(document.getElementById("miRefs").files);
-          const refLinks = document.getElementById("miRefLinks").value.trim();
           const styleRefs = Array.from(document.getElementById("miStyleRefs").files);
           const styleNote = document.getElementById("miStyleNote").value.trim();
 
           if (!topic) {
             alert("탐구 주제를 입력하세요.");
             document.getElementById("miTopic").focus();
-            return;
-          }
-          if (notes.length === 0 && refs.length === 0 && !refLinks) {
-            alert("필기노트 PDF, 참고자료 파일, 참고 링크 중 하나는 첨부하세요.");
             return;
           }
 
@@ -3166,11 +3131,6 @@
           const miUserNotesFile = getUserNotesFile("miUserNotesFile");
           if (!validateUserNotesFile(miUserNotesFile)) return;
 
-          const inputBits = [];
-          if (notes.length) inputBits.push(`필기노트 ${notes.length}개`);
-          if (refs.length) inputBits.push(`참고자료 ${refs.length}개`);
-          if (refLinks) inputBits.push(`링크 ${refLinks.split(/\s*\n\s*/).filter(Boolean).length}개`);
-
           const ok = await showConfirmDialog({
             title: "수학 수행평가 초안 생성 (베타)",
             rows: [
@@ -3178,13 +3138,12 @@
               ["형식", miFormat === "hwpx" ? ".hwpx (한글)" : ".docx (MS Word)"],
               ["글꼴", getFontLabel(miFontFace)],
               ["주제", topic.length > 40 ? topic.slice(0, 40) + "…" : topic],
-              ["입력", inputBits.join(", ") || "주제만"],
               ["참고 메모", userNotesSummary(miUserNotes, miUserNotesFile)],
               ["내 문체", styleRefs.length || styleNote ? `반영${styleRefs.length ? ` (샘플 ${styleRefs.length}개)` : ""}` : "기본"],
               ["예상 비용", "무료 (베타)"],
               ["예상 시간", formatDuration(estimateGenSeconds("math-inquiry", miModel))],
             ],
-            note: `수학Ⅲ 급수 탐구보고서 양식(Ⅰ~Ⅴ)으로 작성합니다. ${USE_POLICY_NOTE}`,
+            note: `주제만으로 AI가 수학 전개·웹 검색을 통해 수학Ⅲ 급수 탐구보고서 양식(Ⅰ~Ⅴ)으로 작성합니다. ${USE_POLICY_NOTE}`,
           });
           if (!ok) return;
 
@@ -3198,9 +3157,6 @@
           const fd = new FormData();
           fd.append("type", "math-inquiry");
           fd.append("topic", topic);
-          notes.forEach((f) => fd.append("notes", f));
-          refs.forEach((f) => fd.append("refs", f));
-          fd.append("refLinks", refLinks);
           styleRefs.forEach((f) => fd.append("styleRefs", f));
           if (styleNote) fd.append("styleNote", styleNote);
           const miDateStr = document.getElementById("miDate").value;
@@ -3222,7 +3178,7 @@
             if (!res.ok) throw new Error(data.error || "요청 실패");
             currentJobId = data.jobId;
             streamJob(data.jobId);
-          } catch (err) {
+                    } catch (err) {
             appendLine("오류: " + err.message);
             resetForm();
           }

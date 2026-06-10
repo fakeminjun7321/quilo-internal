@@ -76,7 +76,11 @@ def render_blocks(doc, blocks, fig_counter, table_counter, *, indent_left=pre.IN
             eq = str(blk["equation"]).strip()
             if eq:
                 if "{{EQ" not in eq:
-                    eq = "{{EQ:" + eq + "}}"
+                    # LaTeX(백슬래시 명령 포함)면 EQ-LATEX — hwip 엔진이 한컴
+                    # 수식으로 정확 변환. 백슬래시 없는 내용(레거시 한컴 스크립트·
+                    # 단순식)은 종전대로 EQ(직접 스크립트) 경로 유지.
+                    kind = "EQ-LATEX" if "\\" in eq else "EQ"
+                    eq = "{{" + kind + ":" + eq + "}}"
                 phys.add_para_to(
                     doc, doc, eq, align="CENTER", space_after=pre.SPACE_BODY,
                 )

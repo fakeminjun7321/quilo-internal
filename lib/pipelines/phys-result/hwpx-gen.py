@@ -658,7 +658,12 @@ def normalize_physics_equation_markers(text):
         return s
     s = normalize_plain_physics_notation(s)
 
+    # URL 안의 "watch?v=Q10..." 같은 쿼리스트링이 수식으로 오인돼 잘리는 사고 방지.
+    url_spans = [m.span() for m in re.finditer(r"https?://\S+|www\.\S+", s)]
+
     def repl(match):
+        if any(a <= match.start() < b for a, b in url_spans):
+            return match.group(0)
         raw = match.group(1)
         leading = re.match(r"^\s*", raw).group(0)
         trailing = re.search(r"\s*$", raw).group(0)

@@ -357,6 +357,14 @@ def fill_template(doc, content):
         if any(h in t for h in TEMPLATE_PLACEHOLDER_HINTS) or t == "(2)":
             sec_el.remove(el)
 
+    # 6) 양식 끝의 빈 문단 제거 — 템플릿 꼬리의 빈 문단들이 번호 목록 스타일을
+    #    달고 있어 출력물에 "1. 2. 3." 빈 번호로 노출되던 문제.
+    paras = _section_paras(sec_el)
+    for el in reversed(paras):
+        if _el_text(el):
+            break
+        sec_el.remove(el)
+
     if hasattr(sec, "mark_dirty"):
         sec.mark_dirty()
 

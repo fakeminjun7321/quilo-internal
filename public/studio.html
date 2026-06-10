@@ -201,6 +201,21 @@
       let me = null, canCreate = false, busy = false, mode = "app";
       let currentHtml = "", versions = [], curVer = -1, chatTurns = [], images = [];
       let lastSlug = "", forkedFrom = null, defaultTitle = "";
+      let appModels = { models: ["auto"], default: "auto" };
+      let imageModels = { models: ["auto"], default: "auto", std: "gpt-image-1", high: "gpt-image-2" };
+      function modelLabel(x, forImage) {
+        if (x === "auto") return forImage ? "⚡ 자동(작업 보고 선택)" : "⚡ 자동(비용 최소)";
+        if (forImage) {
+          if (x === imageModels.high) return x + " · 고화질";
+          if (x === imageModels.std) return x + " · 표준";
+        }
+        return x;
+      }
+      function populateModels(forImage) {
+        const src = forImage ? imageModels : appModels;
+        const list = (src.models && src.models.length) ? src.models : ["auto"];
+        $("model").innerHTML = list.map((x) => `<option value="${x}"${x === src.default ? " selected" : ""}>${modelLabel(x, forImage)}</option>`).join("");
+      }
 
       // 생성/업로드한 이미지를 그대로 게시할 수 있도록 한 장짜리 HTML 로 감싼다.
       function imageWrapper(url, title) {
@@ -219,23 +234,26 @@
           : "무엇을 만들까요? (Enter 전송 · Shift+Enter 줄바꿈)";
         $("imgBtn").title = m === "image" ? "내 이미지 업로드해서 게시" : "이미지 추가(생성·업로드)";
         $("chips").style.display = m === "image" ? "none" : "flex";
+        populateModels(m === "image");
       }
-      function imagePostBubble(bubble, url, verIdx, kind) {
+      function imagePostBubble(bubble, url, verIdx, kind, info) {
         bubble.dataset.thinking = "";
         bubble.innerHTML = '<img src="' + esc(url) + '"/>' + (kind || "이미지를 만들었어요!") +
-          ' 오른쪽에서 확인하고 <b>게시</b>하세요.<div class="meta"><span class="ck cur" data-ver="' + verIdx + '">✓ 버전 ' + (verIdx + 1) + "</span></div>";
+          ' 오른쪽에서 확인하고 <b>게시</b>하세요.<div class="meta"><span class="ck cur" data-ver="' + verIdx + '">✓ 버전 ' + (verIdx + 1) + "</span>" +
+          (info ? '<span class="mdl">' + esc(info) + "</span>" : "") + "</div>";
         bindCheckpoints(); markCurrentCheckpoint(); $("msgs").scrollTop = $("msgs").scrollHeight;
       }
       async function genImagePost(prompt) {
         addMsg("user", esc(prompt)); $("prompt").value = ""; autoGrow();
         busy = true; updateSendUI();
-        const thinking = addMsg("ai", `<span class="spin"></span> 이미지 만드는 중… (10~25초)`, true);
+        const thinking = addMsg("ai", `<span class="spin"></span> 이미지 만드는 중… (고화질은 조금 더 걸려요)`, true);
         try {
-          const j = await api("/api/artifacts/image", { method: "POST", body: JSON.stringify({ prompt }) });
+          const j = await api("/api/artifacts/image", { method: "POST", body: JSON.stringify({ prompt, model: $("model").value }) });
           const html = imageWrapper(j.url, prompt);
           const vi = pushVersion(html, "이미지", prompt); setHtml(html);
           if (!defaultTitle) defaultTitle = prompt.slice(0, 30);
-          imagePostBubble(thinking, j.url, vi, "이미지를 만들었어요!");
+          const info = (j.model || "") + (j.tier === "high" ? " · 고화질" : " · 표준") + (j.auto ? " · 자동" : "") + (j.fallback ? " · 폴백" : "");
+          imagePostBubble(thinking, j.url, vi, "이미지를 만들었어요!", info);
         } catch (e) {
           thinking.dataset.thinking = "";
           thinking.innerHTML = "⚠ " + esc(e.status === 429 ? "오늘 사용 한도를 다 썼어요." : (e.message || "이미지 생성 실패"));
@@ -472,8 +490,10 @@
           return;
         }
         $("gate").style.display = "none"; $("app").style.display = "flex";
-        // 모델 목록
-        try { const m = await api("/api/artifacts/models"); $("model").innerHTML = m.models.map((x) => `<option value="${x}"${x === m.default ? " selected" : ""}>${x === "auto" ? "⚡ 자동(비용 최소)" : x}</option>`).join(""); } catch {}
+        // 모델 목록(앱 빌드 + 이미지 생성)
+        try { appModels = await api("/api/artifacts/models"); } catch {}
+        try { const im = await api("/api/artifacts/image-models"); if (im && im.models && im.models.length) imageModels = im; } catch {}
+        populateModels(false);
         // 칩
         $("chips").innerHTML = CHIPS.map((c) => `<button disabled>${esc(c)}</button>`).join("");
         $("chips").querySelectorAll("button").forEach((b) => b.onclick = () => { if (!currentHtml || busy) return; send(b.textContent.replace(/^\S+\s/, "")); });

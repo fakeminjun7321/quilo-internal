@@ -152,6 +152,7 @@
       <div id="balanceBox" class="balance-box" style="display: none">
         <strong>내 크레딧</strong>
         <span id="balCredits">...</span>
+        <small id="balConvert" style="display:block;font-weight:400;color:#64748b;font-size:11.5px"></small>
       </div>
 
       <div id="reportTypeFieldset" role="radiogroup" aria-labelledby="reportTypeLegend">
@@ -311,12 +312,12 @@
         <div class="seg-group" style="margin-bottom: 12px">
           <span class="field-label">AI 모델 (보고서 1건당 크레딧)</span>
           <div class="segmented">
-            <label class="fable-model" hidden><input type="radio" name="crModel" value="claude-fable-5" /> Fable 5 · 관리자</label>
-            <label><input type="radio" name="crModel" value="claude-opus-4-8" checked /> Opus 4.8 · 3크레딧</label>
-            <label><input type="radio" name="crModel" value="claude-sonnet-4-6" /> Sonnet 4.6 · 1크레딧</label>
-            <label><input type="radio" name="crModel" value="gpt-5.5" /> GPT-5.5 · 3크레딧</label>
-            <label><input type="radio" name="crModel" value="gpt-5.4" /> GPT-5.4 · 2크레딧</label>
-            <label><input type="radio" name="crModel" value="gpt-5.4-mini" /> GPT-5.4 mini · 1크레딧</label>
+            <label class="fable-model" hidden><input type="radio" name="crModel" value="claude-fable-5" /> Fable 5 · 9크레딧 (관리자)</label>
+            <label><input type="radio" name="crModel" value="claude-opus-4-8" checked /> Opus 4.8 · 4크레딧</label>
+            <label><input type="radio" name="crModel" value="claude-sonnet-4-6" /> Sonnet 4.6 · 2크레딧</label>
+            <label><input type="radio" name="crModel" value="gpt-5.5" /> GPT-5.5 · 4크레딧</label>
+            <label><input type="radio" name="crModel" value="gpt-5.4" /> GPT-5.4 · 1크레딧</label>
+            <label><input type="radio" name="crModel" value="gpt-5.4-mini" /> GPT-5.4 mini · 무료</label>
           </div>
         </div>
         <div class="field-grid cols-3">
@@ -481,12 +482,12 @@
         <div class="seg-group" style="margin-bottom: 12px">
           <span class="field-label">AI 모델 (보고서 1건당 크레딧)</span>
           <div class="segmented">
-            <label class="fable-model" hidden><input type="radio" name="prModel" value="claude-fable-5" /> Fable 5 · 관리자</label>
-            <label><input type="radio" name="prModel" value="claude-opus-4-8" checked /> Opus 4.8 · 3크레딧</label>
-            <label><input type="radio" name="prModel" value="claude-sonnet-4-6" /> Sonnet 4.6 · 1크레딧</label>
-            <label><input type="radio" name="prModel" value="gpt-5.5" /> GPT-5.5 · 3크레딧</label>
-            <label><input type="radio" name="prModel" value="gpt-5.4" /> GPT-5.4 · 2크레딧</label>
-            <label><input type="radio" name="prModel" value="gpt-5.4-mini" /> GPT-5.4 mini · 1크레딧</label>
+            <label class="fable-model" hidden><input type="radio" name="prModel" value="claude-fable-5" /> Fable 5 · 9크레딧 (관리자)</label>
+            <label><input type="radio" name="prModel" value="claude-opus-4-8" checked /> Opus 4.8 · 4크레딧</label>
+            <label><input type="radio" name="prModel" value="claude-sonnet-4-6" /> Sonnet 4.6 · 2크레딧</label>
+            <label><input type="radio" name="prModel" value="gpt-5.5" /> GPT-5.5 · 4크레딧</label>
+            <label><input type="radio" name="prModel" value="gpt-5.4" /> GPT-5.4 · 1크레딧</label>
+            <label><input type="radio" name="prModel" value="gpt-5.4-mini" /> GPT-5.4 mini · 무료</label>
           </div>
         </div>
         <div class="field-grid">
@@ -648,7 +649,7 @@
         <div class="seg-group" style="margin-bottom: 12px">
           <span class="field-label">AI 모델 (베타 기간 무료)</span>
           <div class="segmented">
-            <label class="fable-model" hidden><input type="radio" name="piModel" value="claude-fable-5" /> Fable 5 · 관리자</label>
+            <label class="fable-model" hidden><input type="radio" name="piModel" value="claude-fable-5" /> Fable 5 · 9크레딧 (관리자)</label>
             <label><input type="radio" name="piModel" value="claude-opus-4-8" checked /> Opus 4.8 · 무료(베타)</label>
             <label><input type="radio" name="piModel" value="claude-sonnet-4-6" /> Sonnet 4.6 · 무료(베타)</label>
           </div>
@@ -783,12 +784,12 @@
         <div class="seg-group" style="margin-bottom: 12px">
           <span class="field-label">AI 모델 (보고서 1건당 크레딧)</span>
           <div class="segmented">
-            <label class="fable-model" hidden><input type="radio" name="model" value="claude-fable-5" /> Fable 5 · 관리자</label>
-            <label><input type="radio" name="model" value="claude-opus-4-8" checked /> Opus 4.8 · 3크레딧</label>
-            <label><input type="radio" name="model" value="claude-sonnet-4-6" /> Sonnet 4.6 · 1크레딧</label>
-            <label><input type="radio" name="model" value="gpt-5.5" /> GPT-5.5 · 3크레딧</label>
-            <label><input type="radio" name="model" value="gpt-5.4" /> GPT-5.4 · 2크레딧</label>
-            <label><input type="radio" name="model" value="gpt-5.4-mini" /> GPT-5.4 mini · 1크레딧</label>
+            <label class="fable-model" hidden><input type="radio" name="model" value="claude-fable-5" /> Fable 5 · 9크레딧 (관리자)</label>
+            <label><input type="radio" name="model" value="claude-opus-4-8" checked /> Opus 4.8 · 4크레딧</label>
+            <label><input type="radio" name="model" value="claude-sonnet-4-6" /> Sonnet 4.6 · 2크레딧</label>
+            <label><input type="radio" name="model" value="gpt-5.5" /> GPT-5.5 · 4크레딧</label>
+            <label><input type="radio" name="model" value="gpt-5.4" /> GPT-5.4 · 1크레딧</label>
+            <label><input type="radio" name="model" value="gpt-5.4-mini" /> GPT-5.4 mini · 무료</label>
           </div>
         </div>
         <div class="field-grid cols-3">
@@ -1389,6 +1390,14 @@
           document.getElementById("balCredits").textContent = b.unlimited
             ? "무제한 (베타)"
             : `${credits} 크레딧`;
+          // 모델별 환산: 잔액이 보고서 몇 건인지 직관적으로 (개편: Sonnet 2 / Opus·GPT-5.5 4 / GPT-5.4 1 / mini 무료)
+          if (!b.unlimited) {
+            document.getElementById("balCredits").title =
+              `≈ Sonnet ${Math.floor(credits / 2)}건 · Opus/GPT-5.5 ${Math.floor(credits / 4)}건 · GPT-5.4 ${credits}건 · mini 무료`;
+            const convEl = document.getElementById("balConvert");
+            if (convEl) convEl.textContent =
+              `≈ Sonnet ${Math.floor(credits / 2)}건 · Opus ${Math.floor(credits / 4)}건 · GPT-5.4 ${credits}건`;
+          }
           document.getElementById("balanceBox").style.display = "flex";
           document.querySelector(".report-toolbar")?.classList.add("has-balance");
         } catch (_) {
@@ -1653,7 +1662,7 @@
                 ? `${dt.getMonth() + 1}/${dt.getDate()} ${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}`
                 : "-";
               const cr =
-                x.credits != null ? x.credits + "크레딧" : "베타·무료";
+                x.credits == null ? "베타·무료" : x.credits === 0 ? "무료" : x.credits + "크레딧";
               const md = x.model ? modelShortName(x.model) : "-";
               return `<tr><td style="padding:4px 8px 4px 0;white-space:nowrap;color:var(--text-muted)">${when}</td><td style="padding:4px 8px 4px 0">${escapeHtml(x.label || "생성")}</td><td style="padding:4px 8px 4px 0">${md}</td><td style="padding:4px 0;white-space:nowrap">${cr}</td></tr>`;
             })
@@ -2186,8 +2195,8 @@
       const MODEL_PRICING = {
         "claude-fable-5": { input: 10, output: 50, cacheRead: 1.0, cacheWrite: 12.5 },
         "claude-sonnet-4-6": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
-        "claude-opus-4-8": { input: 15, output: 75, cacheRead: 1.5, cacheWrite: 18.75 },
-        "claude-opus-4-7": { input: 15, output: 75, cacheRead: 1.5, cacheWrite: 18.75 },
+        "claude-opus-4-8": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+        "claude-opus-4-7": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
         // OpenAI GPT (서버 lib/pricing.js 와 동일). cacheWrite = 캐시 미사용이라 input가.
         "gpt-5.5": { input: 5, output: 30, cacheRead: 0.5, cacheWrite: 5 },
         "gpt-5.4": { input: 2.5, output: 15, cacheRead: 0.25, cacheWrite: 2.5 },
@@ -2408,17 +2417,19 @@
       };
       function estimateGenSeconds(type, modelId, extraInputTokens = 0) {
         const isGpt = /^gpt/i.test(modelId || "");
-        // 초/1k 출력토큰: Sonnet·GPT mini 빠름, Opus·GPT 플래그십 느림.
+        // 초/1k 출력토큰: Sonnet·GPT mini 빠름, Opus·GPT 플래그십 느림, Fable은 대형이라 가장 느림.
         const perK =
-          modelId === "claude-sonnet-4-6"
-            ? 9
-            : modelId === "gpt-5.4-mini"
-              ? 7
-              : modelId === "gpt-5.4"
-                ? 12
-                : modelId === "gpt-5.5"
-                  ? 14
-                  : 16;
+          /^claude-fable/.test(modelId || "")
+            ? 45
+            : modelId === "claude-sonnet-4-6"
+              ? 9
+              : modelId === "gpt-5.4-mini"
+                ? 7
+                : modelId === "gpt-5.4"
+                  ? 12
+                  : modelId === "gpt-5.5"
+                    ? 14
+                    : 16;
         const base = 25; // 입력 처리 + 문서 빌드 + 차트
         // 시약 물성 웹검색은 Claude chem-pre 만 수행(GPT chem-pre 는 웹검색 미사용).
         const webSearch = type === "chem-pre" && !isGpt ? 40 : 0;

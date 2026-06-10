@@ -308,10 +308,25 @@ const JOB_TIMEOUT_MS = parseInt(
   process.env.JOB_TIMEOUT_MS || String(8 * 60 * 1000),
   10,
 );
+// Fable 5는 최상위 대형 모델이라 토큰 생성이 훨씬 느리다(긴 보고서 = 10~20분+).
+// Fable 작업은 별도의 넉넉한 타임아웃을 쓴다.
+const JOB_TIMEOUT_FABLE_MS = parseInt(
+  process.env.JOB_TIMEOUT_FABLE_MS || String(25 * 60 * 1000),
+  10,
+);
+function jobTimeoutForModel(model) {
+  return /^claude-fable/.test(String(model || ""))
+    ? JOB_TIMEOUT_FABLE_MS
+    : JOB_TIMEOUT_MS;
+}
 // PDF 통번역은 페이지 수에 비례해 오래 걸릴 수 있어(다묶음 번역+레이아웃 삽입)
 // 별도의 넉넉한 타임아웃을 둔다. 비동기 job+SSE라 HTTP 요청 길이 제한과 무관.
 const PDF_TRANSLATE_TIMEOUT_MS = parseInt(
   process.env.PDF_TRANSLATE_TIMEOUT_MS || String(20 * 60 * 1000),
+  10,
+);
+const PDF_TRANSLATE_FABLE_TIMEOUT_MS = parseInt(
+  process.env.PDF_TRANSLATE_FABLE_TIMEOUT_MS || String(35 * 60 * 1000),
   10,
 );
 
@@ -2824,7 +2839,14 @@ app.post(
       "gpt-5.4",
       "gpt-5.4-mini",
     ];
+    // Fable 5 — 관리자 전용(번역 UI도 관리자에게만 노출).
+    if (userInfo.isAdmin) ALLOWED_MODELS.push("claude-fable-5");
     const requested = String(req.body.model || "").trim();
+    if (requested === "claude-fable-5" && !userInfo.isAdmin) {
+      return res
+        .status(403)
+        .json({ error: "Fable 5 모델은 관리자 전용입니다." });
+    }
     const model = ALLOWED_MODELS.includes(requested) ? requested : null;
 
     // 진행 중 작업 자동 중단 (generate 와 동일 정책)
@@ -3020,7 +3042,10 @@ async function prepareScannedRouting(pdfBuffer, { signal, onProgress }) {
 
 async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) {
   const t0 = Date.now();
-  const timeoutMin = Math.round(PDF_TRANSLATE_TIMEOUT_MS / 60000);
+  const translateTimeoutMs = /^claude-fable/.test(String(model || ""))
+    ? PDF_TRANSLATE_FABLE_TIMEOUT_MS
+    : PDF_TRANSLATE_TIMEOUT_MS;
+  const timeoutMin = Math.round(translateTimeoutMs / 60000);
   pushProgress(job, `🚀 PDF 통번역 시작 (timeout: ${timeoutMin}분)`);
 
   const ac = new AbortController();
@@ -3030,7 +3055,7 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) 
     timedOut = true;
     pushProgress(job, `⏰ ${timeoutMin}분 초과 — 강제 종료 중...`);
     ac.abort();
-  }, PDF_TRANSLATE_TIMEOUT_MS);
+  }, translateTimeoutMs);
 
   try {
     const sizeKB = Math.round(pdfBuffer.length / 1024);
@@ -3408,7 +3433,8 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
     policyAcknowledgement,
   } = meta;
   const t0 = Date.now();
-  const timeoutMin = Math.round(JOB_TIMEOUT_MS / 60000);
+  const jobTimeoutMs = jobTimeoutForModel(model);
+  const timeoutMin = Math.round(jobTimeoutMs / 60000);
   pushProgress(
     job,
     `🚀 작업 시작 (${pipeline.label}, timeout: ${timeoutMin}분)`,
@@ -3421,7 +3447,7 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
     timedOut = true;
     pushProgress(job, `⏰ ${timeoutMin}분 초과 — 강제 종료 중...`);
     ac.abort();
-  }, JOB_TIMEOUT_MS);
+  }, jobTimeoutMs);
 
   try {
     const content = await pipeline.generateContent({
@@ -3687,7 +3713,12 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
         supa.isEnabled() &&
         job.userInfo.id
       ) {
-        const cost = job.creditCost || pricing.getModelCredits(job.model);
+        // 0크레딧 모델(무료, 예: GPT-5.4 mini)은 차감 자체를 건너뛴다.
+        // (?? 사용: ||는 0을 falsy로 봐서 모델 단가로 잘못 폴백함)
+        const cost = job.creditCost ?? pricing.getModelCredits(job.model);
+        if (cost <= 0) {
+          pushProgress(job, "💳 무료 모델 — 크레딧이 차감되지 않았습니다.");
+        } else {
         try {
           const { newBalance } = await supa.spendCredits(job.userInfo.id, cost);
           pushProgress(job, `💳 크레딧 ${cost} 차감 — 남은 크레딧: ${newBalance}`);
@@ -3699,6 +3730,7 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
             job,
             `⚠ 크레딧 차감 실패로 이번 건이 미청구로 기록되었습니다(운영자 확인 필요): ${e.message}`,
           );
+        }
         }
       }
     } else {

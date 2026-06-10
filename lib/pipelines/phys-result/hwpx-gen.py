@@ -645,6 +645,94 @@ def trim_formula_edges(core, trailing):
     return core, trailing
 
 
+# 평문에 흘러나온 한컴 수식 스크립트 조각 구조(rescue)용 매핑/패턴.
+# 모델이 문장 안에 `{1} over {2n n!}` 같은 스크립트를 마커 없이 쓰면 변환기가
+# 손댈 수 없어 원문 그대로 노출된다(수학·물리 수행평가 실생성물에서 확인).
+# `over` 양변 중 한쪽 이상이 중괄호 그룹인 패턴만 신호로 봐 산문 오탐을 막는다.
+_UNI_SUP_MAP = {"⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4", "⁵": "5",
+                "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9", "ⁿ": "n"}
+_UNI_SUB_MAP = {"₀": "0", "₁": "1", "₂": "2", "₃": "3", "₄": "4", "₅": "5",
+                "₆": "6", "₇": "7", "₈": "8", "₉": "9", "ₙ": "n"}
+_RESCUE_BRACED = r"\{(?:[^{}]|\{[^{}]*\})*\}"
+_RESCUE_WORD = r"[A-Za-z0-9.()!^_+\-]+"
+_HWP_SCRIPT_CORE_RE = re.compile(
+    rf"(?:{_RESCUE_BRACED}\s*over\s*(?:{_RESCUE_BRACED}|{_RESCUE_WORD}))"
+    rf"|(?:{_RESCUE_WORD}\s*over\s*{_RESCUE_BRACED})"
+)
+
+
+def _convert_unicode_scripts_to_hwp(text):
+    out = []
+    for ch in str(text or ""):
+        if ch in _UNI_SUP_MAP:
+            out.append("^{" + _UNI_SUP_MAP[ch] + "}")
+        elif ch in _UNI_SUB_MAP:
+            out.append("_{" + _UNI_SUB_MAP[ch] + "}")
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def rescue_inline_hwp_script(text):
+    """평문 문장 속 한컴 수식 스크립트 조각을 {{EQ:...}} 마커로 감싼다.
+
+    over-코어에서 시작해 한글/줄바꿈이 나오기 전까지 좌우로 확장해 수식 구간
+    전체(P_{0}=1, P_{1}=x, … 나열 포함)를 하나의 수식으로 감싸고, 유니코드
+    위/아래첨자(², ₂)는 한컴 스크립트(^{2}, _{2})로 되돌린다.
+    """
+    s = str(text or "")
+    if "{{EQ" in s or not _HWP_SCRIPT_CORE_RE.search(s):
+        return s
+    url_spans = [m.span() for m in re.finditer(r"https?://\S+|www\.\S+", s)]
+
+    def in_url(pos):
+        return any(a <= pos < b for a, b in url_spans)
+
+    def is_hangul(ch):
+        return "가" <= ch <= "힣"
+
+    spans = []
+    for m in _HWP_SCRIPT_CORE_RE.finditer(s):
+        if in_url(m.start()):
+            continue
+        a, b = m.span()
+        while a > 0 and not is_hangul(s[a - 1]) and s[a - 1] != "\n":
+            a -= 1
+        while b < len(s) and not is_hangul(s[b]) and s[b] != "\n":
+            b += 1
+        spans.append([a, b])
+    if not spans:
+        return s
+    merged = []
+    for a, b in sorted(spans):
+        if merged and a <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], b)
+        else:
+            merged.append([a, b])
+
+    out, cursor = [], 0
+    for a, b in merged:
+        core = s[a:b]
+        # 양끝 공백·문장부호는 수식 밖에 남긴다
+        stripped = core.lstrip(" \t")
+        a += len(core) - len(stripped)
+        stripped = stripped.rstrip(" \t")
+        b = a + len(stripped)
+        while stripped and stripped[-1] in ".,;:·":
+            stripped = stripped[:-1].rstrip()
+            b = a + len(stripped)
+        while stripped and stripped[0] in ".,;:·":
+            stripped = stripped[1:].lstrip()
+            a = b - len(stripped)
+        if not stripped or "over" not in stripped:
+            continue
+        out.append(s[cursor:a])
+        out.append("{{EQ:" + _convert_unicode_scripts_to_hwp(stripped) + "}}")
+        cursor = b
+    out.append(s[cursor:])
+    return "".join(out)
+
+
 def normalize_physics_equation_markers(text):
     """Promote inline physics formulas to native Hancom equation placeholders.
 
@@ -657,6 +745,11 @@ def normalize_physics_equation_markers(text):
     if "{{EQ" in s:
         return s
     s = normalize_plain_physics_notation(s)
+    # 모델이 평문에 흘린 한컴 스크립트 조각({1} over {2} …)을 먼저 구조한다.
+    # 구조됐으면 이 단락의 마커 처리는 끝(마커 내부 재가공 방지).
+    s = rescue_inline_hwp_script(s)
+    if "{{EQ" in s:
+        return s
 
     # URL 안의 "watch?v=Q10..." 같은 쿼리스트링이 수식으로 오인돼 잘리는 사고 방지.
     url_spans = [m.span() for m in re.finditer(r"https?://\S+|www\.\S+", s)]

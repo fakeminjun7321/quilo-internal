@@ -311,6 +311,7 @@
         <div class="seg-group" style="margin-bottom: 12px">
           <span class="field-label">AI 모델 (보고서 1건당 크레딧)</span>
           <div class="segmented">
+            <label class="fable-model" hidden><input type="radio" name="crModel" value="claude-fable-5" /> Fable 5 · 관리자</label>
             <label><input type="radio" name="crModel" value="claude-opus-4-8" checked /> Opus 4.8 · 3크레딧</label>
             <label><input type="radio" name="crModel" value="claude-sonnet-4-6" /> Sonnet 4.6 · 1크레딧</label>
             <label><input type="radio" name="crModel" value="gpt-5.5" /> GPT-5.5 · 3크레딧</label>
@@ -480,6 +481,7 @@
         <div class="seg-group" style="margin-bottom: 12px">
           <span class="field-label">AI 모델 (보고서 1건당 크레딧)</span>
           <div class="segmented">
+            <label class="fable-model" hidden><input type="radio" name="prModel" value="claude-fable-5" /> Fable 5 · 관리자</label>
             <label><input type="radio" name="prModel" value="claude-opus-4-8" checked /> Opus 4.8 · 3크레딧</label>
             <label><input type="radio" name="prModel" value="claude-sonnet-4-6" /> Sonnet 4.6 · 1크레딧</label>
             <label><input type="radio" name="prModel" value="gpt-5.5" /> GPT-5.5 · 3크레딧</label>
@@ -646,6 +648,7 @@
         <div class="seg-group" style="margin-bottom: 12px">
           <span class="field-label">AI 모델 (베타 기간 무료)</span>
           <div class="segmented">
+            <label class="fable-model" hidden><input type="radio" name="piModel" value="claude-fable-5" /> Fable 5 · 관리자</label>
             <label><input type="radio" name="piModel" value="claude-opus-4-8" checked /> Opus 4.8 · 무료(베타)</label>
             <label><input type="radio" name="piModel" value="claude-sonnet-4-6" /> Sonnet 4.6 · 무료(베타)</label>
           </div>
@@ -780,6 +783,7 @@
         <div class="seg-group" style="margin-bottom: 12px">
           <span class="field-label">AI 모델 (보고서 1건당 크레딧)</span>
           <div class="segmented">
+            <label class="fable-model" hidden><input type="radio" name="model" value="claude-fable-5" /> Fable 5 · 관리자</label>
             <label><input type="radio" name="model" value="claude-opus-4-8" checked /> Opus 4.8 · 3크레딧</label>
             <label><input type="radio" name="model" value="claude-sonnet-4-6" /> Sonnet 4.6 · 1크레딧</label>
             <label><input type="radio" name="model" value="gpt-5.5" /> GPT-5.5 · 3크레딧</label>
@@ -1188,6 +1192,8 @@
             : "일반 사용자";
           if (d.isAdmin) {
             document.getElementById("adminLink").style.display = "inline";
+            // Fable 5(관리자 전용 모델) 선택지 노출 — revealFable
+            document.querySelectorAll("label.fable-model").forEach((l) => { l.hidden = false; });
           }
           // 관리자는 서버에서 제한 면제 → 카드도 전부 표시
           applyReportTypeAccess(d.isAdmin ? [] : d.blockedReportTypes);
@@ -2178,6 +2184,7 @@
 
       // 모델별 가격 (per 1M tokens, USD)
       const MODEL_PRICING = {
+        "claude-fable-5": { input: 10, output: 50, cacheRead: 1.0, cacheWrite: 12.5 },
         "claude-sonnet-4-6": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
         "claude-opus-4-8": { input: 15, output: 75, cacheRead: 1.5, cacheWrite: 18.75 },
         "claude-opus-4-7": { input: 15, output: 75, cacheRead: 1.5, cacheWrite: 18.75 },
@@ -2308,6 +2315,7 @@
       }
 
       function getModelLabel(modelId) {
+        if (modelId === "claude-fable-5") return "Fable 5";
         if (modelId === "claude-opus-4-8") return "Opus 4.8";
         if (modelId === "claude-opus-4-7") return "Opus 4.7";
         if (modelId === "claude-sonnet-4-6") return "Sonnet 4.6";

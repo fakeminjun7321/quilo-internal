@@ -2396,6 +2396,8 @@ app.post(
       "claude-opus-4-8",
       "claude-sonnet-4-6",
     ];
+    // Fable 5 — 관리자 전용 최상위 모델(셀렉터도 관리자에게만 노출).
+    if (userInfo.isAdmin) ALLOWED_MODELS.push("claude-fable-5");
     // GPT(OpenAI) 보고서 생성은 배선 완료된 종류에만 허용(phys-inquiry 는 추후 배선).
     const GPT_REPORT_MODELS = ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"];
     const GPT_OK_TYPES = new Set(["chem-pre", "chem-result", "phys-result"]);
@@ -2403,6 +2405,12 @@ app.post(
       ? [...ALLOWED_MODELS, ...GPT_REPORT_MODELS]
       : ALLOWED_MODELS;
     const requestedModel = String(req.body.model || "").trim();
+    // 비관리자가 Fable 5를 요청하면 조용히 다른 모델로 바꾸지 않고 명확히 거부.
+    if (requestedModel === "claude-fable-5" && !userInfo.isAdmin) {
+      return res
+        .status(403)
+        .json({ error: "Fable 5 모델은 관리자 전용입니다." });
+    }
     let model = allowedModels.includes(requestedModel) ? requestedModel : null;
     // 모델 제한 계정(예: 베타테스터)은 허용 모델로 강제
     if (userInfo.restrictedModel) {

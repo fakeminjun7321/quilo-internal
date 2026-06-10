@@ -2626,3 +2626,6 @@ textarea.tool-input {
 [data-theme="dark"] .ann-ticker{background:linear-gradient(90deg,#1c2233,#241f33);border-color:#2b3350}
 [data-theme="dark"] .ann-item{color:#cbd5e1}
 [data-theme="dark"] .ann-item .ann-cat{background:#161b2b;color:#93a5ff;border-color:#2b3350}
+
+/* hidden 속성이 label{display:inline-flex} 에 가려지지 않도록 (관리자 전용 모델 게이트) */
+.segmented label[hidden]{display:none !important;}

@@ -399,7 +399,11 @@ def generate_hwpx(content):
 
 # ── 미리보기 텍스트 ────────────────────────────────────────────────────────────
 
-_EQ_MARKER_RE = __import__("re").compile(r"\{\{EQN?:\s*(.*?)\}\}", __import__("re").S)
+# math-inquiry 버전과 동기화 — {{EQ-LATEX:...}} 마커도 벗긴다(미지원이면
+# 미리보기(PrvText)에 raw 마커 문법이 그대로 노출된다).
+_EQ_MARKER_RE = __import__("re").compile(
+    r"\{\{EQN?(?:-LATEX)?:\s*(.*?)\}\}", __import__("re").S
+)
 
 
 def _clean_preview(text):

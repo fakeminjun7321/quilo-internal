@@ -604,6 +604,33 @@ MANUAL_NUMBER_RE = re.compile(
     r"^\s*(?:(?:\(\s*\d{1,2}\s*\)|[①-⑳❶-❿]|\d{1,2}[.)])[\s:：-]+)+"
 )
 
+# 근접 오타 마커 교정 — lib/equation/hwpx_equation_tool.py
+# 의 canonicalize_equation_marker_prefixes 미러. 둘 다 함께 수정할 것.
+# 잡는 변형: 소문자({{eq:), 콜론 앞뒤 공백({{EQN-LATEX :), 전각 콜론
+# ({{EQ-LATEX：), 하이픈 누락/언더스코어/공백 구분({{EQLATEX:, {{EQ_LATEX:,
+# {{EQ LATEX:), 단일 여는 중괄호({EQ-LATEX:). 콜론이 반드시 따라와야 매칭되어
+# 일반 산문·한컴 스크립트 그룹({EQN} 등)은 건드리지 않는다.
+_EQ_PREFIX_RESCUE_RE = re.compile(
+    r"\{\{?\s*(EQN|EQ)\s*[-_]?\s*(LATEX)?\s*[:：]", re.IGNORECASE
+)
+
+
+def _canonical_eq_prefix(m):
+    """교정 콜백 — 어간(EQ/EQN)과 LATEX 유무로 정규 프리픽스를 재조립한다.
+
+    단일 중괄호 입력도 항상 '{{' 로 정규화한다(이후 스캐너가 인식하도록).
+    """
+    stem = m.group(1).upper()
+    return "{{" + stem + ("-LATEX:" if m.group(2) else ":")
+
+
+def canonicalize_equation_marker_prefixes(text):
+    """마커 프리픽스의 흔한 오타를 정규형('{{EQ[-LATEX]:')으로 교정."""
+    s = str(text or "")
+    if "{" not in s:
+        return s
+    return _EQ_PREFIX_RESCUE_RE.sub(_canonical_eq_prefix, s)
+
 
 def find_equation_spans(text):
     """Return (start, end, kind, body) spans for approved equation markers.
@@ -684,6 +711,9 @@ def brace_unbraced_scripts(script):
 EQ_SCRIPT_KEYWORD = (
     r"\b(?:BUILDREL|TIMES|DIV|APPROX|INF|DELTA|SIGMA|GAMMA|THETA|LAMBDA|XI|PI|"
     r"OMEGA|PHI|PSI|LEFT|RIGHT|IN|DEG|CASES|"
+    r"ANGSTROM|ASYMP|BOX|CHOOSE|COPROD|DOWNARROW|ELL|EXARROW|IMAG|IMATH|JMATH|"
+    r"LARROW|LLL|LRARROW|OVERBRACE|RARROW|REIMAGE|REL|SQSUBSETEQ|SQSUBSET|"
+    r"SQSUPSETEQ|SQSUPSET|TRIANGLED|UDARROW|UNDERBRACE|UPARROW|VERT|WP|"
     r"Alpha|Beta|Gamma|Delta|Epsilon|Zeta|Eta|Theta|Iota|Kappa|Lambda|Mu|Nu|"
     r"Xi|Pi|Rho|Sigma|Tau|Upsilon|Phi|Chi|Psi|Omega)\b"
 )
@@ -697,6 +727,9 @@ def compact_chemical_spacing(script):
         protected.append(match.group(0))
         return "\x00%d\x00" % (len(protected) - 1)
 
+    # 인용 리터럴("percent difference", "Part A")은 통째로 보호한다 —
+    # 내부의 대문자·공백을 화학식 압축이 이어 붙이면 안 된다.
+    text = re.sub(r'"[^"]*"', _protect, text)
     text = re.sub(EQ_SCRIPT_KEYWORD, _protect, text)
     token = r"(?:[A-Z][a-z]?|\)(?:_\{[^}]+\})?)(?:_\{[^}]+\})?"
     text = re.sub(rf"({token})\s+(?=[A-Z][a-z]?|\()", r"\1", text)
@@ -746,6 +779,27 @@ def normalize_equation_script(script):
     return s.strip()
 
 
+# 영어 산문 기능어 — 'where R = 8.314 ... is the gas constant' 같은 영문 법칙
+# 인용 문장이 '='·'+' 연산자와 숫자를 포함한다는 이유로 통째로 수식 객체로
+# 승격되는 것을 막는다. 단어 경계(\b) 일치라 1글자 변수(a, T, R)·화학식
+# (NaOH, THF)은 세지 않고, 한컴 수식 키워드(over, int, times, rm, in 등)와
+# 원소기호 충돌어(be→Be, as→As)는 목록에서 제외했다. '서로 다른' 기능어가
+# 2개 이상이어야 산문으로 본다 — 'x = 5 at T'(1개)나 물리 공식의 가속도 항
+# 'v = v_{0} + at'(at 반복도 1종)는 계속 승격된다.
+# phys-result/hwpx-gen.py 의 is_probable_physics_formula 도 이 정의를 공유한다.
+_EQ_ENGLISH_STOPWORD_RE = re.compile(
+    r"\b(?:where|is|are|was|were|the|that|this|these|those|note|at|of|and|"
+    r"or|for|with|from|which|when|then|we|can|has|have|by|if|since|because|"
+    r"hence|thus|therefore)\b",
+    re.IGNORECASE,
+)
+
+
+def count_english_prose_stopwords(text):
+    """텍스트 속 '서로 다른' 영문 산문 기능어 개수(대소문자 무시)."""
+    return len({w.lower() for w in _EQ_ENGLISH_STOPWORD_RE.findall(str(text or ""))})
+
+
 def looks_like_standalone_equation(text):
     s = normalize_equation_script(strip_manual_numbering(text))
     if not s or has_equation_placeholder(s):
@@ -754,6 +808,11 @@ def looks_like_standalone_equation(text):
     # If Korean prose exists outside numerator/denominator labels, keep it as a
     # normal paragraph. Formula-only lines may still contain Korean inside {...}.
     if re.search(r"[가-힣]", outside_braces):
+        return False
+    # 영어 산문 가드 — 키워드 우회(formula|equation|yield)로
+    # should_skip_auto_equation 을 건너뛴 경로와 라벨 분기 둘 다 여기를
+    # 거치므로, 서로 다른 영문 기능어가 2개 이상이면 산문으로 남긴다.
+    if count_english_prose_stopwords(outside_braces) >= 2:
         return False
     has_operator = bool(
         re.search(
@@ -800,9 +859,320 @@ def should_skip_auto_equation(text):
     return False
 
 
+# 평문에 흘러나온 한컴 수식 스크립트 조각 구조(rescue)용 매핑/패턴.
+# 모델이 문장 안에 `{1} over {2n n!}` 같은 스크립트를 마커 없이 쓰면 변환기가
+# 손댈 수 없어 원문 그대로 노출된다(수학·물리 수행평가, 화학 산문 실생성물에서
+# 확인). `over` 양변 중 한쪽 이상이 중괄호 그룹이거나, 중괄호 그룹 안에 over
+# 가 있거나, sqrt 가 중괄호 인자를 가진 패턴만 신호로 봐 산문 오탐을 막는다.
+# phys-result/math-inquiry/phys-inquiry 도 이 공통 구현을 그대로 쓴다.
+_UNI_SUP_MAP = {"⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4", "⁵": "5",
+                "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9", "ⁿ": "n"}
+_UNI_SUB_MAP = {"₀": "0", "₁": "1", "₂": "2", "₃": "3", "₄": "4", "₅": "5",
+                "₆": "6", "₇": "7", "₈": "8", "₉": "9", "ₙ": "n"}
+_RESCUE_BRACED = r"\{(?:[^{}]|\{[^{}]*\})*\}"
+# over 의 비중괄호 피연산자에는 한글도 허용한다 — '{실제} over 이론질량',
+# '분자 over {2}' 처럼 피연산자가 한글인 조각은 validate 의 잔재 검사
+# (_HWP_SCRIPT_RESIDUE_RE)가 fatal 로 보므로, 코어 매칭이 못 잡으면 변환
+# 가능한 입력이 구제 시도 없이 보고서 전체를 죽인다. (좌우 확장 루프는
+# 한글에서 멈추므로 피연산자는 확장이 아니라 코어가 직접 잡아야 한다.)
+_RESCUE_WORD = r"[A-Za-z0-9.()!^_+\-가-힣]+"
+_HWP_SCRIPT_CORE_RE = re.compile(
+    rf"(?:{_RESCUE_BRACED}\s*over\s*(?:{_RESCUE_BRACED}|{_RESCUE_WORD}))"
+    rf"|(?:{_RESCUE_WORD}\s*over\s*{_RESCUE_BRACED})"
+    # 중괄호 그룹 '안'의 over(`sqrt {Ka over C}` 류)와 중괄호 인자를 가진
+    # sqrt 도 스크립트 조각 신호다 — 화학 산문 실생성물에서 확인.
+    rf"|(?:\{{[^{{}}]*\bover\b[^{{}}]*\}})"
+    rf"|(?:\bsqrt\s*{_RESCUE_BRACED})"
+)
+
+# 마커 없이 산문에 흘러나온 LaTeX 조각(\frac{1}{2} 등) — AI 빈출 유형. 등호가
+# 없으면 표준 승격(looks_like_standalone_equation)도 phys 인라인 승격('=' 필수)
+# 도 못 잡고, validate 의 _LATEX_RESIDUE_RE 는 fatal 로 본다. 변환 가능한
+# 조각만 보수적으로(주변 산문 흡수 없이) {{EQ-LATEX:...}} 마커로 감싼다.
+_BARE_LATEX_BRACED = r"\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}"
+_BARE_LATEX_FRAGMENT_RE = re.compile(
+    rf"\\[dt]?frac\s*{_BARE_LATEX_BRACED}\s*{_BARE_LATEX_BRACED}"
+    rf"|\\sqrt\s*(?:\[[^\[\]]*\]\s*)?{_BARE_LATEX_BRACED}"
+)
+
+# rescue 확장이 가로지를 수 있는 다중 글자 영문 토큰(한컴 수식/함수 키워드).
+# 그 밖의 2글자 이상 영어 단어(The, percent, is …)는 산문 경계로 보아 영어
+# 문장이 통째로 수식에 흡수되는 사고를 막는다(1글자 변수 a, T 는 항상 통과,
+# `_{eq}` 처럼 중괄호·첨자에 붙은 토큰은 수식 일부로 보고 통과).
+_RESCUE_CROSS_WORDS = frozenset(
+    "over sqrt root times cdot div pm mp leq geq neq approx prod sum int lim "
+    "log ln exp sin cos tan sec csc cot sinh cosh tanh rm deg inf "
+    "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu "
+    "xi pi rho sigma tau upsilon phi chi psi omega".split()
+)
+
+
+def _rescue_bare_latex_fragments(text):
+    s = str(text or "")
+    if "\\" not in s:
+        return s
+    return _BARE_LATEX_FRAGMENT_RE.sub(
+        lambda m: "{{EQ-LATEX:" + m.group(0) + "}}", s
+    )
+
+
+# 단독 LaTeX 기호 명령 → 유니코드/평문 강등 화이트리스트. 수식화(조각 래핑)
+# 시도 후에도 남은, 인자 없는 기호 명령만 안전하게 평문 문자로 바꾼다 —
+# \times 100, E = h\nu, \Delta G 처럼 frac/sqrt 류 구조가 없어 검출
+# (_LATEX_RESIDUE_RE)도 구제(조각 래핑)도 못 잡던 사각의 보수적 폴백이다.
+# '=' 포함 산문 전체를 수식으로 승격하는 공격적 방식은 오탐 위험으로 금지,
+# 검출(fatal) 확대도 금지. 구조 명령(frac/sqrt/sum/lim/int …)과 미지 명령은
+# 절대 넣지 않는다(미지 명령은 보존 — 조용한 의미 파괴 방지).
+# 주의: lib/equation/hwpx_equation_tool.py 에 동일 미러가 있다 — 함께 수정할
+# 것(scripts/eq_engine_diff.py 의 미러 동기화 검사가 불일치를 잡는다).
+_BARE_LATEX_SYMBOL_MAP = {
+    # 연산자/관계
+    "times": "×", "cdot": "·", "div": "÷", "pm": "±", "mp": "∓",
+    "approx": "≈", "sim": "~", "simeq": "≃", "cong": "≅", "equiv": "≡",
+    "neq": "≠", "ne": "≠", "leq": "≤", "le": "≤", "geq": "≥", "ge": "≥",
+    "ll": "≪", "gg": "≫", "propto": "∝", "infty": "∞", "partial": "∂",
+    "nabla": "∇", "degree": "°", "circ": "°", "bullet": "•",
+    "ldots": "…", "cdots": "⋯", "dots": "…", "prime": "′", "prod": "∏",
+    # 화살표
+    "rightarrow": "→", "to": "→", "longrightarrow": "→", "Rightarrow": "⇒",
+    "leftarrow": "←", "longleftarrow": "←", "Leftarrow": "⇐",
+    "leftrightarrow": "↔", "Leftrightarrow": "⇔", "rightleftharpoons": "⇌",
+    "uparrow": "↑", "downarrow": "↓",
+    # 그리스 소문자
+    "alpha": "α", "beta": "β", "gamma": "γ", "delta": "δ",
+    "epsilon": "ε", "varepsilon": "ε", "zeta": "ζ", "eta": "η",
+    "theta": "θ", "vartheta": "ϑ", "iota": "ι", "kappa": "κ",
+    "lambda": "λ", "mu": "μ", "nu": "ν", "xi": "ξ", "pi": "π",
+    "varpi": "ϖ", "rho": "ρ", "varrho": "ϱ", "sigma": "σ",
+    "varsigma": "ς", "tau": "τ", "upsilon": "υ", "phi": "φ",
+    "varphi": "φ", "chi": "χ", "psi": "ψ", "omega": "ω",
+    # 그리스 대문자
+    "Gamma": "Γ", "Delta": "Δ", "Theta": "Θ", "Lambda": "Λ", "Xi": "Ξ",
+    "Pi": "Π", "Sigma": "Σ", "Upsilon": "Υ", "Phi": "Φ", "Psi": "Ψ",
+    "Omega": "Ω",
+    # 함수명 — 백슬래시만 벗긴다(업라이트 평문 표기)
+    "ln": "ln", "log": "log", "lg": "lg", "exp": "exp",
+    "sin": "sin", "cos": "cos", "tan": "tan", "cot": "cot",
+    "sec": "sec", "csc": "csc", "sinh": "sinh", "cosh": "cosh",
+    "tanh": "tanh", "arcsin": "arcsin", "arccos": "arccos",
+    "arctan": "arctan", "min": "min", "max": "max", "deg": "deg",
+    "mod": "mod",
+}
+_BARE_LATEX_SYMBOL_CMD_RE = re.compile(r"\\([A-Za-z]+)")
+
+
+def replace_bare_latex_symbol_commands(text):
+    r"""평문 속 단독 LaTeX 기호 명령(\times, \nu, \Delta …)을 유니코드로 강등.
+
+    _BARE_LATEX_SYMBOL_MAP 화이트리스트에 있는 명령만 바꾸고, 미지 명령
+    (\nuclear 등 — 명령 이름은 [A-Za-z]+ 최장 일치라 \nu 가 \nuclear 의
+    일부를 먹는 일은 없다)과 구조 명령은 그대로 둔다. 마커({{EQ*:...}})
+    본문 보호는 호출부 몫이다 — 반드시 마커 밖 구간만 넘길 것.
+    주의: lib/equation/hwpx_equation_tool.py 에 동일 미러가 있다 — 함께 수정할 것.
+    """
+    s = str(text or "")
+    if "\\" not in s:
+        return s
+
+    def _one(m):
+        repl = _BARE_LATEX_SYMBOL_MAP.get(m.group(1))
+        if repl is None:
+            return m.group(0)
+        prev = s[m.start() - 1] if m.start() > 0 else ""
+        # 'ln'/'log' 같은 영문자 치환이 앞 토큰에 들러붙지 않게 한 칸 띄운다
+        # (-RT\ln K → -RT ln K). 기호(×, Δ …) 치환은 그대로 잇는다(h\nu → hν).
+        if repl[:1].isascii() and repl[:1].isalpha() and prev.isascii() and prev.isalnum():
+            return " " + repl
+        return repl
+
+    return _BARE_LATEX_SYMBOL_CMD_RE.sub(_one, s)
+
+
+def _demote_bare_latex_symbols_outside_markers(text):
+    """마커({{EQ*:...}}) 밖 평문 구간의 단독 LaTeX 기호 명령만 유니코드로 강등.
+
+    마커 본문(LaTeX 원문)은 변환 엔진 몫이므로 절대 건드리지 않는다.
+    주의: rescue_inline_hwp_script 안에서는 호출하지 않는다 — phys-result 의
+    _promote_plain_physics_segment 가 rescue 직후 '=' 기반 LaTeX 승격을
+    돌리므로, 그 전에 \\nu 류를 강등하면 수식 승격 품질이 떨어진다.
+    """
+    s = str(text or "")
+    if "\\" not in s:
+        return s
+    out = []
+    cursor = 0
+    for start, end, _kind, _body in find_equation_spans(s):
+        out.append(replace_bare_latex_symbol_commands(s[cursor:start]))
+        out.append(s[start:end])
+        cursor = end
+    out.append(replace_bare_latex_symbol_commands(s[cursor:]))
+    return "".join(out)
+
+
+def _first_unmatched_open_paren(text):
+    """짝이 텍스트 밖에 있는 첫 여는 괄호의 위치(-1: 없음)."""
+    opens = []
+    for i, ch in enumerate(text):
+        if ch == "(":
+            opens.append(i)
+        elif ch == ")" and opens:
+            opens.pop()
+    return opens[0] if opens else -1
+
+
+def _last_unmatched_close_paren(text):
+    """짝이 텍스트 밖에 있는 마지막 닫는 괄호의 위치(-1: 없음)."""
+    depth = 0
+    last = -1
+    for i, ch in enumerate(text):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            if depth > 0:
+                depth -= 1
+            else:
+                last = i
+    return last
+
+
+def _convert_unicode_scripts_to_hwp(text):
+    out = []
+    for ch in str(text or ""):
+        if ch in _UNI_SUP_MAP:
+            out.append("^{" + _UNI_SUP_MAP[ch] + "}")
+        elif ch in _UNI_SUB_MAP:
+            out.append("_{" + _UNI_SUB_MAP[ch] + "}")
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def rescue_inline_hwp_script(text):
+    """평문 문장 속 한컴 수식 스크립트 조각을 {{EQ:...}} 마커로 감싼다.
+
+    마커 없는 \\frac 류 LaTeX 조각을 먼저 {{EQ-LATEX:...}} 로 구조한 뒤,
+    over/sqrt-코어에서 시작해 한글/줄바꿈/산문 구조 문자(표 파이프 `|`,
+    볼드·기울임 마커 `*`)가 나오기 전까지 좌우로 확장해 수식 구간 전체
+    (P_{0}=1, P_{1}=x, … 나열 포함)를 하나의 수식으로 감싸고, 유니코드
+    위/아래첨자(², ₂)는 한컴 스크립트(^{2}, _{2})로 되돌린다. 2글자 이상의
+    일반 영어 단어(키워드 제외)도 산문 경계로 보아 영어 문장이 통째로
+    흡수되지 않게 하고, 끝에 걸린 목록 라벨('3.', '(1)')과 짝 잃은 괄호
+    반쪽은 수식 밖(산문)에 남긴다.
+    """
+    s = str(text or "")
+    if "{{EQ" in s:
+        return s
+    s = _rescue_bare_latex_fragments(s)
+    if not _HWP_SCRIPT_CORE_RE.search(s):
+        return s
+    # URL 과 방금 구조한 {{EQ-LATEX:...}} 마커 구간은 코어 탐지·확장 모두에서
+    # 보호한다(마커 본문 속 sqrt{...} 재탐지/재흡수 방지).
+    protected_spans = [m.span() for m in re.finditer(r"https?://\S+|www\.\S+", s)]
+    protected_spans += [(start, end) for start, end, _k, _b in find_equation_spans(s)]
+
+    def in_protected(pos):
+        return any(a <= pos < b for a, b in protected_spans)
+
+    def is_hangul(ch):
+        return "가" <= ch <= "힣"
+
+    def is_boundary(pos):
+        # 한글/줄바꿈에 더해 표 파이프·볼드 마커도 산문 구조 경계다 — 확장이
+        # 마크다운 표 행이나 **볼드** 쌍을 갈라놓지 않게 한다.
+        return is_hangul(s[pos]) or s[pos] in "\n|*" or in_protected(pos)
+
+    def crosses_word(j, k):
+        # s[j:k] 영문 단어를 확장이 가로질러도 되는가 — 키워드/1글자 변수이거나
+        # 중괄호·첨자에 바로 붙은 토큰(`_{eq}` 의 eq)만 허용.
+        if k - j < 2 or s[j:k].lower() in _RESCUE_CROSS_WORDS:
+            return True
+        left_ch = s[j - 1] if j > 0 else ""
+        right_ch = s[k] if k < len(s) else ""
+        return left_ch in "{}_^\\" or right_ch in "{}_^\\"
+
+    spans = []
+    for m in _HWP_SCRIPT_CORE_RE.finditer(s):
+        if in_protected(m.start()):
+            continue
+        a, b = m.span()
+        while a > 0 and not is_boundary(a - 1):
+            if s[a - 1].isascii() and s[a - 1].isalpha():
+                j = a - 1
+                while j > 0 and s[j - 1].isascii() and s[j - 1].isalpha():
+                    j -= 1
+                if not crosses_word(j, a):
+                    break
+                a = j
+            else:
+                a -= 1
+        while b < len(s) and not is_boundary(b):
+            if s[b].isascii() and s[b].isalpha():
+                j = b
+                while j < len(s) and s[j].isascii() and s[j].isalpha():
+                    j += 1
+                if not crosses_word(b, j):
+                    break
+                b = j
+            else:
+                b += 1
+        spans.append([a, b])
+    if not spans:
+        return s
+    merged = []
+    for a, b in sorted(spans):
+        if merged and a <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], b)
+        else:
+            merged.append([a, b])
+
+    out, cursor = [], 0
+    for a, b in merged:
+        core = s[a:b]
+        # 양끝 공백·문장부호는 수식 밖에 남긴다
+        stripped = core.lstrip(" \t")
+        a += len(core) - len(stripped)
+        stripped = stripped.rstrip(" \t")
+        b = a + len(stripped)
+        while stripped and stripped[-1] in ".,;:·/":
+            stripped = stripped[:-1].rstrip()
+            b = a + len(stripped)
+        while stripped and stripped[0] in ".,;:·/":
+            stripped = stripped[1:].lstrip()
+            a = b - len(stripped)
+        # 절차 번호·항목 라벨('3.', '(1)')은 수식 밖(산문)에 남긴다.
+        label = re.match(r"^(?:\(\s*\d{1,2}\s*\)|\d{1,2}[.)])\s+", stripped)
+        if label and _HWP_SCRIPT_CORE_RE.search(stripped[label.end():]):
+            stripped = stripped[label.end():].lstrip()
+            a = b - len(stripped)
+        # 짝이 수식 구간 밖에 있는 괄호 반쪽은 딸린 꼬리째 산문에 남긴다 —
+        # '(가) …' 의 닫는 괄호, '… (단위: g/mL)' 의 여는 괄호가 수식 안으로
+        # 흡수돼 괄호쌍이 분단되는 사고 방지. (코어가 사라지면 자르지 않는다.)
+        cut = _last_unmatched_close_paren(stripped)
+        if cut >= 0:
+            candidate = stripped[cut + 1:].lstrip(" \t.,;:·/")
+            if _HWP_SCRIPT_CORE_RE.search(candidate):
+                stripped = candidate
+                a = b - len(stripped)
+        cut = _first_unmatched_open_paren(stripped)
+        if cut >= 0:
+            candidate = stripped[:cut].rstrip(" \t.,;:·/")
+            if _HWP_SCRIPT_CORE_RE.search(candidate):
+                stripped = candidate
+                b = a + len(stripped)
+        if not stripped or ("over" not in stripped and "sqrt" not in stripped):
+            continue
+        out.append(s[cursor:a])
+        out.append("{{EQ:" + _convert_unicode_scripts_to_hwp(stripped) + "}}")
+        cursor = b
+    out.append(s[cursor:])
+    return "".join(out)
+
+
 def normalize_equation_markers(text):
     """Promote raw equation-script lines to approved HWPX equation markers."""
-    s = str(text or "")
+    # 근접 오타 마커({{eq:, {{EQN-LATEX :)를 먼저 정규형으로 교정해야
+    # 수식 전용 문단 가운데 정렬 등 생성 시 처리에 정상 마커로 잡힌다.
+    s = canonicalize_equation_marker_prefixes(text)
     if has_equation_placeholder(s):
         return s
 
@@ -812,7 +1182,13 @@ def normalize_equation_markers(text):
         stripped,
         re.I,
     ):
-        return s
+        # 산문으로 남기더라도, 모델이 평문에 흘린 한컴 스크립트 조각
+        # ({1} over {2}, sqrt {Ka over C} …)은 인라인 수식으로 구조하고,
+        # 수식화로 못 감싼 단독 LaTeX 기호 명령(\times, \nu …)은 마커 밖
+        # 평문에서 유니코드로 강등한다(rescue 먼저 → 남은 기호만 치환).
+        return _demote_bare_latex_symbols_outside_markers(
+            rescue_inline_hwp_script(s)
+        )
 
     labeled = re.match(
         r"^(.{0,60}?(?:반응식|수득률|계산식|공식|formula|equation|yield)[^:：=]*[:：=]\s*)(.+)$",
@@ -823,12 +1199,14 @@ def normalize_equation_markers(text):
         return f"{labeled.group(1)}{{{{EQ:{normalize_equation_script(labeled.group(2))}}}}}"
 
     if should_skip_auto_equation(stripped):
-        return s
+        return _demote_bare_latex_symbols_outside_markers(
+            rescue_inline_hwp_script(s)
+        )
 
     if looks_like_standalone_equation(stripped):
         return f"{{{{EQ:{normalize_equation_script(stripped)}}}}}"
 
-    return s
+    return _demote_bare_latex_symbols_outside_markers(rescue_inline_hwp_script(s))
 
 
 def is_equation_only_text(text):
@@ -1726,10 +2104,12 @@ def _postprocess_equations(hwpx_path):
             tmp_out = Path(tf.name)
         try:
             count = hwpx_equation_tool.replace_equation_placeholders(src, tmp_out)
-            if count > 0:
-                shutil.move(str(tmp_out), str(src))
-            else:
-                tmp_out.unlink()
+            # count 는 "변환된 수식 개수"이지 "파일이 바뀌었는가"가 아니다.
+            # lenient 경로는 깨진 마커를 count==0 으로도 평문 정리할 수 있어,
+            # count 기준으로 tmp 를 버리면 정리본이 폐기되고 원본의 잔존
+            # 마커가 validate 에서 fatal 이 된다. replace_equation_placeholders
+            # 는 변경이 없어도 항상 완전한 사본을 쓰므로 무조건 채택한다.
+            shutil.move(str(tmp_out), str(src))
 
             issues = hwpx_equation_tool.validate_hwpx_equations(src)
             if issues:

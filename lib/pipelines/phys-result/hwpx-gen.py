@@ -420,13 +420,17 @@ SUBSCRIPT_TO_LATEX = str.maketrans({
     "₊": "+",
     "₋": "-",
 })
+# '|' 는 절댓값(|I_pivot - I_cm|), '%' 는 %Diff(Capstone 계산 column) 표기 —
+# 빠지면 '%Diff = |…|/…' 식이 'Diff =' 까지만 잡혀 파편 수식 + raw 파이프
+# 산문으로 갈라진다. 시작 문자에도 두 글자를 허용해 식 전체를 한 덩어리로
+# 잡는다(홀수 파이프 가드는 is_probable_physics_formula 쪽).
 FORMULA_CHAR_CLASS = (
     r"A-Za-z0-9"
     r"αβγδθλμπρστφωΩΔΣ"
-    r"_\{\}\^\*\s\+\-=−–—≈≃≤≥<>/\\\(\)\[\]\.,"
+    r"_\{\}\^\*\s\+\-=−–—≈≃≤≥<>/\\\(\)\[\]\.,\|"
     r"·×√½°%′'⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻₀₁₂₃₄₅₆₇₈₉₊₋\u0307\u0308"
 )
-FORMULA_START_CLASS = r"A-Za-z0-9αβγδθλμπρστφωΩΔΣ\*\(\{"
+FORMULA_START_CLASS = r"A-Za-z0-9αβγδθλμπρστφωΩΔΣ\*\(\{%\|"
 INLINE_FORMULA_RE = re.compile(
     rf"(?<![A-Za-z0-9_])([{FORMULA_START_CLASS}][{FORMULA_CHAR_CLASS}]{{0,120}}?"
     rf"(?:=|≈|≃|≤|≥)"
@@ -448,18 +452,52 @@ PLAIN_SUBSCRIPTS = str.maketrans({
 })
 
 
-def normalize_plain_physics_notation(text):
-    s = str(text or "")
-    s = re.sub(
+def _subscript_digit_notation(text):
+    """x_2 → x₂ (유니코드 아래첨자) — 산문·수식 승격 양쪽에서 안전한 표기."""
+    return re.sub(
         r"([A-Za-zαβγδθλμπρστφωΩΔΣ])_([0-9])",
         lambda m: f"{m.group(1)}{m.group(2).translate(PLAIN_SUBSCRIPTS)}",
-        s,
+        str(text or ""),
     )
+
+
+def _flatten_label_subscripts(text):
+    """수식으로 승격되지 '않은' 산문 속 _max/_cm/_pivot 라벨 평탄화.
+
+    수식 승격 경로에서는 호출하면 안 된다 — 평탄화된 'Icm' 은 승격 시
+    아래첨자 의도를 잃는다(I_{"cm"} 복원 불가). _promote_plain_physics_segment
+    가 승격을 끝낸 뒤 마커 밖 산문에만 적용한다.
+    """
+    s = str(text or "")
     s = re.sub(r"\|([A-Za-zαβγδθλμπρστφωΩΔΣ]+)\|_max", r"|\1|max", s)
     s = re.sub(r"\b([A-Za-zαβγδθλμπρστφωΩΔΣ]+)_max\b", r"\1max", s)
     s = re.sub(r"\b([A-Za-zαβγδθλμπρστφωΩΔΣ]+)_cm\b", r"\1cm", s)
     s = re.sub(r"\b([A-Za-zαβγδθλμπρστφωΩΔΣ]+)_pivot\b", r"\1pivot", s)
     return s
+
+
+def _flatten_labels_outside_markers(text):
+    """{{EQ*:...}} 마커 밖 산문에만 _flatten_label_subscripts 를 적용한다."""
+    s = str(text or "")
+    if "{{EQ" not in s:
+        return _flatten_label_subscripts(s)
+    spans = pre.find_equation_spans(s)
+    if not spans:
+        # 파손 마커 추정 — 안전하게 그대로 둔다.
+        return s
+    out = []
+    pos = 0
+    for start, end, _kind, _body in spans:
+        out.append(_flatten_label_subscripts(s[pos:start]))
+        out.append(s[start:end])
+        pos = end
+    out.append(_flatten_label_subscripts(s[pos:]))
+    return "".join(out)
+
+
+def normalize_plain_physics_notation(text):
+    # 하위 호환 별칭 — 승격 파이프라인은 두 단계를 분리해 쓴다(위 docstring).
+    return _flatten_label_subscripts(_subscript_digit_notation(text))
 
 
 def convert_radicals(expr):
@@ -573,6 +611,10 @@ def rich_formula_to_latex(expr):
     expr = expr.replace("≤", r" \leq ").replace("≥", r" \geq ")
     expr = expr.replace("½", r"\frac{1}{2}")
     expr = unicode_scripts_to_latex(expr)
+    # 중괄호 없는 다글자 아래첨자(ω_max, I_cm, I_pivot)를 LaTeX 정식 표기로 —
+    # 이렇게 해야 변환 엔진의 quote_textual_subscripts 경로(I_{"cm"})를 타서
+    # 아래첨자 의도가 보존된다. 이미 braced(_{…})면 그대로 둔다.
+    expr = re.sub(r"_([A-Za-z]{2,})\b", r"_{\1}", expr)
     expr = convert_radicals(expr)
     for greek, latex in GREEK_TO_LATEX.items():
         expr = expr.replace(greek, f" {latex} ")
@@ -615,9 +657,18 @@ def is_probable_physics_formula(expr):
         return False
     if re.search(r"[가-힣]", clean):
         return False
+    # 영어 산문 가드 — 'where R = 8.314 J/mol K is the gas constant' 같은
+    # 영문 법칙 인용 문장이 '=' 를 포함한다는 이유로 통째로 수식 승격되는
+    # 것을 막는다(chem-pre looks_like_standalone_equation 과 같은 기준).
+    if pre.count_english_prose_stopwords(clean) >= 2:
+        return False
     if not re.search(r"[A-Za-zαβγδθλμπρστφωΩΔΣ]", clean):
         return False
     if not re.search(r"=|≈|≃|≤|≥", clean):
+        return False
+    # 절댓값 막대는 항상 짝수로 나온다 — 홀수 '|' 는 표/구분자 파편이 식에
+    # 섞인 신호이므로 산문으로 남긴다(파이프가 수식 글자로 승격되는 오탐 방지).
+    if clean.count("|") % 2:
         return False
     if is_trivial_measurement(clean):
         return False
@@ -645,111 +696,36 @@ def trim_formula_edges(core, trailing):
     return core, trailing
 
 
-# 평문에 흘러나온 한컴 수식 스크립트 조각 구조(rescue)용 매핑/패턴.
-# 모델이 문장 안에 `{1} over {2n n!}` 같은 스크립트를 마커 없이 쓰면 변환기가
-# 손댈 수 없어 원문 그대로 노출된다(수학·물리 수행평가 실생성물에서 확인).
-# `over` 양변 중 한쪽 이상이 중괄호 그룹인 패턴만 신호로 봐 산문 오탐을 막는다.
-_UNI_SUP_MAP = {"⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4", "⁵": "5",
-                "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9", "ⁿ": "n"}
-_UNI_SUB_MAP = {"₀": "0", "₁": "1", "₂": "2", "₃": "3", "₄": "4", "₅": "5",
-                "₆": "6", "₇": "7", "₈": "8", "₉": "9", "ₙ": "n"}
-_RESCUE_BRACED = r"\{(?:[^{}]|\{[^{}]*\})*\}"
-_RESCUE_WORD = r"[A-Za-z0-9.()!^_+\-]+"
-_HWP_SCRIPT_CORE_RE = re.compile(
-    rf"(?:{_RESCUE_BRACED}\s*over\s*(?:{_RESCUE_BRACED}|{_RESCUE_WORD}))"
-    rf"|(?:{_RESCUE_WORD}\s*over\s*{_RESCUE_BRACED})"
-)
+# 평문에 흘러나온 한컴 수식 스크립트 조각 구조(rescue) — 구현은 공통 베이스
+# (chem-pre/hwpx-gen.py)로 이동했다. 화학 산문 경로에서도 같은 구조가 필요해
+# 공유 모듈에 두고, 여기는 하위 호환용 얇은 별칭만 남긴다.
+_UNI_SUP_MAP = pre._UNI_SUP_MAP
+_UNI_SUB_MAP = pre._UNI_SUB_MAP
+_RESCUE_BRACED = pre._RESCUE_BRACED
+_RESCUE_WORD = pre._RESCUE_WORD
+_HWP_SCRIPT_CORE_RE = pre._HWP_SCRIPT_CORE_RE
+_convert_unicode_scripts_to_hwp = pre._convert_unicode_scripts_to_hwp
+rescue_inline_hwp_script = pre.rescue_inline_hwp_script
 
 
-def _convert_unicode_scripts_to_hwp(text):
-    out = []
-    for ch in str(text or ""):
-        if ch in _UNI_SUP_MAP:
-            out.append("^{" + _UNI_SUP_MAP[ch] + "}")
-        elif ch in _UNI_SUB_MAP:
-            out.append("_{" + _UNI_SUB_MAP[ch] + "}")
-        else:
-            out.append(ch)
-    return "".join(out)
+def _promote_plain_physics_segment(segment):
+    """마커가 없는 평문 구간 하나에 물리 수식 승격 처리를 적용한다.
 
-
-def rescue_inline_hwp_script(text):
-    """평문 문장 속 한컴 수식 스크립트 조각을 {{EQ:...}} 마커로 감싼다.
-
-    over-코어에서 시작해 한글/줄바꿈이 나오기 전까지 좌우로 확장해 수식 구간
-    전체(P_{0}=1, P_{1}=x, … 나열 포함)를 하나의 수식으로 감싸고, 유니코드
-    위/아래첨자(², ₂)는 한컴 스크립트(^{2}, _{2})로 되돌린다.
+    normalize_physics_equation_markers 가 마커 구간을 보호한 뒤 그 사이의
+    평문 구간만 이 함수로 넘긴다(마커 내부 재가공 방지).
     """
-    s = str(text or "")
-    if "{{EQ" in s or not _HWP_SCRIPT_CORE_RE.search(s):
-        return s
-    url_spans = [m.span() for m in re.finditer(r"https?://\S+|www\.\S+", s)]
-
-    def in_url(pos):
-        return any(a <= pos < b for a, b in url_spans)
-
-    def is_hangul(ch):
-        return "가" <= ch <= "힣"
-
-    spans = []
-    for m in _HWP_SCRIPT_CORE_RE.finditer(s):
-        if in_url(m.start()):
-            continue
-        a, b = m.span()
-        while a > 0 and not is_hangul(s[a - 1]) and s[a - 1] != "\n":
-            a -= 1
-        while b < len(s) and not is_hangul(s[b]) and s[b] != "\n":
-            b += 1
-        spans.append([a, b])
-    if not spans:
-        return s
-    merged = []
-    for a, b in sorted(spans):
-        if merged and a <= merged[-1][1]:
-            merged[-1][1] = max(merged[-1][1], b)
-        else:
-            merged.append([a, b])
-
-    out, cursor = [], 0
-    for a, b in merged:
-        core = s[a:b]
-        # 양끝 공백·문장부호는 수식 밖에 남긴다
-        stripped = core.lstrip(" \t")
-        a += len(core) - len(stripped)
-        stripped = stripped.rstrip(" \t")
-        b = a + len(stripped)
-        while stripped and stripped[-1] in ".,;:·":
-            stripped = stripped[:-1].rstrip()
-            b = a + len(stripped)
-        while stripped and stripped[0] in ".,;:·":
-            stripped = stripped[1:].lstrip()
-            a = b - len(stripped)
-        if not stripped or "over" not in stripped:
-            continue
-        out.append(s[cursor:a])
-        out.append("{{EQ:" + _convert_unicode_scripts_to_hwp(stripped) + "}}")
-        cursor = b
-    out.append(s[cursor:])
-    return "".join(out)
-
-
-def normalize_physics_equation_markers(text):
-    """Promote inline physics formulas to native Hancom equation placeholders.
-
-    The shared chemistry HWPX generator already converts explicit
-    {{EQ:...}} markers and standalone formula lines. Physics result prose often
-    contains inline equations such as `I_{pivot} = mgdT^{2}/(4π^{2})`, so we
-    wrap only the formula span and leave the surrounding Korean prose intact.
-    """
-    s = str(text or "")
+    s = str(segment or "")
+    # 파손/비정형 마커 잔재("{{EQ:" 미폐쇄 등)가 섞인 구간은 건드리지 않는다(방어).
     if "{{EQ" in s:
         return s
-    s = normalize_plain_physics_notation(s)
+    # 라벨 평탄화(_max→max)는 승격 '뒤' 마커 밖 산문에만 — 먼저 평탄화하면
+    # ω_max 가 'ωmax' 로 붙은 채 수식이 되어 아래첨자 의도를 잃는다.
+    s = _subscript_digit_notation(s)
     # 모델이 평문에 흘린 한컴 스크립트 조각({1} over {2} …)을 먼저 구조한다.
-    # 구조됐으면 이 단락의 마커 처리는 끝(마커 내부 재가공 방지).
+    # 구조됐으면 이 구간의 마커 처리는 끝(마커 내부 재가공 방지).
     s = rescue_inline_hwp_script(s)
     if "{{EQ" in s:
-        return s
+        return _flatten_labels_outside_markers(s)
 
     # URL 안의 "watch?v=Q10..." 같은 쿼리스트링이 수식으로 오인돼 잘리는 사고 방지.
     url_spans = [m.span() for m in re.finditer(r"https?://\S+|www\.\S+", s)]
@@ -775,7 +751,40 @@ def normalize_physics_equation_markers(text):
             return raw
         return f"{leading}{{{{EQ-LATEX:{latex}}}}}{trailing}"
 
-    return INLINE_FORMULA_RE.sub(repl, s)
+    return _flatten_labels_outside_markers(INLINE_FORMULA_RE.sub(repl, s))
+
+
+def normalize_physics_equation_markers(text):
+    """Promote inline physics formulas to native Hancom equation placeholders.
+
+    The shared chemistry HWPX generator already converts explicit
+    {{EQ:...}} markers and standalone formula lines. Physics result prose often
+    contains inline equations such as `I_{pivot} = mgdT^{2}/(4π^{2})`, so we
+    wrap only the formula span and leave the surrounding Korean prose intact.
+
+    정상 마커가 이미 있는 단락도 통째로 건너뛰지 않는다 — 마커 구간은
+    pre.find_equation_spans 로 보호하고, 그 사이 평문 구간에 남은 raw 스크립트
+    조각/인라인 수식만 따로 승격한다(마커와 조각 혼재 단락 잔존 방지).
+    """
+    s = str(text or "")
+    if "{{EQ" not in s:
+        return _promote_plain_physics_segment(s)
+
+    spans = pre.find_equation_spans(s)
+    if not spans:
+        # "{{EQ"는 있으나 정상 마커 형태가 아님(파손 마커 등) — 안전하게 그대로 둔다.
+        return s
+
+    out = []
+    pos = 0
+    for start, end, _kind, _body in spans:
+        if start > pos:
+            out.append(_promote_plain_physics_segment(s[pos:start]))
+        out.append(s[start:end])
+        pos = end
+    if pos < len(s):
+        out.append(_promote_plain_physics_segment(s[pos:]))
+    return "".join(out)
 
 
 def add_para_to(doc, target, text, *, base_size=pre.SIZE_BODY, bold=False,

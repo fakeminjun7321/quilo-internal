@@ -23,6 +23,8 @@ v5 brings the hwpx output to feature-parity with docx-gen.js:
 import sys
 import json
 import re
+import base64
+import struct
 from copy import deepcopy
 from lxml import etree
 
@@ -2042,6 +2044,156 @@ def build_procedure(doc, procedure):
 # ── Footer with auto page number ───────────────────────────────────────────
 
 
+# ── AI 생성 개념도/삽화 임베드 ─────────────────────────────────────────────
+# chem-result/phys-result 의 검증된 add_picture 패턴을 공통 모듈(chem-pre)에 이식.
+# 같은 모듈이라 helper(make_para_pr, add_para, NS_HP, NS_HC 등)를 prefix 없이 쓴다.
+MAX_FIGURE_WIDTH = 33000
+MAX_FIGURE_HEIGHT = 23000
+PX_TO_HWPUNIT = 75
+_PIC_SEQ = 0
+
+
+def _decode_base64(value):
+    if not value:
+        return b""
+    try:
+        return base64.b64decode(value)
+    except Exception:
+        return b""
+
+
+def _image_size(data):
+    try:
+        if data.startswith(b"\x89PNG\r\n\x1a\n") and len(data) >= 24:
+            return struct.unpack(">II", data[16:24])
+        if data.startswith(b"\xff\xd8"):
+            i = 2
+            while i + 9 < len(data):
+                while i < len(data) and data[i] == 0xFF:
+                    i += 1
+                marker = data[i]
+                i += 1
+                if marker in (0xD8, 0xD9):
+                    continue
+                if i + 2 > len(data):
+                    break
+                size = struct.unpack(">H", data[i:i + 2])[0]
+                if marker in range(0xC0, 0xC4) and i + 7 < len(data):
+                    h, w = struct.unpack(">HH", data[i + 3:i + 7])
+                    return w, h
+                i += size
+    except Exception:
+        pass
+    return 1024, 1024
+
+
+def _fit_size(width_px, height_px, max_width, max_height):
+    width = max(int(width_px * PX_TO_HWPUNIT), 1)
+    height = max(int(height_px * PX_TO_HWPUNIT), 1)
+    scale = min(max_width / width, max_height / height, 1)
+    return max(int(width * scale), 1), max(int(height * scale), 1), width, height
+
+
+def add_picture(doc, data, *, fmt="png", caption="",
+                max_width=MAX_FIGURE_WIDTH, max_height=MAX_FIGURE_HEIGHT):
+    if not data:
+        return False
+    global _PIC_SEQ
+    _PIC_SEQ += 1
+    _pic_id = 1900000000 + _PIC_SEQ
+    width_px, height_px = _image_size(data)
+    width, height, org_width, org_height = _fit_size(
+        width_px, height_px, max_width, max_height,
+    )
+    item_id = doc.add_image(data, fmt)
+
+    para_pr = make_para_pr(
+        doc, align="CENTER", line_spacing=LINE_SPACING_PERCENT, space_after=180,
+    )
+    para = doc.add_paragraph(
+        "", para_pr_id_ref=para_pr, inherit_style=False, include_run=False,
+    )
+    pic = para.add_shape(
+        "pic",
+        attributes={
+            "id": str(_pic_id),
+            "zOrder": "1",
+            "numberingType": "PICTURE",
+            "textWrap": "TOP_AND_BOTTOM",
+            "textFlow": "BOTH_SIDES",
+            "lock": "0",
+            "dropcapstyle": "None",
+            "href": "",
+            "groupLevel": "0",
+            "instid": str(_pic_id + 100000000),
+            "reverse": "0",
+        },
+    ).element
+
+    etree.SubElement(pic, f"{NS_HP}offset", x="0", y="0")
+    etree.SubElement(pic, f"{NS_HP}orgSz", width=str(org_width), height=str(org_height))
+    etree.SubElement(pic, f"{NS_HP}curSz", width=str(width), height=str(height))
+    etree.SubElement(pic, f"{NS_HP}flip", horizontal="0", vertical="0")
+    etree.SubElement(
+        pic, f"{NS_HP}rotationInfo",
+        angle="0", centerX=str(width // 2), centerY=str(height // 2),
+        rotateimage="1",
+    )
+    rendering = etree.SubElement(pic, f"{NS_HP}renderingInfo")
+    etree.SubElement(rendering, f"{NS_HC}transMatrix", e1="1", e2="0", e3="0", e4="0", e5="1", e6="0")
+    etree.SubElement(rendering, f"{NS_HC}scaMatrix", e1="1", e2="0", e3="0", e4="0", e5="1", e6="0")
+    etree.SubElement(rendering, f"{NS_HC}rotMatrix", e1="1", e2="0", e3="0", e4="0", e5="1", e6="0")
+    etree.SubElement(
+        pic, f"{NS_HC}img",
+        binaryItemIDRef=item_id, bright="0", contrast="0",
+        effect="REAL_PIC", alpha="0",
+    )
+    rect = etree.SubElement(pic, f"{NS_HP}imgRect")
+    for name, x, y in (
+        ("pt0", 0, 0),
+        ("pt1", org_width, 0),
+        ("pt2", org_width, org_height),
+        ("pt3", 0, org_height),
+    ):
+        etree.SubElement(rect, f"{NS_HC}{name}", x=str(x), y=str(y))
+    etree.SubElement(pic, f"{NS_HP}imgClip", left="0", right=str(org_width), top="0", bottom=str(org_height))
+    etree.SubElement(pic, f"{NS_HP}inMargin", left="0", right="0", top="0", bottom="0")
+    etree.SubElement(pic, f"{NS_HP}imgDim", dimwidth=str(org_width), dimheight=str(org_height))
+    etree.SubElement(pic, f"{NS_HP}effects")
+    etree.SubElement(
+        pic, f"{NS_HP}sz",
+        width=str(width), widthRelTo="ABSOLUTE",
+        height=str(height), heightRelTo="ABSOLUTE", protect="0",
+    )
+    etree.SubElement(
+        pic, f"{NS_HP}pos",
+        treatAsChar="1", affectLSpacing="0", flowWithText="1",
+        allowOverlap="0", holdAnchorAndSO="0", vertRelTo="PARA",
+        horzRelTo="COLUMN", vertAlign="TOP", horzAlign="CENTER",
+        vertOffset="0", horzOffset="0",
+    )
+    etree.SubElement(pic, f"{NS_HP}outMargin", left="0", right="0", top="0", bottom="0")
+    etree.SubElement(pic, f"{NS_HP}shapeComment").text = caption or "image"
+
+    if caption:
+        add_para(doc, caption, base_size=SIZE_CAPTION, align="CENTER", space_after=SPACE_BODY)
+    return True
+
+
+def render_generated_figures(doc, content):
+    """content["__figures"](Node 가 base64 로 넘긴 AI 개념도)를 본문에 삽입."""
+    figs = content.get("__figures")
+    if not isinstance(figs, list):
+        return
+    for fig in figs:
+        if not isinstance(fig, dict):
+            continue
+        data = _decode_base64(fig.get("data_base64"))
+        if not data:
+            continue
+        add_picture(doc, data, fmt="png", caption=fig.get("caption") or "")
+
+
 # ── Top-level ─────────────────────────────────────────────────────────────
 
 
@@ -2058,6 +2210,7 @@ def generate_hwpx(content):
         build_minimal_header(doc, content)
         build_minimal_purpose(doc, content.get("purpose", []))
         build_minimal_theory(doc, content.get("theory", []))
+        render_generated_figures(doc, content)
         build_minimal_apparatus_and_chemicals(doc, content)
         build_minimal_procedure(doc, content.get("procedure", []))
         build_minimal_references(doc, content.get("references", []))
@@ -2065,6 +2218,7 @@ def generate_hwpx(content):
         build_title_page(doc, content)
         build_purpose(doc, content.get("purpose", []))
         build_theory(doc, content.get("theory", []), content.get("figures_needed", []))
+        render_generated_figures(doc, content)
         build_apparatus_and_chemicals(doc, content)
         build_procedure(doc, content.get("procedure", []))
         build_references(doc, content)

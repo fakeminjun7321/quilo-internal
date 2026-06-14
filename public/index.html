@@ -38,6 +38,7 @@
               <a href="#" data-report="chem-pre">화학 사전보고서</a>
               <a href="#" data-report="chem-result">화학 결과보고서</a>
               <a href="#" data-report="phys-result">물리 결과보고서</a>
+              <a href="#" data-report="free">자유 보고서</a>
             </div>
           </div>
           <div class="nav-dd" data-dd>
@@ -174,6 +175,12 @@
           <span class="rt-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1.6"/><ellipse cx="12" cy="12" rx="10" ry="4.4"/><ellipse cx="12" cy="12" rx="10" ry="4.4" transform="rotate(60 12 12)"/><ellipse cx="12" cy="12" rx="10" ry="4.4" transform="rotate(120 12 12)"/></svg></span>
           <span class="rt-title">물리 결과보고서</span>
           <span class="rt-tag">.cap·엑셀 → 결과보고서</span>
+        </label>
+        <label>
+          <input type="radio" name="reportType" value="free" />
+          <span class="rt-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h11l5 5v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><path d="M14 4v5h5"/><path d="M8 13h8M8 17h5"/></svg></span>
+          <span class="rt-title">자유 보고서</span>
+          <span class="rt-tag">지시·자료 → 자유 형식 보고서</span>
         </label>
         <label id="rtPhysInquiry" hidden>
           <input type="radio" name="reportType" value="phys-inquiry" />
@@ -830,6 +837,184 @@
       </div>
     </form>
 
+    <!-- ── 자유 보고서 폼 ──────────────────────────────────────────────── -->
+    <form id="freeForm" class="report-form" data-report-form="free" hidden>
+      <div class="notice">
+        <strong>어떤 보고서든 자유롭게.</strong> 어떻게 쓸지 알려주고(작성 지시), 있으면 평가 기준과 자료 파일을 올리면
+        AI가 표·수식·그래프·사진을 갖춘 보고서 초안(.docx/.hwpx)을 만들어 줍니다.
+        <strong>그대로 제출하지 말고 본인 글로 다듬어 쓰세요.</strong>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head">
+          <span class="form-section-title">무엇을, 어떻게</span>
+        </div>
+        <div class="field">
+          <label><span class="field-label">작성 지시 <span class="req">*</span></span>
+            <textarea id="frInstructions" name="instructions" rows="5" maxlength="8000" required
+              placeholder="예: '기후 변화가 해양 생태계에 미치는 영향'에 대한 탐구 보고서를 써줘. 서론-본론(원인/현황/사례)-결론 구성으로, 표 1개와 그래프 1개를 넣고, A4 4쪽 분량, 고등학생 수준의 격식체로."></textarea>
+          </label>
+          <small>어떤 보고서를, 어떤 구성·분량·말투로 쓸지 자세히 적을수록 좋습니다.</small>
+        </div>
+        <div class="field">
+          <label><span class="field-label">평가 기준 / 채점 루브릭 (선택)</span>
+            <textarea id="frGrading" name="gradingCriteria" rows="3" maxlength="8000"
+              placeholder="예: 주제 적합성 30점 / 자료(표·그래프) 활용 30점 / 논리적 구성 20점 / 결론의 타당성 20점. — 있으면 각 항목을 빠짐없이 충족하도록 씁니다."></textarea>
+          </label>
+          <small>채점표가 있으면 붙여넣으세요. 각 항목이 보고서에 반영됩니다.</small>
+        </div>
+        <div class="field">
+          <label><span class="field-label">보고서 제목 (선택)</span>
+            <input id="frTitle" name="title" type="text" maxlength="200" placeholder="비워 두면 AI가 제목을 정합니다." />
+          </label>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head">
+          <span class="form-section-title">자료 업로드 (선택)</span>
+        </div>
+        <div class="field-grid">
+          <div class="field">
+            <span class="field-label">자료 파일 (PDF·엑셀·CSV·텍스트, 여러 개)</span>
+            <div class="dropzone">
+              <input id="frFiles" name="files" type="file" accept=".pdf,.xlsx,.xls,.csv,.txt,.md,.tsv,.png,.jpg,.jpeg,.gif,.webp,application/pdf,image/*" multiple aria-label="자료 파일" />
+              <span class="dropzone-icon" aria-hidden="true">📄</span>
+              <span class="dropzone-title">자료를 끌어다 놓거나 클릭</span>
+              <span class="dropzone-sub">PDF·엑셀/CSV·텍스트 — 보고서 내용의 근거</span>
+              <span class="dropzone-file" data-dz-file></span>
+            </div>
+          </div>
+          <div class="field">
+            <span class="field-label">본문에 넣을 사진 (이미지, 여러 장)</span>
+            <div class="dropzone">
+              <input id="frPhotos" name="photos" type="file" accept=".png,.jpg,.jpeg,.gif,.webp,image/*" multiple aria-label="본문 삽입 사진" />
+              <span class="dropzone-icon" aria-hidden="true">🖼️</span>
+              <span class="dropzone-title">사진을 끌어다 놓거나 클릭</span>
+              <span class="dropzone-sub">보고서 본문에 삽입할 사진·그림</span>
+              <span class="dropzone-file" data-dz-file></span>
+            </div>
+          </div>
+        </div>
+        <div class="field">
+          <label><span class="field-label">참고 링크 (선택)</span>
+            <textarea id="frRefLinks" name="refLinks" rows="2" maxlength="4000" placeholder="참고한 자료의 링크를 한 줄에 하나씩. 참고문헌에 정리됩니다."></textarea>
+          </label>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head">
+          <span class="form-section-title">AI 참고 메모</span>
+        </div>
+        <div class="field user-notes-field">
+          <label>
+            <span class="field-label">AI 참고 메모 / 내 생각 (선택)</span>
+            <textarea id="frUserNotes" name="userNotes" rows="3" maxlength="12000" placeholder="강조하고 싶은 관점·꼭 다룰 내용 등을 적으세요. 보조로만 반영됩니다."></textarea>
+          </label>
+          <button type="button" class="qc-memo-btn" style="display:none;align-self:flex-start;margin:6px 0 2px;font-size:12.5px;color:#243ba2;background:#eef1fc;border:1px solid #dfe4fb;border-radius:8px;padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openMemo('frUserNotes')">✨ AI로 메모 작성 도움받기</button>
+          <small>.md/.txt 파일로 길게 작성한 메모도 함께 첨부할 수 있습니다.</small>
+          <input id="frUserNotesFile" name="userNotesFile" type="file" accept=".md,.txt,text/markdown,text/plain" aria-label="참고 메모 파일" />
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head">
+          <span class="form-section-title">내 글 스타일 (선택)</span>
+        </div>
+        <div class="notice" style="margin-bottom:12px">
+          내가 예전에 쓴 글을 올리면 보고서를 <strong>그 글의 문체</strong>로 써 줍니다.
+          <strong>내용은 가져오지 않고 스타일만</strong> 흉내 냅니다.
+        </div>
+        <div class="field-grid">
+          <div class="field">
+            <span class="field-label">내 글 스타일 참고 파일 (PDF·이미지·텍스트·한글 .hwpx, 여러 개)</span>
+            <div class="dropzone">
+              <input id="frStyleRefs" name="styleRefs" type="file" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.txt,.md,.csv,.hwpx,application/pdf,image/*" multiple aria-label="내 글 스타일 참고 파일" />
+              <span class="dropzone-icon" aria-hidden="true">✍️</span>
+              <span class="dropzone-title">내 글 샘플을 끌어다 놓거나 클릭</span>
+              <span class="dropzone-sub">문체 흉내 · 한글(.hwpx)이면 글꼴까지 · 내용 제외</span>
+              <span class="dropzone-file" data-dz-file></span>
+            </div>
+          </div>
+          <div class="field">
+            <label><span class="field-label">문체 메모 (선택, 한 줄)</span>
+              <textarea id="frStyleNote" name="styleNote" rows="3" maxlength="1500" placeholder="예: 두괄식으로 결론을 먼저, 차분한 문어체, 소제목은 번호로"></textarea>
+            </label>
+          <button type="button" class="qc-style-btn" style="display:none;align-self:flex-start;margin:6px 0 2px;font-size:12.5px;color:#243ba2;background:#eef1fc;border:1px solid #dfe4fb;border-radius:8px;padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openStyle('frStyleNote')">✨ AI로 내 문체 정리받기</button>
+            <small>샘플 없이 원하는 느낌만 글로 적어도 됩니다.</small>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head">
+          <span class="form-section-title">보고서 정보</span>
+        </div>
+        <div class="field-grid">
+          <div class="field">
+            <label><span class="field-label">날짜</span>
+              <input id="frDate" name="date" type="date" />
+            </label>
+          </div>
+          <div class="field">
+            <span class="field-label">표지에 출력될 이름 · 학번</span>
+            <div id="frWhoPreview" style="padding:9px 12px;border:1px solid #e2e6f3;border-radius:8px;background:#f7f9ff;color:#243b5e;font-size:13.5px;min-height:38px;display:flex;align-items:center">개인 설정에 저장된 값으로 출력됩니다.</div>
+            <small>이름·학번은 <a href="#" data-tab="settings">개인 설정</a>에 저장한 값으로 자동 출력됩니다.</small>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head">
+          <span class="form-section-title">출력 설정</span>
+        </div>
+        <div class="seg-group" style="margin-bottom: 12px">
+          <span class="field-label">AI 모델 (보고서 1건당 크레딧)</span>
+          <div class="segmented">
+            <label class="fable-model" hidden><input type="radio" name="frModel" value="claude-fable-5" /> Fable 5 · 9크레딧 (관리자)</label>
+            <label><input type="radio" name="frModel" value="claude-opus-4-8" checked /> Opus 4.8 · 4크레딧</label>
+            <label><input type="radio" name="frModel" value="claude-sonnet-4-6" /> Sonnet 4.6 · 2크레딧</label>
+            <label><input type="radio" name="frModel" value="gpt-5.5" /> GPT-5.5 · 4크레딧</label>
+            <label><input type="radio" name="frModel" value="gpt-5.4" /> GPT-5.4 · 1크레딧</label>
+            <label><input type="radio" name="frModel" value="gpt-5.4-mini" /> GPT-5.4 mini · 무료</label>
+          </div>
+        </div>
+        <div class="field-grid">
+          <div class="seg-group">
+            <span class="field-label">출력 형식</span>
+            <div class="segmented">
+              <label><input type="radio" name="frFormat" value="docx" checked /> .docx</label>
+              <label><input type="radio" name="frFormat" value="hwpx" /> .hwpx</label>
+            </div>
+          </div>
+          <div class="field">
+            <label><span class="field-label">글꼴</span>
+              <select id="frFontFace" name="fontFace">
+                <option value="malgun-gothic" selected>맑은 고딕</option>
+                <option value="nanum-gothic">나눔고딕</option>
+                <option value="nanum-myeongjo">나눔명조</option>
+                <option value="hamchorom-batang" data-hwpx-only="true" hidden disabled>함초롬바탕</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="policy-check">
+        <label>
+          <input type="checkbox" required />
+          본인이 이용 권한을 가진 파일만 업로드하며, 학교·교사·평가기준의 AI 사용 규정을 확인했고,
+          생성물은 학습 보조 초안으로만 사용합니다. 그대로 제출하지 않습니다.
+        </label>
+      </div>
+
+      <div class="form-actions">
+        <span class="hint">생성에는 보통 1~4분 걸립니다. 실제 비용은 완료 후 표시됩니다.</span>
+        <button type="submit" id="frBtn">자유 보고서 생성</button>
+      </div>
+    </form>
+
     <form id="form" class="report-form" data-report-form="chem-pre">
       <div class="form-section">
         <div class="form-section-head">
@@ -915,6 +1100,21 @@
           <button type="button" class="qc-style-btn" style="display:none;align-self:flex-start;margin:6px 0 2px;font-size:12.5px;color:#243ba2;background:#eef1fc;border:1px solid #dfe4fb;border-radius:8px;padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openStyle('cpStyleNote')">✨ AI로 내 문체 정리받기</button>
             <small>샘플 없이 원하는 느낌만 글로 적어도 됩니다.</small>
           </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head">
+          <span class="form-section-title">AI 이미지 생성 (선택)</span>
+        </div>
+        <div class="field">
+          <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer">
+            <input id="cpAllowImageGen" name="allowImageGen" type="checkbox" style="width:auto;margin:3px 0 0" />
+            <span>
+              <strong>이론 개념도·삽화를 AI로 생성해 삽입</strong>
+              <small style="display:block;color:#64748b;margin-top:2px">이해를 돕는 <strong>개념도·모식도</strong>만 생성합니다 (최대 2장, 장당 +1크레딧). 실험 사진·측정 데이터는 생성하지 않습니다.</small>
+            </span>
+          </label>
         </div>
       </div>
 
@@ -1322,7 +1522,7 @@
           document.getElementById("settingsUserName").textContent = d.user;
           setStudentIdUi(d.studentId || getLocalStudentId());
           applySavedStyleNote(d.styleNote);
-          ["piWhoPreview", "miWhoPreview"].forEach((pid) => {
+          ["piWhoPreview", "miWhoPreview", "frWhoPreview"].forEach((pid) => {
             const whoEl = document.getElementById(pid);
             if (!whoEl) return;
             const sid = (d.studentId || getLocalStudentId() || "").trim();
@@ -1335,8 +1535,10 @@
             : "일반 사용자";
           if (d.isAdmin) {
             document.getElementById("adminLink").style.display = "inline";
-            // Fable 5(관리자 전용 모델) 선택지 노출 — revealFable
-            document.querySelectorAll("label.fable-model").forEach((l) => { l.hidden = false; });
+            // Fable 5(관리자 전용 모델) 선택지 노출 — revealFable. 단 일시 차단 중이면 숨김 유지.
+            if (!d.fableDisabled) {
+              document.querySelectorAll("label.fable-model").forEach((l) => { l.hidden = false; });
+            }
           }
           // 관리자는 서버에서 제한 면제 → 카드도 전부 표시
           applyReportTypeAccess(d.isAdmin ? [] : d.blockedReportTypes);
@@ -2017,6 +2219,8 @@
       const piBtn = document.getElementById("piBtn");
       const miForm = document.getElementById("mathInquiryForm");
       const miBtn = document.getElementById("miBtn");
+      const frForm = document.getElementById("freeForm");
+      const frBtn = document.getElementById("frBtn");
 
       document
         .querySelectorAll('#form input[name="format"]')
@@ -2038,6 +2242,10 @@
         .querySelectorAll('#mathInquiryForm input[name="miFormat"]')
         .forEach((el) => el.addEventListener("change", updateMathInquiryFontOptions));
       updateMathInquiryFontOptions();
+      document
+        .querySelectorAll('#freeForm input[name="frFormat"]')
+        .forEach((el) => el.addEventListener("change", updateFreeFontOptions));
+      updateFreeFontOptions();
 
       // 파일 입력 → 드롭존: 파일명 표시 + 드래그 상태.
       // 네이티브 <input type=file>가 영역을 덮고 있어 클릭/드롭을 그대로 처리한다.
@@ -2569,6 +2777,39 @@
         updateHwpxOnlyFontOptions("miFontFace", getMathInquiryFormat());
       }
 
+      function getFreeFormat() {
+        const formatEl = document.querySelector(
+          '#freeForm input[name="frFormat"]:checked, #freeForm input[name="frFormat"][type="hidden"]'
+        );
+        return formatEl ? formatEl.value : "docx";
+      }
+
+      function updateFreeFontOptions() {
+        updateHwpxOnlyFontOptions("frFontFace", getFreeFormat());
+      }
+
+      // 자유 보고서 비용 추정 — 작성지시/평가기준 텍스트 + 자료(PDF/엑셀/텍스트) + 사진.
+      function estimateFreeReportCost({ docBytes, photoBytes, photoCount, textChars, modelId }) {
+        const p = MODEL_PRICING[modelId] || MODEL_PRICING["claude-opus-4-8"];
+        const sysCostLo = (6000 / 1e6) * p.cacheRead;
+        const sysCostHi = (6000 / 1e6) * p.cacheWrite;
+        const docKB = (docBytes || 0) / 1024;
+        const docTokensLo = docKB * 30;
+        const docTokensHi = docKB * 100;
+        const docCostLo = (docTokensLo / 1e6) * p.input;
+        const docCostHi = (docTokensHi / 1e6) * p.input;
+        const promptTokens = ((textChars || 0) / 3); // 지시·기준·메모 텍스트
+        const promptCost = (promptTokens / 1e6) * p.input;
+        const photoTokens = (photoCount || 0) * 1500;
+        const photoCost = (photoTokens / 1e6) * p.input;
+        const outputCostLo = (6000 / 1e6) * p.output;
+        const outputCostHi = (12000 / 1e6) * p.output;
+        const lo = sysCostLo + docCostLo + promptCost + photoCost + outputCostLo;
+        const hi = sysCostHi + docCostHi + promptCost + photoCost + outputCostHi;
+        const totalKB = Math.round(((docBytes || 0) + (photoBytes || 0)) / 1024);
+        return { lo, hi, totalKB };
+      }
+
       function costRangeText(est, krwLo, krwHi) {
         return `$${est.lo.toFixed(2)} ~ $${est.hi.toFixed(2)} (약 ₩${krwLo.toLocaleString()} ~ ₩${krwHi.toLocaleString()})`;
       }
@@ -2582,6 +2823,7 @@
         "phys-result": [6000, 10000],
         "phys-inquiry": [6000, 11000],
         "math-inquiry": [6000, 11000],
+        "free": [6000, 12000],
       };
       function estimateGenSeconds(type, modelId, extraInputTokens = 0) {
         const isGpt = /^gpt/i.test(modelId || "");
@@ -2724,7 +2966,9 @@
         if (!validateUserNotesFile(userNotesFile)) return;
 
         // 예상 비용 확인
+        const allowImageGen = document.getElementById("cpAllowImageGen")?.checked || false;
         const est = estimateCost(file.size, model);
+        if (allowImageGen) est.hi += 0.08; // AI 개념도 최대 2장 × ~$0.04
         const krwLo = Math.round(est.lo * 1400);
         const krwHi = Math.round(est.hi * 1400);
         const ok = await showConfirmDialog({
@@ -2733,6 +2977,7 @@
             ["모델", modelLabel],
             ["글꼴", getFontLabel(fontFace)],
             ["참고 메모", userNotesSummary(userNotes, userNotesFile)],
+            ["AI 이미지", allowImageGen ? "개념도 최대 2장 (장당 +1크레딧)" : "사용 안 함"],
             ["PDF", `${est.sizeKB}KB`],
             ["예상 비용", costRangeText(est, krwLo, krwHi)],
             ["예상 시간", formatDuration(estimateGenSeconds("chem-pre", model))],
@@ -2758,6 +3003,7 @@
         fd.append("date", `${y}/ ${m} / ${d}`);
         fd.append("model", model);
         fd.append("format", formatValue);
+        fd.append("allowImageGen", allowImageGen ? "true" : "false");
         // 스타일 모드 (default | minimal). docx/hwpx 모두 지원한다.
         const styleEl = document.querySelector('#form input[name="style"]:checked');
         const styleValue = styleEl ? styleEl.value : "default";
@@ -3185,6 +3431,109 @@
         });
       }
 
+      // ── 자유 보고서 submit ───────────────────────────────────────────────
+      if (frForm) {
+        frForm.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          if (currentJobId) return;
+
+          const instructions = document.getElementById("frInstructions").value.trim();
+          if (!instructions) {
+            alert("어떤 보고서를 어떻게 쓸지 '작성 지시'를 입력하세요.");
+            document.getElementById("frInstructions").focus();
+            return;
+          }
+          const grading = document.getElementById("frGrading").value.trim();
+          const title = document.getElementById("frTitle").value.trim();
+          const refLinks = document.getElementById("frRefLinks").value.trim();
+          const files = Array.from(document.getElementById("frFiles").files);
+          const photos = Array.from(document.getElementById("frPhotos").files);
+          const styleRefs = Array.from(document.getElementById("frStyleRefs").files);
+          const styleNote = document.getElementById("frStyleNote").value.trim();
+
+          const frModel =
+            document.querySelector('input[name="frModel"]:checked')?.value ||
+            "claude-opus-4-8";
+          const modelLabel = getModelLabel(frModel);
+          const frFormat = getFreeFormat();
+          updateFreeFontOptions();
+          const frFontFace = document.getElementById("frFontFace").value;
+          const frUserNotes = getUserNotesValue("frUserNotes");
+          const frUserNotesFile = getUserNotesFile("frUserNotesFile");
+          if (!validateUserNotesFile(frUserNotesFile)) return;
+
+          const photoBytes = photos.reduce((s, p) => s + p.size, 0);
+          const docBytes =
+            files.reduce((s, f) => s + f.size, 0) + (frUserNotesFile?.size || 0);
+          const est = estimateFreeReportCost({
+            docBytes,
+            photoBytes,
+            photoCount: photos.length,
+            textChars: instructions.length + grading.length + frUserNotes.length + refLinks.length,
+            modelId: frModel,
+          });
+          const krwLo = Math.round(est.lo * 1400);
+          const krwHi = Math.round(est.hi * 1400);
+          const ok = await showConfirmDialog({
+            title: "자유 보고서 생성",
+            rows: [
+              ["모델", modelLabel],
+              ["형식", frFormat === "hwpx" ? ".hwpx (한글)" : ".docx (MS Word)"],
+              ["글꼴", getFontLabel(frFontFace)],
+              ["참고 메모", userNotesSummary(frUserNotes, frUserNotesFile)],
+              ["첨부", `자료 ${files.length}개, 사진 ${photos.length}장`],
+              ["내 문체", styleRefs.length || styleNote ? `반영${styleRefs.length ? ` (샘플 ${styleRefs.length}개)` : ""}` : "기본"],
+              ["총 크기", `${est.totalKB}KB`],
+              ["예상 비용", costRangeText(est, krwLo, krwHi)],
+              ["예상 시간", formatDuration(estimateGenSeconds("free", frModel, photos.length * 1500))],
+            ],
+            note: `작성 지시·평가 기준에 맞춰 자유 형식으로 작성합니다. 실제 비용은 완료 후 표시됩니다. ${USE_POLICY_NOTE}`,
+          });
+          if (!ok) return;
+
+          lockForm(frForm);
+          frBtn.textContent = "생성 중...";
+          progressArea.style.display = "block";
+          progressEl.textContent = "";
+          resultArea.innerHTML = "";
+          statusTitle.textContent = "생성 중...";
+
+          const fd = new FormData();
+          fd.append("type", "free");
+          fd.append("instructions", instructions);
+          if (grading) fd.append("gradingCriteria", grading);
+          if (title) fd.append("title", title);
+          if (refLinks) fd.append("refLinks", refLinks);
+          files.forEach((f) => fd.append("files", f));
+          photos.forEach((p) => fd.append("photos", p));
+          styleRefs.forEach((f) => fd.append("styleRefs", f));
+          if (styleNote) fd.append("styleNote", styleNote);
+          const frDateStr = document.getElementById("frDate").value;
+          if (frDateStr) {
+            const [y, m, d] = frDateStr.split("-");
+            fd.append("date", `${y}/ ${m} / ${d}`);
+          }
+          if (currentStudentId) fd.append("studentId", currentStudentId);
+          fd.append("model", frModel);
+          fd.append("format", frFormat);
+          fd.append("fontFace", frFontFace);
+          fd.append("userNotes", frUserNotes);
+          if (frUserNotesFile) fd.append("userNotesFile", frUserNotesFile);
+          appendPolicyAcknowledgements(fd);
+
+          try {
+            const res = await fetch("/api/generate", { method: "POST", body: fd });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "요청 실패");
+            currentJobId = data.jobId;
+            streamJob(data.jobId);
+          } catch (err) {
+            appendLine("오류: " + err.message);
+            resetForm();
+          }
+        });
+      }
+
       function appendLine(text) {
         progressEl.textContent += text + "\n";
         progressEl.scrollTop = progressEl.scrollHeight;
@@ -3197,6 +3546,7 @@
         if (prBtn) prBtn.textContent = "물리 결과보고서 생성";
         if (piBtn) piBtn.textContent = "물리 수행평가 초안 생성";
         if (miBtn) miBtn.textContent = "수학 수행평가 초안 생성";
+        if (frBtn) frBtn.textContent = "자유 보고서 생성";
         stopBtn.textContent = "중지";
         const genSpinner = document.getElementById("genSpinner");
         if (genSpinner) genSpinner.style.display = "none";

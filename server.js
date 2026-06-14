@@ -303,6 +303,67 @@ const PIPELINES = {
     generateDocx: require("./lib/pipelines/math-inquiry/docx-gen").generateDocx,
     generateHwpx: require("./lib/pipelines/math-inquiry/hwpx-gen").generateHwpx,
   },
+  // 자유 보고서 — 임의 주제. 작성 지시 + (선택) 평가 기준 + 자료 파일/사진을 주면
+  // 기존 보고서처럼 표·수식·그래프·사진을 갖춘 .docx/.hwpx 초안을 만든다.
+  // 공개 + 크레딧 차감(일반 보고서와 동일). Claude/GPT 모두 허용.
+  "free": {
+    label: "자유 보고서",
+    filenamePrefix: "보고서",
+    filenameSourceField: "files",
+    creditField: "result",
+    prepareInput(filesByField, body) {
+      const instructions = String(body.instructions || "").trim();
+      if (!instructions) {
+        throw new Error("어떤 보고서를 어떻게 쓸지 '작성 지시'를 입력하세요.");
+      }
+      const files = filesByField.files || [];
+      const photos = filesByField.photos || [];
+      const SOURCE_EXT = ["pdf", "xlsx", "xls", "csv", "txt", "md", "tsv", "png", "jpg", "jpeg", "gif", "webp"];
+      for (const f of files) {
+        const ext = (f.originalname.split(".").pop() || "").toLowerCase();
+        if (!SOURCE_EXT.includes(ext)) {
+          throw new Error(
+            `자료 파일은 PDF, 엑셀/CSV(.xlsx/.xls/.csv), 텍스트(.txt/.md), 이미지(.png/.jpg)만 가능합니다. (${f.originalname})`,
+          );
+        }
+      }
+      for (const f of photos) {
+        const ext = (f.originalname.split(".").pop() || "").toLowerCase();
+        if (!["png", "jpg", "jpeg", "gif", "webp"].includes(ext)) {
+          throw new Error(`사진은 이미지 파일(.png/.jpg/.gif/.webp)만 가능합니다. (${f.originalname})`);
+        }
+      }
+      const styleInput = styleRef.readStyleInput(filesByField, body);
+      styleRef.validateStyleRefs(styleInput.styleRefs);
+      const mapFiles = (arr) =>
+        arr.map((f) => ({ buffer: f.buffer, name: f.originalname, mimetype: f.mimetype }));
+      return {
+        ...styleInput,
+        title: String(body.title || "").trim().slice(0, 200),
+        instructions: instructions.slice(0, 8000),
+        gradingCriteria: String(body.gradingCriteria || "").trim().slice(0, 8000),
+        files: mapFiles(files),
+        photos: mapFiles(photos),
+        refLinks: String(body.refLinks || "").trim().slice(0, 4000),
+        studentId: String(body.studentId || "").trim().slice(0, 20),
+        studentName: String(body.studentName || "").trim(),
+        fontFace: normalizeFontFace(body.fontFace),
+        userNotes: collectUserNotes(body.userNotes, filesByField),
+        style: "default",
+      };
+    },
+    buildFilename(content, ctx) {
+      const id = sanitizeForFilename(ctx.studentId || "");
+      const name = sanitizeForFilename(ctx.userName || "");
+      const title = sanitizeForFilename(content.title || "자유보고서");
+      const prefix = `${id}${name}`;
+      return prefix ? `${prefix}_${title}.docx` : `자유보고서_${title}.docx`;
+    },
+    generateContent: require("./lib/pipelines/free-report/generate")
+      .generateReportContent,
+    generateDocx: require("./lib/pipelines/free-report/docx-gen").generateDocx,
+    generateHwpx: require("./lib/pipelines/free-report/hwpx-gen").generateHwpx,
+  },
 };
 
 // 베타·무료 보고서 종류 — /api/generate 에서 테스터 한정 접근 + 크레딧 미차감.
@@ -363,6 +424,12 @@ function jobTimeoutForModel(model) {
     ? JOB_TIMEOUT_FABLE_MS
     : JOB_TIMEOUT_MS;
 }
+// Fable 5 일시 차단 — 외부 사용 이슈로 관리자 포함 전체 차단(한시적).
+// 재개하려면 환경변수 FABLE_DISABLED=0 으로 설정(또는 이 기본값을 false 로).
+const FABLE_DISABLED = process.env.FABLE_DISABLED !== "0";
+function isFableModel(model) {
+  return /^claude-fable/.test(String(model || ""));
+}
 // PDF 통번역은 페이지 수에 비례해 오래 걸릴 수 있어(다묶음 번역+레이아웃 삽입)
 // 별도의 넉넉한 타임아웃을 둔다. 비동기 job+SSE라 HTTP 요청 길이 제한과 무관.
 const PDF_TRANSLATE_TIMEOUT_MS = parseInt(
@@ -381,7 +448,7 @@ app.set("trust proxy", 1);
 // 있어 별도로 상향(8MB). 전역 파서보다 먼저 매칭돼 해당 경로만 큰 본문을 허용한다.
 app.use("/api/artifacts", express.json({ limit: "8mb" }));
 // JSON/URL-encoded body는 비번 변경 등 작은 요청만 — 1MB로 충분
-// (파일 업로드는 multer가 별도로 25MB 한도 처리)
+// (파일 업로드는 multer가 별도로 처리: MAX_UPLOAD_BYTES, 아래 참조)
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use(
@@ -472,12 +539,17 @@ app.use((req, res, next) => {
 </html>`);
 });
 
-// 단일 파일 25MB, 전체 파일 개수 50개 (물리 다중 데이터/사진/메모 파일 대비)
-// — Render 무료 512MB 메모리 보호. Claude 전송 전 이미지는 별도 request-budget으로 축소한다.
+// 단일 파일 MAX_UPLOAD_BYTES(기본 64MB), 전체 파일 개수 50개 (물리 다중 데이터/사진/메모 파일 대비)
+// — Render 메모리 보호. Claude 전송 전 이미지는 별도 request-budget으로 축소하고,
+//   큰 PDF 는 Files API 로 업로드해 Anthropic 32MB 요청 한도를 우회한다.
+// 단일 파일 업로드 상한. 큰 필기노트 PDF 도 받을 수 있게 64MB(환경변수로 조정 가능).
+// 물리 수행평가는 큰 PDF 를 Files API 로 업로드해 Anthropic 32MB 요청 한도를 우회한다.
+const MAX_UPLOAD_BYTES =
+  parseInt(process.env.MAX_UPLOAD_MB || "64", 10) * 1024 * 1024;
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 25 * 1024 * 1024,
+    fileSize: MAX_UPLOAD_BYTES,
     files: 50,
     parts: 90,
   },
@@ -882,6 +954,7 @@ app.get("/api/me", async (req, res) => {
     studentId,
     styleNote,
     blockedReportTypes,
+    fableDisabled: FABLE_DISABLED,
   });
 });
 
@@ -2435,6 +2508,10 @@ app.post(
     pipelineInput.studentId =
       normalizeStudentId(pipelineInput.studentId) || postedStudentId || savedStudentId;
     pipelineInput.allowHighlights = !!userInfo.isAdmin;
+    // AI 이미지(개념도) 생성 옵트인 — 전체 공개. 키가 있어야 실제 동작.
+    pipelineInput.allowImageGen =
+      String(req.body.allowImageGen) === "true" &&
+      !!(process.env.GPT_API_KEY || process.env.OPENAI_API_KEY);
     if (reportType === "phys-result" && !pipelineInput.studentId) {
       return res
         .status(400)
@@ -2461,20 +2538,27 @@ app.post(
       "claude-opus-4-8",
       "claude-sonnet-4-6",
     ];
-    // Fable 5 — 관리자 전용 최상위 모델(셀렉터도 관리자에게만 노출).
-    if (userInfo.isAdmin) ALLOWED_MODELS.push("claude-fable-5");
+    // Fable 5 — 관리자 전용 최상위 모델(셀렉터도 관리자에게만 노출). 단 일시 차단 중에는 제외.
+    if (userInfo.isAdmin && !FABLE_DISABLED) ALLOWED_MODELS.push("claude-fable-5");
     // GPT(OpenAI) 보고서 생성은 배선 완료된 종류에만 허용(phys-inquiry 는 추후 배선).
     const GPT_REPORT_MODELS = ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"];
-    const GPT_OK_TYPES = new Set(["chem-pre", "chem-result", "phys-result"]);
+    const GPT_OK_TYPES = new Set(["chem-pre", "chem-result", "phys-result", "free"]);
     const allowedModels = GPT_OK_TYPES.has(reportType)
       ? [...ALLOWED_MODELS, ...GPT_REPORT_MODELS]
       : ALLOWED_MODELS;
     const requestedModel = String(req.body.model || "").trim();
-    // 비관리자가 Fable 5를 요청하면 조용히 다른 모델로 바꾸지 않고 명확히 거부.
-    if (requestedModel === "claude-fable-5" && !userInfo.isAdmin) {
-      return res
-        .status(403)
-        .json({ error: "Fable 5 모델은 관리자 전용입니다." });
+    // Fable 5 요청 처리: 일시 차단 중이면 관리자 포함 전체 거부, 아니면 관리자 전용.
+    if (isFableModel(requestedModel)) {
+      if (FABLE_DISABLED) {
+        return res.status(403).json({
+          error: "Fable 5 모델은 현재 일시적으로 사용이 중단되었습니다. 다른 모델을 선택해 주세요.",
+        });
+      }
+      if (!userInfo.isAdmin) {
+        return res
+          .status(403)
+          .json({ error: "Fable 5 모델은 관리자 전용입니다." });
+      }
     }
     let model = allowedModels.includes(requestedModel) ? requestedModel : null;
     // 모델 제한 계정(예: 베타테스터)은 허용 모델로 강제
@@ -2497,6 +2581,10 @@ app.post(
     // 베타·무료 보고서는 크레딧 미차감(0). 그 외는 모델별 단가.
     const isFreeBeta = FREE_BETA_TYPES.has(reportType);
     const creditCost = isFreeBeta ? 0 : pricing.getModelCredits(model);
+    // AI 이미지 생성: 장당 1크레딧, 보고서당 최대 2장(lib/report-image-gen.js MAX_FIGURES 동기화).
+    // 실제 차감은 생성된 장수만큼(runGeneration). 여기선 최악의 경우를 잔액 검증에 예약.
+    const reservedImageCredits =
+      !isFreeBeta && pipelineInput.allowImageGen ? 1 * 2 : 0;
 
     // 크레딧 검증 (Supabase + 일반 사용자. admin·무제한 계정·무료 베타는 제외)
     if (
@@ -2508,9 +2596,10 @@ app.post(
     ) {
       try {
         const have = await supa.getCredits(userInfo.id);
-        if (have < creditCost) {
+        const need = creditCost + reservedImageCredits;
+        if (have < need) {
           return res.status(402).json({
-            error: `🚫 크레딧 부족 (보유 ${have} / 필요 ${creditCost}). 관리자에게 충전을 요청하세요.`,
+            error: `🚫 크레딧 부족 (보유 ${have} / 필요 ${need}). 관리자에게 충전을 요청하세요.`,
           });
         }
       } catch (e) {
@@ -2889,13 +2978,20 @@ app.post(
       "gpt-5.4",
       "gpt-5.4-mini",
     ];
-    // Fable 5 — 관리자 전용(번역 UI도 관리자에게만 노출).
-    if (userInfo.isAdmin) ALLOWED_MODELS.push("claude-fable-5");
+    // Fable 5 — 관리자 전용(번역 UI도 관리자에게만 노출). 단 일시 차단 중에는 제외.
+    if (userInfo.isAdmin && !FABLE_DISABLED) ALLOWED_MODELS.push("claude-fable-5");
     const requested = String(req.body.model || "").trim();
-    if (requested === "claude-fable-5" && !userInfo.isAdmin) {
-      return res
-        .status(403)
-        .json({ error: "Fable 5 모델은 관리자 전용입니다." });
+    if (isFableModel(requested)) {
+      if (FABLE_DISABLED) {
+        return res.status(403).json({
+          error: "Fable 5 모델은 현재 일시적으로 사용이 중단되었습니다. 다른 모델을 선택해 주세요.",
+        });
+      }
+      if (!userInfo.isAdmin) {
+        return res
+          .status(403)
+          .json({ error: "Fable 5 모델은 관리자 전용입니다." });
+      }
     }
     const model = ALLOWED_MODELS.includes(requested) ? requested : null;
 
@@ -3507,9 +3603,26 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
       model,
       outputFormat: format,
       allowHighlights: !!pipelineInput.allowHighlights,
+      allowImageGen: !!pipelineInput.allowImageGen,
       onProgress: (msg) => pushProgress(job, msg),
     });
     content.__allowHighlights = !!pipelineInput.allowHighlights;
+
+    // AI 개념도 실제 생성분 추가 과금 (장당 1크레딧 — 위 잔액 예약치와 동기화).
+    const generatedFigureCount = Array.isArray(content.__figures)
+      ? content.__figures.length
+      : 0;
+    if (
+      generatedFigureCount > 0 &&
+      typeof job.creditCost === "number" &&
+      !FREE_BETA_TYPES.has(job.reportType)
+    ) {
+      job.creditCost += generatedFigureCount * 1;
+      pushProgress(
+        job,
+        `🖼 AI 개념도 ${generatedFigureCount}장 — +${generatedFigureCount}크레딧 추가 과금`,
+      );
+    }
 
     // 데이터·사용자 메모 이상 점검(B안): 보고서엔 넣지 않고 사이트 결과 아래 표시.
     job.warnings = normalizeWarnings(content.data_warnings);
@@ -4515,7 +4628,7 @@ app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     let msg = "파일 업로드 오류: " + err.code;
     if (err.code === "LIMIT_FILE_SIZE") {
-      msg = "파일이 너무 큽니다 (단일 파일 최대 25MB).";
+      msg = `파일이 너무 큽니다 (단일 파일 최대 ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)}MB).`;
     } else if (err.code === "LIMIT_FILE_COUNT") {
       msg = "파일이 너무 많습니다 (최대 50개). 사진 수를 줄이거나 여러 번 나눠 생성해보세요.";
     } else if (err.code === "LIMIT_PART_COUNT") {

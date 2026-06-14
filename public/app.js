@@ -865,6 +865,29 @@ let currentStudentId = "";
         });
       }
 
+      function setFlowStep(formEl, step, options = {}) {
+        if (!formEl) return;
+        const next = step || "upload";
+        formEl.dataset.flowStep = next;
+        formEl.querySelectorAll(":scope > .form-flow-steps [data-flow-jump]").forEach((btn) => {
+          const active = btn.dataset.flowJump === next;
+          btn.classList.toggle("is-active", active);
+          btn.setAttribute("aria-pressed", active ? "true" : "false");
+        });
+        const optional = formEl.querySelector(":scope > .optional-settings");
+        if (optional) optional.open = next === "settings";
+
+        if (options.scroll) {
+          const target =
+            next === "settings"
+              ? optional
+              : next === "generate"
+                ? formEl.querySelector(":scope > .form-actions")
+                : formEl.querySelector(`:scope > [data-flow-target="${next}"]`);
+          (target || formEl).scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }
+
       function enhanceReportForms() {
         const optionalTitlePattern = /(AI 참고 메모|내 글 스타일|AI 이미지 생성|출력 설정)/;
         reportForms.forEach((formEl) => {
@@ -885,13 +908,7 @@ let currentStudentId = "";
             step.dataset.flowJump = target;
             step.textContent = `${index + 1}. ${label}`;
             step.addEventListener("click", () => {
-              const anchor =
-                target === "settings"
-                  ? formEl.querySelector(":scope > .optional-settings")
-                  : target === "generate"
-                    ? formEl.querySelector(":scope > .form-actions")
-                    : formEl.querySelector(`:scope > [data-flow-target="${target}"]`);
-              anchor?.scrollIntoView({ behavior: "smooth", block: "start" });
+              setFlowStep(formEl, target, { scroll: true });
             });
             flow.appendChild(step);
           });
@@ -934,6 +951,19 @@ let currentStudentId = "";
             const anchor = formEl.querySelector(":scope > .policy-check") || formEl.querySelector(":scope > .form-actions");
             formEl.insertBefore(optional, anchor || null);
           }
+          formEl.addEventListener(
+            "invalid",
+            (event) => {
+              const invalidSection = event.target.closest(".form-section");
+              const invalidTarget = invalidSection?.dataset.flowTarget || "generate";
+              setFlowStep(formEl, invalidTarget, { scroll: true });
+            },
+            true,
+          );
+          formEl.querySelectorAll('button[type="submit"]').forEach((submitBtn) => {
+            submitBtn.addEventListener("click", () => setFlowStep(formEl, "generate"));
+          });
+          setFlowStep(formEl, "upload");
         });
       }
 
@@ -975,6 +1005,9 @@ let currentStudentId = "";
             : comingSoon;
           target?.scrollIntoView({ behavior: "smooth", block: "start" });
         }
+        reportForms.forEach((formEl) => {
+          if (formEl.dataset.reportForm === selected) setFlowStep(formEl, "upload");
+        });
 
         if (selected === "chem-result") {
           const crDate = document.getElementById("crDate");

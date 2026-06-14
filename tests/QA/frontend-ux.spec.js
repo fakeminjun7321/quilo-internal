@@ -137,7 +137,46 @@ test("logged-in workspace and report form layout render cleanly", async ({ page 
   await page.locator('label:has(input[name="reportType"][value="chem-pre"])').click();
   await page.waitForTimeout(350);
   await expect(page.locator("#form.report-flow.active")).toBeVisible();
-  await expect(page.locator("#form .optional-settings")).toBeVisible();
+  await expect(page.locator("#form")).toHaveAttribute("data-flow-step", "upload");
+  let stepVisibility = await page.evaluate(() => ({
+    upload: getComputedStyle(document.querySelector('#form > [data-flow-target="upload"]')).display,
+    info: getComputedStyle(document.querySelector('#form > [data-flow-target="info"]')).display,
+    settings: getComputedStyle(document.querySelector("#form > .optional-settings")).display,
+    actions: getComputedStyle(document.querySelector("#form > .form-actions")).display,
+  }));
+  expect(stepVisibility.upload).not.toBe("none");
+  expect(stepVisibility.info).toBe("none");
+  expect(stepVisibility.settings).toBe("none");
+  expect(stepVisibility.actions).toBe("none");
+
+  await page.locator('#form .form-flow-steps button[data-flow-jump="info"]').click();
+  await page.waitForTimeout(150);
+  await expect(page.locator("#form")).toHaveAttribute("data-flow-step", "info");
+  stepVisibility = await page.evaluate(() => ({
+    upload: getComputedStyle(document.querySelector('#form > [data-flow-target="upload"]')).display,
+    info: getComputedStyle(document.querySelector('#form > [data-flow-target="info"]')).display,
+  }));
+  expect(stepVisibility.upload).toBe("none");
+  expect(stepVisibility.info).not.toBe("none");
+
+  await page.locator('#form .form-flow-steps button[data-flow-jump="settings"]').click();
+  await page.waitForTimeout(150);
+  await expect(page.locator("#form")).toHaveAttribute("data-flow-step", "settings");
+  expect(await page.locator("#form > .optional-settings").getAttribute("open")).not.toBeNull();
+
+  await page.locator('#form .form-flow-steps button[data-flow-jump="generate"]').click();
+  await page.waitForTimeout(150);
+  await expect(page.locator("#form")).toHaveAttribute("data-flow-step", "generate");
+  stepVisibility = await page.evaluate(() => ({
+    upload: getComputedStyle(document.querySelector('#form > [data-flow-target="upload"]')).display,
+    info: getComputedStyle(document.querySelector('#form > [data-flow-target="info"]')).display,
+    settings: getComputedStyle(document.querySelector("#form > .optional-settings")).display,
+    actions: getComputedStyle(document.querySelector("#form > .form-actions")).display,
+  }));
+  expect(stepVisibility.upload).not.toBe("none");
+  expect(stepVisibility.info).not.toBe("none");
+  expect(stepVisibility.settings).toBe("none");
+  expect(stepVisibility.actions).not.toBe("none");
   const selectedLayout = await page.evaluate(() => {
     const reportTypes = document.querySelector("#reportTypes").getBoundingClientRect();
     const form = document.querySelector("#form").getBoundingClientRect();

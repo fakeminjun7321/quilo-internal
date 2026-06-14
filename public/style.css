@@ -751,6 +751,13 @@ form label textarea {
   color: var(--accent-text);
 }
 
+.form-flow-steps button.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+
 .report-flow > .optional-settings,
 .report-flow > .form-actions,
 .report-flow > .policy-check {
@@ -768,6 +775,41 @@ form label textarea {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
+}
+
+.report-form.active.report-flow[data-flow-step] {
+  grid-template-columns: 1fr;
+}
+
+.report-flow[data-flow-step] > .form-section,
+.report-flow[data-flow-step] > .optional-settings,
+.report-flow[data-flow-step] > .policy-check,
+.report-flow[data-flow-step] > .form-actions {
+  grid-column: 1 / -1;
+}
+
+.report-flow[data-flow-step="upload"] > .form-section:not([data-flow-target="upload"]),
+.report-flow[data-flow-step="upload"] > .optional-settings,
+.report-flow[data-flow-step="upload"] > .policy-check,
+.report-flow[data-flow-step="upload"] > .form-actions {
+  display: none;
+}
+
+.report-flow[data-flow-step="info"] > .form-section:not([data-flow-target="info"]),
+.report-flow[data-flow-step="info"] > .optional-settings,
+.report-flow[data-flow-step="info"] > .policy-check,
+.report-flow[data-flow-step="info"] > .form-actions {
+  display: none;
+}
+
+.report-flow[data-flow-step="settings"] > .form-section,
+.report-flow[data-flow-step="settings"] > .policy-check,
+.report-flow[data-flow-step="settings"] > .form-actions {
+  display: none;
+}
+
+.report-flow[data-flow-step="generate"] > .optional-settings {
+  display: none;
 }
 
 .optional-settings {

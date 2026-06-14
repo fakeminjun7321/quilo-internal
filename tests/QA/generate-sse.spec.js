@@ -141,9 +141,14 @@ async function mockFrontendApis(page) {
 }
 
 async function chooseReport(page, type) {
-  const radio = page.locator(`input[name="reportType"][value="${type}"]`);
-  await radio.check({ force: true });
+  await page.locator(`label:has(input[name="reportType"][value="${type}"])`).click();
   await expect(page.locator(`[data-report-form="${type}"]`)).toBeVisible();
+  await expect(page.locator(`[data-report-form="${type}"]`)).toHaveAttribute("data-flow-step", "upload");
+}
+
+async function goFlowStep(page, type, step) {
+  await page.locator(`[data-report-form="${type}"] .form-flow-steps button[data-flow-jump="${step}"]`).click();
+  await expect(page.locator(`[data-report-form="${type}"]`)).toHaveAttribute("data-flow-step", step);
 }
 
 async function acceptPolicy(page, type) {
@@ -165,34 +170,40 @@ test("mocked SSE report generation smoke: chem-pre, chem-result, phys-result", a
   await expect(page.locator('#annTrack a[href^="javascript:"]')).toHaveCount(0);
 
   await chooseReport(page, "chem-pre");
-  await page.fill("#date", "2026-06-14");
   await page.setInputFiles("#manual", {
     name: "manual.pdf",
     mimeType: "application/pdf",
     buffer: Buffer.from("%PDF-1.4\nqa\n%%EOF"),
   });
+  await goFlowStep(page, "chem-pre", "info");
+  await page.fill("#date", "2026-06-14");
+  await goFlowStep(page, "chem-pre", "generate");
   await acceptPolicy(page, "chem-pre");
   await page.locator('#form button[type="submit"]').click();
   await confirmGeneration(page);
 
   await chooseReport(page, "chem-result");
-  await page.fill("#crDate", "2026-06-14");
   await page.setInputFiles("#crPreReport", {
     name: "pre-report.pdf",
     mimeType: "application/pdf",
     buffer: Buffer.from("%PDF-1.4\nqa\n%%EOF"),
   });
+  await goFlowStep(page, "chem-result", "info");
+  await page.fill("#crDate", "2026-06-14");
+  await goFlowStep(page, "chem-result", "generate");
   await acceptPolicy(page, "chem-result");
   await page.locator('#chemResultForm button[type="submit"]').click();
   await confirmGeneration(page);
 
   await chooseReport(page, "phys-result");
-  await page.fill("#prDate", "2026-06-14");
   await page.setInputFiles("#prData", {
     name: "data.csv",
     mimeType: "text/csv",
     buffer: Buffer.from("time,position\n0,0\n1,1\n"),
   });
+  await goFlowStep(page, "phys-result", "info");
+  await page.fill("#prDate", "2026-06-14");
+  await goFlowStep(page, "phys-result", "generate");
   await acceptPolicy(page, "phys-result");
   await page.locator('#physResultForm button[type="submit"]').click();
   await confirmGeneration(page);

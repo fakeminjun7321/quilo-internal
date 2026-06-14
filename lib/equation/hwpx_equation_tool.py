@@ -286,8 +286,15 @@ class LatexToHwpConverter:
         r"\sum": "sum",
         r"\prod": "prod",
         r"\int": "int",
-        r"\iint": "iint",
-        r"\iiint": "iiint",
+        # 다중적분은 HWP 전용 키워드(dint/tint/qint)로 — 'iint'/'iiint' 는
+        # 한컴 수식 키워드가 아니라 글자로 노출된다. hwip 출력과도 일치시킨다.
+        r"\iint": "dint",
+        r"\iiint": "tint",
+        r"\iiiint": "qint",
+        # 면/체적분 닫힌 적분 변형 — 한컴엔 단일 'oint' 만 있어 모두 oint 로.
+        r"\oint": "oint",
+        r"\oiint": "oint",
+        r"\oiiint": "oint",
         r"\left": "",
         r"\right": "",
         r"\middle": "",
@@ -495,7 +502,9 @@ class LatexToHwpConverter:
         # \{ → { 치환 등으로 뒤늦게 어긋난 중괄호 짝을 한 번 더 복구한다 —
         # 변환기 출력은 항상 균형 잡힌 스크립트여야 한다.
         text = _balance_brace_groups(text)
-        text = re.sub(r"\b(sum|prod|int|iint|iiint|lim)(?=[_^])", r"\1 ", text)
+        text = re.sub(
+            r"\b(sum|prod|int|dint|tint|qint|oint|lim)(?=[_^])", r"\1 ", text
+        )
         text = re.sub(r"\s+", " ", text)
         text = re.sub(r"\s+([_^])", r"\1", text)
         # `^ circ` 처럼 명령 치환 패딩으로 첨자 뒤에 공백이 끼면 첨자가 다음
@@ -966,6 +975,10 @@ _SUBSCRIPT_MATH_TOKENS = (
         {
             "rarrow", "larrow", "lrarrow", "uparrow", "downarrow", "inf",
             "infty", "ldots", "cdots", "vdots", "ddots",
+            # 미분 연산자 키워드 — 경계 첨자 ∂V/∂S(oint_{partial V}) 의 ∂ 가
+            # partial 로 풀린 뒤 텍스트 라벨로 인용('"partial V"')되면 ∂ 기호가
+            # 업라이트 문자열로 죽는다. nabla 도 같은 이유(_{nabla phi} 등).
+            "partial", "nabla",
         }
     )
     | _SUBSCRIPT_GREEK_TOKENS
@@ -1115,8 +1128,117 @@ def convert_inline_radicals(script: str) -> str:
     return "".join(out)
 
 
+# 다중적분 스택('{∫∫∫}', 연속 '∫∫')을 한컴 키워드로 — 단일 글리프 치환보다 먼저.
+_RAW_INTEGRAL_STACK_HWP = (
+    (re.compile(r"\{\s*∮\s*∮\s*\}"), " oint "),
+    (re.compile(r"\{\s*∫\s*∫\s*∫\s*\}"), " tint "),
+    (re.compile(r"\{\s*∫\s*∫\s*\}"), " dint "),
+    (re.compile(r"∫\s*∫\s*∫"), " tint "),
+    (re.compile(r"∫\s*∫"), " dint "),
+)
+
+# 유니코드 수식 글리프 → 한컴 수식 키워드. {{EQ:}}(raw 한컴 스크립트) 경로는
+# 엔진을 안 거치므로 여기서 직접 키워드로 바꾼다. 키워드는 앞뒤 공백으로
+# 패딩해 글자 융합('E∂x'→'E partial x')을 막는다(잉여 공백은 말미 정리가 거둠).
+_RAW_UNICODE_MATH_HWP = (
+    ("∇", " nabla "),
+    ("▽", " nabla "),
+    ("∂", " partial "),
+    ("∑", " sum "),
+    ("∏", " prod "),
+    ("∭", " tint "),
+    ("∬", " dint "),
+    ("∮", " oint "),
+    ("∯", " oint "),
+    ("∰", " oint "),
+    ("∫", " int "),
+    ("·", " cdot "),
+    ("∙", " cdot "),
+    ("⋅", " cdot "),
+    ("×", " times "),
+    ("±", " +- "),
+    ("∓", " -+ "),
+    ("≡", " == "),
+    ("≅", " cong "),
+    # 관계 연산자 — raw {{EQ:}} 가 글리프째 노출되지 않게 키워드로(LaTeX 경로와 일치).
+    ("≤", " <= "),
+    ("≥", " >= "),
+    ("≠", " != "),
+    ("≃", " simeq "),
+    ("≪", " << "),
+    ("≫", " >> "),
+    ("∥", " parallel "),
+    ("⊥", " bot "),
+    ("∠", " angle "),
+    ("∆", " DELTA "),  # U+2206 INCREMENT — 대문자 Δ 대용
+    ("∝", " propto "),
+    ("∞", " inf "),
+    ("∈", " in "),
+    ("∉", " notin "),
+    ("⟨", " langle "),
+    ("⟩", " rangle "),
+    # 보조 수식 글리프 → 한컴 키워드. raw {{EQ:}} 경로는 엔진을 안 거치므로
+    # 글리프째 노출되지 않게 직접 키워드로 바꾼다. 각 키워드가 normalize_hwp_script
+    # 통과 후 따옴표 없이 남음을 실측 확인했다.
+    ("ℏ", " hbar "),
+    ("ℓ", " ell "),
+    ("Å", " ANGSTROM "),  # U+212B 옹스트롬 기호
+    ("Å", " ANGSTROM "),  # U+00C5 Å(라틴 A+고리)
+    ("∴", " therefore "),
+    ("∵", " because "),
+    ("⊗", " otimes "),
+    ("⊕", " oplus "),
+    ("∅", " emptyset "),
+    ("∼", " sim "),
+    ("÷", " div "),
+    # 그리스 소문자 → 한컴 키워드(소문자). 빌트인 COMMANDS·hwip 출력과 일치.
+    ("α", " alpha "), ("β", " beta "), ("γ", " gamma "), ("δ", " delta "),
+    ("ε", " epsilon "), ("ϵ", " epsilon "), ("ζ", " zeta "), ("η", " eta "),
+    ("θ", " theta "), ("ϑ", " theta "), ("ι", " iota "), ("κ", " kappa "),
+    ("λ", " lambda "), ("μ", " mu "), ("ν", " nu "), ("ξ", " xi "),
+    ("ο", " o "), ("π", " pi "), ("ϖ", " pi "), ("ρ", " rho "),
+    ("ϱ", " rho "), ("σ", " sigma "), ("ς", " sigma "), ("τ", " tau "),
+    ("υ", " upsilon "), ("φ", " phi "), ("ϕ", " phi "), ("χ", " chi "),
+    ("ψ", " psi "), ("ω", " omega "),
+    # 그리스 대문자 → 한컴 키워드(대문자, 빌트인 COMMANDS 표기와 일치).
+    ("Γ", " GAMMA "), ("Δ", " DELTA "), ("Θ", " THETA "), ("Λ", " LAMBDA "),
+    ("Ξ", " XI "), ("Π", " PI "), ("Σ", " SIGMA "), ("Φ", " PHI "),
+    ("Ψ", " PSI "), ("Ω", " OMEGA "), ("Υ", " UPSILON "),
+)
+
+
+def _normalize_raw_unicode_math(text: str) -> str:
+    """{{EQ:}} raw 스크립트의 유니코드 수식 글리프를 한컴 키워드로 정규화.
+
+    이미 한컴 인용('"..."') 안의 텍스트는 절대 건드리지 않는다(사용자가
+    일부러 넣은 리터럴 보존). 인용 밖 구간에서만 스택/단일 글리프를 치환한다.
+    idempotent — 글리프가 다 사라진 2회차 입력은 그대로 통과한다.
+    """
+    if not text:
+        return text
+
+    def _convert_segment(seg: str) -> str:
+        # 유니코드 위/아래첨자를 ^{}/_{} 로 먼저 묶는다 — 글리프(∇/∂/ε)가 아직
+        # raw 일 때 돌려야 ∇²→∇^{2}→(글리프 치환 후) nabla^{2}, ε₀→epsilon_{0}
+        # 가 된다. idempotent(이미 ^{2} 면 무변).
+        seg = _convert_unicode_scripts(seg)
+        for pattern, kw in _RAW_INTEGRAL_STACK_HWP:
+            seg = pattern.sub(kw, seg)
+        for glyph, kw in _RAW_UNICODE_MATH_HWP:
+            if glyph in seg:
+                seg = seg.replace(glyph, kw)
+        return seg
+
+    # 인용 구간('"..."')은 보존하고 그 사이만 변환한다.
+    out: list[str] = []
+    for idx, part in enumerate(re.split(r'("[^"]*")', text)):
+        out.append(part if idx % 2 == 1 else _convert_segment(part))
+    return "".join(out)
+
+
 def normalize_hwp_script(script: str) -> str:
     text = str(script or "").strip()
+    text = _normalize_raw_unicode_math(text)
     text = convert_inline_radicals(text)
     text = (
         text.replace("→", "->")
@@ -1332,6 +1454,210 @@ _UNICODE_ARROW_LATEX = (
     ("⇒", r" \Rightarrow "),
 )
 
+# 모델이 LaTeX 본문에 섞어 쓴 다중적분 '스택' 표기 → 정식 LaTeX 명령.
+# 단일 글리프(∬∭) 치환보다 먼저 적용해야 '{∫∫∫}' 가 '\int\int\int' 로
+# 갈라지지 않는다. 중괄호로 감싼 형태와 연속 글리프(공백 허용) 둘 다 잡는다.
+_UNICODE_INTEGRAL_STACK_LATEX = (
+    (re.compile(r"\{\s*∮\s*∮\s*\}"), r" \oint "),
+    (re.compile(r"\{\s*∫\s*∫\s*∫\s*\}"), r" \iiint "),
+    (re.compile(r"\{\s*∫\s*∫\s*\}"), r" \iint "),
+    (re.compile(r"∫\s*∫\s*∫"), r" \iiint "),
+    (re.compile(r"∫\s*∫"), r" \iint "),
+)
+
+# 그리스 글리프 → LaTeX 명령(어간). LaTeX/raw 두 경로가 공유한다 — hwip 은
+# 일부 그리스(α/β/γ/δ/θ/λ/μ/π/σ/τ/ω 및 다수 대문자)를 미지 글리프로 보고
+# 인용('"μ"')으로 감싸 버린다. 진입 전에 \명령으로 바꿔 인용 누출을 0으로 한다.
+# (어간은 builtin COMMANDS 와 hwip vendor 표가 모두 아는 표준 명령만 쓴다.)
+_GREEK_TO_LATEX_STEM = (
+    ("α", "alpha"), ("β", "beta"), ("γ", "gamma"), ("δ", "delta"),
+    ("ε", "epsilon"), ("ϵ", "epsilon"), ("ζ", "zeta"), ("η", "eta"),
+    ("θ", "theta"), ("ϑ", "theta"), ("ι", "iota"), ("κ", "kappa"),
+    ("λ", "lambda"), ("μ", "mu"), ("ν", "nu"), ("ξ", "xi"),
+    ("π", "pi"), ("ϖ", "pi"), ("ρ", "rho"), ("ϱ", "rho"),
+    ("σ", "sigma"), ("ς", "sigma"), ("τ", "tau"), ("υ", "upsilon"),
+    ("φ", "phi"), ("ϕ", "phi"), ("χ", "chi"), ("ψ", "psi"), ("ω", "omega"),
+    ("Α", "Alpha"), ("Β", "Beta"), ("Γ", "Gamma"), ("Δ", "Delta"),
+    ("Ε", "Epsilon"), ("Ζ", "Zeta"), ("Η", "Eta"), ("Θ", "Theta"),
+    ("Ι", "Iota"), ("Κ", "Kappa"), ("Λ", "Lambda"), ("Μ", "Mu"),
+    ("Ν", "Nu"), ("Ξ", "Xi"), ("Ο", "Omicron"), ("Π", "Pi"),
+    ("Ρ", "Rho"), ("Σ", "Sigma"), ("Τ", "Tau"), ("Υ", "Upsilon"),
+    ("Φ", "Phi"), ("Χ", "Chi"), ("Ψ", "Psi"), ("Ω", "Omega"),
+)
+
+# 유니코드 수식 글리프 → 정식 LaTeX 명령 선치환 표. 엔진(hwip/builtin)
+# 진입 '전'에 LaTeX 명령으로 바꿔야 한다 — hwip 은 미지의 유니코드 글리프를
+# 텍스트 인용('"∇"', '"ρ"')으로 감싸 버려 수식 기호 대신 따옴표 리터럴이
+# 렌더된다. LaTeX 명령으로 바꾸면 hwip/builtin 모두 정상 키워드를 낸다.
+# 화살표는 _UNICODE_ARROW_LATEX 가 따로 처리한다(중복 금지).
+_UNICODE_MATH_LATEX = (
+    # 연산자
+    ("∇", r" \nabla "),
+    ("▽", r" \nabla "),  # U+25BD 흰 삼각형 — 모델이 nabla 대용으로 씀
+    ("∂", r" \partial "),
+    ("∑", r" \sum "),
+    ("∏", r" \prod "),
+    ("∭", r" \iiint "),
+    ("∬", r" \iint "),
+    ("∮", r" \oint "),
+    ("∯", r" \oint "),  # U+222F 면적분
+    ("∰", r" \oint "),  # U+2230 체적분
+    ("∫", r" \int "),
+    ("·", r" \cdot "),
+    ("∙", r" \cdot "),  # U+2219 BULLET OPERATOR — 모델의 내적 대용
+    ("⋅", r" \cdot "),  # U+22C5 DOT OPERATOR — 정식 곱셈 점
+    ("×", r" \times "),
+    ("±", r" \pm "),  # U+00B1 — 측정 불확도(9.81 ± 0.05)에 빈출
+    ("∓", r" \mp "),
+    ("≡", r" \equiv "),
+    ("≅", r" \cong "),
+    # 관계 연산자 — 누락 시 hwip 이 '"≤"' 따옴표 리터럴로 떨군다.
+    ("≤", r" \leq "),
+    ("≥", r" \geq "),
+    ("≠", r" \neq "),
+    ("≃", r" \simeq "),
+    ("≪", r" \ll "),
+    ("≫", r" \gg "),
+    ("∥", r" \parallel "),
+    ("⊥", r" \perp "),
+    ("∠", r" \angle "),
+    ("∆", r" \Delta "),  # U+2206 INCREMENT — 대문자 Δ(U+0394) 대용으로 씀
+    ("∝", r" \propto "),
+    ("∞", r" \infty "),
+    ("∈", r" \in "),
+    ("∉", r" \notin "),
+    ("⟨", r" \langle "),
+    ("⟩", r" \rangle "),
+    # 보조 수식 글리프 — 누락 시 hwip 이 '"ℏ"'/'"÷"' 따옴표 리터럴로 떨군다.
+    # 각 명령은 양 엔진이 따옴표 없는 키워드(hbar/ELL/ANGSTROM/therefore…)로
+    # 변환함을 실측 확인했다. ÷ 는 LaTeX 의 정식 나눗셈 명령 \div 으로 보낸다.
+    ("ℏ", r" \hbar "),       # U+210F PLANCK CONSTANT OVER 2 PI — 양자 빈출
+    ("ℓ", r" \ell "),        # U+2113 SCRIPT SMALL L — 길이/각운동량 라벨
+    ("Å", r" \AA "),    # U+212B ANGSTROM SIGN — 원자 길이 단위
+    ("Å", r" \AA "),    # U+00C5 Å(라틴 A+고리) — 모델이 옹스트롬 대용으로 씀
+    ("∴", r" \therefore "),
+    ("∵", r" \because "),
+    ("⊗", r" \otimes "),
+    ("⊕", r" \oplus "),
+    ("∅", r" \emptyset "),
+    ("∼", r" \sim "),        # U+223C TILDE OPERATOR — 근사/비례 대용
+    ("÷", r" \div "),
+    # 소문자 오미크론은 LaTeX 명령(\omicron)이 없고 라틴 'o'와 동일 — 그냥 'o'.
+    ("ο", " o "),
+    # 그리스(빌트인 COMMANDS·hwip 누락분 — 중복은 무해)
+    *((glyph, f" \\{stem} ") for glyph, stem in _GREEK_TO_LATEX_STEM),
+)
+
+
+# 유니코드 위/아래첨자 글리프 → 평문 숫자/부호(LaTeX ^{...}/_{...} 본문용).
+# 'ⁿ'·'ⁱ'(U+207F/U+2071)도 포함 — 모델이 s⁻¹ 외에 xⁿ·eⁱ 류를 쓴다.
+_SUPERSCRIPT_TO_LATEX = str.maketrans({
+    "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4",
+    "⁵": "5", "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9",
+    "⁺": "+", "⁻": "-", "ⁿ": "n", "ⁱ": "i",
+})
+_SUBSCRIPT_TO_LATEX = str.maketrans({
+    "₀": "0", "₁": "1", "₂": "2", "₃": "3", "₄": "4",
+    "₅": "5", "₆": "6", "₇": "7", "₈": "8", "₉": "9",
+    "₊": "+", "₋": "-",
+})
+# 유니코드 위첨자(연산자/지수 첨자)·아래첨자(라벨 첨자)의 '소속 문자' 분류용.
+_SUPERSCRIPT_CHARS = "⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻ⁿⁱ"
+_SUBSCRIPT_CHARS = "₀₁₂₃₄₅₆₇₈₉₊₋"
+# 첨자 직전의 '밑'이 될 수 없는 문자 — 공백/첨자 자신/여는 구분자. 그 외
+# 어떤 문자(라틴·숫자·유니코드 연산자 ∇∂·그리스 ε 등) 뒤든 첨자로 묶는다.
+# (유니코드 연산자 글리프 치환 '전에' 돌려 ∇²→∇^{2}→(이후)\nabla^{2} 가 되게 한다.)
+_UNI_SUPERSCRIPT_RE = re.compile(
+    rf"(?<=[^\s{_SUPERSCRIPT_CHARS}{{(\[^_])([{_SUPERSCRIPT_CHARS}]+)"
+)
+_UNI_SUBSCRIPT_RE = re.compile(
+    rf"(?<=[^\s{_SUBSCRIPT_CHARS}{{(\[_^])([{_SUBSCRIPT_CHARS}]+)"
+)
+
+
+def _convert_unicode_scripts(s: str) -> str:
+    """유니코드 위/아래첨자를 LaTeX ^{...}/_{...} 로. idempotent.
+
+    선행문자(밑)가 있을 때만 묶는다 — 식 맨 앞 고립 첨자는 변환하지 않아
+    2회차(이미 ^{2} 인 입력)에서 '2' 가 또 첨자로 잡히지 않는다. 유니코드
+    연산자 치환 '전에' 호출해야 ∇²·∂² 가 밑(∇/∂) 째로 ∇^{2}·∂^{2} 로 묶인다.
+    """
+    s = _UNI_SUPERSCRIPT_RE.sub(
+        lambda m: "^{" + m.group(1).translate(_SUPERSCRIPT_TO_LATEX) + "}", s
+    )
+    s = _UNI_SUBSCRIPT_RE.sub(
+        lambda m: "_{" + m.group(1).translate(_SUBSCRIPT_TO_LATEX) + "}", s
+    )
+    return s
+
+
+# 유니코드 치환에서 보호할 LaTeX 평문 명령 — 본문이 단위·라벨 리터럴이라
+# '·'(mol·K) 등을 \cdot 으로 바꾸면 단위 표기가 깨진다(mhchem \pu 전개 산물).
+_PROTECTED_TEXT_CMD_RE = re.compile(
+    r"\\(?:text|textrm|textnormal|textbf|textit|mathrm|mathit|mathbf|mbox|operatorname)\s*\{"
+)
+
+
+def _apply_unicode_math_latex(s: str) -> str:
+    r"""인용('"..."')·평문명령(\text{...}/\mathrm{...}) 바깥에서만 유니코드 치환.
+
+    mhchem \pu 전개가 만든 \text{8.314 J/(mol·K)} 의 '·' 같은 리터럴 단위
+    표기를 \cdot 으로 바꾸지 않도록, 보호 구간은 통째로 건너뛰고 그 밖의
+    구간에서만 스택/단일 글리프를 LaTeX 명령으로 강등한다.
+    """
+
+    def _convert(seg: str) -> str:
+        # 유니코드 위/아래첨자를 '밑'(연산자 글리프 포함)에 묶어 ^{...}/_{...} 로
+        # 먼저 강등한다. 연산자 글리프 치환보다 앞서야 ∇²→∇^{2}→\nabla^{2}.
+        seg = _convert_unicode_scripts(seg)
+        for pattern, command in _UNICODE_INTEGRAL_STACK_LATEX:
+            seg = pattern.sub(lambda _m, _c=command: _c, seg)
+        for glyph, command in _UNICODE_MATH_LATEX:
+            if glyph in seg:
+                seg = seg.replace(glyph, command)
+        return seg
+
+    out: list[str] = []
+    i = 0
+    n = len(s)
+    plain_start = 0  # 아직 변환 안 한 일반 구간의 시작
+    while i < n:
+        ch = s[i]
+        # 한컴/리터럴 인용 보존
+        if ch == '"':
+            j = s.find('"', i + 1)
+            if j < 0:
+                break  # 짝 없는 따옴표 — 말미에서 통째 변환
+            out.append(_convert(s[plain_start:i]))
+            out.append(s[i : j + 1])
+            i = plain_start = j + 1
+            continue
+        # \text{...}/\mathrm{...} 등 평문 인자 그룹 보존(중괄호 짝 맞춰 통째로)
+        m = _PROTECTED_TEXT_CMD_RE.match(s, i)
+        if m:
+            depth = 0
+            k = m.end() - 1  # '{' 위치
+            while k < n:
+                c = s[k]
+                if c == "\\":
+                    k += 2
+                    continue
+                if c == "{":
+                    depth += 1
+                elif c == "}":
+                    depth -= 1
+                    if depth == 0:
+                        k += 1
+                        break
+                k += 1
+            out.append(_convert(s[plain_start:i]))
+            out.append(s[i:k])
+            i = plain_start = k
+            continue
+        i += 1
+    out.append(_convert(s[plain_start:]))
+    return "".join(out)
+
 
 def preprocess_latex_body(raw_latex: str) -> str:
     """엔진 공통 LaTeX 전처리 — mhchem 전개 + \\limits 제거 + 유니코드 화살표 선치환.
@@ -1346,9 +1672,17 @@ def preprocess_latex_body(raw_latex: str) -> str:
     # (빌트인 COMMANDS 의 매핑은 {{EQ:}} 백슬래시 구제 등 convert 직접 호출
     # 경로용 이중 안전망).
     s = re.sub(r"\\(?:no)?limits(?![A-Za-z])", " ", s)
+    # 닫힌 면/체적분 \oiint/\oiiint 는 한컴에 단일 'oint' 만 있다. 빌트인
+    # COMMANDS 는 이미 oint 로 매핑하지만 hwip vendor 는 'oiint'(한컴 비키워드
+    # → 글자 노출)를 내므로, 양 엔진 진입 전 \oint 로 정규화해 hwip 출력도
+    # oint 로 맞춘다. (\iint/\iiint 는 hwip 이 dint/tint 로 정상 변환하므로 둠.)
+    s = re.sub(r"\\oi+nt(?![A-Za-z])", r"\\oint", s)
     for glyph, command in _UNICODE_ARROW_LATEX:
         if glyph in s:
             s = s.replace(glyph, command)
+    # 유니코드 수식 글리프·다중적분 스택 → LaTeX 명령. 인용/평문 명령 본문
+    # (\text{...mol·K...})은 보호한다. 반드시 mhchem 전개 뒤에 적용한다.
+    s = _apply_unicode_math_latex(s)
     return s.strip()
 
 

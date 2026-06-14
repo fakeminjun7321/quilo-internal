@@ -378,18 +378,38 @@ GREEK_TO_LATEX = {
     "β": r"\beta",
     "γ": r"\gamma",
     "δ": r"\delta",
+    "ε": r"\epsilon",
+    "ϵ": r"\epsilon",
+    "ζ": r"\zeta",
+    "η": r"\eta",
     "θ": r"\theta",
+    "ϑ": r"\theta",
+    "ι": r"\iota",
+    "κ": r"\kappa",
     "λ": r"\lambda",
     "μ": r"\mu",
+    "ν": r"\nu",
+    "ξ": r"\xi",
     "π": r"\pi",
     "ρ": r"\rho",
     "σ": r"\sigma",
     "τ": r"\tau",
+    "υ": r"\upsilon",
     "φ": r"\phi",
+    "ϕ": r"\phi",
+    "χ": r"\chi",
+    "ψ": r"\psi",
     "ω": r"\omega",
-    "Ω": r"\Omega",
+    "Γ": r"\Gamma",
     "Δ": r"\Delta",
+    "Θ": r"\Theta",
+    "Λ": r"\Lambda",
+    "Ξ": r"\Xi",
+    "Π": r"\Pi",
     "Σ": r"\Sigma",
+    "Φ": r"\Phi",
+    "Ψ": r"\Psi",
+    "Ω": r"\Omega",
 }
 
 SUPERSCRIPT_TO_LATEX = str.maketrans({
@@ -424,13 +444,26 @@ SUBSCRIPT_TO_LATEX = str.maketrans({
 # 빠지면 '%Diff = |…|/…' 식이 'Diff =' 까지만 잡혀 파편 수식 + raw 파이프
 # 산문으로 갈라진다. 시작 문자에도 두 글자를 허용해 식 전체를 한 덩어리로
 # 잡는다(홀수 파이프 가드는 is_probable_physics_formula 쪽).
+# 그리스 글자(소·대문자 전체)와 벡터 미적분 연산자(∇▽∂∫∬∭∮∯∰∑∏ 등)를 포함해야
+# '▽·E = ρ/ε₀', '∭_V (▽·F) dV = ∯_∂V F·dA' 같은 식이 앞뒤 잘림 없이 한 덩어리로
+# 잡힌다. 빠지면 연산자/그리스 경계에서 식이 토막나 산문에 raw 기호가 남는다.
+_FORMULA_GREEK = "αβγδεϵζηθϑικλμνξπρστυφϕχψωΓΔΘΛΞΠΣΦΨΩ"
+_FORMULA_OPERATORS = "∇▽∂∫∬∭∮∯∰∑∏≡≅∝∞∈∉⟨⟩∓∘∠"
 FORMULA_CHAR_CLASS = (
     r"A-Za-z0-9"
-    r"αβγδθλμπρστφωΩΔΣ"
-    r"_\{\}\^\*\s\+\-=−–—≈≃≤≥<>/\\\(\)\[\]\.,\|"
+    + _FORMULA_GREEK
+    + _FORMULA_OPERATORS
+    + r"_\{\}\^\*\s\+\-=−–—≈≃≤≥<>/\\\(\)\[\]\.,\|"
     r"·×√½°%′'⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻₀₁₂₃₄₅₆₇₈₉₊₋\u0307\u0308"
 )
-FORMULA_START_CLASS = r"A-Za-z0-9αβγδθλμπρστφωΩΔΣ\*\(\{%\|"
+# 식의 '첫 글자'로도 연산자/그리스가 올 수 있어야 '▽·E=...', '∭_V ...=...',
+# '∠ABC = 90°', '∞ = ...' 가 통째로 승격된다(연산자 prefix 가 산문에 떨어지는
+# 토막 현상 방지). 미적분 연산자(∇▽∂∫∬∭∮∯∰∑∏)에 더해 식 시작이 자연스러운
+# 관계·집합·각도 연산자(∠≡≅∝∞∈∉⟨∓∘)도 포함한다. ⟩ 같은 '닫는' 기호는 식
+# 시작으로 부적합하므로 제외한다. 오탐은 is_probable_physics_formula 가드가 막는다.
+FORMULA_START_CLASS = (
+    r"A-Za-z0-9" + _FORMULA_GREEK + "∇▽∂∫∬∭∮∯∰∑∏∠≡≅∝∞∈∉⟨∓∘" + r"\*\(\{%\|"
+)
 INLINE_FORMULA_RE = re.compile(
     rf"(?<![A-Za-z0-9_])([{FORMULA_START_CLASS}][{FORMULA_CHAR_CLASS}]{{0,120}}?"
     rf"(?:=|≈|≃|≤|≥)"
@@ -587,13 +620,18 @@ def convert_radicals(expr):
 
 
 def unicode_scripts_to_latex(expr):
+    # 그리스 글자 뒤 유니코드 첨자도 잡아야 'ε₀'(ε + ₀)가 그리스 치환 전에
+    # 'ε_{0}' 로 묶여 최종 'epsilon_{0}' 가 된다. 빠지면 'epsilon "₀"' 누출.
+    # 미적분 연산자 글리프(∇▽∂)도 밑으로 허용해야 라플라시안 ∇²·∂² 가 글리프
+    # 치환(∇→\nabla) 전에 ∇^{2} 로 묶인다 — 빠지면 '\nabla ²'(공백 고립) →
+    # 'nabla "²"' 누출(인라인 promotion 경로 한정 버그였다).
     expr = re.sub(
-        r"([A-Za-zαβγδθλμπρστφωΩΔΣ])([⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻]+)",
+        rf"([A-Za-z{_FORMULA_GREEK}∇▽∂])([⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻]+)",
         lambda m: f"{m.group(1)}^{{{m.group(2).translate(SUPERSCRIPT_TO_LATEX)}}}",
         expr,
     )
     expr = re.sub(
-        r"([A-Za-zαβγδθλμπρστφωΩΔΣ])([₀₁₂₃₄₅₆₇₈₉₊₋]+)",
+        rf"([A-Za-z{_FORMULA_GREEK}∇▽∂])([₀₁₂₃₄₅₆₇₈₉₊₋]+)",
         lambda m: f"{m.group(1)}_{{{m.group(2).translate(SUBSCRIPT_TO_LATEX)}}}",
         expr,
     )
@@ -607,10 +645,41 @@ def rich_formula_to_latex(expr):
     expr = expr.replace("−", "-").replace("–", "-").replace("—", "-")
     expr = expr.replace("θ̈", r"\ddot{\theta}").replace("θ̇", r"\dot{\theta}")
     expr = expr.replace("×", r" \times ").replace("·", r" \cdot ")
+    expr = expr.replace("∙", r" \cdot ").replace("⋅", r" \cdot ")
     expr = expr.replace("≃", r" \approx ").replace("≈", r" \approx ")
+    expr = expr.replace("≅", r" \cong ")
     expr = expr.replace("≤", r" \leq ").replace("≥", r" \geq ")
     expr = expr.replace("½", r"\frac{1}{2}")
+    # ∂-경계 첨자(∮_∂S, ∯_∂V 등 맥스웰 적분형)를 글리프 치환 '전에' 한 덩어리로
+    # 묶는다. ∂ 가 ' \partial ' 로 풀리면 _∂V 가 '_ \partial V' 로 흩어져 다글자
+    # 첨자 braceing 정규식(아래)이 못 잡고, V 가 첨자 밖으로 떨어져 우변과 융합한다
+    # (블록 '\oint_{\partial V}' 는 정상이나 인라인 promotion 산출물만 버그였다).
+    # '_∂V', '_{∂V}', '_\partial V', '_{\partial V}' 모두 '_{\partial V}' 로.
+    # 단일 글자 첨자(_V)는 건드리지 않는다.
+    expr = re.sub(r"_\{\s*∂\s*([A-Za-z])\s*\}", r"_{\\partial \1}", expr)
+    expr = re.sub(r"_\{\s*\\partial\s+([A-Za-z])\s*\}", r"_{\\partial \1}", expr)
+    expr = re.sub(r"_∂([A-Za-z])", r"_{\\partial \1}", expr)
+    expr = re.sub(r"_\\partial\s+([A-Za-z])", r"_{\\partial \1}", expr)
+    # 유니코드 위/아래첨자(∇²·∂²·ε₀·x²)를 연산자 글리프 치환 '전에' ^{}/_{} 로
+    # 묶는다. ∇→\nabla 가 먼저 일어나면 ∇² 가 '\nabla ²'(공백 고립)로 흩어져
+    # '²' 가 누출된다. 밑(∇▽∂ 포함)에 첨자가 붙어 있을 때 여기서 미리 묶는다.
     expr = unicode_scripts_to_latex(expr)
+    # 벡터 미적분 연산자 유니코드 → 정식 LaTeX 명령. 다중적분(∭∬)·면적분(∯∰)을
+    # 단일 ∫·∮ 보다 먼저 치환해야 글리프가 쪼개지지 않는다. ∇·▽ 는 둘 다 nabla.
+    # 이 LaTeX 명령은 stage-1 preprocess_latex_body 가 다시 받아도 그대로 통과한다
+    # (preprocess 의 유니코드 치환은 raw 글리프 대상이라 idempotent).
+    for glyph, command in (
+        ("∇", r" \nabla "), ("▽", r" \nabla "),
+        ("∂", r" \partial "),
+        ("∭", r" \iiint "), ("∬", r" \iint "),
+        ("∯", r" \oint "), ("∰", r" \oint "), ("∮", r" \oint "),
+        ("∫", r" \int "),
+        ("∑", r" \sum "), ("∏", r" \prod "),
+        ("≡", r" \equiv "), ("∝", r" \propto "), ("∞", r" \infty "),
+        ("∓", r" \mp "), ("∈", r" \in "), ("∉", r" \notin "),
+        ("⟨", r" \langle "), ("⟩", r" \rangle "), ("∘", r" \circ "),
+    ):
+        expr = expr.replace(glyph, command)
     # 중괄호 없는 다글자 아래첨자(ω_max, I_cm, I_pivot)를 LaTeX 정식 표기로 —
     # 이렇게 해야 변환 엔진의 quote_textual_subscripts 경로(I_{"cm"})를 타서
     # 아래첨자 의도가 보존된다. 이미 braced(_{…})면 그대로 둔다.
@@ -662,9 +731,16 @@ def is_probable_physics_formula(expr):
     # 것을 막는다(chem-pre looks_like_standalone_equation 과 같은 기준).
     if pre.count_english_prose_stopwords(clean) >= 2:
         return False
-    if not re.search(r"[A-Za-zαβγδθλμπρστφωΩΔΣ]", clean):
+    if not re.search(rf"[A-Za-z{_FORMULA_GREEK}]", clean):
         return False
     if not re.search(r"=|≈|≃|≤|≥", clean):
+        return False
+    # 관계연산자 뒤에 실질 우변(글자/숫자/연산자)이 없는 'A =', 'x ≈' 꼴은
+    # 한국어 정의문('A = 면적')에서 INLINE_FORMULA_RE 가 뒤 공백까지 삼킨
+    # 토막일 뿐이다 — 승격하면 'A `=`' 처럼 우변 없는 식이 된다. 우변이
+    # 비면(공백·구두점만) 산문으로 남긴다.
+    rhs = re.split(r"=|≈|≃|≤|≥", clean)[-1]
+    if not re.search(rf"[A-Za-z0-9{_FORMULA_GREEK}]", rhs):
         return False
     # 절댓값 막대는 항상 짝수로 나온다 — 홀수 '|' 는 표/구분자 파편이 식에
     # 섞인 신호이므로 산문으로 남긴다(파이프가 수식 글자로 승격되는 오탐 방지).

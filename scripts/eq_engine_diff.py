@@ -156,6 +156,20 @@ GOLDEN = [
     r"\{ x \mid x > 0 \}",
     r"\%Diff = |I_{pivot} - I_{cm}|/I_{cm} \times 100\%",
     r"\omega _{max} = 2.5 rad/s",
+    # ── 회귀 추가분(2026-06-14): 물리 탐구성찰 보고서의 벡터 미적분(맥스웰
+    #    방정식)·발산정리·다중적분. 실제 깨진 보고서(2402_…_일반물리학탐구성찰)
+    #    에서 ∇/▽(나블라)·∂(편미분)·∭∬∮∯(닫힌·다중적분)·{∫∫∫}/{∮∮}(스택)이
+    #    따옴표 리터럴('"∇"')·비키워드(iiint/oiint)·경계첨자 인용('"partial V"')
+    #    로 깨졌다. LaTeX 정식 입력은 양 엔진 모두 정상이어야 한다.
+    r"\iiint_{V} (\nabla \cdot F)\, dV = \oint_{\partial V} F \cdot dA",
+    r"\iint_{S} (\nabla \times F) \cdot dA = \oint_{\partial S} F \cdot dl",
+    r"\nabla \cdot E = \rho / \epsilon_{0}",
+    r"\nabla \times E = -\partial B / \partial t",
+    r"\nabla \cdot (\nabla \times A) = 0",
+    r"B = \nabla \times A",
+    # 닫힌 면/체적분 \oiint/\oiiint — 한컴 비키워드 'oiint' 글자 노출 회귀
+    # (빌트인은 COMMANDS, hwip 은 preprocess_latex_body 의 \oint 정규화로 잡힌다).
+    r"\oiint_{S} E \cdot dA = Q / \epsilon_{0}",
 ]
 
 # 최종 스크립트에 절대 남으면 안 되는 패턴(원시 LaTeX 잔재/마커 잔재 신호).
@@ -200,7 +214,26 @@ GOLDEN_EQ = [
     (r"{DELTA T} over {t} \approx 0.5", ["DELTA", "over", "APPROX"]),
     ("sqrt[3]{x} + 1", ["root 3 of {x}"]),
     ("√[3]{8} = 2", ["root 3 of {8}"]),
+    # {{EQ:}} raw 경로에 모델이 유니코드 적분 글리프·다중적분 스택을 섞어 쓴
+    # 실제 깨짐(2026-06-14, 물리 탐구성찰). 엔진을 안 거치므로 normalize_hwp_script
+    # 의 raw 유니코드 정규화가 직접 키워드로 바꿔야 한다 — '"∭"'/'{∫∫∫}'/'∂' 가
+    # 따옴표 리터럴·비키워드로 남으면 안 된다(아래 check_extra_regressions 가
+    # 백슬래시·금지패턴도 함께 검사).
+    (r"{∮∮}_{S} E cdot dA = {∫∫∫}_{V} ( nabla cdot E ) dV",
+     ["oint_{S}", "tint_{V}", "nabla cdot E"]),
+    (r"∭_{V} (∇·F) dV = ∯_{∂V} F·dA",
+     ["tint_{V}", "nabla cdot F", "oint_", "partial V", "F cdot dA"]),
+    (r"∬_{S} (∇×F)·dA = ∮_{∂S} F·dl",
+     ["dint_{S}", "nabla times F", "cdot dA", "oint_", "partial S"]),
 ]
+
+# {{EQ:}} raw 경로 출력에 절대 없어야 할 유니코드 수식 글리프·따옴표 리터럴·
+# 스택 잔재. GOLDEN_EQ 의 유니코드 케이스에만 적용한다(다른 EQ 입력엔 무해).
+RAW_EQ_FORBIDDEN_GLYPHS = (
+    '"∇"', '"▽"', '"∂"', '"∭"', '"∬"', '"∮"', '"∯"',
+    "∇", "▽", "∂", "∫", "∬", "∭", "∮", "∯", "∰",
+    "{∫", "{∮", "·",
+)
 
 # EQ-LATEX 골든 케이스의 구조 잠금 — 입력별 (반드시 살 조각 keep, 과거 파손
 # 신호 ban)을 두 엔진 출력 모두에 검사한다. 접두 충돌(\pmod→'+- od',
@@ -259,6 +292,36 @@ GOLDEN_LATEX_GUARD = {
     ),
     # LaTeX 원문의 '_ {…}' 공백 첨자 — 재결합 누락 시 _{"m a x"} 로 굳는다.
     r"\omega _{max} = 2.5 rad/s": (['_{"max"}'], ['"m a x"']),
+    # ── 벡터 미적분 / 맥스웰(2026-06-14) ──
+    # ∇/∂ 는 nabla/partial 키워드로(따옴표 리터럴 금지), 다중·닫힌 적분은
+    # 한컴 키워드 tint/dint/oint 로(iiint/iint/oiint 글자 노출 금지),
+    # 경계 첨자 _{∂V}/_{∂S} 는 인용되지 않은 partial(_{"partial V"} 금지).
+    # \times 는 엔진별 대소문자(builtin TIMES / hwip times)라 keep 에서 제외.
+    r"\iiint_{V} (\nabla \cdot F)\, dV = \oint_{\partial V} F \cdot dA": (
+        ["tint_", "nabla cdot", "oint_", "partial V"],
+        ['"partial', "iiint", '"nabla"'],
+    ),
+    r"\iint_{S} (\nabla \times F) \cdot dA = \oint_{\partial S} F \cdot dl": (
+        ["dint_", "nabla", "oint_", "partial S"],
+        ['"partial', "iint_", '"nabla"'],
+    ),
+    r"\nabla \cdot E = \rho / \epsilon_{0}": (
+        ["nabla cdot E", "rho", "epsilon_{0}"],
+        ['"nabla"', '"rho"', "∇", "▽"],
+    ),
+    r"\nabla \times E = -\partial B / \partial t": (
+        ["nabla", "partial B", "partial t"],
+        ['"partial"', "∂"],
+    ),
+    r"\nabla \cdot (\nabla \times A) = 0": (
+        ["nabla cdot", "nabla"],
+        ['"nabla"', "▽"],
+    ),
+    r"B = \nabla \times A": (["nabla"], ['"nabla"', "▽"]),
+    r"\oiint_{S} E \cdot dA = Q / \epsilon_{0}": (
+        ["oint_", "epsilon_{0}"],
+        ["oiint", '"epsilon"'],
+    ),
 }
 
 # 근접 오타 마커 변형 — canonicalize + lenient 스캐너가 전부 구제해야 한다.
@@ -325,6 +388,12 @@ def check_extra_regressions(eq, engine, problems):
                 )
         if "\\" in out:
             problems.append(f"[{engine}] EQ 경로 백슬래시 잔재: {out[:120]}")
+        for glyph in RAW_EQ_FORBIDDEN_GLYPHS:
+            if glyph in out:
+                problems.append(
+                    f"[{engine}] EQ 경로 유니코드 글리프 잔재({glyph!r}): "
+                    f"{body!r} → {out[:120]}"
+                )
         check_output(engine, f"EQ {body!r}", out, problems)
 
 

@@ -4611,16 +4611,40 @@ app.get("/api/version", (req, res) => {
   });
 });
 
-// Supabase 7일 무활동 자동 pause 방지용 keepalive.
-// UptimeRobot 등 외부 모니터가 주기적으로 호출 → Supabase에 가벼운 쿼리 실행.
+// keepalive: "웹 서버가 살아있다"는 신호. 외부 모니터(cron-job.org)와 self-ping이 호출한다.
 // 인증 없음 (외부 모니터가 공개 endpoint로 호출).
-app.get("/api/keepalive", async (req, res) => {
-  const result = await supa.ping();
-  if (result.ok) {
-    res.json({ ok: true, ts: new Date().toISOString() });
-  } else {
-    res.status(503).json({ ok: false, reason: result.reason });
-  }
+//
+// ⚠️ 항상 200을 반환하고, Supabase ping을 await 하지 않는다.
+// 과거엔 Supabase ping 실패 시 503을 뱉었는데, 외부 모니터(cron-job.org 등)가 그걸
+// "실패"로 보고 연속 실패가 쌓이면 잡을 자동 비활성화 → 아무도 사이트를 못 깨워서
+// Render가 영영 잠드는 닭-달걀 함정이 있었다. 또 supa.ping()을 await 하면 Supabase가
+// 느릴 때 응답이 지연되어, 콜드스타트 타임아웃으로 오탐(=실패)이 나기도 했다.
+// 이 endpoint의 목적은 "서버가 응답할 수 있는가"이므로, 서버가 살아있는 한 200이어야 한다.
+// Supabase는 7일 pause 방지를 위해 백그라운드로 가볍게 깨우고, 상태는 body에만 싣는다.
+let lastSupabasePing = { ok: null, ts: null, reason: null };
+function pingSupabaseInBackground() {
+  supa
+    .ping()
+    .then((r) => {
+      lastSupabasePing = {
+        ok: r.ok,
+        ts: new Date().toISOString(),
+        reason: r.ok ? null : r.reason,
+      };
+      if (!r.ok) console.warn(`  ⚠ keepalive: Supabase ping 실패 — ${r.reason}`);
+    })
+    .catch((e) => {
+      lastSupabasePing = { ok: false, ts: new Date().toISOString(), reason: e.message };
+    });
+}
+app.get("/api/keepalive", (req, res) => {
+  pingSupabaseInBackground(); // 결과를 기다리지 않는다 — HTTP 상태에 영향 없음.
+  res.json({
+    ok: true,
+    server: "up",
+    supabase: lastSupabasePing.ok, // 직전 백그라운드 ping 결과(null=아직 없음)
+    ts: new Date().toISOString(),
+  });
 });
 
 // multer 업로드 에러 핸들러 (파일 크기·개수 초과 등)
@@ -4743,7 +4767,12 @@ app.listen(PORT, async () => {
   if (SELF_URL && process.env.DISABLE_SELF_PING !== "1") {
     const pingUrl = SELF_URL.replace(/\/+$/, "") + "/api/keepalive";
     const selfPingTimer = setInterval(() => {
-      fetch(pingUrl).catch(() => {});
+      // 30초 타임아웃 — 한 번 잠들어 콜드스타트가 길면 fetch가 무한정 매달리지 않게.
+      const ac = new AbortController();
+      const t = setTimeout(() => ac.abort(), 30 * 1000);
+      fetch(pingUrl, { signal: ac.signal })
+        .catch(() => {})
+        .finally(() => clearTimeout(t));
     }, 5 * 60 * 1000); // 5분마다 (Render 15분 한계보다 충분히 짧게, 1회 실패에도 여유)
     if (typeof selfPingTimer.unref === "function") selfPingTimer.unref();
     console.log(`  ✓ self-ping 활성화: ${pingUrl} (5분 간격)`);

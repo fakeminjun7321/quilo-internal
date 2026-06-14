@@ -132,27 +132,32 @@ test("logged-in workspace and report form layout render cleanly", async ({ page 
   await expect(page.locator("#workspaceSummary")).toBeVisible();
   await expect(page.locator("#loginDd")).toBeHidden();
   await expect(page.locator("#acctDd")).toBeVisible();
+  await expect(page.locator("#homeHero")).toBeHidden();
 
-  const visualOrder = await page.evaluate(() => {
-    const reportTypes = document.querySelector("#reportTypes").getBoundingClientRect();
-    const hero = document.querySelector("#homeHero").getBoundingClientRect();
-    return { reportTypesTop: reportTypes.top, heroTop: hero.top };
-  });
-  expect(visualOrder.reportTypesTop).toBeLessThan(visualOrder.heroTop);
-
-  await page.evaluate(() => {
-    const input = document.querySelector('input[name="reportType"][value="chem-pre"]');
-    input.checked = true;
-    input.dispatchEvent(new Event("change", { bubbles: true }));
-  });
+  await page.locator('label:has(input[name="reportType"][value="chem-pre"])').click();
+  await page.waitForTimeout(350);
   await expect(page.locator("#form.report-flow.active")).toBeVisible();
   await expect(page.locator("#form .optional-settings")).toBeVisible();
-  await page.screenshot({ path: path.join(SCREEN_DIR, "desktop-1280.png"), fullPage: true });
+  const selectedLayout = await page.evaluate(() => {
+    const reportTypes = document.querySelector("#reportTypes").getBoundingClientRect();
+    const form = document.querySelector("#form").getBoundingClientRect();
+    return { reportTypesBottom: reportTypes.bottom, formTop: form.top, scrollY: window.scrollY };
+  });
+  expect(selectedLayout.formTop - selectedLayout.reportTypesBottom).toBeLessThan(40);
+  expect(selectedLayout.formTop).toBeLessThan(140);
+  await page.screenshot({ path: path.join(SCREEN_DIR, "desktop-1280.png"), fullPage: false });
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(BASE_URL, { waitUntil: "networkidle" });
   await expect(page.locator("#workspaceSummary")).toBeVisible();
-  await page.screenshot({ path: path.join(SCREEN_DIR, "mobile-390.png"), fullPage: true });
+  const mobileColumns = await page.evaluate(() =>
+    getComputedStyle(document.querySelector("#reportTypeFieldset"))
+      .gridTemplateColumns
+      .split(" ")
+      .filter(Boolean).length,
+  );
+  expect(mobileColumns).toBeLessThanOrEqual(2);
+  await page.screenshot({ path: path.join(SCREEN_DIR, "mobile-390.png"), fullPage: false });
 
   expect(errors).toEqual([]);
 });

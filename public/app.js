@@ -733,15 +733,12 @@ let currentStudentId = "";
             const radio = document.querySelector(
               `input[name="reportType"][value="${a.dataset.report}"]`,
             );
+            showTab("reports");
             if (radio) {
               radio.checked = true;
-              updateReportTypeView();
+              updateReportTypeView({ scroll: true });
             }
-            showTab("reports");
             menu?.classList.remove("open");
-            document
-              .getElementById("reportsPanel")
-              ?.scrollIntoView({ behavior: "smooth", block: "start" });
           });
         });
 
@@ -804,7 +801,7 @@ let currentStudentId = "";
             );
             if (radio && !radio.disabled && document.body.dataset.auth !== "out") {
               radio.checked = true;
-              if (typeof updateReportTypeView === "function") updateReportTypeView();
+              if (typeof updateReportTypeView === "function") updateReportTypeView({ scroll: true });
               const fs = document.getElementById("reportTypeFieldset");
               if (fs) fs.scrollIntoView({ behavior: "smooth", block: "start" });
             }
@@ -952,7 +949,7 @@ let currentStudentId = "";
       }
 
       const choosePrompt = document.getElementById("choosePrompt");
-      function updateReportTypeView() {
+      function updateReportTypeView(options = {}) {
         const checked = document.querySelector(
           'input[name="reportType"]:checked',
         );
@@ -971,6 +968,13 @@ let currentStudentId = "";
         setVisible(comingSoon, !!selected && !matched);
         updateReportChecklist(selected);
         if (!selected) return;
+
+        if (options.scroll) {
+          const target = matched
+            ? document.querySelector(`.report-form[data-report-form="${selected}"]`)
+            : comingSoon;
+          target?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
 
         if (selected === "chem-result") {
           const crDate = document.getElementById("crDate");
@@ -992,7 +996,7 @@ let currentStudentId = "";
             if (typeof openLoginDropdown === "function") openLoginDropdown();
             return;
           }
-          updateReportTypeView();
+          updateReportTypeView({ scroll: true });
         }),
       );
       updateReportTypeView();

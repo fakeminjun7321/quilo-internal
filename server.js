@@ -555,6 +555,27 @@ const upload = multer({
   },
 });
 
+// 한 요청 누적 업로드 상한(Render 메모리 보호). multer 의 per-file 64MB·files:50 는
+// 그대로 두되(정상 다중 사진/데이터 입력 보존), memoryStorage 특성상 한 요청이
+// 최대 ~3GB(64MB×50)까지 RAM 에 버퍼링되는 DoS 를 막는다. Content-Length 헤더로
+// 본문을 버퍼링하기 전에 가볍게 거부한다(헤더가 없으면 통과 — 스트리밍 호환).
+const MAX_TOTAL_UPLOAD_BYTES =
+  parseInt(process.env.MAX_TOTAL_UPLOAD_MB || "192", 10) * 1024 * 1024;
+function limitTotalUpload(req, res, next) {
+  const raw = req.headers["content-length"];
+  if (raw != null && raw !== "") {
+    const len = Number(raw);
+    if (Number.isFinite(len) && len > MAX_TOTAL_UPLOAD_BYTES) {
+      return res.status(413).json({
+        error: `파일이 너무 큽니다 (업로드 합계 최대 ${Math.round(
+          MAX_TOTAL_UPLOAD_BYTES / 1024 / 1024,
+        )}MB). 파일 수를 줄이거나 여러 번 나눠 생성해보세요.`,
+      });
+    }
+  }
+  next();
+}
+
 // ── Auth helpers ─────────────────────────────────────────────────────────────
 
 function getSessionUser(req) {
@@ -2400,6 +2421,7 @@ app.post("/api/feedback", requireAuth, async (req, res) => {
 app.post(
   "/api/generate",
   requireAuth,
+  limitTotalUpload,
   upload.any(),
   async (req, res) => {
     // 보고서 종류 결정 (없으면 화학 사전 = 기존 동작 보존)
@@ -2496,18 +2518,38 @@ app.post(
 
     const postedStudentId = normalizeStudentId(req.body.studentId);
     let savedStudentId = normalizeStudentId(userInfo.studentId);
+    // stale 세션 권한 차단: 학번을 새로 조회하는 김에 같은 fresh row 에서
+    // is_admin/unlimited/restricted_model 권한 플래그도 함께 읽어, 운영자가
+    // 권한을 회수했을 때 세션 만료를 기다리지 않고 즉시 반영한다(아래 모델
+    // 화이트리스트·크레딧 면제 판단에 세션 복사본 대신 fresh 값 사용).
+    // Supabase 미설정/조회 실패 시에는 기존 세션 값으로 graceful fallback.
+    // 이 row 는 크레딧 검증(getCredits)에서도 재사용해 추가 DB 호출을 피한다.
+    let effectiveIsAdmin = !!userInfo.isAdmin;
+    let effectiveUnlimited = !!userInfo.unlimited;
+    let effectiveRestrictedModel = userInfo.restrictedModel || null;
+    let freshUser = null;
     if (supa.isEnabled() && userInfo.id) {
       try {
-        const freshUser = await supa.findUserById(userInfo.id);
-        savedStudentId = normalizeStudentId(freshUser?.student_id) || savedStudentId;
-        req.session.userInfo.studentId = savedStudentId;
+        freshUser = await supa.findUserById(userInfo.id);
+        if (freshUser) {
+          savedStudentId =
+            normalizeStudentId(freshUser.student_id) || savedStudentId;
+          req.session.userInfo.studentId = savedStudentId;
+          effectiveIsAdmin = !!freshUser.is_admin;
+          effectiveUnlimited = !!freshUser.unlimited;
+          effectiveRestrictedModel = freshUser.restricted_model || null;
+          // 세션 복사본도 최신화(이후 요청에서의 stale 권한 노출 축소).
+          req.session.userInfo.isAdmin = effectiveIsAdmin;
+          req.session.userInfo.unlimited = effectiveUnlimited;
+          req.session.userInfo.restrictedModel = effectiveRestrictedModel;
+        }
       } catch (e) {
         console.warn("[generate] profile lookup failed:", e.message);
       }
     }
     pipelineInput.studentId =
       normalizeStudentId(pipelineInput.studentId) || postedStudentId || savedStudentId;
-    pipelineInput.allowHighlights = !!userInfo.isAdmin;
+    pipelineInput.allowHighlights = effectiveIsAdmin;
     // AI 이미지(개념도) 생성 옵트인 — 전체 공개. 키가 있어야 실제 동작.
     pipelineInput.allowImageGen =
       String(req.body.allowImageGen) === "true" &&
@@ -2539,7 +2581,8 @@ app.post(
       "claude-sonnet-4-6",
     ];
     // Fable 5 — 관리자 전용 최상위 모델(셀렉터도 관리자에게만 노출). 단 일시 차단 중에는 제외.
-    if (userInfo.isAdmin && !FABLE_DISABLED) ALLOWED_MODELS.push("claude-fable-5");
+    // 권한은 fresh row(effectiveIsAdmin) 기준 — 회수된 관리자 권한 즉시 반영.
+    if (effectiveIsAdmin && !FABLE_DISABLED) ALLOWED_MODELS.push("claude-fable-5");
     // GPT(OpenAI) 보고서 생성은 배선 완료된 종류에만 허용(phys-inquiry 는 추후 배선).
     const GPT_REPORT_MODELS = ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"];
     const GPT_OK_TYPES = new Set(["chem-pre", "chem-result", "phys-result", "free"]);
@@ -2554,17 +2597,17 @@ app.post(
           error: "Fable 5 모델은 현재 일시적으로 사용이 중단되었습니다. 다른 모델을 선택해 주세요.",
         });
       }
-      if (!userInfo.isAdmin) {
+      if (!effectiveIsAdmin) {
         return res
           .status(403)
           .json({ error: "Fable 5 모델은 관리자 전용입니다." });
       }
     }
     let model = allowedModels.includes(requestedModel) ? requestedModel : null;
-    // 모델 제한 계정(예: 베타테스터)은 허용 모델로 강제
-    if (userInfo.restrictedModel) {
-      model = allowedModels.includes(userInfo.restrictedModel)
-        ? userInfo.restrictedModel
+    // 모델 제한 계정(예: 베타테스터)은 허용 모델로 강제 — fresh row 기준.
+    if (effectiveRestrictedModel) {
+      model = allowedModels.includes(effectiveRestrictedModel)
+        ? effectiveRestrictedModel
         : "claude-sonnet-4-6";
     }
     if (!model) model = "claude-opus-4-8"; // 기본 = Opus 4.8
@@ -2587,15 +2630,21 @@ app.post(
       !isFreeBeta && pipelineInput.allowImageGen ? 1 * 2 : 0;
 
     // 크레딧 검증 (Supabase + 일반 사용자. admin·무제한 계정·무료 베타는 제외)
+    // 권한 면제 판단은 fresh row(effectiveIsAdmin/effectiveUnlimited) 기준.
     if (
       !isFreeBeta &&
       supa.isEnabled() &&
       userInfo.id &&
-      !userInfo.isAdmin &&
-      !userInfo.unlimited
+      !effectiveIsAdmin &&
+      !effectiveUnlimited
     ) {
       try {
-        const have = await supa.getCredits(userInfo.id);
+        // 위 profile lookup 에서 받은 fresh row 가 있으면 잔액도 거기서 읽어
+        // 중복 DB 호출을 피한다(getCredits 와 동일한 정규화 적용). 없으면 조회.
+        const have =
+          freshUser != null
+            ? Math.max(0, Math.trunc(Number(freshUser.credits) || 0))
+            : await supa.getCredits(userInfo.id);
         const need = creditCost + reservedImageCredits;
         if (have < need) {
           return res.status(402).json({
@@ -2950,6 +2999,7 @@ app.post(
 app.post(
   "/api/translate-pdf",
   requireBeta("pdf-translate"),
+  limitTotalUpload,
   upload.single("pdf"),
   async (req, res) => {
     const file = req.file;
@@ -2968,6 +3018,22 @@ app.post(
 
     const userInfo = getSessionUser(req);
 
+    // stale 세션 권한 차단(generate 와 동일 패턴): Fable/관리자 모델 게이팅에
+    // 세션 복사본 대신 DB 최신 is_admin 을 쓴다 — 권한 회수 즉시 반영.
+    // Supabase 미설정/조회 실패 시 기존 세션 값으로 graceful fallback.
+    let effectiveIsAdmin = !!userInfo.isAdmin;
+    if (supa.isEnabled() && userInfo.id) {
+      try {
+        const freshUser = await supa.findUserById(userInfo.id);
+        if (freshUser) {
+          effectiveIsAdmin = !!freshUser.is_admin;
+          req.session.userInfo.isAdmin = effectiveIsAdmin;
+        }
+      } catch (e) {
+        console.warn("[translate-pdf] privilege lookup failed:", e.message);
+      }
+    }
+
     // 모델 선택(관리자) — 기본은 translate.js 의 기본값(문서 번역엔 Sonnet 으로 충분).
     // OpenAI GPT 는 PDF 통번역 베타 도입(GPT_API_KEY 필요). gpt-5.4-mini 는 빠르고 저렴.
     const ALLOWED_MODELS = [
@@ -2979,7 +3045,8 @@ app.post(
       "gpt-5.4-mini",
     ];
     // Fable 5 — 관리자 전용(번역 UI도 관리자에게만 노출). 단 일시 차단 중에는 제외.
-    if (userInfo.isAdmin && !FABLE_DISABLED) ALLOWED_MODELS.push("claude-fable-5");
+    // 권한은 fresh row(effectiveIsAdmin) 기준 — 회수된 관리자 권한 즉시 반영.
+    if (effectiveIsAdmin && !FABLE_DISABLED) ALLOWED_MODELS.push("claude-fable-5");
     const requested = String(req.body.model || "").trim();
     if (isFableModel(requested)) {
       if (FABLE_DISABLED) {
@@ -2987,7 +3054,7 @@ app.post(
           error: "Fable 5 모델은 현재 일시적으로 사용이 중단되었습니다. 다른 모델을 선택해 주세요.",
         });
       }
-      if (!userInfo.isAdmin) {
+      if (!effectiveIsAdmin) {
         return res
           .status(403)
           .json({ error: "Fable 5 모델은 관리자 전용입니다." });

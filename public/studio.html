@@ -513,7 +513,16 @@
       $("devseg").querySelectorAll("[data-dev]").forEach((b) => b.onclick = () => { $("devseg").querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b)); $("pvhost").classList.toggle("mobile", b.dataset.dev === "mobile"); });
       $("refresh").onclick = renderPreview;
       $("undoBtn").onclick = () => gotoVersion(curVer - 1);
-      $("popout").onclick = () => { if (!currentHtml) return; const w = window.open("", "_blank"); if (w) { w.document.open(); w.document.write(currentHtml); w.document.close(); } };
+      function openSandboxedPopout() {
+        if (!currentHtml) return;
+        const w = window.open("", "_blank");
+        if (!w) return;
+        const html = JSON.stringify(currentHtml);
+        w.document.open();
+        w.document.write(`<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Quilo Preview</title><style>html,body{margin:0;width:100%;height:100%;background:#fff}iframe{display:block;width:100%;height:100%;border:0}</style></head><body><iframe id="pv" sandbox="allow-scripts allow-forms allow-popups allow-modals"></iframe><script>document.getElementById("pv").srcdoc=${html};<\/script></body></html>`);
+        w.document.close();
+      }
+      $("popout").onclick = openSandboxedPopout;
       $("toStage").onclick = () => $("app").classList.add("showstage");
       $("openPublish").onclick = openPublish;
       $("pCancel").onclick = () => $("pubModal").classList.remove("on");

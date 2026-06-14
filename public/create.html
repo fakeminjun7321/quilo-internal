@@ -32,6 +32,12 @@
       .secthead h2 { font-size:16px; margin:0; }
       .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
       .notice { background:#eef1fb; border:1px solid #d7defb; color:#33408a; border-radius:10px; padding:12px 14px; font-size:13.5px; margin-bottom:20px; }
+      .create-intro { margin:6px 0 18px; }
+      .create-intro h1 { margin:0 0 6px; font-size:28px; letter-spacing:-0.02em; }
+      .create-intro p { margin:0; color:var(--mut); font-size:14px; line-height:1.6; }
+      .empty { border:1px dashed var(--bd); border-radius:14px; padding:18px 16px; background:#fafbff; color:var(--mut); font-size:14px; }
+      .empty strong { display:block; color:var(--ink); margin-bottom:4px; }
+      .gallery > .empty { grid-column:1 / -1; }
       .myrow { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
       .myrow button { padding:4px 9px; font-size:12px; font-weight:500; }
       .item { border:1px solid var(--bd); border-radius:8px; padding:8px 10px; font-size:13px; margin-top:8px; background:var(--card); }
@@ -58,6 +64,11 @@
     </header>
 
     <div class="container">
+      <section class="create-intro">
+        <h1>창작 갤러리</h1>
+        <p>스튜디오로 만든 웹앱과 도구를 모아 보는 공간입니다. 베타 권한이 있으면 직접 만들고, 없으면 공개 갤러리를 둘러볼 수 있습니다.</p>
+      </section>
+
       <!-- 스튜디오 런처 (만들기 권한 있을 때) -->
       <a id="launch" class="launch" href="/studio.html" style="display:none;text-decoration:none">
         <div class="lt">
@@ -75,7 +86,7 @@
       <!-- 내 창작 (관리) -->
       <div id="mineWrap" style="display:none">
         <div class="secthead"><h2>🗂 내 창작</h2><span class="muted" id="whoami"></span></div>
-        <div id="mylist"><span class="muted">불러오는 중…</span></div>
+        <div id="mylist"><div class="empty"><strong>내 창작을 불러오는 중입니다.</strong>잠시만 기다려 주세요.</div></div>
       </div>
 
       <!-- 갤러리 (모두 공개) -->
@@ -83,7 +94,7 @@
         <select id="sort" style="margin-left:auto"><option value="new">최신순</option><option value="likes">인기순(좋아요)</option><option value="views">조회순</option></select>
       </div>
       <div id="chips" class="row" style="margin-bottom:12px"></div>
-      <div class="gallery" id="gallery"><span class="muted">불러오는 중…</span></div>
+      <div class="gallery" id="gallery"><div class="empty"><strong>갤러리를 불러오는 중입니다.</strong>잠시만 기다려 주세요.</div></div>
     </div>
 
     <!-- 댓글 모달 -->
@@ -135,7 +146,7 @@
             <div class="myrow"><a href="/p/${encodeURIComponent(x.slug)}" target="_blank"><button class="ghost">열기</button></a>
             <a href="/studio.html?edit=${encodeURIComponent(x.slug)}"><button class="sec">수정</button></a>
             <button class="ghost" data-del="${esc(x.id)}">삭제</button></div></div>`).join("")
-            : `<span class="muted">아직 만든 작품이 없어요. <a href="/studio.html">스튜디오에서 만들기 →</a></span>`;
+            : `<div class="empty"><strong>아직 만든 작품이 없습니다.</strong><a href="/studio.html">스튜디오에서 첫 작품 만들기 →</a></div>`;
           $("mylist").querySelectorAll("[data-del]").forEach((b)=>b.onclick=()=>del(b.dataset.del));
         }catch{ $("mylist").innerHTML = `<span class="muted">목록을 불러오지 못했어요.</span>`; }
       }
@@ -159,7 +170,7 @@
         const sort=$("sort").value;
         if(sort==="likes") items=items.slice().sort((a,b)=>(b.likes||0)-(a.likes||0));
         else if(sort==="views") items=items.slice().sort((a,b)=>(b.views||0)-(a.views||0));
-        if(!items.length){ $("gallery").innerHTML=`<span class="muted">아직 없어요.</span>`; return; }
+        if(!items.length){ $("gallery").innerHTML=`<div class="empty"><strong>아직 공개된 창작물이 없습니다.</strong>필터를 바꾸거나 나중에 다시 확인해 주세요.</div>`; return; }
         $("gallery").innerHTML = items.map((x)=>`
           <div class="g-card">
             <a href="/p/${encodeURIComponent(x.slug)}" target="_blank" style="text-decoration:none;color:inherit">

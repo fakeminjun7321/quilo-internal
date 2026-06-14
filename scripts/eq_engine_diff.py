@@ -220,11 +220,11 @@ GOLDEN_EQ = [
     # 따옴표 리터럴·비키워드로 남으면 안 된다(아래 check_extra_regressions 가
     # 백슬래시·금지패턴도 함께 검사).
     (r"{∮∮}_{S} E cdot dA = {∫∫∫}_{V} ( nabla cdot E ) dV",
-     ["oint_{S}", "tint_{V}", "nabla cdot E"]),
+     ["oint_{S}", "int int int_{V}", "nabla cdot E"]),
     (r"∭_{V} (∇·F) dV = ∯_{∂V} F·dA",
-     ["tint_{V}", "nabla cdot F", "oint_", "partial V", "F cdot dA"]),
+     ["int int int_{V}", "nabla cdot F", "oint_", "partial V", "F cdot dA"]),
     (r"∬_{S} (∇×F)·dA = ∮_{∂S} F·dl",
-     ["dint_{S}", "nabla times F", "cdot dA", "oint_", "partial S"]),
+     ["int int_{S}", "nabla times F", "cdot dA", "oint_", "partial S"]),
 ]
 
 # {{EQ:}} raw 경로 출력에 절대 없어야 할 유니코드 수식 글리프·따옴표 리터럴·
@@ -292,18 +292,19 @@ GOLDEN_LATEX_GUARD = {
     ),
     # LaTeX 원문의 '_ {…}' 공백 첨자 — 재결합 누락 시 _{"m a x"} 로 굳는다.
     r"\omega _{max} = 2.5 rad/s": (['_{"max"}'], ['"m a x"']),
-    # ── 벡터 미적분 / 맥스웰(2026-06-14) ──
-    # ∇/∂ 는 nabla/partial 키워드로(따옴표 리터럴 금지), 다중·닫힌 적분은
-    # 한컴 키워드 tint/dint/oint 로(iiint/iint/oiint 글자 노출 금지),
+    # ── 벡터 미적분 / 맥스웰(2026-06-14, int 반복 갱신 2026-06-15) ──
+    # ∇/∂ 는 nabla/partial 키워드로(따옴표 리터럴 금지). 다중적분은 int 반복
+    # (iiint→'int int int', iint→'int int') — 한컴 '본문' 렌더러가 tint/dint 를
+    # 글자로 노출하므로(실측) int 반복으로 ∫∫∫/∫∫ 를 그린다. 닫힌적분은 oint.
     # 경계 첨자 _{∂V}/_{∂S} 는 인용되지 않은 partial(_{"partial V"} 금지).
     # \times 는 엔진별 대소문자(builtin TIMES / hwip times)라 keep 에서 제외.
     r"\iiint_{V} (\nabla \cdot F)\, dV = \oint_{\partial V} F \cdot dA": (
-        ["tint_", "nabla cdot", "oint_", "partial V"],
-        ['"partial', "iiint", '"nabla"'],
+        ["int int int_", "nabla cdot", "oint_", "partial V"],
+        ['"partial', "iiint", "tint", '"nabla"'],
     ),
     r"\iint_{S} (\nabla \times F) \cdot dA = \oint_{\partial S} F \cdot dl": (
-        ["dint_", "nabla", "oint_", "partial S"],
-        ['"partial', "iint_", '"nabla"'],
+        ["int int_", "nabla", "oint_", "partial S"],
+        ['"partial', "iint_", "dint", '"nabla"'],
     ),
     r"\nabla \cdot E = \rho / \epsilon_{0}": (
         ["nabla cdot E", "rho", "epsilon_{0}"],

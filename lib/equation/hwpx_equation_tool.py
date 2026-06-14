@@ -1236,9 +1236,47 @@ def _normalize_raw_unicode_math(text: str) -> str:
     return "".join(out)
 
 
+# 인라인 나눗셈 a / b 를 {a} over {b} (한컴 분수 스택)로 바꾼다. 피연산자(factor)는
+# '/' 에 인접한 한 덩어리만: 괄호/중괄호 균형군 | (partial|nabla)[첨자]+원자(∂B,∂²f)
+# | 첨자 달린 원자(epsilon_{0}, r^{2}, I_{"cm"}). 앞 곱(μ₀ε₀ ∂E/∂t)이나 합(a + b/c)은
+# 인접 factor만 잡아 b/c·∂E/∂t 만 분수가 된다. 단일 패스라 a/b/c 는 앞쪽만 처리.
+_OVER_SCRIPTS = r"(?:\^\{[^}]*\}|_\{[^}]*\}|[_^][A-Za-z0-9])*"
+_OVER_FACTOR = (
+    r"(?:"
+    r"\([^()]*\)"                                    # (4 pi epsilon_{0})
+    r"|\{[^{}]*\}"                                   # {이미 묶인 군}
+    rf"|(?:partial|nabla)(?:\^\{{[^}}]*\}}|_\{{[^}}]*\}})?\s+[A-Za-z0-9]+{_OVER_SCRIPTS}"
+    rf"|[A-Za-z0-9]+{_OVER_SCRIPTS}"                 # epsilon_{0}, r^{2}, mgdT^{2}
+    r")"
+)
+_SLASH_OVER_RE = re.compile(rf"({_OVER_FACTOR})\s*/\s*({_OVER_FACTOR})")
+
+
+def convert_slash_to_over(script: str) -> str:
+    if "/" not in script:
+        return script
+
+    def _seg(seg: str) -> str:
+        return _SLASH_OVER_RE.sub(r"{\1} over {\2}", seg) if "/" in seg else seg
+
+    # 인용("...") 안의 단위(J/(mol·K) 등)·텍스트는 분수로 만들지 않는다.
+    out = []
+    for idx, part in enumerate(re.split(r'("[^"]*")', script)):
+        out.append(part if idx % 2 == 1 else _seg(part))
+    return "".join(out)
+
+
 def normalize_hwp_script(script: str) -> str:
     text = str(script or "").strip()
     text = _normalize_raw_unicode_math(text)
+    # tint(∭)/dint(∬)/qint 키워드는 한컴 '본문' 렌더러가 글자 그대로 노출한다
+    # (수식 편집기에선 ∭로 보이지만 본문에선 'tint' 텍스트 — 실측 확인 2026-06-15).
+    # int/oint 은 본문에서 정상 렌더되므로 int 반복(∫∫∫/∫∫)으로 바꾼다. 이는
+    # 다중적분의 표준 표기이기도 하다. \iiint→hwip 'tint'·∭→raw 'tint' 등 모든
+    # 경로가 normalize 를 지나므로 여기 한 곳에서 처리하면 충분하다.
+    text = re.sub(r"(?<![A-Za-z])qint(?![A-Za-z])", "int int int int", text)
+    text = re.sub(r"(?<![A-Za-z])tint(?![A-Za-z])", "int int int", text)
+    text = re.sub(r"(?<![A-Za-z])dint(?![A-Za-z])", "int int", text)
     text = convert_inline_radicals(text)
     text = (
         text.replace("→", "->")
@@ -1276,6 +1314,7 @@ def normalize_hwp_script(script: str) -> str:
     text = brace_unbraced_scripts(text)
     text = quote_textual_subscripts(text)
     text = compact_chemical_spacing(text)
+    text = convert_slash_to_over(text)
     text = re.sub(r"\b(APPROX|TIMES|DIV)(?=[A-Za-z0-9{])", r"\1 ", text)
     text = re.sub(r"(?<=[A-Za-z0-9}])(?=(APPROX|TIMES|DIV)\b)", " ", text)
     text = re.sub(r"\s{2,}", " ", text)

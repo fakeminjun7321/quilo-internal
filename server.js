@@ -1,6 +1,9 @@
 require("dotenv").config();
 const express = require("express");
-const session = require("express-session");
+// 세션은 '무상태(stateless) 서명 쿠키'로. express-session 의 기본 MemoryStore 는 서버
+// 재시작 때 모두 날아가 자동 로그아웃되므로, 세션 데이터를 서명된 쿠키 자체에 담는다
+// (재시작·재배포에도 로그인 유지). 키만 안정적이면 됨(아래 SESSION_SECRET).
+const cookieSession = require("cookie-session");
 const multer = require("multer");
 const path = require("path");
 const crypto = require("crypto");
@@ -447,8 +450,30 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 // Full-site closure. Revert this commit or set this to false to reopen.
 const SITE_CLOSED = false;
-const SESSION_SECRET =
-  process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
+// 세션 쿠키 서명 키. 재시작마다 바뀌면 기존 로그인 쿠키가 모두 무효화돼 '자동 로그아웃'
+// 되므로 반드시 안정적이어야 한다. SESSION_SECRET 가 있으면 그걸 쓰고, 없으면 재시작에도
+// 변하지 않는 운영 키(Supabase/Anthropic)에서 결정적으로 파생한다(키 노출 아님 — sha256).
+const SESSION_SECRET = (() => {
+  if (process.env.SESSION_SECRET) return process.env.SESSION_SECRET;
+  const seed =
+    process.env.SUPABASE_SERVICE_KEY ||
+    process.env.SUPABASE_URL ||
+    process.env.ANTHROPIC_API_KEY ||
+    "";
+  if (seed) {
+    console.warn(
+      "⚠ SESSION_SECRET 미설정 — 운영 키에서 파생한 안정 키 사용(재시작에도 유지). 가능하면 SESSION_SECRET 환경변수를 따로 지정하세요.",
+    );
+    return crypto
+      .createHash("sha256")
+      .update("quilo-session-v1:" + seed)
+      .digest("hex");
+  }
+  console.warn(
+    "⚠ SESSION_SECRET·운영 키 모두 없음 — 임시 랜덤 키(재시작 시 자동 로그아웃). 로컬 개발에서만 정상.",
+  );
+  return crypto.randomBytes(32).toString("hex");
+})();
 
 // Hard timeout for a single generation job (default 15 minutes)
 const JOB_TIMEOUT_MS = parseInt(
@@ -501,16 +526,13 @@ app.use("/api/artifacts", express.json({ limit: "8mb" }));
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 app.use(
-  session({
-    secret: SESSION_SECRET,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      maxAge: 1000 * 60 * 60 * 12, // 12h
-      sameSite: "lax",
-    },
+  cookieSession({
+    name: "quilo.sid",
+    keys: [SESSION_SECRET],
+    maxAge: 1000 * 60 * 60 * 12, // 12h (로그인 시 '로그인 유지'면 30일로 연장)
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
   }),
 );
 
@@ -893,11 +915,12 @@ app.post("/api/login", async (req, res) => {
       unlimited: !!user.unlimited,
       restrictedModel: user.restricted_model || null,
     };
-    // 로그인 유지: 체크 시 30일 지속 쿠키, 아니면 브라우저/앱 세션 한정
+    // 로그인 유지: 체크 시 30일 지속 쿠키, 아니면 브라우저/앱 세션 한정.
+    // (cookie-session 은 req.sessionOptions 로 이번 응답의 쿠키 만료를 조절한다.)
     if (req.body && req.body.remember) {
-      req.session.cookie.maxAge = 1000 * 60 * 60 * 24 * 30; // 30일
+      req.sessionOptions.maxAge = 1000 * 60 * 60 * 24 * 30; // 30일
     } else {
-      req.session.cookie.expires = false; // 세션 쿠키(닫으면 만료)
+      req.sessionOptions.maxAge = null; // 세션 쿠키(브라우저 닫으면 만료)
     }
     supa.recordLogin({
       userId: user.id,
@@ -1000,7 +1023,8 @@ app.post("/api/signup", async (req, res) => {
 });
 
 app.post("/api/logout", (req, res) => {
-  req.session.destroy(() => res.json({ ok: true }));
+  req.session = null; // cookie-session: 세션 쿠키 제거
+  res.json({ ok: true });
 });
 
 app.get("/api/me", async (req, res) => {

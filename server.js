@@ -450,9 +450,9 @@ const SITE_CLOSED = false;
 const SESSION_SECRET =
   process.env.SESSION_SECRET || crypto.randomBytes(32).toString("hex");
 
-// Hard timeout for a single generation job (default 8 minutes)
+// Hard timeout for a single generation job (default 15 minutes)
 const JOB_TIMEOUT_MS = parseInt(
-  process.env.JOB_TIMEOUT_MS || String(8 * 60 * 1000),
+  process.env.JOB_TIMEOUT_MS || String(15 * 60 * 1000),
   10,
 );
 // Fable 5는 최상위 대형 모델이라 토큰 생성이 훨씬 느리다(긴 보고서 = 10~20분+).
@@ -462,10 +462,16 @@ const JOB_TIMEOUT_FABLE_MS = parseInt(
   process.env.JOB_TIMEOUT_FABLE_MS || String(45 * 60 * 1000),
   10,
 );
-function jobTimeoutForModel(model) {
-  return /^claude-fable/.test(String(model || ""))
-    ? JOB_TIMEOUT_FABLE_MS
-    : JOB_TIMEOUT_MS;
+// 문제집 메이커는 추출·풀이를 여러 AI 호출로 병렬 처리(+교차검증 3중)하고 3종 PDF를
+// 조판한다. 두꺼운 챕터+교차검증이면 길어질 수 있어 넉넉한 타임아웃을 별도로 둔다.
+const JOB_TIMEOUT_PROBLEMSET_MS = parseInt(
+  process.env.JOB_TIMEOUT_PROBLEMSET_MS || String(40 * 60 * 1000),
+  10,
+);
+function jobTimeoutForModel(model, reportType) {
+  if (/^claude-fable/.test(String(model || ""))) return JOB_TIMEOUT_FABLE_MS;
+  if (reportType === "problem-set") return JOB_TIMEOUT_PROBLEMSET_MS;
+  return JOB_TIMEOUT_MS;
 }
 // Fable 5 일시 차단 — 외부 사용 이슈로 관리자 포함 전체 차단(한시적).
 // 재개하려면 환경변수 FABLE_DISABLED=0 으로 설정(또는 이 기본값을 false 로).
@@ -3745,7 +3751,7 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
     policyAcknowledgement,
   } = meta;
   const t0 = Date.now();
-  const jobTimeoutMs = jobTimeoutForModel(model);
+  const jobTimeoutMs = jobTimeoutForModel(model, job.reportType);
   const timeoutMin = Math.round(jobTimeoutMs / 60000);
   pushProgress(
     job,

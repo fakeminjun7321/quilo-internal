@@ -1539,6 +1539,9 @@ let currentStudentId = "";
         if (modelId === "claude-opus-4-8") return "Opus 4.8";
         if (modelId === "claude-opus-4-7") return "Opus 4.7";
         if (modelId === "claude-sonnet-4-6") return "Sonnet 4.6";
+        if (modelId === "gpt-5.5") return "GPT-5.5";
+        if (modelId === "gpt-5.4") return "GPT-5.4";
+        if (modelId === "gpt-5.4-mini") return "GPT-5.4 mini";
         return modelId || "Opus 4.8";
       }
 

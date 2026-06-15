@@ -327,6 +327,26 @@
       <p id="betaStatus" class="hint"></p>
     </section>
 
+    <section class="settings-card" id="problemsetSection">
+      <div class="card-head">
+        <h2>📚 문제집 메이커 한도</h2>
+        <button id="refreshPsLimit" class="secondary compact">새로고침</button>
+      </div>
+      <p class="hint">
+        문제집 메이커가 한 번에 만들 수 있는 <strong>최대 문제 수</strong>입니다. 사용자가 올린 파일에서 이보다 많은 문제가 추출되면 생성이 거부됩니다. <strong>관리자는 이 한도를 받지 않습니다.</strong> 0 = 무제한.
+      </p>
+      <form id="psLimitForm" class="compact-form">
+        <div class="field">
+          <label>
+            <span class="field-label">최대 문제 수</span>
+            <input id="psLimitInput" type="number" min="0" max="10000" placeholder="120" style="width: 140px" />
+          </label>
+        </div>
+        <button type="submit">저장</button>
+        <span id="psLimitStatus" class="inline-status"></span>
+      </form>
+    </section>
+
     <section class="settings-card">
       <div class="card-head">
         <h2>보고서 생성 로그</h2>
@@ -1005,6 +1025,47 @@
         });
 
       document.getElementById("refreshBeta").addEventListener("click", loadBeta);
+
+      // ── 문제집 메이커 최대 문제 수 ────────────────────────────────────
+      async function loadPsLimit() {
+        try {
+          const r = await fetch("/api/admin/problemset-limit");
+          if (!r.ok) return;
+          const d = await r.json();
+          const inp = document.getElementById("psLimitInput");
+          if (inp) inp.value = d.max;
+          const st = document.getElementById("psLimitStatus");
+          if (st)
+            st.textContent = `현재 ${d.max === 0 ? "무제한" : d.max + "문제"} · 기본 ${d.default}`;
+        } catch (_) {
+          /* ignore */
+        }
+      }
+      document
+        .getElementById("psLimitForm")
+        ?.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const inp = document.getElementById("psLimitInput");
+          const max = Math.max(0, Math.trunc(Number(inp.value) || 0));
+          const st = document.getElementById("psLimitStatus");
+          st.textContent = "저장 중...";
+          try {
+            const r = await fetch("/api/admin/problemset-limit", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ max }),
+            });
+            const d = await r.json();
+            if (!r.ok) throw new Error(d.error || "저장 실패");
+            st.textContent = `저장됨: ${d.max === 0 ? "무제한" : d.max + "문제"}`;
+          } catch (err) {
+            st.textContent = "오류: " + err.message;
+          }
+        });
+      document
+        .getElementById("refreshPsLimit")
+        ?.addEventListener("click", loadPsLimit);
+      loadPsLimit();
 
       // ── 공지사항(상단 티커) 관리 ──────────────────────────────────────
       async function loadAnn() {

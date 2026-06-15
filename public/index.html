@@ -50,6 +50,7 @@
               <a href="/tools/convert.html">파일 변환기 <span style="font-size:11px;opacity:.6">· 이미지·PDF·수식</span></a>
               <a href="/translate.html" id="navBetaTranslate" hidden>PDF 통번역 <span class="beta-pill">베타</span></a>
               <a href="/editor.html" id="navBetaEditor" hidden>Quilo Code <span class="beta-pill">베타</span></a>
+              <a href="/?report=problem-set" id="navBetaProblemSet" hidden>문제집 메이커 <span class="beta-pill">베타</span></a>
             </div>
           </div>
           <div class="nav-dd" data-dd>
@@ -206,6 +207,12 @@
           <span class="rt-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16"/><path d="M6 4l6 8-6 8"/><path d="M4 20h16"/></svg></span>
           <span class="rt-title">수학 수행평가 <span class="beta-pill">베타</span></span>
           <span class="rt-tag">주제 한 줄 → 급수 탐구보고서</span>
+        </label>
+        <label id="rtProblemSet" hidden>
+          <input type="radio" name="reportType" value="problem-set" />
+          <span class="rt-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h11l5 5v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><path d="M14 4v5h5"/><path d="M8 13h7M8 17h4"/></svg></span>
+          <span class="rt-title">문제집 메이커 <span class="beta-pill">베타</span></span>
+          <span class="rt-tag">교재 문제 PDF → 문제지·해설지 3종</span>
         </label>
       </div>
     </div>
@@ -847,6 +854,106 @@
       <div class="form-actions">
         <span class="hint">베타 기능입니다. 크레딧이 차감되지 않습니다. 생성에는 보통 1~3분 걸립니다.</span>
         <button type="submit" id="miBtn">수학 수행평가 초안 생성</button>
+      </div>
+    </form>
+
+    <!-- ── 문제집 메이커 폼 (베타) ─────────────────────────────────────── -->
+    <!-- data-flow-init="1": 단계별 위저드(자료/정보/설정/생성)를 건너뛰고 한 페이지 폼으로
+         (간단한 도구라 모든 입력을 한 화면에 보여 주는 편이 낫다). -->
+    <form id="problemSetForm" class="report-form" data-report-form="problem-set" data-flow-init="1" hidden>
+      <div class="notice">
+        <strong>문제집 메이커 (베타·무료).</strong>
+        옥스토비·Serway처럼 빼곡한 교재 문제 PDF(또는 사진)를 올리면, ① 영어 문제지 ② 한글 문제지 ③ 해설지
+        <strong>3개 PDF를 ZIP 하나</strong>로 만들어 줍니다. 페이지당 문제 수를 정하면 그만큼 풀이 칸을 비워 주고,
+        문제 속 그림·표는 자동으로 잘라 넣습니다(원본에 없으면 표준값으로 재구성해 '재구성됨' 표시).
+        <strong>그대로 제출용이 아니라 학습·풀이용입니다.</strong>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head">
+          <span class="form-section-title">문제 파일</span>
+        </div>
+        <div class="field">
+          <span class="field-label">교재/학습지 문제 (PDF 또는 이미지, 여러 개) <span class="req">*</span></span>
+          <div class="dropzone">
+            <input id="psSource" name="source" type="file" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,application/pdf,image/*" multiple aria-label="문제 파일" />
+            <span class="dropzone-icon" aria-hidden="true">📚</span>
+            <span class="dropzone-title">문제 PDF·사진을 끌어다 놓거나 클릭</span>
+            <span class="dropzone-sub">.pdf · .png/.jpg — 그림·표·수식 포함 OK</span>
+            <span class="dropzone-file" data-dz-file></span>
+          </div>
+          <small>문제만 빼곡한 원서 PDF를 권장합니다. 사진은 또렷할수록 좋습니다.</small>
+        </div>
+        <div class="field user-notes-field">
+          <label>
+            <span class="field-label">AI 참고 메모 (선택)</span>
+            <textarea id="psUserNotes" name="userNotes" rows="3" maxlength="6000" placeholder="예: 10장 연습문제 1~20번만. 영어 원문은 그대로 두고, 물리 수식은 정확히. 그래프 문제는 해설에 그래프도 그려줘."></textarea>
+          </label>
+          <small>특정 범위·언어·강조점이 있으면 적어 주세요. 문제 데이터를 지어내는 근거로는 쓰지 않습니다.</small>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head">
+          <span class="form-section-title">문제지 설정</span>
+        </div>
+        <div class="field-grid">
+          <div class="field">
+            <label><span class="field-label">한 페이지당 문제 수</span>
+              <select id="psPerPage" name="perPage">
+                <option value="1">1문제 (풀이 칸 최대)</option>
+                <option value="2">2문제</option>
+                <option value="3">3문제</option>
+                <option value="4">4문제</option>
+                <option value="5">5문제</option>
+                <option value="6" selected>6문제 (기본)</option>
+                <option value="8">8문제</option>
+                <option value="10">10문제</option>
+                <option value="12">12문제 (풀이 칸 최소)</option>
+              </select>
+            </label>
+            <small>적을수록 문제 아래 풀이 칸이 넓어집니다.</small>
+          </div>
+          <div class="field">
+            <span class="field-label">정확도 · 삽화 옵션</span>
+            <label class="ps-check" style="display:flex;align-items:flex-start;gap:8px;font-size:13.5px;margin:4px 0;cursor:pointer;user-select:none">
+              <input id="psCrossVerify" type="checkbox" style="width:auto;margin:2px 0 0" />
+              <span><strong>병렬 교차검증 풀이</strong> — 문제를 3번 독립으로 풀어 교차검증(정답이 갈리면 '재확인 필요' 표시). 더 정확하지만 시간이 더 걸립니다.</span>
+            </label>
+            <label class="ps-check" style="display:flex;align-items:flex-start;gap:8px;font-size:13.5px;margin:4px 0;cursor:pointer;user-select:none">
+              <input id="psAllowImageGen" type="checkbox" style="width:auto;margin:2px 0 0" />
+              <span><strong>해설 삽화 생성</strong> — 풀이에 도움되는 개념 도식을 AI(gpt-image)로 그려 해설지에 넣습니다(개념도만, 실측 데이터 아님).</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head">
+          <span class="form-section-title">AI 모델</span>
+        </div>
+        <div class="seg-group">
+          <span class="field-label">AI 모델 (베타 기간 무료)</span>
+          <div class="segmented">
+            <label class="fable-model" hidden><input type="radio" name="psModel" value="claude-fable-5" /> Fable 5 (관리자)</label>
+            <label><input type="radio" name="psModel" value="claude-opus-4-8" checked /> Opus 4.8 · 무료(베타)</label>
+            <label><input type="radio" name="psModel" value="claude-sonnet-4-6" /> Sonnet 4.6 · 무료(베타)</label>
+          </div>
+          <small>물리·화학 수식과 풀이 정확도는 Opus를 권장합니다.</small>
+        </div>
+      </div>
+
+      <div class="policy-check">
+        <label>
+          <input type="checkbox" required />
+          본인이 이용 권한을 가진 교재·문제 파일만 업로드하며, 저작권과 학교·교사 기준을 확인했습니다.
+          생성물은 학습·풀이 보조용으로만 사용합니다.
+        </label>
+      </div>
+
+      <div class="form-actions">
+        <span class="hint">베타 기능입니다. 크레딧이 차감되지 않습니다. 문제 수에 따라 1~5분 걸릴 수 있습니다.</span>
+        <button type="submit" id="psBtn">문제지·해설지 만들기</button>
       </div>
     </form>
 

@@ -766,6 +766,10 @@ let currentStudentId = "";
             const el2 = document.getElementById("navBetaEditor");
             if (el2) el2.hidden = false;
           }
+          if (b.admin === true || feats.includes("problem-set")) {
+            const el3 = document.getElementById("navBetaProblemSet");
+            if (el3) el3.hidden = false;
+          }
           // 물리 수행평가(베타): 상단 메뉴 바로가기는 제거됨 — 진입은 '수행평가 도움' 허브로 일원화.
           // 보고서 종류 탭(rtPhysInquiry)은 평소엔 숨기고, 허브에서 '?report=phys-inquiry' 로
           // 들어올 때만 노출·자동 선택한다(아래 딥링크 처리).
@@ -794,6 +798,13 @@ let currentStudentId = "";
               (b.admin === true || feats.includes("math-inquiry"))
             ) {
               const tab = document.getElementById("rtMathInquiry");
+              if (tab) tab.hidden = false;
+            }
+            if (
+              want === "problem-set" &&
+              (b.admin === true || feats.includes("problem-set"))
+            ) {
+              const tab = document.getElementById("rtProblemSet");
               if (tab) tab.hidden = false;
             }
             const radio = want && document.querySelector(
@@ -850,6 +861,10 @@ let currentStudentId = "";
         "math-inquiry": {
           title: "수학 수행평가",
           items: ["탐구 주제", "분석 방향", "학번 저장", "생성 버튼"],
+        },
+        "problem-set": {
+          title: "문제집 메이커",
+          items: ["문제 PDF/사진", "페이지당 문제 수", "교차검증 선택", "만들기 버튼"],
         },
       };
 
@@ -1051,6 +1066,8 @@ let currentStudentId = "";
       const miBtn = document.getElementById("miBtn");
       const frForm = document.getElementById("freeForm");
       const frBtn = document.getElementById("frBtn");
+      const psForm = document.getElementById("problemSetForm");
+      const psBtn = document.getElementById("psBtn");
 
       document
         .querySelectorAll('#form input[name="format"]')
@@ -2197,6 +2214,65 @@ let currentStudentId = "";
         });
       }
 
+      // ── 문제집 메이커(베타) submit — 문제 PDF/사진 → 3종 PDF ZIP ─────────
+      if (psForm) {
+        psForm.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          if (currentJobId) return;
+
+          const source = Array.from(document.getElementById("psSource").files);
+          if (source.length === 0) {
+            alert("문제 파일(PDF 또는 이미지)을 올리세요.");
+            document.getElementById("psSource").focus();
+            return;
+          }
+
+          const psModel =
+            document.querySelector('input[name="psModel"]:checked')?.value ||
+            "claude-opus-4-8";
+          const modelLabel = getModelLabel(psModel);
+          const perPage = document.getElementById("psPerPage").value || "6";
+          const crossVerify = document.getElementById("psCrossVerify").checked;
+          const allowImageGen =
+            document.getElementById("psAllowImageGen").checked;
+          const userNotes = document.getElementById("psUserNotes").value.trim();
+
+          const ok = await showConfirmDialog({
+            title: "문제집 메이커 (베타)",
+            rows: [
+              ["모델", modelLabel],
+              ["문제 파일", `${source.length}개`],
+              ["페이지당 문제 수", `${perPage}문제`],
+              ["교차검증", crossVerify ? "ON (3중 풀이)" : "OFF"],
+              ["해설 삽화", allowImageGen ? "생성 (gpt-image)" : "사용 안 함"],
+              ["출력", "ZIP · 영어 문제지 + 한글 문제지 + 해설지"],
+              ["예상 비용", "무료 (베타)"],
+              [
+                "예상 시간",
+                crossVerify
+                  ? "문제 수에 따라 2~8분"
+                  : "문제 수에 따라 1~5분",
+              ],
+            ],
+            note: `교재 문제를 영어 문제지·한글 문제지·해설지 3종 PDF로 만들어 ZIP 하나로 묶습니다. ${USE_POLICY_NOTE}`,
+          });
+          if (!ok) return;
+
+          const fd = new FormData();
+          fd.append("type", "problem-set");
+          source.forEach((f) => fd.append("source", f));
+          fd.append("perPage", perPage);
+          fd.append("crossVerify", crossVerify ? "true" : "false");
+          fd.append("allowImageGen", allowImageGen ? "true" : "false");
+          if (userNotes) fd.append("userNotes", userNotes);
+          if (currentStudentId) fd.append("studentId", currentStudentId);
+          fd.append("model", psModel);
+          appendPolicyAcknowledgements(fd);
+
+          await submitReport({ formEl: psForm, buttonEl: psBtn, formData: fd });
+        });
+      }
+
       // ── 자유 보고서 submit ───────────────────────────────────────────────
       if (frForm) {
         frForm.addEventListener("submit", async (e) => {
@@ -2337,6 +2413,7 @@ let currentStudentId = "";
         if (prBtn) prBtn.textContent = "물리 결과보고서 생성";
         if (piBtn) piBtn.textContent = "물리 수행평가 초안 생성";
         if (miBtn) miBtn.textContent = "수학 수행평가 초안 생성";
+        if (psBtn) psBtn.textContent = "문제지·해설지 만들기";
         if (frBtn) frBtn.textContent = "자유 보고서 생성";
         stopBtn.textContent = "중지";
         const genSpinner = document.getElementById("genSpinner");

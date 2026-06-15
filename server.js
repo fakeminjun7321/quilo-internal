@@ -364,10 +364,53 @@ const PIPELINES = {
     generateDocx: require("./lib/pipelines/free-report/docx-gen").generateDocx,
     generateHwpx: require("./lib/pipelines/free-report/hwpx-gen").generateHwpx,
   },
+  // 문제집 메이커 (베타) — 교재/학습지 문제 PDF·이미지를 받아 3종 PDF(영어 문제지·
+  // 한글 문제지·해설지)를 ZIP 하나로 만든다. 풀이 공간(페이지당 N문제), 그림 자동 크롭,
+  // 결측 자료 재구성('재구성됨' 표시), (옵션) 병렬 교차검증, (옵션) 해설 삽화 gpt-image.
+  // 출력이 ZIP 이므로 generateDocx/Hwpx 대신 generateBundle 을 쓴다(outputKind:"zip").
+  "problem-set": {
+    label: "문제집 메이커",
+    filenamePrefix: "문제집",
+    filenameSourceField: "source",
+    creditField: "result",
+    outputKind: "zip",
+    prepareInput(filesByField, body) {
+      const source = filesByField.source || [];
+      if (source.length === 0) {
+        throw new Error("문제 파일(PDF 또는 이미지)을 한 개 이상 올리세요.");
+      }
+      for (const f of source) {
+        const ext = (f.originalname.split(".").pop() || "").toLowerCase();
+        if (!["pdf", "png", "jpg", "jpeg", "gif", "webp"].includes(ext)) {
+          throw new Error(
+            `문제 파일은 PDF 또는 이미지(.png/.jpg)만 가능합니다. (${f.originalname})`,
+          );
+        }
+      }
+      const perPage = Math.max(1, Math.min(12, parseInt(body.perPage, 10) || 6));
+      const mapFiles = (arr) =>
+        arr.map((f) => ({
+          buffer: f.buffer,
+          name: f.originalname,
+          mimetype: f.mimetype,
+        }));
+      return {
+        sourceFiles: mapFiles(source),
+        perPage,
+        crossVerify: String(body.crossVerify) === "true",
+        userNotes: collectUserNotes(body.userNotes, filesByField),
+        studentId: String(body.studentId || "").trim().slice(0, 20),
+        style: "default",
+      };
+    },
+    generateContent: require("./lib/pipelines/problem-set/generate")
+      .generateReportContent,
+    generateBundle: require("./lib/pipelines/problem-set/bundle").generateBundle,
+  },
 };
 
 // 베타·무료 보고서 종류 — /api/generate 에서 테스터 한정 접근 + 크레딧 미차감.
-const FREE_BETA_TYPES = new Set(["phys-inquiry", "math-inquiry"]);
+const FREE_BETA_TYPES = new Set(["phys-inquiry", "math-inquiry", "problem-set"]);
 const pricing = require("./lib/pricing");
 const {
   fmtUSD,
@@ -612,6 +655,17 @@ function getBetaDailyLimit(key) {
   return betaDailyLimits.has(key)
     ? betaDailyLimits.get(key)
     : BETA_DAILY_LIMIT_DEFAULT;
+}
+
+// 문제집 메이커: 한 번에 만들 수 있는 최대 문제 수(관리자 면제). 관리자 페이지에서 설정.
+// 기본 120. Supabase app_settings 에 영구 보관(있으면 부팅 시 로드), 없으면 in-memory.
+const PROBLEMSET_MAX_PROBLEMS_DEFAULT = Math.max(
+  0,
+  parseInt(process.env.PROBLEMSET_MAX_PROBLEMS || "120", 10) || 120,
+);
+let problemSetMaxProblems = PROBLEMSET_MAX_PROBLEMS_DEFAULT;
+function getProblemSetMaxProblems() {
+  return problemSetMaxProblems;
 }
 
 function requireBeta(key) {
@@ -2554,6 +2608,12 @@ app.post(
     pipelineInput.allowImageGen =
       String(req.body.allowImageGen) === "true" &&
       !!(process.env.GPT_API_KEY || process.env.OPENAI_API_KEY);
+    // 문제집 메이커: 추출 문제 수 한도(관리자는 0=무제한으로 면제). generate.js 가 EXTRACT 후 검사.
+    if (reportType === "problem-set") {
+      pipelineInput.maxProblems = effectiveIsAdmin
+        ? 0
+        : getProblemSetMaxProblems();
+    }
     if (reportType === "phys-result" && !pipelineInput.studentId) {
       return res
         .status(400)
@@ -2585,7 +2645,13 @@ app.post(
     if (effectiveIsAdmin && !FABLE_DISABLED) ALLOWED_MODELS.push("claude-fable-5");
     // GPT(OpenAI) 보고서 생성은 배선 완료된 종류에만 허용(phys-inquiry 는 추후 배선).
     const GPT_REPORT_MODELS = ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"];
-    const GPT_OK_TYPES = new Set(["chem-pre", "chem-result", "phys-result", "free"]);
+    const GPT_OK_TYPES = new Set([
+      "chem-pre",
+      "chem-result",
+      "phys-result",
+      "free",
+      "problem-set",
+    ]);
     const allowedModels = GPT_OK_TYPES.has(reportType)
       ? [...ALLOWED_MODELS, ...GPT_REPORT_MODELS]
       : ALLOWED_MODELS;
@@ -2663,9 +2729,12 @@ app.post(
     // 출력 형식: docx (default) 또는 hwpx — pipeline이 hwpx generator를 가진 경우에만 hwpx 허용
     const requestedFormat = String(req.body.format || "docx").trim().toLowerCase();
     const format =
-      requestedFormat === "hwpx" && typeof pipeline.generateHwpx === "function"
-        ? "hwpx"
-        : "docx";
+      pipeline.outputKind === "zip"
+        ? "zip"
+        : requestedFormat === "hwpx" &&
+            typeof pipeline.generateHwpx === "function"
+          ? "hwpx"
+          : "docx";
     pipelineInput.fontFace = normalizeFontFaceForFormat(
       pipelineInput.fontFace,
       format,
@@ -2760,6 +2829,25 @@ app.get("/api/me/beta", requireAuth, async (req, res) => {
   } catch {
     return res.json({ features: [] });
   }
+});
+
+// 문제집 메이커 최대 문제 수 — 조회/설정(관리자). 0 = 무제한.
+app.get("/api/admin/problemset-limit", requireAdmin, (req, res) => {
+  res.json({
+    max: problemSetMaxProblems,
+    default: PROBLEMSET_MAX_PROBLEMS_DEFAULT,
+  });
+});
+app.post("/api/admin/problemset-limit", requireAdmin, async (req, res) => {
+  const n = Math.max(0, Math.trunc(Number(req.body.max) || 0));
+  problemSetMaxProblems = n;
+  // Supabase app_settings 에 영구 보관(테이블 없으면 graceful — in-memory 만 유지).
+  try {
+    await supa.setAppSetting("problem_set_max_problems", n);
+  } catch (_) {
+    /* ignore */
+  }
+  res.json({ ok: true, max: problemSetMaxProblems });
 });
 
 app.get("/api/admin/beta", requireAdmin, async (req, res) => {
@@ -3782,39 +3870,61 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
       pushProgress(job, `⚠ 스타일 글꼴 감지 건너뜀: ${e.message}`);
     }
 
-    const ext = format === "hwpx" ? "hwpx" : "docx";
-    pushProgress(job, `📄 .${ext} 파일 빌드 중...`);
     const tBuildStart = Date.now();
-    const buffer =
-      format === "hwpx"
-        ? await pipeline.generateHwpx(content)
-        : await pipeline.generateDocx(content);
-    const buildSec = Math.floor((Date.now() - tBuildStart) / 1000);
-    const sizeKB = Math.round(buffer.length / 1024);
-    pushProgress(job, `✓ .${ext} 빌드 완료 (${sizeKB}KB, ${buildSec}초)`);
-
-    // 파일명 결정: pipeline에 buildFilename이 있으면 그걸 사용 (커스텀 형식)
-    // 없으면 기존 형식 ({번호}_{타입}_{학번}_{이름}.{ext})
-    job.result = buffer;
-    job.mimeType =
-      format === "hwpx"
-        ? "application/hwp+zip"
-        : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-    if (typeof pipeline.buildFilename === "function") {
-      const baseName = pipeline.buildFilename(content, {
+    let buffer;
+    if (typeof pipeline.generateBundle === "function") {
+      // 다중 PDF → ZIP 출력 파이프라인(문제집 메이커 등). generateDocx/Hwpx 대신 사용.
+      pushProgress(job, "📦 PDF 3종(영어·한글 문제지 + 해설지) 빌드 + ZIP 중...");
+      const bundle = await pipeline.generateBundle(content, {
         studentId,
         userName: renderedStudentName,
         sourceFilename,
+        signal: ac.signal,
+        onProgress: (msg) => pushProgress(job, msg),
       });
-      // buildFilename이 .docx로 끝나는 경우 ext로 교체
-      job.filename = baseName.replace(/\.docx$/i, `.${ext}`);
+      buffer = bundle.buffer;
+      const buildSec = Math.floor((Date.now() - tBuildStart) / 1000);
+      pushProgress(
+        job,
+        `✓ ZIP 빌드 완료 (${Math.round(buffer.length / 1024)}KB, ${buildSec}초)`,
+      );
+      job.result = buffer;
+      job.mimeType = "application/zip";
+      job.filename = bundle.filename;
     } else {
-      const num = extractManualNumber(sourceFilename);
-      const userName = sanitizeForFilename(renderedStudentName);
-      const prefix = num ? `${num}_` : "";
-      const studentPart = sanitizeForFilename(studentId) || "학번";
-      const namePart = userName ? `_${userName}` : "";
-      job.filename = `${prefix}${pipeline.filenamePrefix}_${studentPart}${namePart}.${ext}`;
+      const ext = format === "hwpx" ? "hwpx" : "docx";
+      pushProgress(job, `📄 .${ext} 파일 빌드 중...`);
+      buffer =
+        format === "hwpx"
+          ? await pipeline.generateHwpx(content)
+          : await pipeline.generateDocx(content);
+      const buildSec = Math.floor((Date.now() - tBuildStart) / 1000);
+      const sizeKB = Math.round(buffer.length / 1024);
+      pushProgress(job, `✓ .${ext} 빌드 완료 (${sizeKB}KB, ${buildSec}초)`);
+
+      // 파일명 결정: pipeline에 buildFilename이 있으면 그걸 사용 (커스텀 형식)
+      // 없으면 기존 형식 ({번호}_{타입}_{학번}_{이름}.{ext})
+      job.result = buffer;
+      job.mimeType =
+        format === "hwpx"
+          ? "application/hwp+zip"
+          : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+      if (typeof pipeline.buildFilename === "function") {
+        const baseName = pipeline.buildFilename(content, {
+          studentId,
+          userName: renderedStudentName,
+          sourceFilename,
+        });
+        // buildFilename이 .docx로 끝나는 경우 ext로 교체
+        job.filename = baseName.replace(/\.docx$/i, `.${ext}`);
+      } else {
+        const num = extractManualNumber(sourceFilename);
+        const userName = sanitizeForFilename(renderedStudentName);
+        const prefix = num ? `${num}_` : "";
+        const studentPart = sanitizeForFilename(studentId) || "학번";
+        const namePart = userName ? `_${userName}` : "";
+        job.filename = `${prefix}${pipeline.filenamePrefix}_${studentPart}${namePart}.${ext}`;
+      }
     }
 
     if (job.userInfo?.id) {
@@ -4808,6 +4918,22 @@ app.listen(PORT, async () => {
       if (seeded) console.log("  ✓ 베타 기능 등록: 창작(create)");
     } catch (e) {
       console.warn(`  ⚠ 베타 기능 등록 실패(create): ${e.message}`);
+    }
+    try {
+      const seeded = await supa.ensureBetaFeature("problem-set", "문제집 메이커");
+      if (seeded) console.log("  ✓ 베타 기능 등록: 문제집 메이커(problem-set)");
+    } catch (e) {
+      console.warn(`  ⚠ 베타 기능 등록 실패(problem-set): ${e.message}`);
+    }
+    // 문제집 메이커 최대 문제 수(관리자 설정값)를 app_settings 에서 로드(있으면).
+    try {
+      const v = await supa.getAppSetting("problem_set_max_problems");
+      if (v != null && Number.isFinite(Number(v)) && Number(v) >= 0) {
+        problemSetMaxProblems = Math.trunc(Number(v));
+        console.log(`  ✓ 문제집 한도 로드: ${problemSetMaxProblems}문제`);
+      }
+    } catch (_) {
+      /* 기본값 유지 */
     }
     try {
       const result = await supa.cleanupExpiredReportFiles(200);

@@ -1241,15 +1241,28 @@ def _normalize_raw_unicode_math(text: str) -> str:
 # | 첨자 달린 원자(epsilon_{0}, r^{2}, I_{"cm"}). 앞 곱(μ₀ε₀ ∂E/∂t)이나 합(a + b/c)은
 # 인접 factor만 잡아 b/c·∂E/∂t 만 분수가 된다. 단일 패스라 a/b/c 는 앞쪽만 처리.
 _OVER_SCRIPTS = r"(?:\^\{[^}]*\}|_\{[^}]*\}|[_^][A-Za-z0-9])*"
+# 중괄호 1단계 중첩 허용({Phi_{B}}) — 미분 dΦ_B/dt 의 피연산자가 braced 일 때.
+_OVER_BRACED = r"\{(?:[^{}]|\{[^{}]*\})*\}"
+_OVER_ATOM = rf"(?:{_OVER_BRACED}|[A-Za-z0-9]+{_OVER_SCRIPTS})"
 _OVER_FACTOR = (
     r"(?:"
     r"\([^()]*\)"                                    # (4 pi epsilon_{0})
-    r"|\{[^{}]*\}"                                   # {이미 묶인 군}
-    rf"|(?:partial|nabla)(?:\^\{{[^}}]*\}}|_\{{[^}}]*\}})?\s+[A-Za-z0-9]+{_OVER_SCRIPTS}"
-    rf"|[A-Za-z0-9]+{_OVER_SCRIPTS}"                 # epsilon_{0}, r^{2}, mgdT^{2}
+    # 연산자 접두(partial|nabla) + 원자 — ∂B/∂t, ∂²f/∂x² 가 한 factor 로. (d 는
+    # 미분이자 거리 변수라 모호 → 일반 factor 엔 안 넣고 아래 미분비 전처리에서만.)
+    rf"|(?:partial|nabla)(?:\^\{{[^}}]*\}}|_\{{[^}}]*\}})?\s+{_OVER_ATOM}"
+    rf"|{_OVER_ATOM}"                                # epsilon_{0}, r^{2}, {묶인군}
     r")"
 )
-_SLASH_OVER_RE = re.compile(rf"({_OVER_FACTOR})\s*/\s*({_OVER_FACTOR})")
+_SLASH_OVER_RE = re.compile(rf"(?<![A-Za-z0-9_])({_OVER_FACTOR})\s*/\s*({_OVER_FACTOR})")
+# 미분비 dX/dY · ∂X/∂Y : 양쪽이 모두 d/partial/nabla 로 시작할 때만 묶는다. d 를
+# 한쪽만 보고 미분으로 처리하면 mgdT²/(4π²) 의 거리 d 까지 분리되므로(실측), 양쪽
+# 동시 조건으로 진짜 도함수만 잡는다. 접두에 첨자(∂²) 허용, 피연산자 braced 허용.
+_DIFF_TERM = (
+    rf"(?:partial|nabla|d)(?:\^\{{[^}}]*\}}|_\{{[^}}]*\}})?\s+{_OVER_ATOM}"
+)
+_DIFF_RATIO_RE = re.compile(
+    rf"(?<![A-Za-z0-9_])({_DIFF_TERM})\s*/\s*({_DIFF_TERM})"
+)
 
 
 def convert_slash_to_over(script: str) -> str:
@@ -1257,6 +1270,10 @@ def convert_slash_to_over(script: str) -> str:
         return script
 
     def _seg(seg: str) -> str:
+        if "/" not in seg:
+            return seg
+        # 미분비(dX/dY)를 먼저 묶고, 나머지 일반 나눗셈을 처리한다.
+        seg = _DIFF_RATIO_RE.sub(r"{\1} over {\2}", seg)
         return _SLASH_OVER_RE.sub(r"{\1} over {\2}", seg) if "/" in seg else seg
 
     # 인용("...") 안의 단위(J/(mol·K) 등)·텍스트는 분수로 만들지 않는다.
@@ -1277,6 +1294,13 @@ def normalize_hwp_script(script: str) -> str:
     text = re.sub(r"(?<![A-Za-z])qint(?![A-Za-z])", "int int int int", text)
     text = re.sub(r"(?<![A-Za-z])tint(?![A-Za-z])", "int int int", text)
     text = re.sub(r"(?<![A-Za-z])dint(?![A-Za-z])", "int int", text)
+    # 백슬래시 없는 LaTeX 적분 키워드(iiint/iint/oiint)가 raw 스크립트에 들어오면
+    # HWP 본문이 글자로 노출한다 — int 반복/oint 으로(iiint 먼저: iint 가 부분일치
+    # 안 되게). \iiint→hwip 은 tint 거쳐 이미 처리되나, raw {{EQ:}} 에 모델/재구성이
+    # iiint 를 직접 넣는 경우의 안전망.
+    text = re.sub(r"(?<![A-Za-z])iiint(?![A-Za-z])", "int int int", text)
+    text = re.sub(r"(?<![A-Za-z])iint(?![A-Za-z])", "int int", text)
+    text = re.sub(r"(?<![A-Za-z])oiint(?![A-Za-z])", "oint", text)
     text = convert_inline_radicals(text)
     text = (
         text.replace("→", "->")

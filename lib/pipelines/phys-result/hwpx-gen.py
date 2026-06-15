@@ -502,6 +502,10 @@ def _flatten_label_subscripts(text):
     가 승격을 끝낸 뒤 마커 밖 산문에만 적용한다.
     """
     s = str(text or "")
+    # 마커 밖 산문에 남은 ▽(U+25BD 흰 삼각형)은 모델이 나블라 대신 잘못 쓴 것 —
+    # 올바른 ∇(U+2207)로 글리프 교정한다. '=' 가 없어 수식 승격 안 된 단독
+    # 연산자(gradient ▽f, divergence ▽·F)가 흰 삼각형으로 노출되던 문제(실측).
+    s = s.replace("▽", "∇")
     s = re.sub(r"\|([A-Za-zαβγδθλμπρστφωΩΔΣ]+)\|_max", r"|\1|max", s)
     s = re.sub(r"\b([A-Za-zαβγδθλμπρστφωΩΔΣ]+)_max\b", r"\1max", s)
     s = re.sub(r"\b([A-Za-zαβγδθλμπρστφωΩΔΣ]+)_cm\b", r"\1cm", s)

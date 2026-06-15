@@ -538,6 +538,14 @@
         if (m.indexOf("gpt") >= 0) return "GPT";
         return m;
       }
+      // 허용 모델 목록(쉼표구분 문자열)을 짧은 이름으로. 여러 개면 "Opus·Sonnet".
+      function modelShortList(s) {
+        const list = String(s || "")
+          .split(",")
+          .map((x) => x.trim())
+          .filter(Boolean);
+        return list.map(modelShort).join("·");
+      }
       function reportAccessLabel(blocked) {
         if (!Array.isArray(blocked) || !blocked.length) return "전체";
         return "제한 " + blocked.length;
@@ -545,7 +553,7 @@
       function creditCell(u) {
         if (u.unlimited) {
           const m = u.restricted_model
-            ? " · " + modelShort(u.restricted_model) + "만"
+            ? " · " + modelShortList(u.restricted_model) + "만"
             : "";
           return `<span style="color: var(--text-muted)">무제한${m}</span>`;
         }
@@ -553,7 +561,7 @@
         const color =
           c === 0 ? "var(--danger)" : c <= 3 ? "var(--warning)" : "var(--text)";
         const restr = u.restricted_model
-          ? ` <small style="color:var(--text-muted)">(${modelShort(u.restricted_model)}만)</small>`
+          ? ` <small style="color:var(--text-muted)">(${modelShortList(u.restricted_model)}만)</small>`
           : "";
         return `<span style="color: ${color}">${c} 크레딧</span>${restr}`;
       }
@@ -576,7 +584,7 @@
           tr.innerHTML = `
             <td>${escape(u.name)}</td>
             <td>${creditCell(u)}<br>
-              <button data-act="topup" data-id="${u.id}" style="font-size: 11px; padding: 3px 6px;">+ 충전</button>
+              <button data-act="topup" data-id="${u.id}" style="font-size: 11px; padding: 3px 6px;">± 크레딧</button>
             </td>
             <td>${fmtBoth(u.spent_usd)}</td>
             <td>${isAdmin ? "✓" : ""}</td>
@@ -585,7 +593,7 @@
             <td>
               ${unlockBtn}
               <button data-act="edit" data-id="${u.id}">수정</button>
-              <button data-act="model" data-id="${u.id}">모델: ${u.restricted_model ? modelShort(u.restricted_model) + "만" : "전체"}</button>
+              <button data-act="model" data-id="${u.id}">모델: ${u.restricted_model ? modelShortList(u.restricted_model) + "만" : "전체"}</button>
               <button data-act="reports" data-id="${u.id}" data-blocked="${(u.blocked_report_types || []).join(",")}">보고서: ${reportAccessLabel(u.blocked_report_types)}</button>
               <button data-act="reset" data-id="${u.id}">사용량 0</button>
               <button data-act="delete" data-id="${u.id}" style="color: red">삭제</button>
@@ -621,16 +629,17 @@
         }
         if (act === "topup") {
           const input = prompt(
-            "크레딧 충전\nOpus 1건 = 3크레딧 / Sonnet 1건 = 1크레딧\n\n" +
-              "몇 크레딧 충전할까요? (숫자만 입력)",
+            "크레딧 충전/차감\nOpus 1건 = 3크레딧 / Sonnet 1건 = 1크레딧\n\n" +
+              "양수 = 충전, 음수 = 차감 (예: -5)\n잔액은 0 미만으로 내려가지 않습니다.\n\n크레딧 수:",
             "9",
           );
           if (input == null) return;
           const credits = parseInt(input, 10);
-          if (!Number.isFinite(credits) || credits <= 0) {
-            return alert("1 이상의 정수를 입력하세요.");
+          if (!Number.isFinite(credits) || credits === 0) {
+            return alert("0이 아닌 정수를 입력하세요. (음수 = 차감)");
           }
-          if (!confirm(`${credits} 크레딧 충전하시겠습니까?`)) return;
+          const verb = credits > 0 ? `${credits} 크레딧 충전` : `${-credits} 크레딧 차감`;
+          if (!confirm(`${verb}하시겠습니까?`)) return;
           const res = await fetch(`/api/admin/users/${id}/topup`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -665,30 +674,42 @@
           await patchUser(id, { password });
           loadUsers();
         } else if (act === "model") {
-          // 사용자별 모델 제한: 전체 / Opus만 / Sonnet만
+          // 사용자별 모델 제한: 여러 모델을 허용 목록으로 지정(중복 선택 가능).
+          // 사용자는 이 목록 안에서 자유롭게 고른다. 1 = 전체 허용.
           const input = prompt(
-            "이 사용자가 쓸 수 있는 모델을 제한합니다.\n\n" +
-              "1 = 전체 허용 (사용자가 선택)\n" +
-              "2 = Opus만 (항상 Opus 4.8)\n" +
-              "3 = Sonnet만 (항상 Sonnet 4.6)\n" +
-              "4 = GPT-5.5만\n" +
-              "5 = GPT-5.4만\n" +
-              "6 = GPT-5.4 mini만\n\n" +
+            "이 사용자가 쓸 수 있는 모델을 지정합니다.\n" +
+              "여러 개는 쉼표로 (예: 2,3 = Opus·Sonnet 둘 다 허용)\n\n" +
+              "1 = 전체 허용\n" +
+              "2 = Opus 4.8\n" +
+              "3 = Sonnet 4.6\n" +
+              "4 = GPT-5.5\n" +
+              "5 = GPT-5.4\n" +
+              "6 = GPT-5.4 mini\n\n" +
               "번호 입력:",
             "1",
           );
           if (input == null) return;
           const map = {
-            1: "",
             2: "claude-opus-4-8",
             3: "claude-sonnet-4-6",
             4: "gpt-5.5",
             5: "gpt-5.4",
             6: "gpt-5.4-mini",
           };
-          const key = String(input).trim();
-          if (!(key in map)) return alert("1 ~ 6 중 하나를 입력하세요.");
-          await patchUser(id, { restrictedModel: map[key] });
+          const parts = String(input)
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean);
+          if (!parts.length || parts.includes("1")) {
+            await patchUser(id, { restrictedModel: "" }); // 전체 허용
+          } else {
+            const ids = [];
+            for (const p of parts) {
+              if (!(p in map)) return alert("1, 2~6 중에서 입력하세요 (여러 개는 쉼표).");
+              ids.push(map[p]);
+            }
+            await patchUser(id, { restrictedModel: [...new Set(ids)].join(",") });
+          }
           loadUsers();
         } else if (act === "reports") {
           // 사용자별 보고서 종류 접근 제한 (차단 목록)

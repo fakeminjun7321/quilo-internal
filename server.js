@@ -2670,11 +2670,22 @@ app.post(
       }
     }
     let model = allowedModels.includes(requestedModel) ? requestedModel : null;
-    // 모델 제한 계정(예: 베타테스터)은 허용 모델로 강제 — fresh row 기준.
+    // 모델 제한 계정: 허용 목록(쉼표구분, 여러 개 가능) 안에서만 선택 가능 — fresh row 기준.
+    // 요청 모델이 허용 목록에 있으면 그대로, 없으면 목록의 첫 모델로.
     if (effectiveRestrictedModel) {
-      model = allowedModels.includes(effectiveRestrictedModel)
-        ? effectiveRestrictedModel
-        : "claude-sonnet-4-6";
+      const allowList = String(effectiveRestrictedModel)
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const usable = allowList.filter((m) => allowedModels.includes(m));
+      if (usable.length) {
+        model = usable.includes(requestedModel) ? requestedModel : usable[0];
+      } else if (allowList.length) {
+        // 제한 모델이 이 보고서 종류에서 안 쓰이면(예: GPT 제한인데 GPT 미허용) 안전한 기본.
+        model = allowedModels.includes("claude-sonnet-4-6")
+          ? "claude-sonnet-4-6"
+          : allowedModels[0];
+      }
     }
     if (!model) model = "claude-opus-4-8"; // 기본 = Opus 4.8
     // GPT 선택인데 서버에 키가 없으면 명확히 거부(Claude로 조용히 바꾸지 않음).
@@ -4549,22 +4560,29 @@ app.patch("/api/admin/users/:id", requireAdmin, async (req, res) => {
       .status(400)
       .json({ error: "비밀번호는 최소 5자 이상이어야 합니다." });
   }
-  // 모델 제한: "" = 전체 허용, 그 외엔 허용 모델 id만
+  // 모델 제한: "" = 전체 허용. 그 외엔 허용 모델 id들(여러 개 = 쉼표구분 문자열 또는 배열).
+  // 사용자는 이 허용 목록 안에서 자유롭게 선택할 수 있다(중복 선택 가능).
+  let normalizedRestrictedModel;
   if (restrictedModel !== undefined) {
     const allowedRestrict = [
-      "",
       "claude-opus-4-8",
       "claude-sonnet-4-6",
       "gpt-5.5",
       "gpt-5.4",
       "gpt-5.4-mini",
     ];
-    const rm = restrictedModel == null ? "" : String(restrictedModel).trim();
-    if (!allowedRestrict.includes(rm)) {
-      return res
-        .status(400)
-        .json({ error: "허용되지 않은 모델 제한 값입니다." });
+    const raw = restrictedModel == null ? "" : restrictedModel;
+    const list = (Array.isArray(raw) ? raw : String(raw).split(","))
+      .map((s) => String(s).trim())
+      .filter(Boolean);
+    for (const m of list) {
+      if (!allowedRestrict.includes(m)) {
+        return res
+          .status(400)
+          .json({ error: `허용되지 않은 모델 제한 값: ${m}` });
+      }
     }
+    normalizedRestrictedModel = [...new Set(list)].join(","); // "" = 전체 허용
   }
   // 보고서 종류 접근 제한: 허용된 종류 key 배열만
   let normalizedBlocked;
@@ -4589,7 +4607,7 @@ app.patch("/api/admin/users/:id", requireAdmin, async (req, res) => {
   if (isAdmin != null) patch.isAdmin = !!isAdmin;
   if (spentUsd != null) patch.spentUsd = Number(spentUsd);
   if (restrictedModel !== undefined)
-    patch.restrictedModel = restrictedModel == null ? "" : String(restrictedModel).trim();
+    patch.restrictedModel = normalizedRestrictedModel;
   if (unlimited != null) patch.unlimited = !!unlimited;
   if (normalizedBlocked !== undefined)
     patch.blockedReportTypes = normalizedBlocked;
@@ -4638,15 +4656,21 @@ app.post("/api/admin/users/:id/topup", requireAdmin, async (req, res) => {
   if (!supa.isEnabled())
     return res.status(503).json({ error: "Supabase 미설정" });
   const { credits, count } = req.body || {};
-  let add = null;
-  if (credits != null) add = Math.trunc(Number(credits));
-  else if (count != null) add = Math.trunc(Number(count)); // 하위호환: count = 크레딧 수
-  if (add == null || !Number.isFinite(add) || add <= 0) {
-    return res.status(400).json({ error: "credits(양의 정수) 필수" });
+  let delta = null;
+  if (credits != null) delta = Math.trunc(Number(credits));
+  else if (count != null) delta = Math.trunc(Number(count)); // 하위호환: count = 크레딧 수
+  // 양수 = 충전, 음수 = 차감(잔액 0 미만으로는 안 내려감).
+  if (delta == null || !Number.isFinite(delta) || delta === 0) {
+    return res
+      .status(400)
+      .json({ error: "credits(0이 아닌 정수 — 음수면 차감) 필수" });
   }
   try {
-    const result = await supa.addCredits(req.params.id, add);
-    res.json({ ok: true, addedCredits: add, ...result });
+    const result =
+      delta > 0
+        ? await supa.addCredits(req.params.id, delta)
+        : await supa.spendCredits(req.params.id, -delta);
+    res.json({ ok: true, addedCredits: delta, newBalance: result.newBalance });
   } catch (e) {
     console.error("[admin]", req.method, req.path, "error:", e);
     res.status(500).json({ error: "처리 중 오류가 발생했습니다." });

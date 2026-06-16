@@ -4373,17 +4373,21 @@ app.get("/api/cloud/dropbox/link", requireAuth, async (req, res) => {
     const { access_token } = await dbx.refreshAccessToken(
       dbx.decryptToken(conn.refresh_token),
     );
-    const url = await dbx.getSharedLink({ accessToken: access_token, path: p });
-    if (!url) return res.status(500).json({ error: "링크 생성 실패" });
-    res.json({ url });
-  } catch (e) {
-    const msg = String((e && e.message) || e);
-    if (/missing_scope|sharing|scope/i.test(msg)) {
-      return res.status(403).json({
-        error:
-          "Dropbox 공유 권한(sharing)이 없습니다 — 앱에 sharing.read·sharing.write 스코프를 추가하고 재연결하세요.",
-      });
+    // 1순위: 영구 공유 링크(Dropbox 웹 뷰어에서 열기) — sharing.read/write 스코프 필요.
+    try {
+      const url = await dbx.getSharedLink({ accessToken: access_token, path: p });
+      if (url) return res.json({ url });
+    } catch (e) {
+      const msg = String((e && e.message) || e);
+      // sharing 권한이 없을 때만 임시 링크로 폴백(그 외 에러는 그대로 전파).
+      if (!/missing_scope|sharing|scope/i.test(msg)) throw e;
     }
+    // 폴백: 임시 링크(4시간). files.content.read 만으로 동작하므로 사용자가 Dropbox
+    //   앱 설정(sharing 스코프 추가)을 바꾸지 않아도 파일을 바로 열 수 있다.
+    const tmp = await dbx.getTemporaryLink({ accessToken: access_token, path: p });
+    if (tmp) return res.json({ url: tmp, temporary: true });
+    return res.status(500).json({ error: "링크 생성 실패" });
+  } catch (e) {
     res.status(500).json({ error: "링크 생성 실패" });
   }
 });

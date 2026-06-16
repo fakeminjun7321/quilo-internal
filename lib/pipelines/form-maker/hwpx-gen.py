@@ -304,6 +304,17 @@ def render_summary_box(doc, blk, ctx, target=None, width=TABLE_WIDTH):
     cell.element.set("borderFillIDRef", str(solid_id))
     phys.clear_cell(cell)
     pre.set_cell_margins(cell)
+    # 답란 높이 — 원문 박스 크기 반영. `lines`(원문 답란이 차지하는 빈 줄 수, 사진에서 추정)가
+    # 있으면 그만큼 셀 최소 높이를 확보해 큰 답란/작은 답란이 원본처럼 다르게 보이게 한다.
+    body_lines = [x for x in as_list(blk.get("body")) if x is not None and str(x).strip()]
+    answer_lines = _clamp_int(blk.get("lines"), 0, 30, 0)
+    if answer_lines > 0 and len(body_lines) <= 1:
+        # 한 줄 ~1900 HWPUNIT + 라벨/여백 보정. (set_size 높이는 최소 높이로 동작)
+        box_h = answer_lines * 1900 + (900 if str(blk.get("label") or "").strip() else 300)
+        try:
+            cell.set_size(width=width, height=box_h)
+        except Exception:
+            pass
     label = str(blk.get("label") or "").strip()
     if label:
         phys.add_para_to(

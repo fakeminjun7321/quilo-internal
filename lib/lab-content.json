@@ -328,5 +328,49 @@
         "label": "메인 서버 (전역 에러·JSON 401/404 핸들러)"
       }
     ]
+  },
+  {
+    "id": "problem-set",
+    "date": "2026-06-16",
+    "tag": "문제집",
+    "title": "문제집 메이커 — 교재 문제 PDF를 영어·한글 문제지와 해설지 3종으로",
+    "summary": "빼곡한 원서 문제 PDF를 받아, 페이지를 잘라 병렬로 추출하고 문제를 배치로 나눠 병렬로 풀어, 풀이 칸이 있는 영어/한글 문제지와 해설지를 LaTeX로 조판해 ZIP 하나로 묶는다. 선택적 3중 교차검증.",
+    "body_markdown": "Quilo의 보고서 기능은 대부분 \"데이터 → 보고서\"인데, **문제집 메이커**는 결이 다르다. 옥스토비·Serway 같은 빼곡한 영어 원서의 문제 묶음 PDF를 받아 ① 영어 문제지 ② 한글 문제지 ③ 해설지, 이렇게 PDF 3개를 만들어 ZIP 하나로 돌려준다. 문제지에는 학생이 직접 풀 수 있게 문제마다 넉넉한 풀이 칸(가로줄)을 깔고, 해설지에는 식 → 대입 → 결과 순서의 풀이를 붙인다.\n\n## 문제/배경\n\n원서 문제 PDF는 한 페이지에 문제가 빼곡하고, 그림·표를 \"Fig 10.18 참조\"처럼 번호로만 가리킨다. 그래서 세 가지가 동시에 필요했다.\n\n- **정확한 전사·번역**: 수치·하위문항 (a)(b)(c)·수식을 한 글자도 빠뜨리지 않고 영어 원문과 한국어 번역을 만든다.\n- **그림 복원**: 문제가 참조하는 그림을 원본 PDF에서 찾아 잘라 붙이고, 못 찾으면 표준값으로 재구성하되 \"재구성됨\"으로 표시한다.\n- **풀이 공간 레이아웃**: \"페이지당 N문제\"를 받으면 남는 높이를 정확히 N등분해 풀이 칸을 깐다.\n\n게다가 문제가 수십 개라 **속도**가 중요했다. 추출도 풀이도 한 번에 모델을 호출하면 느리다.\n\n## 구현\n\n작업은 두 단계다. **EXTRACT**(문제 전사·번역·그림 식별)와 **SOLVE**(해설 작성). 어느 단계인지는 시스템 프롬프트가 알려주고, 각 단계는 JSON 객체 하나만 출력한다.\n\n**페이지 병렬 추출.** 단일 PDF이고 사진 입력이 없으면, `figures.py`의 prepare 모드로 PDF를 `CHUNK_PAGES`쪽씩 잘라 여러 sub-PDF로 만들고 **병렬로 EXTRACT**한다(워커풀 `mapLimit`, 동시 실행 `CONCURRENCY`). 청크 경계에서 잘린 문제는 머리/꼬리 조각으로 표시해 봉합하고, 번호 중복을 제거한 뒤, 각 청크의 로컬 페이지 번호를 전체 페이지 번호로 되돌려 합친다.\n\n**동적 배치 병렬 풀이.** 문제 수에 맞춰 배치 크기를 자동으로 정한다. \"한 wave\"에 끝나도록 문제를 슬롯 수로 나눈 값을 배치 크기로 쓴다 — 잘게 쪼갤수록 호출당 지연(모델 1콜의 바닥값)에 가까워진다.\n\n```js\nconst solveSlots = crossVerify ? Math.max(1, Math.floor(CONCURRENCY / 3)) : CONCURRENCY;\nconst solveBatchSize = Math.min(\n  SOLVE_BATCH,\n  Math.max(SOLVE_BATCH_MIN, Math.ceil(problems.length / solveSlots)),\n);\nconst batches = chunk(problems, solveBatchSize);\n```\n\n**그림은 fitz로.** `figures.py`가 PyMuPDF로 내장 래스터 사각형과 벡터 도형 군집을 검출해 후보 PNG를 만들고, 그 썸네일을 모델 vision으로 보여 \"이 문제의 그림은 F3\" 하고 잇는다. 후보에 없으면 모델이 준 페이지 + 비율 bbox로 서버가 직접 잘라낸다. 모델이 `\\includegraphics`를 직접 쓰지 못하게 막아 허위·중복 삽입을 차단한다.\n\n**풀이 칸 레이아웃.** 문제지는 LaTeX로 조판한다. 페이지 머리글을 뺀 본문 높이를 N등분해 슬롯 높이를 잡고, 남는 공간을 7mm 간격의 옅은 가로줄(`\\leaders`)로 채운다.\n\n```js\n\\\\setlength{\\\\slotheight}{\\\\dimexpr(\\\\textheight - ${gapCount}\\\\slotgap - 20mm)/${N}\\\\relax}\n\\\\newcommand{\\\\ruleunit}{\\\\vbox to 7mm{\\\\vfil\\\\hbox to \\\\linewidth{\\\\textcolor{rulegray}{\\\\rule{\\\\linewidth}{0.12mm}}}}}\n\\\\newcommand{\\\\solveruling}{\\\\leaders\\\\ruleunit\\\\vfill}\n```\n\n각 문제는 `\\vbox to \\slotheight`로 정확히 한 슬롯을 차지하고, 슬롯끼리 `\\nointerlineskip`으로 쌓아 글루가 누적돼 페이지가 넘치는 것을 막는다.\n\n**선택적 3중 교차검증.** 사용자가 켜면, 각 배치를 3번 독립적으로 풀고(Phase A) 배치별로 RECONCILE해서 가장 정확한 해설 하나로 합친다(Phase B). 최종 정답이 갈리면 그 문제를 \"재확인 필요\"로 표시한다.\n\n**출력은 ZIP.** 조판은 `bundle.js`가 영어 문제지·한글 문제지·해설지 3개를 LaTeX로 만들고(PDF 번역과 공유하는 Tectonic 컴파일러 재사용), 해설의 그래프는 PNG로, 표는 진짜 `tabular`로 렌더한 뒤 JSZip으로 묶는다.\n\n## 핵심 포인트/교훈\n\n- **2단계 분리(추출 ↔ 풀이)가 정확도를 올린다**: 한 번에 \"읽고 풀어라\" 하면 둘 다 어설퍼진다. 전사·번역을 먼저 확정한 뒤 그 문제만 보고 풀게 하면 각 단계가 단순해진다.\n- **추출도 풀이도 한 wave 병렬**: 페이지 청크와 문제 배치를 잘게 나눠 동시에 처리하면, 호출당 지연(모델 1콜의 바닥값)이 한계가 될 때까지 빨라진다. 12쪽 기준 57초 → 33초.\n- **그림은 서버가, 모델은 식별만**: 모델이 그림을 그리거나 경로를 쓰게 하면 허위·중복이 생긴다. 후보를 보여주고 \"어느 것\"만 고르게 하고, 자르기·삽입은 서버가 한다.\n- **메모리 제약 환경에선 순차가 정답**: Tectonic은 프로세스당 ~200MB라 3개를 동시에 띄우면 작은 인스턴스에서 OOM이 난다. 조판은 기본 순차로 돌린다.\n- **출력 계약을 좁힐수록 후처리가 단순**: 단계마다 JSON 하나만 내게 하면 파싱·검증이 일관된다.\n",
+    "files": [
+      {
+        "path": "lib/pipelines/problem-set/generate.js",
+        "label": "추출·풀이 오케스트레이션(병렬 워커풀·교차검증)"
+      },
+      {
+        "path": "lib/pipelines/problem-set/bundle.js",
+        "label": "3종 PDF LaTeX 조판 + ZIP"
+      },
+      {
+        "path": "lib/pipelines/problem-set/figures.py",
+        "label": "PyMuPDF 그림 검출·크롭"
+      },
+      {
+        "path": "lib/pipelines/problem-set/prompt.md",
+        "label": "EXTRACT/SOLVE/RECONCILE 프롬프트"
+      }
+    ]
+  },
+  {
+    "id": "problemset-resilience",
+    "date": "2026-06-16",
+    "tag": "안정성",
+    "title": "수식 한 줄이 문제집 전체를 깨뜨리지 않게 — LaTeX 블록 단위 안전모드 격리",
+    "summary": "모델이 가끔 구분자 없이 평문으로 내보내는 수식 한 줄이 문서 전체 조판을 무너뜨리던 문제를, 줄 단위 자동 래핑·균형 보정과 '에러 줄 번호 → 블록 마커' 매핑 격리로 해결한 이야기.",
+    "body_markdown": "문제집 메이커의 해설지·문제지는 LaTeX로 조판해 Tectonic으로 PDF를 만든다. 그런데 LaTeX 조판에는 고약한 성질이 하나 있다: **컴파일은 전부-아니면-전무다.** 문서 어딘가에서 단 한 줄이라도 치명적 에러가 나면 Tectonic은 PDF를 아예 만들지 않는다(`\\nonstopmode`를 줘도 부분 출력이 없다 — 실측). 그래서 초기 버전은 컴파일이 실패하면 **문서 전체를 \"안전모드\"로 다시 조판**했다. 안전모드는 모든 백슬래시를 평문으로 이스케이프한다 — 즉 수식 한 줄이 깨지면 **40문제의 수식이 전부 `\\frac` 같은 날것 코드로** 나왔다. 이 글은 그 \"한 줄이 전체를 무너뜨리는\" 구조를 어떻게 없앴는지에 대한 기록이다.\n\n## 문제/배경\n\n실제 사용자 출력을 뜯어보니 세 PDF가 전부 안전모드였다. 다중 에이전트로 진단한 결과, 지배적 원인은 의외였다.\n\n> 모델이 **디스플레이 수식을 `$`도 `{equation}`도 없이 그냥 평문 한 줄로** 내보낸다. 예: 풀이 배열 안에 `a' = \\frac{du'}{dt} = a` 를 맨몸으로.\n\n이 줄이 텍스트 모드에서 `\\frac`·`_`·`^`를 만나면 `Missing $ inserted`로 컴파일이 죽고, 단 한 줄이 PDF 전체를 안전모드로 끌어내린다. 부차적으로 `{equation}` 블록의 `\\left` 짝 없음, `\\frac` 인자 잘림, 중괄호·`\\begin/\\end` 불균형도 같은 식으로 전체를 무너뜨렸다.\n\n여기서 얻은 교훈: **모델 출력을 정규화하는 \"허용 목록\"은 영원히 불완전하다.** 한 종류의 깨짐을 막으면 모델은 다음에 새로운 깨짐을 만들어낸다. 그래서 방향을 \"모든 깨짐을 예방\"에서 \"**깨져도 피해 범위를 한 블록으로 가둔다**\"로 바꿨다.\n\n## 구현\n\n세 층으로 막는다.\n\n**1층 — 구분자 없는 수식 자동 처리.** 본문을 수식 구간(`$...$`, `\\[...\\]`)과 평문으로 나누고, 평문을 **줄 단위**로 본다. 한글도 영어 산문도 아니면서 수식 토큰이 있는 줄은 모델이 구분자를 빠뜨린 디스플레이 수식으로 보고 `\\[...\\]`로 감싼다. 산문에 수식 명령이 새어든 드문 경우는 크래시 대신 리터럴로 떨어뜨린다.\n\n```js\nfunction fixTextLine(line) {\n  const hasMath = /\\\\[a-zA-Z]+|[_^]/.test(line);\n  if (!hasMath) return escTextOnly(line);\n  const hasHangul = /[가-힣]/.test(line);\n  const prose = /[A-Za-z]{2,}\\s+[A-Za-z]{2,}/.test(line);\n  if (!hasHangul && !prose) return `\\\\[ ${sanitizeEquation(line)} \\\\]`; // 평문 수식 줄 → 자동 래핑\n  return escTextWithStrayMath(line);\n}\n```\n\n**2층 — 수식 균형 보정.** `\\[...\\]`로 감싸기 전에 떠돌이 `$`를 지우고, 굽은 따옴표(`’`)를 곧은 프라임으로 바꾸고, `\\left/\\right`·중괄호·`\\begin/\\end` 짝을 맞춘다. 부족한 쪽에 널 구분자(`\\right.`)나 `\\end`를 보충한다. 멱등이라 이미 정상인 수식엔 무해하다.\n\n```js\nfunction balanceLeftRight(eq) {\n  const l = (eq.match(/\\\\left\\b/g) || []).length;\n  const r = (eq.match(/\\\\right\\b/g) || []).length;\n  if (l === r) return eq;\n  return l > r ? eq + \"\\\\right.\".repeat(l - r) : \"\\\\left.\".repeat(r - l) + eq;\n}\n```\n\n**3층 — 블록 단위 격리(핵심).** 그래도 어떤 블록이 끝내 깨지면, 문서 전체를 안전모드로 떨구지 말고 **그 블록 하나만** 안전모드로 돌린다. 방법은 이렇다. 조판할 때 각 블록 앞에 `%%BLOCK:<id>` 주석 마커를 찍는다(주석이라 출력엔 안 보이지만 소스 줄 번호는 차지한다). 컴파일이 실패하면 Tectonic 로그의 `l.<N>` 에러 줄 번호를 가장 가까운 직전 마커로 매핑해 범인 블록을 찾고, 그 블록만 안전모드로 바꿔 재컴파일한다. 매 라운드 새 범인만 추가하며 수렴한다.\n\n```js\nfor (let round = 0; round <= MAX_LOCALIZE_ROUNDS; round++) {\n  const tex = build(bad); // bad = 안전모드로 돌릴 블록 id 집합\n  try { return await compileTex(tex, { signal, onProgress, assets }); }\n  catch (e) {\n    const ids = mapErrorLinesToBlocks(tex, e.texLog || e.message || \"\");\n    const fresh = ids.filter((id) => !bad.has(id));\n    if (!fresh.length) break;          // 더 못 좁히면 → 전체 안전모드 폴백\n    fresh.forEach((id) => bad.add(id));\n  }\n}\n```\n\n에러 줄 번호를 블록에 잇는 매핑은, 컴파일러가 실패 시 로그(`doc.log`)를 에러 객체에 실어 주도록 공유 `compileTex`에 한 줄을 더한 덕에 가능하다.\n\n```js\nconst re = /(?:^|[^a-zA-Z])l\\.(\\d+)|doc\\.tex:(\\d+)/g;\n```\n\n`bad`가 빈 집합이면 마커 주석을 뺀 출력이 예전과 같아, 정상 문서엔 회귀가 없다.\n\n## 핵심 포인트/교훈\n\n- **예방이 아니라 격리.** 모델 출력의 깨짐을 전부 막을 수는 없다. 막을 수 있는 건 \"깨졌을 때 피해를 한 블록으로 가두는 것\"이다. 예전엔 한 줄 → 전체 붕괴, 지금은 한 줄 → 그 블록만 평문.\n- **Tectonic은 부분 PDF를 안 만든다.** `\\nonstopmode`로도 에러 시 출력이 없다(실측). 그래서 \"에러를 무시하고 best-effort PDF\" 전략이 불가능하고, 견고화는 반드시 **소스 레벨**(나쁜 블록만 미리 평문화)이어야 했다.\n- **주석 마커 + 로그 줄 번호 = 싼 격리.** 블록마다 따로 컴파일해 범인을 찾으면 느리고 메모리도 많이 쓴다. 대신 `%%BLOCK` 주석과 `l.<N>` 로그를 이으면 실패 라운드당 컴파일 1번으로 범인을 집어낸다.\n- **보정은 멱등하게.** 균형 보정·자동 래핑은 정상 입력에 무해해야 한다. 그래야 항상 켜 두고도 회귀가 없다.\n- **진짜 원인은 재현으로 잡는다.** \"수식이 이상하다\"는 신고를, 출력 PDF의 텍스트를 역추출해 실제 깨진 문자열을 복원하고 그걸 실제 코드 경로로 다시 컴파일해 범인을 특정했다.\n",
+    "files": [
+      {
+        "path": "lib/pipelines/problem-set/bundle.js",
+        "label": "줄 단위 래핑·균형 보정·블록 격리"
+      },
+      {
+        "path": "lib/pipelines/pdf-translate/latex-pdf.js",
+        "label": "Tectonic 컴파일(실패 시 로그 첨부)"
+      }
+    ]
   }
 ]

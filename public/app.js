@@ -2399,6 +2399,45 @@ let currentStudentId = "";
         });
       }
 
+      // 업로드 전 사진 다운스케일 — 폰 사진(6~8MB)을 그대로 올리면 합계가 커서 업로드가
+      // 느리거나 실패(타임아웃/메모리)한다. 브라우저 canvas 로 긴 변 maxEdge 로 줄여 JPEG 로
+      // 재인코딩하면 합계가 1/5 수준으로 줄어 업로드가 빠르고 안정적이며 생성도 빨라진다.
+      // 복원 그림 크롭에 충분한 해상도(기본 2400px)는 유지한다. 실패하면 원본을 그대로 쓴다.
+      async function downscaleImageForUpload(
+        file,
+        { maxEdge = 2400, quality = 0.82, maxBytes = 1.8 * 1024 * 1024 } = {},
+      ) {
+        try {
+          if (!file || !/^image\//.test(file.type || "")) return file;
+          if (file.size <= 900 * 1024) return file; // 이미 작으면 그대로
+          let bmp;
+          try {
+            bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
+          } catch {
+            bmp = await createImageBitmap(file);
+          }
+          const scale = Math.min(1, maxEdge / Math.max(bmp.width, bmp.height));
+          const w = Math.max(1, Math.round(bmp.width * scale));
+          const h = Math.max(1, Math.round(bmp.height * scale));
+          const canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          canvas.getContext("2d").drawImage(bmp, 0, 0, w, h);
+          if (bmp.close) bmp.close();
+          let q = quality;
+          let blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", q));
+          while (blob && blob.size > maxBytes && q > 0.5) {
+            q -= 0.12;
+            blob = await new Promise((res) => canvas.toBlob(res, "image/jpeg", q));
+          }
+          if (!blob || blob.size >= file.size) return file; // 효과 없으면 원본
+          const base = (file.name || "photo").replace(/\.[^.]+$/, "");
+          return new File([blob], base + ".jpg", { type: "image/jpeg", lastModified: Date.now() });
+        } catch {
+          return file;
+        }
+      }
+
       // ── 양식 메이커 (베타) ───────────────────────────────────────────────
       if (fmForm) {
         fmForm.addEventListener("submit", async (e) => {
@@ -2448,7 +2487,11 @@ let currentStudentId = "";
           const fd = new FormData();
           fd.append("type", "form-maker");
           if (promptText) fd.append("promptText", promptText);
-          photos.forEach((p) => fd.append("photos", p));
+          // 업로드 전 사진 다운스케일(업로드 안정성·속도). 실패 시 원본 사용.
+          const sizedPhotos = photos.length
+            ? await Promise.all(photos.map((p) => downscaleImageForUpload(p)))
+            : [];
+          sizedPhotos.forEach((p) => fd.append("photos", p));
           if (document.getElementById("fmFigureRedraw")?.checked) {
             fd.append("figureRedraw", "true");
           }

@@ -214,6 +214,12 @@
           <span class="rt-title">문제집 메이커 <span class="beta-pill">베타</span></span>
           <span class="rt-tag">교재 문제 PDF → 문제지·해설지 3종</span>
         </label>
+        <label id="rtFormMaker" hidden>
+          <input type="radio" name="reportType" value="form-maker" />
+          <span class="rt-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="1"/><path d="M8 7h8M8 11h8M8 15h5"/></svg></span>
+          <span class="rt-title">양식 메이커 <span class="beta-pill">베타</span></span>
+          <span class="rt-tag">말로 양식 생성 · 종이 사진 → 한글 복원</span>
+        </label>
       </div>
     </div>
 
@@ -957,6 +963,116 @@
       <div class="form-actions">
         <span class="hint">베타 기능입니다. 크레딧이 차감되지 않습니다. 문제 수에 따라 1~5분 걸릴 수 있습니다.</span>
         <button type="submit" id="psBtn">문제지·해설지 만들기</button>
+      </div>
+    </form>
+
+    <!-- ── 양식 메이커 폼 (베타) ────────────────────────────────────────── -->
+    <form id="formMakerForm" class="report-form" data-report-form="form-maker" hidden>
+      <div class="notice">
+        <strong>두 가지로 씁니다.</strong> ① <strong>말로 양식을 설명</strong>하면 그에 맞는 빈 한글 양식(서식 틀)을 만들어 주고,
+        ② <strong>종이를 찍은 사진</strong>을 올리면 그 문서를 보이는 그대로 한글 문서로 복원해 줍니다. (.hwpx/.docx)
+        <br><small>복원은 픽셀까지 똑같이가 아니라 <strong>구조·내용을 충실히 재구성</strong>합니다. 글꼴·여백·손글씨·도장은 재현되지 않습니다.</small>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head">
+          <span class="form-section-title">① 양식 만들기 — 말로 설명</span>
+        </div>
+        <div class="field">
+          <label><span class="field-label">어떤 양식을 만들까요?</span>
+            <textarea id="fmInstructions" name="promptText" rows="4" maxlength="8000"
+              placeholder="예: 'R&E 연구보고서 양식 만들어줘 — 표지(제목·분야·저자·지도교사), 요약 박스, Ⅰ.동기 Ⅱ.이론 Ⅲ.방법 Ⅳ.결과 Ⅴ.결론 Ⅵ.참고문헌 섹션, 표 1개와 그림 자리 포함, 10쪽 이내'  ·  예: '실험 결과보고서 양식', '독서록 양식', '회의록 양식'"></textarea>
+          </label>
+          <small>필요한 항목·섹션·표를 적을수록 좋습니다. 채울 내용 대신 빈칸(○○○)과 안내가 들어갑니다.</small>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head">
+          <span class="form-section-title">② 종이 문서 복원 — 사진 업로드</span>
+        </div>
+        <div class="field">
+          <span class="field-label">복원할 문서 사진 (여러 장 가능)</span>
+          <div class="dropzone">
+            <input id="fmPhotos" name="photos" type="file" accept=".png,.jpg,.jpeg,.gif,.webp,image/*" multiple aria-label="복원할 문서 사진" />
+            <span class="dropzone-icon" aria-hidden="true">📄</span>
+            <span class="dropzone-title">종이를 찍은 사진을 끌어다 놓거나 클릭</span>
+            <span class="dropzone-sub">제목·표·항목을 그대로 복원 · 여러 장이면 순서대로</span>
+            <span class="dropzone-file" data-dz-file></span>
+          </div>
+          <small>①과 ② 중 <strong>하나만</strong> 채우면 됩니다. 둘 다 주면 사진을 복원하면서 추가 지시를 함께 반영합니다.</small>
+        </div>
+        <div class="field">
+          <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer">
+            <input type="checkbox" id="fmFigureRedraw" name="figureRedraw" value="true" style="margin-top:3px" />
+            <span>사진 속 <strong>그림을 AI로 깔끔히 다시 그리기</strong> (베타)
+              <br><small style="color:#9a6a00">기본은 원본 그림을 그대로 잘라 넣습니다. 이 옵션을 켜면 잘라낸 그림을 AI(gpt-image)가 다시 그려 더 깔끔해지지만, <strong>그래프 모양·숫자·라벨이 원본과 달라질 수 있습니다.</strong> 시험지 그래프처럼 정확도가 중요하면 끄세요.</small></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head">
+          <span class="form-section-title">제목 · 메모 (선택)</span>
+        </div>
+        <div class="field">
+          <label><span class="field-label">문서 제목 (선택)</span>
+            <input id="fmTitle" name="title" type="text" maxlength="200" placeholder="비워 두면 AI가 정합니다." />
+          </label>
+        </div>
+        <div class="field user-notes-field">
+          <label><span class="field-label">AI 참고 메모 (선택)</span>
+            <textarea id="fmUserNotes" name="userNotes" rows="2" maxlength="12000" placeholder="추가로 넣을 항목·주의할 점 등을 적으세요. 보조로만 반영됩니다."></textarea>
+          </label>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head">
+          <span class="form-section-title">출력 설정</span>
+        </div>
+        <div class="seg-group" style="margin-bottom: 12px">
+          <span class="field-label">AI 모델</span>
+          <div class="segmented">
+            <label class="fable-model" hidden><input type="radio" name="fmModel" value="claude-fable-5" /> Fable 5 (관리자)</label>
+            <label><input type="radio" name="fmModel" value="claude-opus-4-8" checked /> Opus 4.8</label>
+            <label><input type="radio" name="fmModel" value="claude-sonnet-4-6" /> Sonnet 4.6</label>
+            <label><input type="radio" name="fmModel" value="gpt-5.5" /> GPT-5.5</label>
+            <label><input type="radio" name="fmModel" value="gpt-5.4" /> GPT-5.4</label>
+            <label><input type="radio" name="fmModel" value="gpt-5.4-mini" /> GPT-5.4 mini</label>
+          </div>
+        </div>
+        <div class="field-grid">
+          <div class="seg-group">
+            <span class="field-label">출력 형식</span>
+            <div class="segmented">
+              <label><input type="radio" name="fmFormat" value="hwpx" checked /> .hwpx (한글)</label>
+              <label><input type="radio" name="fmFormat" value="docx" /> .docx</label>
+            </div>
+          </div>
+          <div class="field">
+            <label><span class="field-label">글꼴</span>
+              <select id="fmFontFace" name="fontFace">
+                <option value="hamchorom-batang" data-hwpx-only="true" selected>함초롬바탕</option>
+                <option value="malgun-gothic">맑은 고딕</option>
+                <option value="nanum-gothic">나눔고딕</option>
+                <option value="nanum-myeongjo">나눔명조</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="policy-check">
+        <label>
+          <input type="checkbox" required />
+          본인이 이용 권한을 가진 파일만 업로드하며, 생성물은 학습 보조 용도로만 사용합니다.
+        </label>
+      </div>
+
+      <div class="form-actions">
+        <span class="hint">생성에는 보통 1~3분 걸립니다. 베타 기능이라 크레딧이 차감되지 않습니다.</span>
+        <button type="submit" id="fmBtn">양식 만들기</button>
       </div>
     </form>
 

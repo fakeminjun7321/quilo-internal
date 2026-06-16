@@ -807,6 +807,13 @@ let currentStudentId = "";
               const tab = document.getElementById("rtProblemSet");
               if (tab) tab.hidden = false;
             }
+            if (
+              want === "form-maker" &&
+              (b.admin === true || feats.includes("form-maker"))
+            ) {
+              const tab = document.getElementById("rtFormMaker");
+              if (tab) tab.hidden = false;
+            }
             const radio = want && document.querySelector(
               'input[name="reportType"][value="' + want + '"]',
             );
@@ -865,6 +872,10 @@ let currentStudentId = "";
         "problem-set": {
           title: "문제집 메이커",
           items: ["문제 PDF/사진", "페이지당 문제 수", "교차검증 선택", "만들기 버튼"],
+        },
+        "form-maker": {
+          title: "양식 메이커",
+          items: ["양식 설명 또는 문서 사진", "출력 형식·글꼴", "만들기 버튼"],
         },
       };
 
@@ -1068,6 +1079,8 @@ let currentStudentId = "";
       const frBtn = document.getElementById("frBtn");
       const psForm = document.getElementById("problemSetForm");
       const psBtn = document.getElementById("psBtn");
+      const fmForm = document.getElementById("formMakerForm");
+      const fmBtn = document.getElementById("fmBtn");
 
       document
         .querySelectorAll('#form input[name="format"]')
@@ -1093,6 +1106,10 @@ let currentStudentId = "";
         .querySelectorAll('#freeForm input[name="frFormat"]')
         .forEach((el) => el.addEventListener("change", updateFreeFontOptions));
       updateFreeFontOptions();
+      document
+        .querySelectorAll('#formMakerForm input[name="fmFormat"]')
+        .forEach((el) => el.addEventListener("change", updateFormMakerFontOptions));
+      updateFormMakerFontOptions();
 
       // 파일 입력 → 드롭존: 파일명 표시 + 드래그 상태.
       // 네이티브 <input type=file>가 영역을 덮고 있어 클릭/드롭을 그대로 처리한다.
@@ -1636,6 +1653,17 @@ let currentStudentId = "";
 
       function updateFreeFontOptions() {
         updateHwpxOnlyFontOptions("frFontFace", getFreeFormat());
+      }
+
+      function getFormMakerFormat() {
+        const formatEl = document.querySelector(
+          '#formMakerForm input[name="fmFormat"]:checked, #formMakerForm input[name="fmFormat"][type="hidden"]'
+        );
+        return formatEl ? formatEl.value : "hwpx";
+      }
+
+      function updateFormMakerFontOptions() {
+        updateHwpxOnlyFontOptions("fmFontFace", getFormMakerFormat());
       }
 
       // 자유 보고서 비용 추정 — 작성지시/평가기준 텍스트 + 자료(PDF/엑셀/텍스트) + 사진.
@@ -2363,6 +2391,71 @@ let currentStudentId = "";
         });
       }
 
+      // ── 양식 메이커 (베타) ───────────────────────────────────────────────
+      if (fmForm) {
+        fmForm.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          if (currentJobId) return;
+
+          const promptText = document.getElementById("fmInstructions").value.trim();
+          const photos = Array.from(document.getElementById("fmPhotos").files);
+          if (!promptText && photos.length === 0) {
+            alert("① 양식 설명을 입력하거나, ② 복원할 문서 사진을 한 장 이상 올리세요.");
+            document.getElementById("fmInstructions").focus();
+            return;
+          }
+          const title = document.getElementById("fmTitle").value.trim();
+          const fmUserNotes = getUserNotesValue("fmUserNotes");
+          const fmModel =
+            document.querySelector('input[name="fmModel"]:checked')?.value ||
+            "claude-opus-4-8";
+          const fmFormat = getFormMakerFormat();
+          updateFormMakerFontOptions();
+          const fmFontFace = document.getElementById("fmFontFace").value;
+          const fmRedraw = !!document.getElementById("fmFigureRedraw")?.checked;
+          const modeLabel =
+            photos.length > 0
+              ? promptText
+                ? `문서 복원 + 지시 (사진 ${photos.length}장)`
+                : `문서 복원 (사진 ${photos.length}장)`
+              : "양식 생성";
+
+          const ok = await showConfirmDialog({
+            title: "양식 메이커",
+            rows: [
+              ["작업", modeLabel],
+              ["모델", getModelLabel(fmModel)],
+              ["형식", fmFormat === "hwpx" ? ".hwpx (한글)" : ".docx (MS Word)"],
+              ["글꼴", getFontLabel(fmFontFace)],
+              ...(photos.length > 0
+                ? [["그림", fmRedraw ? "AI로 재생성 (원본과 다를 수 있음)" : "원본 그대로 잘라 넣기"]]
+                : []),
+              ["예상 비용", "무료 (베타)"],
+              ["예상 시간", formatDuration(estimateGenSeconds("free", fmModel, photos.length * 1500))],
+            ],
+            note: `베타 기능이라 크레딧이 차감되지 않습니다. 복원은 구조·내용을 재구성하는 것이며 픽셀 단위 복제가 아닙니다. ${USE_POLICY_NOTE}`,
+          });
+          if (!ok) return;
+
+          const fd = new FormData();
+          fd.append("type", "form-maker");
+          if (promptText) fd.append("promptText", promptText);
+          photos.forEach((p) => fd.append("photos", p));
+          if (document.getElementById("fmFigureRedraw")?.checked) {
+            fd.append("figureRedraw", "true");
+          }
+          if (title) fd.append("title", title);
+          if (currentStudentId) fd.append("studentId", currentStudentId);
+          fd.append("model", fmModel);
+          fd.append("format", fmFormat);
+          fd.append("fontFace", fmFontFace);
+          fd.append("userNotes", fmUserNotes);
+          appendPolicyAcknowledgements(fd);
+
+          await submitReport({ formEl: fmForm, buttonEl: fmBtn, formData: fd });
+        });
+      }
+
       const progressStepOrder = ["upload", "analysis", "document", "ready"];
 
       function resetProgressSteps() {
@@ -2418,6 +2511,7 @@ let currentStudentId = "";
         if (miBtn) miBtn.textContent = "수학 수행평가 초안 생성";
         if (psBtn) psBtn.textContent = "문제지·해설지 만들기";
         if (frBtn) frBtn.textContent = "자유 보고서 생성";
+        if (fmBtn) fmBtn.textContent = "양식 만들기";
         stopBtn.textContent = "중지";
         const genSpinner = document.getElementById("genSpinner");
         if (genSpinner) genSpinner.style.display = "none";

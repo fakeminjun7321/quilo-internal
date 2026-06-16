@@ -410,10 +410,69 @@ const PIPELINES = {
       .generateReportContent,
     generateBundle: require("./lib/pipelines/problem-set/bundle").generateBundle,
   },
+
+  // 양식 메이커 (베타) — 두 모드: (A) "○○ 양식 만들어줘" 텍스트 지시 → 한글(HWPX) 빈 양식,
+  // (B) 종이를 찍은 사진 업로드 → 그 문서를 보이는 그대로 구조·내용 복원. 출력은 .hwpx/.docx.
+  "form-maker": {
+    label: "양식 메이커",
+    filenamePrefix: "양식",
+    filenameSourceField: "photos",
+    creditField: "result",
+    prepareInput(filesByField, body) {
+      const promptText = String(body.promptText || body.instructions || "").trim();
+      const photos = filesByField.photos || [];
+      for (const f of photos) {
+        const ext = (f.originalname.split(".").pop() || "").toLowerCase();
+        if (!["png", "jpg", "jpeg", "gif", "webp"].includes(ext)) {
+          throw new Error(
+            `문서 사진은 이미지 파일(.png/.jpg/.gif/.webp)만 가능합니다. (${f.originalname})`,
+          );
+        }
+      }
+      if (!promptText && photos.length === 0) {
+        throw new Error(
+          "양식 설명(예: '실험 보고서 양식 만들어줘')을 입력하거나, 복원할 문서 사진을 한 장 이상 올리세요.",
+        );
+      }
+      const mapFiles = (arr) =>
+        arr.map((f) => ({
+          buffer: f.buffer,
+          name: f.originalname,
+          mimetype: f.mimetype,
+        }));
+      return {
+        promptText: promptText.slice(0, 8000),
+        photos: mapFiles(photos),
+        title: String(body.title || "").trim().slice(0, 200),
+        studentId: String(body.studentId || "").trim().slice(0, 20),
+        studentName: String(body.studentName || "").trim(),
+        fontFace: normalizeFontFace(body.fontFace),
+        userNotes: collectUserNotes(body.userNotes, filesByField),
+        figureRedraw: String(body.figureRedraw) === "true",
+        style: "default",
+      };
+    },
+    buildFilename(content, ctx) {
+      const id = sanitizeForFilename(ctx.studentId || "");
+      const name = sanitizeForFilename(ctx.userName || "");
+      const title = sanitizeForFilename(content.title || "양식");
+      const prefix = `${id}${name ? "_" + name : ""}`;
+      return prefix ? `${prefix}_${title}.docx` : `양식_${title}.docx`;
+    },
+    generateContent: require("./lib/pipelines/form-maker/generate")
+      .generateReportContent,
+    generateDocx: require("./lib/pipelines/form-maker/docx-gen").generateDocx,
+    generateHwpx: require("./lib/pipelines/form-maker/hwpx-gen").generateHwpx,
+  },
 };
 
 // 베타·무료 보고서 종류 — /api/generate 에서 테스터 한정 접근 + 크레딧 미차감.
-const FREE_BETA_TYPES = new Set(["phys-inquiry", "math-inquiry", "problem-set"]);
+const FREE_BETA_TYPES = new Set([
+  "phys-inquiry",
+  "math-inquiry",
+  "problem-set",
+  "form-maker",
+]);
 const pricing = require("./lib/pricing");
 const {
   fmtUSD,
@@ -2681,6 +2740,7 @@ app.post(
       "phys-result",
       "free",
       "problem-set",
+      "form-maker",
     ]);
     const allowedModels = GPT_OK_TYPES.has(reportType)
       ? [...ALLOWED_MODELS, ...GPT_REPORT_MODELS]

@@ -770,6 +770,14 @@ let currentStudentId = "";
             const el3 = document.getElementById("navBetaProblemSet");
             if (el3) el3.hidden = false;
           }
+          // 양식 메이커(베타): 관리자/테스터면 상단 메뉴 링크 + 보고서 종류 카드를 바로 노출
+          // (딥링크 없이도 허브 목록에 보이게).
+          if (b.admin === true || feats.includes("form-maker")) {
+            const navFm = document.getElementById("navBetaFormMaker");
+            if (navFm) navFm.hidden = false;
+            const cardFm = document.getElementById("rtFormMaker");
+            if (cardFm) cardFm.hidden = false;
+          }
           // 물리 수행평가(베타): 상단 메뉴 바로가기는 제거됨 — 진입은 '수행평가 도움' 허브로 일원화.
           // 보고서 종류 탭(rtPhysInquiry)은 평소엔 숨기고, 허브에서 '?report=phys-inquiry' 로
           // 들어올 때만 노출·자동 선택한다(아래 딥링크 처리).

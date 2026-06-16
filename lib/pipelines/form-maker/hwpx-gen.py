@@ -238,11 +238,38 @@ def render_figure(doc, blk, ctx, target=None, width=TABLE_WIDTH):
     idxs = blk.get("photo_indices")
 
     if isinstance(idxs, list) and idxs and photos:
-        phys.add_photo_blocks(
-            doc, idxs, photos, fig_counter, caption,
-            target=target, photo_captions=blk.get("photo_captions"),
-        )
-        return
+        if ctx.get("two_col"):
+            # 2단 모드: add_photo_blocks 의 고정폭(30300)이 단(~22000)을 삐져나오므로,
+            # 단 폭에 맞춰 한 장씩 임베드(phys-result 공유 함수는 안 건드린다).
+            fig_w = min(width, 21000)
+            placed = False
+            for i in as_list(idxs):
+                try:
+                    photo = photos[int(i)]
+                except (IndexError, ValueError, TypeError):
+                    continue
+                blob = phys.decode_base64(photo.get("data_base64"))
+                if not blob:
+                    continue
+                fig_counter["value"] += 1
+                cap = ""
+                if caption:
+                    cap = caption if caption.lstrip().startswith("그림") else f"[그림 {fig_counter['value']}] {caption}"
+                phys.add_picture(
+                    doc, blob,
+                    fmt=phys.image_format(photo.get("name"), photo.get("mimetype"), blob),
+                    caption=cap, max_width=fig_w, max_height=12000, target=target,
+                )
+                placed = True
+            if placed:
+                return
+            # 디코드 실패 시 아래 placeholder 로 폴백
+        else:
+            phys.add_photo_blocks(
+                doc, idxs, photos, fig_counter, caption,
+                target=target, photo_captions=blk.get("photo_captions"),
+            )
+            return
 
     # 사진 없음 → 점선 빈 상자(placeholder)
     dashed_id = pre.make_dashed_border_fill(doc)
@@ -407,6 +434,7 @@ def generate_hwpx(content):
     ctx = {
         "photos": as_list(content.get("__photos")),
         "fig_counter": {"value": 0},
+        "two_col": str(content.get("__layoutMode") or "").strip().lower() == "layout",
     }
     build_title(doc, content)
     build_meta(doc, content)
@@ -489,6 +517,33 @@ def update_preview_text(hwpx_path, text):
         raise
 
 
+def set_two_column_layout(hwpx_path):
+    """section 의 colPr colCount 를 2 로 패치 — 한글의 진짜 신문식 2단.
+    원문 2단 시험지처럼 내용이 1단→2단→다음장으로 자연스럽게 흐르고 페이지 넘김도
+    정상이라 빈 페이지가 생기지 않는다. 넓은 표(채점기준표 등)는 양단을 가로질러 전체폭으로
+    스팬되고, 좁은 질문·답란은 단 안에 흐른다(한글 기본 동작)."""
+    src = Path(hwpx_path)
+    with tempfile.NamedTemporaryFile(suffix=".hwpx", dir=src.parent, delete=False) as tf:
+        tmp = Path(tf.name)
+    try:
+        with zipfile.ZipFile(src, "r") as zin, zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zout:
+            for item in zin.infolist():
+                data = zin.read(item.filename)
+                if re.match(r"Contents/section\d+\.xml$", item.filename):
+                    text = data.decode("utf-8")
+                    text = re.sub(
+                        r'(<hp:colPr\b[^>]*?\bcolCount=")\d+(")',
+                        r"\g<1>2\g<2>", text,
+                    )
+                    data = text.encode("utf-8")
+                zout.writestr(item, data)
+        shutil.move(str(tmp), str(src))
+    except Exception:
+        if tmp.exists():
+            tmp.unlink()
+        raise
+
+
 def main():
     if len(sys.argv) >= 2 and sys.argv[1] != "-":
         content = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
@@ -497,6 +552,7 @@ def main():
 
     content = pre._deep_clean_xml(content)
     doc = generate_hwpx(content)
+    two_col = str(content.get("__layoutMode") or "").strip().lower() == "layout"
 
     if len(sys.argv) >= 3:
         target = Path(sys.argv[2])
@@ -504,6 +560,8 @@ def main():
         pre._postprocess_equations(target)
         pre.ensure_embedded_bindata_items(target)
         update_preview_text(target, collect_preview_text(content))
+        if two_col:
+            set_two_column_layout(target)
     else:
         import os
         with tempfile.NamedTemporaryFile(suffix=".hwpx", delete=False) as tf:
@@ -513,6 +571,8 @@ def main():
             pre._postprocess_equations(tmp_path)
             pre.ensure_embedded_bindata_items(tmp_path)
             update_preview_text(tmp_path, collect_preview_text(content))
+            if two_col:
+                set_two_column_layout(tmp_path)
             sys.stdout.buffer.write(tmp_path.read_bytes())
         finally:
             try:

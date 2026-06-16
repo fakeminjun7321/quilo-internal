@@ -2460,6 +2460,8 @@ let currentStudentId = "";
           updateFormMakerFontOptions();
           const fmFontFace = document.getElementById("fmFontFace").value;
           const fmRedraw = !!document.getElementById("fmFigureRedraw")?.checked;
+          const fmLayout = document.querySelector('input[name="fmLayout"]:checked')?.value || "auto";
+          const layoutLabel = fmLayout === "layout" ? "원문 2단 그대로" : fmLayout === "clean" ? "정리해서 깔끔하게" : "자동 (정리본)";
           const modeLabel =
             photos.length > 0
               ? promptText
@@ -2475,7 +2477,10 @@ let currentStudentId = "";
               ["형식", fmFormat === "hwpx" ? ".hwpx (한글)" : ".docx (MS Word)"],
               ["글꼴", getFontLabel(fmFontFace)],
               ...(photos.length > 0
-                ? [["그림", fmRedraw ? "AI로 재생성 (원본과 다를 수 있음)" : "원본 그대로 잘라 넣기"]]
+                ? [
+                    ["레이아웃", layoutLabel],
+                    ["그림", fmRedraw ? "AI로 재생성 (원본과 다를 수 있음)" : "원본 그대로 잘라 넣기"],
+                  ]
                 : []),
               ["예상 비용", "무료 (베타)"],
               ["예상 시간", formatDuration(estimateGenSeconds("free", fmModel, photos.length * 1500))],
@@ -2495,6 +2500,10 @@ let currentStudentId = "";
           if (document.getElementById("fmFigureRedraw")?.checked) {
             fd.append("figureRedraw", "true");
           }
+          fd.append(
+            "layoutMode",
+            document.querySelector('input[name="fmLayout"]:checked')?.value || "auto",
+          );
           if (title) fd.append("title", title);
           if (currentStudentId) fd.append("studentId", currentStudentId);
           fd.append("model", fmModel);

@@ -1010,6 +1010,15 @@
               <br><small style="color:#9a6a00">기본은 원본 그림을 그대로 잘라 넣습니다. 이 옵션을 켜면 잘라낸 그림을 AI(gpt-image)가 다시 그려 더 깔끔해지지만, <strong>그래프 모양·숫자·라벨이 원본과 달라질 수 있습니다.</strong> 시험지 그래프처럼 정확도가 중요하면 끄세요.</small></span>
           </label>
         </div>
+        <div class="seg-group">
+          <span class="field-label">복원 레이아웃</span>
+          <div class="segmented">
+            <label><input type="radio" name="fmLayout" value="auto" checked /> 자동</label>
+            <label><input type="radio" name="fmLayout" value="layout" /> 원문 2단 그대로</label>
+            <label><input type="radio" name="fmLayout" value="clean" /> 정리해서 깔끔하게</label>
+          </div>
+          <small>원본이 2단 시험지면 <strong>원문 2단 그대로</strong>는 좌우 2단 레이아웃을 살립니다(원문에 가깝게). <strong>정리해서</strong>는 전체 폭으로 보기 좋게 폅니다. <strong>자동</strong>(기본)은 정리본으로 안정적으로 만듭니다. ※ 글꼴·간격까지 픽셀 단위로 똑같지는 않습니다.</small>
+        </div>
       </div>
 
       <div class="form-section">

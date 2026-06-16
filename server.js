@@ -449,6 +449,7 @@ const PIPELINES = {
         fontFace: normalizeFontFace(body.fontFace),
         userNotes: collectUserNotes(body.userNotes, filesByField),
         figureRedraw: String(body.figureRedraw) === "true",
+        layoutMode: String(body.layoutMode || "auto").toLowerCase() === "layout" ? "layout" : "clean",
         style: "default",
       };
     },

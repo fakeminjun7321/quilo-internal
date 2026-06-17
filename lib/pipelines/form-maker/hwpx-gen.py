@@ -103,7 +103,7 @@ def add_page_break(doc):
         pass
 
 
-def render_heading(doc, blk, target):
+def render_heading(doc, blk, target, keep_with_next=True):
     text = str(blk.get("text") or "").strip()
     if not text:
         return
@@ -112,9 +112,156 @@ def render_heading(doc, blk, target):
     phys.add_para_to(
         doc, target, text,
         base_size=st["size"], bold=st["bold"], align="LEFT",
-        indent_left=st["indent"], keep_with_next=True,
+        indent_left=st["indent"], keep_with_next=keep_with_next,
         space_before=st["sb"], space_after=st["sa"],
     )
+
+
+_EQ_KEYWORD_RE = re.compile(
+    r"\b(?:over|sqrt|times|cdot|propto|leq|geq|approx|neq|pm|mp|cdots|"
+    r"ldots|infty|partial|nabla|alpha|beta|gamma|delta|theta|lambda|mu|"
+    r"nu|pi|rho|sigma|tau|phi|psi|omega|Delta|Gamma|Theta|Lambda|Sigma|"
+    r"Phi|Omega|sum|int|lim|sin|cos|tan|log|ln|exp|right|left|hat|vec|bar|dot|"
+    r"because|therefore)\b"
+)
+
+
+def _eq_glyphs_line(s):
+    """한 줄(줄바꿈 없는) 수식의 '렌더 글리프 수' 근사. 제어 토큰(\\frac, over,
+    ^, _, {} 등)을 글리프 1개로 뭉뚱그려 폭에 비례하는(약간 큰) 추정치를 얻는다."""
+    s = re.sub(r"\\[a-zA-Z]+", "#", s)          # LaTeX 명령(\frac,\sqrt,\times…)→1글리프
+    s = _EQ_KEYWORD_RE.sub("#", s)              # 한컴 수식 키워드→1글리프
+    s = re.sub(r"[{}`^\\]", "", s)
+    s = s.replace("_", "")                        # 첨자는 작아서 폭에 거의 안 보탬
+    s = re.sub(r"\s+", "", s)
+    return len(s)
+
+
+def _eq_render_glyphs(s):
+    """수식의 폭 = 가장 넓은 '줄'의 글리프 수(한컴 줄바꿈 #, LaTeX 줄바꿈 \\\\ 기준).
+
+    수식 객체는 한 줄이면 줄바꿈/축소가 안 되는 고정폭이라 좁은 열에서 잘린다.
+    줄바꿈된 수식은 폭이 '가장 긴 줄'로 결정되므로 그 최대값을 폭 산정에 쓴다."""
+    s = str(s or "")
+    lines = re.split(r"\s*#\s*|\\\\", s)
+    return max((_eq_glyphs_line(ln) for ln in lines), default=0)
+
+
+# 마커 재구성용(접두 + 본문) — 너무 넓은 수식을 줄바꿈으로 다시 쓸 때 쓴다.
+_EQ_MARKER_REBUILD_RE = re.compile(r"(\{\{EQN?(?:-LATEX)?:)\s*(.*?)\}\}", re.S)
+
+
+def _split_top_level_at(s, ch):
+    """괄호/중괄호/대괄호 깊이 0 에서만 문자 ch 로 분할(ch 는 버림).
+    `<=`,`>=`,`!=`,`==` 같은 복합 연산자의 = 는 분할하지 않는다."""
+    out, depth, last, i, n = [], 0, 0, 0, len(s)
+    delta = {"(": 1, "[": 1, "{": 1, ")": -1, "]": -1, "}": -1}
+    while i < n:
+        c = s[i]
+        if c in delta:
+            depth += delta[c]
+        elif depth == 0 and c == ch:
+            prev = s[i - 1] if i > 0 else ""
+            nxt = s[i + 1] if i + 1 < n else ""
+            if prev not in "<>=!" and nxt != "=":
+                out.append(s[last:i])
+                last = i + 1
+        i += 1
+    out.append(s[last:])
+    return out
+
+
+def _wrap_equation_script(script, is_latex, target=19):
+    """너무 넓은(>target 글리프) 수식을 top-level `=` 에서 여러 줄로 나눈다.
+    한컴 수식 객체는 한 줄이면 셀 폭을 넘어 잘리므로, 다단계 식을 줄바꿈해
+    각 줄이 열 폭 안에 들어오게 한다. (원문 채점표도 다단계 식을 줄로 쌓는다.)"""
+    s = str(script or "")
+    if _eq_glyphs_line(s) <= target:
+        return s
+    parts = _split_top_level_at(s, "=")
+    if len(parts) <= 1:
+        return s  # 분할 지점 없음 — 비례폭이 최대한 넓게 잡아줌
+    lines = [parts[0].strip()] + ["= " + p.strip() for p in parts[1:] if p.strip()]
+    # 짧은 줄은 합쳐 과분할 방지(각 줄 ≤ target)
+    merged, cur = [], ""
+    for ln in lines:
+        cand = (cur + " " + ln).strip() if cur else ln
+        if cur and _eq_glyphs_line(cand) > target:
+            merged.append(cur)
+            cur = ln
+        else:
+            cur = cand
+    if cur:
+        merged.append(cur)
+    sep = " \\\\ " if is_latex else " # "
+    return sep.join(merged)
+
+
+def _wrap_cell_equations(text, target=19):
+    """셀 텍스트 안의 모든 수식 마커를 target 글리프에 맞춰 줄바꿈해 다시 쓴다."""
+    def repl(m):
+        prefix, body = m.group(1), m.group(2)
+        is_latex = "-LATEX" in prefix.upper()
+        return prefix + _wrap_equation_script(body, is_latex, target) + "}}"
+    return _EQ_MARKER_REBUILD_RE.sub(repl, str(text or ""))
+
+
+def _estimate_col_widths(headers, norm_rows, n_cols, total):
+    """내용 기반 비례 열폭. 수식 든 열은 최장 수식폭을 하드 최소로,
+    줄바꿈되는 텍스트 열은 상한(TEXT_CAP)을 둬, 좁은 열에 수식이 몰려 잘리는
+    문제를 막는다. (균등 분할 → 채점표 같은 다열표 수식 클리핑의 원인)"""
+    COL_FLOOR = 2400        # 열 최소폭 (~0.83cm)
+    TEXT_CAP = 15000        # 텍스트 열은 이 이상 '요구'하지 않음(줄바꿈됨)
+    HDR_CAP = 9000          # 머리글도 줄바꿈됨
+    EQ_GLYPH_W = 720        # 수식 글리프당 폭(약간 넉넉)
+    KO_W, OT_W = 460, 250   # 한글/그외 글자폭
+
+    def _cell_text(cell):
+        return str(cell.get("text", "")) if isinstance(cell, dict) else str(cell or "")
+
+    def _text_w(t):
+        t = _EQ_MARKER_RE.sub("", t)            # 수식 부분 제외한 순수 텍스트
+        ko = len(re.findall(r"[가-힣]", t))
+        return ko * KO_W + (len(t) - ko) * OT_W
+
+    def _eq_w(t):
+        mx = 0
+        for m in _EQ_MARKER_RE.finditer(t):
+            mx = max(mx, _eq_render_glyphs(m.group(1)) * EQ_GLYPH_W)
+        return mx
+
+    EQ_MARGIN = 600         # 수식 양옆 셀 여백(수식이 셀 경계에 닿아 잘리지 않게)
+    want = [COL_FLOOR] * n_cols
+    mins = [COL_FLOOR] * n_cols
+    rows_all = ([headers] if headers else []) + norm_rows
+    for ri, row in enumerate(rows_all):
+        is_header = bool(headers) and ri == 0
+        cap = HDR_CAP if is_header else TEXT_CAP
+        for ci in range(n_cols):
+            t = _cell_text(row[ci]) if ci < len(row) else ""
+            e = _eq_w(t)
+            e_pad = e + EQ_MARGIN if e else 0
+            want[ci] = max(want[ci], e_pad, min(_text_w(t), cap))
+            mins[ci] = max(mins[ci], e_pad, COL_FLOOR)   # 수식폭(+여백)은 하드 최소
+
+    sw = sum(want)
+    if sw <= 0:
+        return [max(900, total // n_cols)] * n_cols
+    if sw <= total:                              # 여유 → 비례 확대해 폭 채움
+        extra = total - sw
+        out = [w + extra * w // sw for w in want]
+    else:                                        # 초과 → 텍스트 여유분부터 축소(수식 최소 보호)
+        over = sw - total
+        slack = sum(w - m for w, m in zip(want, mins))
+        if slack >= over and slack > 0:
+            out = [w - over * (w - m) // slack for w, m in zip(want, mins)]
+        else:                                    # 최소합도 초과(불가피) → 최소 비례
+            sm = sum(mins) or 1
+            out = [m * total // sm for m in mins]
+    out = [max(900, x) for x in out]
+    diff = total - sum(out)                       # 반올림 보정 → 합=total
+    out[out.index(max(out))] += diff
+    return out
 
 
 def render_table(doc, blk, ctx, target=None, width=TABLE_WIDTH):
@@ -132,6 +279,37 @@ def render_table(doc, blk, ctx, target=None, width=TABLE_WIDTH):
     if n_rows == 0 or n_cols == 0:
         return
 
+    # 너무 넓은 수식은 줄바꿈 — 한 줄짜리 수식 객체는 좁은 셀에서 잘린다.
+    # 핵심: '렌더할 최종 열폭'에 맞춰 '마지막에' 줄바꿈하면 모든 줄 ≤ 열 inner
+    # 가 보장돼 구조적으로 넘침이 없다. (균등 분할 + 안 잘리는 수식 = 잘림 원인)
+    headers_raw = list(headers)
+    rows_raw = norm_rows
+
+    def _targets(widths):
+        # -3 글리프 안전여유: 줄바꿈 산정은 normalize 전 script 기준인데, 수식
+        # 도구가 렌더 직전 간격/기호를 넣어 ~2~3 글리프 늘어나기 때문.
+        return [max(8, (widths[ci] - 600) // 720 - 3) for ci in range(n_cols)]
+
+    def _wrap_all(targets):
+        def _wc(cell, ci):
+            tgt = targets[ci] if ci < n_cols else 19
+            if isinstance(cell, dict):
+                c = dict(cell)
+                c["text"] = _wrap_cell_equations(c.get("text", ""), tgt)
+                return c
+            return _wrap_cell_equations(cell, tgt)
+        h = [_wrap_cell_equations(x, targets[ci] if ci < n_cols else 19)
+             for ci, x in enumerate(headers_raw)]
+        r = [[_wc(c, ci) for ci, c in enumerate(row)] for row in rows_raw]
+        return h, r
+
+    # ① 원본 기준 임시폭 → ② 줄바꿈본으로 최종폭 산정(텍스트 열에 여유 환원)
+    col_widths = _estimate_col_widths(headers_raw, rows_raw, n_cols, width)
+    _h, _r = _wrap_all(_targets(col_widths))
+    col_widths = _estimate_col_widths(_h, _r, n_cols, width)
+    # ③ 최종폭에 맞춰 마지막 줄바꿈 → 렌더 (줄 ≤ 열 inner 보장)
+    headers, norm_rows = _wrap_all(_targets(col_widths))
+
     # 캡션은 표 위(한국어 표 캡션 관례)
     if caption:
         phys.add_para_to(
@@ -143,11 +321,11 @@ def render_table(doc, blk, ctx, target=None, width=TABLE_WIDTH):
     table = target.add_table(
         rows=n_rows, cols=n_cols, width=width, border_fill_id_ref=solid_id,
     )
-    col_width = max(int(width / n_cols), 900)
+    # col_widths 는 위에서 줄바꿈과 함께 확정됨(내용 기반 비례 열폭).
     for c in range(n_cols):
         for r in range(n_rows):
             try:
-                table.cell(r, c).set_size(width=col_width, height=2000)
+                table.cell(r, c).set_size(width=col_widths[c], height=2000)
             except Exception:
                 pass
 
@@ -359,9 +537,16 @@ def render_columns(doc, blk, ctx, target=None, width=TABLE_WIDTH):
     _blank(target)
 
 
+def _block_type(blk):
+    if not isinstance(blk, dict):
+        return ""
+    return re.sub(r"[{}*]", "", str(blk.get("type") or "")).strip().lower()
+
+
 def render_blocks(doc, blocks, ctx, target=None, width=TABLE_WIDTH):
     target = target or doc
-    for blk in as_list(blocks):
+    blocks = as_list(blocks)
+    for i, blk in enumerate(blocks):
         if isinstance(blk, str):
             if blk.strip():
                 phys.add_para_to(doc, target, blk, align="JUSTIFY", space_after=pre.SPACE_BODY)
@@ -371,7 +556,12 @@ def render_blocks(doc, blocks, ctx, target=None, width=TABLE_WIDTH):
         # type 은 데이터 — 혹시 표기 정리로 `summary_{box}` 처럼 첨자 마커가 끼어도 무시.
         bt = re.sub(r"[{}*]", "", str(blk.get("type") or "")).strip().lower()
         if bt == "heading":
-            render_heading(doc, blk, target)
+            # 다음 블록이 키 큰 객체(표/그림/컬럼)면 keep_with_next 를 끈다 —
+            # 안 그러면 한 페이지 넘는 표를 통째로 끌고 다음 장으로 가버려
+            # 제목만 덩그러니 남은 빈 페이지가 생긴다.
+            nxt = _block_type(blocks[i + 1]) if i + 1 < len(blocks) else ""
+            keep = nxt not in ("table", "figure", "columns")
+            render_heading(doc, blk, target, keep_with_next=keep)
         elif bt == "paragraph":
             text = str(blk.get("text") or "")
             if text.strip():

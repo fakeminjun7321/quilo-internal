@@ -1322,6 +1322,9 @@ def normalize_hwp_script(script: str) -> str:
         text,
     )
     text = text.replace("<=>", "<->")
+    # 비례 기호: 모델이 약어 'prop' 을 쓰면 한컴이 ∝ 로 못 읽고 'prop' 글자로 렌더된다.
+    # 정식 키워드 'propto'(=∝)로 교정. (\bprop\b 라 'propto'·'property' 는 안 건드림)
+    text = re.sub(r"\bprop\b", "propto", text)
     # hwip 의 빈 구분자(LEFT. / RIGHT. — \left. evaluated-at 표기)는 한컴
     # 수용이 검증되지 않아 'LEFT.' 리터럴 노출 위험이 있다 — 구분자째
     # 제거한다(키워드+마침표 조합은 소수점과 혼동될 수 없다). 제거로

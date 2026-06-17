@@ -761,6 +761,9 @@ def normalize_equation_script(script):
         .replace("↔", "<->")
         .replace("⇄", "<->")
     )
+    # 비례 기호: 모델이 약어 'prop' 을 쓰면 한컴이 ∝ 로 못 읽고 'prop' 글자로 렌더된다.
+    # 정식 키워드 'propto'(=∝) 로 교정. (\bprop\b 라 'propto' 자체·'property' 등은 안 건드림)
+    s = re.sub(r"\bprop\b", "propto", s)
     s = re.sub(
         r"--\s*\[\s*([^\]]+?)\s*\]\s*(<->|<=>|->|<-|=>)",
         r"BUILDREL \2 {\1}",

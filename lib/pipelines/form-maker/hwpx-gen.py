@@ -321,6 +321,12 @@ def render_table(doc, blk, ctx, target=None, width=TABLE_WIDTH):
     table = target.add_table(
         rows=n_rows, cols=n_cols, width=width, border_fill_id_ref=solid_id,
     )
+    # 머리행 있는 표는 페이지를 넘을 때 머리행을 반복(채점표가 다음 장으로 이어질 때 헤더 유지).
+    if has_header:
+        try:
+            table.element.set("repeatHeader", "1")
+        except Exception:
+            pass
     # col_widths 는 위에서 줄바꿈과 함께 확정됨(내용 기반 비례 열폭).
     for c in range(n_cols):
         for r in range(n_rows):
@@ -408,6 +414,20 @@ def render_table(doc, blk, ctx, target=None, width=TABLE_WIDTH):
     _blank(target)
 
 
+_FIG_PREFIXED_RE = re.compile(r"^\s*(?:\[\s*)?(?:그림|그래프|사진|fig)", re.IGNORECASE)
+
+
+def _figure_caption(caption, n):
+    """캡션에 '[그림 N]' 접두 — 이미 그림/그래프/사진 등으로 시작하면 중복으로 안 붙인다.
+    (모델이 caption 에 '그림. ...' 처럼 써서 '[그림 1] 그림. ...' 중복되던 문제 방지.)"""
+    c = str(caption or "").strip()
+    if not c:
+        return ""
+    if _FIG_PREFIXED_RE.match(c):
+        return c
+    return f"[그림 {n}] {c}"
+
+
 def render_figure(doc, blk, ctx, target=None, width=TABLE_WIDTH):
     target = target or doc
     photos = ctx["photos"]
@@ -416,38 +436,30 @@ def render_figure(doc, blk, ctx, target=None, width=TABLE_WIDTH):
     idxs = blk.get("photo_indices")
 
     if isinstance(idxs, list) and idxs and photos:
-        if ctx.get("two_col"):
-            # 2단 모드: add_photo_blocks 의 고정폭(30300)이 단(~22000)을 삐져나오므로,
-            # 단 폭에 맞춰 한 장씩 임베드(phys-result 공유 함수는 안 건드린다).
-            fig_w = min(width, 21000)
-            placed = False
-            for i in as_list(idxs):
-                try:
-                    photo = photos[int(i)]
-                except (IndexError, ValueError, TypeError):
-                    continue
-                blob = phys.decode_base64(photo.get("data_base64"))
-                if not blob:
-                    continue
-                fig_counter["value"] += 1
-                cap = ""
-                if caption:
-                    cap = caption if caption.lstrip().startswith("그림") else f"[그림 {fig_counter['value']}] {caption}"
-                phys.add_picture(
-                    doc, blob,
-                    fmt=phys.image_format(photo.get("name"), photo.get("mimetype"), blob),
-                    caption=cap, max_width=fig_w, max_height=12000, target=target,
-                )
-                placed = True
-            if placed:
-                return
-            # 디코드 실패 시 아래 placeholder 로 폴백
-        else:
-            phys.add_photo_blocks(
-                doc, idxs, photos, fig_counter, caption,
-                target=target, photo_captions=blk.get("photo_captions"),
+        # 사진을 본문/단 폭에 맞춰 한 장씩 임베드한다. 2단이면 단 폭(~21000),
+        # 아니면 본문 전체폭(width)을 쓴다. (공유 add_photo_blocks 는 폭 30300 고정 +
+        # 캡션 '[그림 N]' 무조건 접두 버그가 있어 form-maker 에선 직접 add_picture 로 처리.)
+        fig_w = min(width, 21000) if ctx.get("two_col") else width
+        placed = False
+        for i in as_list(idxs):
+            try:
+                photo = photos[int(i)]
+            except (IndexError, ValueError, TypeError):
+                continue
+            blob = phys.decode_base64(photo.get("data_base64"))
+            if not blob:
+                continue
+            fig_counter["value"] += 1
+            cap = _figure_caption(caption, fig_counter["value"])
+            phys.add_picture(
+                doc, blob,
+                fmt=phys.image_format(photo.get("name"), photo.get("mimetype"), blob),
+                caption=cap, max_width=fig_w, max_height=12000, target=target,
             )
+            placed = True
+        if placed:
             return
+        # 디코드 실패 시 아래 placeholder 로 폴백
 
     # 사진 없음 → 점선 빈 상자(placeholder)
     dashed_id = pre.make_dashed_border_fill(doc)
@@ -467,7 +479,7 @@ def render_figure(doc, blk, ctx, target=None, width=TABLE_WIDTH):
     )
     if caption:
         fig_counter["value"] += 1
-        cap = caption if caption.lstrip().startswith("그림") else f"[그림 {fig_counter['value']}] {caption}"
+        cap = _figure_caption(caption, fig_counter["value"])
         phys.add_para_to(
             doc, target, cap,
             base_size=pre.SIZE_CAPTION, align="CENTER", space_after=pre.SPACE_BODY,
@@ -487,8 +499,10 @@ def render_summary_box(doc, blk, ctx, target=None, width=TABLE_WIDTH):
     body_lines = [x for x in as_list(blk.get("body")) if x is not None and str(x).strip()]
     answer_lines = _clamp_int(blk.get("lines"), 0, 30, 0)
     if answer_lines > 0 and len(body_lines) <= 1:
-        # 한 줄 ~1900 HWPUNIT + 라벨/여백 보정. (set_size 높이는 최소 높이로 동작)
+        # 한 줄 ~1900 HWPUNIT(11pt×160% 행간 ≈ 실제 필기 한 줄) + 라벨/여백 보정.
+        # 단, 한 답란이 페이지를 다 먹지 않게 상한(≈본문 높이 절반)을 둔다.
         box_h = answer_lines * 1900 + (900 if str(blk.get("label") or "").strip() else 300)
+        box_h = min(box_h, 30000)  # ~16줄(A4 본문높이의 약 45%) 상한
         try:
             cell.set_size(width=width, height=box_h)
         except Exception:
@@ -504,7 +518,7 @@ def render_summary_box(doc, blk, ctx, target=None, width=TABLE_WIDTH):
             continue
         phys.add_para_to(
             doc, cell, str(line),
-            base_size=pre.SIZE_BODY, align="JUSTIFY", space_after=pre.SPACE_BODY,
+            base_size=pre.SIZE_BODY, align="LEFT", space_after=pre.SPACE_BODY,
         )
     _blank(target)
 
@@ -549,7 +563,7 @@ def render_blocks(doc, blocks, ctx, target=None, width=TABLE_WIDTH):
     for i, blk in enumerate(blocks):
         if isinstance(blk, str):
             if blk.strip():
-                phys.add_para_to(doc, target, blk, align="JUSTIFY", space_after=pre.SPACE_BODY)
+                phys.add_para_to(doc, target, blk, align="LEFT", space_after=pre.SPACE_BODY)
             continue
         if not isinstance(blk, dict):
             continue
@@ -567,7 +581,7 @@ def render_blocks(doc, blocks, ctx, target=None, width=TABLE_WIDTH):
             if text.strip():
                 phys.add_para_to(
                     doc, target, text,
-                    align=_align(blk.get("align"), "JUSTIFY"),
+                    align=_align(blk.get("align"), "LEFT"),
                     indent_left=pre.INDENT_5MM if blk.get("hanging") else 0,
                     space_after=pre.SPACE_BODY,
                 )
@@ -587,7 +601,7 @@ def render_blocks(doc, blocks, ctx, target=None, width=TABLE_WIDTH):
         else:
             text = str(blk.get("text") or "")
             if text.strip():
-                phys.add_para_to(doc, target, text, align="JUSTIFY", space_after=pre.SPACE_BODY)
+                phys.add_para_to(doc, target, text, align="LEFT", space_after=pre.SPACE_BODY)
 
 
 # ── 표지 / 머리말 ──────────────────────────────────────────────────────────────

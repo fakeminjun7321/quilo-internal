@@ -206,10 +206,44 @@ def _wrap_cell_equations(text, target=19):
     return _EQ_MARKER_REBUILD_RE.sub(repl, str(text or ""))
 
 
+def _grid_placements(norm_rows, n_cols):
+    """JSON 행의 셀들을 실제 그리드 열에 배치한다(rowspan 가림 추적 + colspan 소비).
+    채점표처럼 colspan/rowspan 이 있으면 JSON 행 배열 길이 ≠ 열 수라, 배열 인덱스를
+    그리드 열로 그대로 쓰면(=옛 row[ci]) 셀이 엉뚱한 열에 가거나 통째로 누락된다.
+    반환: 행별 [(grid_col, cell, colspan, rowspan), ...] (배열 순서)."""
+    n_rows = len(norm_rows)
+    covered = set()  # 위 행의 rowspan 이 가린 (row, col)
+    out = []
+    for ri, row in enumerate(norm_rows):
+        placed = []
+        ci = 0
+        si = 0  # JSON 행 배열 커서
+        while ci < n_cols and si < len(row):
+            if (ri, ci) in covered:
+                ci += 1
+                continue
+            cell = row[si]
+            si += 1
+            if isinstance(cell, dict):
+                colspan = _clamp_int(cell.get("colspan"), 1, n_cols - ci, 1)
+                rowspan = _clamp_int(cell.get("rowspan"), 1, n_rows - ri, 1)
+            else:
+                colspan, rowspan = 1, 1
+            placed.append((ci, cell, colspan, rowspan))
+            for dr in range(rowspan):
+                for dc in range(colspan):
+                    if dr or dc:
+                        covered.add((ri + dr, ci + dc))
+            ci += colspan
+        out.append(placed)
+    return out
+
+
 def _estimate_col_widths(headers, norm_rows, n_cols, total):
     """내용 기반 비례 열폭. 수식 든 열은 최장 수식폭을 하드 최소로,
     줄바꿈되는 텍스트 열은 상한(TEXT_CAP)을 둬, 좁은 열에 수식이 몰려 잘리는
-    문제를 막는다. (균등 분할 → 채점표 같은 다열표 수식 클리핑의 원인)"""
+    문제를 막는다. (균등 분할 → 채점표 같은 다열표 수식 클리핑의 원인)
+    colspan>1 스팬 셀은 여러 열에 걸치므로 단일 열 폭을 제약하지 않는다."""
     COL_FLOOR = 2400        # 열 최소폭 (~0.83cm)
     TEXT_CAP = 15000        # 텍스트 열은 이 이상 '요구'하지 않음(줄바꿈됨)
     HDR_CAP = 9000          # 머리글도 줄바꿈됨
@@ -233,16 +267,23 @@ def _estimate_col_widths(headers, norm_rows, n_cols, total):
     EQ_MARGIN = 600         # 수식 양옆 셀 여백(수식이 셀 경계에 닿아 잘리지 않게)
     want = [COL_FLOOR] * n_cols
     mins = [COL_FLOOR] * n_cols
-    rows_all = ([headers] if headers else []) + norm_rows
-    for ri, row in enumerate(rows_all):
-        is_header = bool(headers) and ri == 0
-        cap = HDR_CAP if is_header else TEXT_CAP
-        for ci in range(n_cols):
-            t = _cell_text(row[ci]) if ci < len(row) else ""
-            e = _eq_w(t)
-            e_pad = e + EQ_MARGIN if e else 0
-            want[ci] = max(want[ci], e_pad, min(_text_w(t), cap))
-            mins[ci] = max(mins[ci], e_pad, COL_FLOOR)   # 수식폭(+여백)은 하드 최소
+
+    def _accum(ci, t, cap):
+        e = _eq_w(t)
+        e_pad = e + EQ_MARGIN if e else 0
+        want[ci] = max(want[ci], e_pad, min(_text_w(t), cap))
+        mins[ci] = max(mins[ci], e_pad, COL_FLOOR)   # 수식폭(+여백)은 하드 최소
+
+    # 머리행: 스팬 없음 → 열 인덱스 직접
+    for ci in range(n_cols):
+        if ci < len(headers):
+            _accum(ci, _cell_text(headers[ci]), HDR_CAP)
+    # 본문: 그리드 배치로 셀↔열 정확히 귀속(colspan>1 스팬 셀은 단일 열 제약 안 함)
+    for placed in _grid_placements(norm_rows, n_cols):
+        for (ci, cell, colspan, rowspan) in placed:
+            if colspan != 1:
+                continue
+            _accum(ci, _cell_text(cell), TEXT_CAP)
 
     sw = sum(want)
     if sw <= 0:
@@ -284,31 +325,46 @@ def render_table(doc, blk, ctx, target=None, width=TABLE_WIDTH):
     # 가 보장돼 구조적으로 넘침이 없다. (균등 분할 + 안 잘리는 수식 = 잘림 원인)
     headers_raw = list(headers)
     rows_raw = norm_rows
+    placements = _grid_placements(rows_raw, n_cols)  # 셀↔열 매핑(줄바꿈해도 구조 불변)
 
-    def _targets(widths):
+    def _glyph_target(w):
         # -3 글리프 안전여유: 줄바꿈 산정은 normalize 전 script 기준인데, 수식
         # 도구가 렌더 직전 간격/기호를 넣어 ~2~3 글리프 늘어나기 때문.
-        return [max(8, (widths[ci] - 600) // 720 - 3) for ci in range(n_cols)]
+        return max(8, (w - 600) // 720 - 3)
 
-    def _wrap_all(targets):
-        def _wc(cell, ci):
-            tgt = targets[ci] if ci < n_cols else 19
-            if isinstance(cell, dict):
-                c = dict(cell)
-                c["text"] = _wrap_cell_equations(c.get("text", ""), tgt)
-                return c
-            return _wrap_cell_equations(cell, tgt)
-        h = [_wrap_cell_equations(x, targets[ci] if ci < n_cols else 19)
+    def _wrap_all(widths):
+        col_t = [_glyph_target(widths[ci]) for ci in range(n_cols)]
+
+        def _cell_tgt(ri, k):
+            # k 번째 배열 셀이 놓인 grid 열(+colspan)의 합폭 기준 글리프 target.
+            if ri < len(placements) and k < len(placements[ri]):
+                gc, _cell, cs, _rs = placements[ri][k]
+                return _glyph_target(sum(widths[gc:gc + cs]))
+            return col_t[k] if k < n_cols else 19
+
+        h = [_wrap_cell_equations(x, col_t[ci] if ci < n_cols else 19)
              for ci, x in enumerate(headers_raw)]
-        r = [[_wc(c, ci) for ci, c in enumerate(row)] for row in rows_raw]
+        r = []
+        for ri, row in enumerate(rows_raw):
+            nr = []
+            for k, c in enumerate(row):
+                t = _cell_tgt(ri, k)
+                if isinstance(c, dict):
+                    cc = dict(c)
+                    cc["text"] = _wrap_cell_equations(cc.get("text", ""), t)
+                    nr.append(cc)
+                else:
+                    nr.append(_wrap_cell_equations(c, t))
+            r.append(nr)
         return h, r
 
     # ① 원본 기준 임시폭 → ② 줄바꿈본으로 최종폭 산정(텍스트 열에 여유 환원)
     col_widths = _estimate_col_widths(headers_raw, rows_raw, n_cols, width)
-    _h, _r = _wrap_all(_targets(col_widths))
+    _h, _r = _wrap_all(col_widths)
     col_widths = _estimate_col_widths(_h, _r, n_cols, width)
     # ③ 최종폭에 맞춰 마지막 줄바꿈 → 렌더 (줄 ≤ 열 inner 보장)
-    headers, norm_rows = _wrap_all(_targets(col_widths))
+    headers, norm_rows = _wrap_all(col_widths)
+    placements = _grid_placements(norm_rows, n_cols)  # 최종 렌더용(셀=줄바꿈본)
 
     # 캡션은 표 위(한국어 표 캡션 관례)
     if caption:
@@ -350,21 +406,17 @@ def render_table(doc, blk, ctx, target=None, width=TABLE_WIDTH):
 
     covered = set()
     anchors = []  # (cell, colspan, rowspan) — span 은 모든 셀 배치 후 일괄 설정
-    for ri, row in enumerate(norm_rows):
+    # placements: 그리드 배치(colspan/rowspan 인식) — 옛 row[ci] 의 셀 누락/오배치 해결.
+    for ri, placed in enumerate(placements):
         rr = ri + r0
-        for ci in range(n_cols):
-            if (rr, ci) in covered:
-                continue
-            raw = row[ci] if ci < len(row) else ""
+        for (ci, raw, colspan, rowspan) in placed:
             if isinstance(raw, dict):
                 text = str(raw.get("text", ""))
                 align = raw.get("align")
                 bold = bool(raw.get("bold"))
                 fill = raw.get("fill")
-                colspan = _clamp_int(raw.get("colspan"), 1, n_cols, 1)
-                rowspan = _clamp_int(raw.get("rowspan"), 1, n_rows, 1)
             else:
-                text, align, bold, fill, colspan, rowspan = str(raw), None, False, None, 1, 1
+                text, align, bold, fill = str(raw), None, False, None
 
             colspan = min(colspan, n_cols - ci)
             rowspan = min(rowspan, n_rows - rr)
@@ -607,7 +659,10 @@ def render_blocks(doc, blocks, ctx, target=None, width=TABLE_WIDTH):
 # ── 표지 / 머리말 ──────────────────────────────────────────────────────────────
 
 def build_title(doc, content):
-    title = str(content.get("title") or "문서").strip()
+    # 원본에 큰 제목이 없으면 만들지 않는다 — 머리말을 가짜 표지 제목으로 승격하지 않기 위함(P8).
+    title = str(content.get("title") or "").strip()
+    if not title:
+        return
     size = content.get("title_size")
     try:
         size_pt = _clamp_int(float(size) * 100, 800, 4000, pre.SIZE_TITLE_BIG) if size else pre.SIZE_TITLE_BIG

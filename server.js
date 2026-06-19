@@ -4911,16 +4911,14 @@ app.get("/api/version", (req, res) => {
   });
 });
 
-// keepalive: "웹 서버가 살아있다"는 신호. 외부 모니터(cron-job.org)와 self-ping이 호출한다.
-// 인증 없음 (외부 모니터가 공개 endpoint로 호출).
-//
-// ⚠️ 항상 200을 반환하고, Supabase ping을 await 하지 않는다.
-// 과거엔 Supabase ping 실패 시 503을 뱉었는데, 외부 모니터(cron-job.org 등)가 그걸
-// "실패"로 보고 연속 실패가 쌓이면 잡을 자동 비활성화 → 아무도 사이트를 못 깨워서
-// Render가 영영 잠드는 닭-달걀 함정이 있었다. 또 supa.ping()을 await 하면 Supabase가
-// 느릴 때 응답이 지연되어, 콜드스타트 타임아웃으로 오탐(=실패)이 나기도 했다.
-// 이 endpoint의 목적은 "서버가 응답할 수 있는가"이므로, 서버가 살아있는 한 200이어야 한다.
-// Supabase는 7일 pause 방지를 위해 백그라운드로 가볍게 깨우고, 상태는 body에만 싣는다.
+// keepalive endpoint — [2026-06-19 비활성화 / 보관] ───────────────────────────────
+// Render Standard 업그레이드로 spin-down이 사라져, 이 endpoint를 호출하던
+// self-ping·GitHub Actions·cron-job.org가 모두 불필요해졌다. 그래서 통째로 주석 처리.
+// Supabase 7일 pause 방지는 6시간 주기 만료파일 정리 타이머(아래 app.listen 내부)가
+// 대신 DB를 건드려 해결한다.
+// ▶ 되살리려면: Render를 Free로 되돌리거나 외부 업타임 모니터를 다시 붙일 때
+//   아래 블록 주석을 풀면 된다. (self-ping 블록도 함께 복구)
+/*
 let lastSupabasePing = { ok: null, ts: null, reason: null };
 function pingSupabaseInBackground() {
   supa
@@ -4946,6 +4944,7 @@ app.get("/api/keepalive", (req, res) => {
     ts: new Date().toISOString(),
   });
 });
+*/
 
 // multer 업로드 에러 핸들러 (파일 크기·개수 초과 등)
 app.use((err, req, res, next) => {
@@ -5080,11 +5079,12 @@ app.listen(PORT, async () => {
     if (typeof cleanupTimer.unref === "function") cleanupTimer.unref();
   }
 
-  // ── 자가 핑(self-ping): Render 무료 인스턴스가 15분 무활동 시 잠드는 것을 방지.
-  // 서버가 자기 public URL(/api/keepalive)을 주기적으로 호출 → 인바운드 트래픽 발생 →
-  // Render idle 타이머가 리셋되어 잠들지 않는다. (GitHub Actions cron은 고빈도 스케줄을
-  // 심하게 throttle해서 못 쓴다 — 자가 핑은 프로세스가 살아있는 한 정확히 동작.)
-  // RENDER_EXTERNAL_URL은 Render가 자동 주입. 다른 호스트면 SELF_PING_URL로 지정.
+  // ── 자가 핑(self-ping) — [2026-06-19 비활성화 / 보관] ─────────────────────────
+  // Render 인스턴스를 Free → Standard($25, 2GB/1CPU)로 업그레이드하면서 더 이상
+  // 무활동 잠듦(spin-down)이 없으므로 자가 핑이 불필요해졌다. 그래서 통째로 주석 처리.
+  // (Supabase 7일 pause 방지는 위 6시간 주기 만료파일 정리 타이머가 DB를 건드려 대신 해준다.)
+  // ▶ 되살리려면: Render를 Free로 되돌릴 때 아래 블록 주석을 풀면 그대로 동작한다.
+  /*
   const SELF_URL = process.env.RENDER_EXTERNAL_URL || process.env.SELF_PING_URL;
   if (SELF_URL && process.env.DISABLE_SELF_PING !== "1") {
     const pingUrl = SELF_URL.replace(/\/+$/, "") + "/api/keepalive";
@@ -5101,4 +5101,5 @@ app.listen(PORT, async () => {
   } else {
     console.log("  · self-ping 비활성 (RENDER_EXTERNAL_URL 없음 또는 DISABLE_SELF_PING=1)");
   }
+  */
 });

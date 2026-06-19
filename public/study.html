@@ -22,6 +22,7 @@
       .study-shell {
         display: grid;
         gap: 22px;
+        width: min(1320px, calc(100% - 40px));
       }
       .study-top {
         display: flex;
@@ -62,7 +63,7 @@
       }
       .study-workbench {
         display: grid;
-        grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+        grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
         gap: 18px;
         align-items: start;
       }
@@ -162,16 +163,39 @@
         cursor: default;
       }
       .study-canvas-wrap {
+        position: relative;
         overflow: hidden;
         border: 1px solid var(--border);
         border-radius: var(--radius);
         background: #fff;
       }
+      .study-canvas-tools {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        z-index: 2;
+        display: inline-flex;
+        gap: 6px;
+      }
+      .study-canvas-tools button,
+      .study-zoom-actions button {
+        min-height: 32px;
+        padding: 6px 10px;
+        border: 1px solid var(--border);
+        border-radius: 9px;
+        background: rgba(255, 255, 255, 0.92);
+        color: var(--text);
+        font: inherit;
+        font-size: 12.5px;
+        font-weight: 760;
+        cursor: pointer;
+        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
+      }
       #minkowskiCanvas {
         display: block;
         width: 100%;
-        aspect-ratio: 1.45;
-        min-height: 360px;
+        aspect-ratio: 1.62;
+        min-height: 520px;
         background: #fff;
       }
       .study-caption {
@@ -245,6 +269,63 @@
         font-size: 12px;
         line-height: 1.45;
       }
+      .study-zoom-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 120;
+        display: grid;
+        padding: 24px;
+        background: rgba(15, 23, 42, 0.72);
+      }
+      .study-zoom-modal[hidden] {
+        display: none !important;
+      }
+      .study-zoom-panel {
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr);
+        min-width: 0;
+        min-height: 0;
+        border-radius: 14px;
+        background: #fff;
+        box-shadow: 0 24px 90px rgba(15, 23, 42, 0.32);
+        overflow: hidden;
+      }
+      .study-zoom-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 14px;
+        border-bottom: 1px solid #e5e7eb;
+        color: #111827;
+      }
+      .study-zoom-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .study-zoom-actions output {
+        min-width: 50px;
+        color: #4b5563;
+        font-size: 12.5px;
+        font-variant-numeric: tabular-nums;
+        text-align: center;
+      }
+      .study-zoom-stage {
+        min-width: 0;
+        min-height: 0;
+        overflow: auto;
+        padding: 18px;
+        background: #f8fafc;
+      }
+      #minkowskiZoomCanvas {
+        display: block;
+        max-width: none;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+      }
       .study-gate-btn {
         display: inline-flex;
         align-items: center;
@@ -269,7 +350,7 @@
           grid-template-columns: 1fr;
         }
         #minkowskiCanvas {
-          min-height: 300px;
+          min-height: 420px;
         }
       }
       @media (max-width: 560px) {
@@ -282,6 +363,16 @@
         }
         .tool-card {
           padding: 18px;
+        }
+        #minkowskiCanvas {
+          min-height: 330px;
+        }
+        .study-zoom-modal {
+          padding: 10px;
+        }
+        .study-zoom-head {
+          align-items: flex-start;
+          flex-direction: column;
         }
       }
     </style>
@@ -377,6 +468,9 @@
 
           <div class="study-output">
             <div class="study-canvas-wrap">
+              <div class="study-canvas-tools">
+                <button id="openZoomBtn" type="button">크게 보기</button>
+              </div>
               <canvas id="minkowskiCanvas"></canvas>
               <div class="study-caption">
                 <h2 id="diagramTitle">민코프스키 평면</h2>
@@ -419,6 +513,24 @@
       <div class="footer-copy">© 2026 Quilo · MIT License</div>
     </footer>
 
+    <div id="studyZoomModal" class="study-zoom-modal" hidden>
+      <div class="study-zoom-panel" role="dialog" aria-modal="true" aria-labelledby="studyZoomTitle">
+        <div class="study-zoom-head">
+          <strong id="studyZoomTitle">민코프스키 평면 크게 보기</strong>
+          <div class="study-zoom-actions">
+            <button id="zoomMinusBtn" type="button" aria-label="축소">−</button>
+            <output id="zoomScaleOut">100%</output>
+            <button id="zoomPlusBtn" type="button" aria-label="확대">+</button>
+            <button id="zoomFitBtn" type="button">맞춤</button>
+            <button id="closeZoomBtn" type="button">닫기</button>
+          </div>
+        </div>
+        <div id="studyZoomStage" class="study-zoom-stage">
+          <canvas id="minkowskiZoomCanvas"></canvas>
+        </div>
+      </div>
+    </div>
+
     <script src="/theme.js"></script>
     <script>
       (function () {
@@ -426,6 +538,12 @@
         var FEATURE = "relativity-study";
         var canvas = document.getElementById("minkowskiCanvas");
         var ctx = canvas.getContext("2d");
+        var mainCanvas = canvas;
+        var mainCtx = ctx;
+        var zoomModal = document.getElementById("studyZoomModal");
+        var zoomCanvas = document.getElementById("minkowskiZoomCanvas");
+        var zoomCtx = zoomCanvas.getContext("2d");
+        var zoomLevel = 1;
         var betaRange = document.getElementById("betaRange");
         var etaRange = document.getElementById("etaRange");
         var betaOut = document.getElementById("betaOut");
@@ -470,11 +588,12 @@
             eta: atanh(0.5),
             events: [
               { id: "O", label: "출발", x: 0, t: 0, color: "#0f9d6b" },
-              { id: "A", label: "도착", x: 1.8, t: 3.1, color: "#2563eb" }
+              { id: "A", label: "도착", x: 6.5, t: 5.2, color: "#2563eb" }
             ],
             worldlines: [
-              { id: "rest", label: "정지계", color: "#6b7280", points: [{ x: 0, t: -4 }, { x: 0, t: 4 }] },
-              { id: "moving", label: "이동 물체", color: "#2563eb", points: [{ x: -2, t: -4 }, { x: 2, t: 4 }] }
+              { id: "source", label: "출발점", color: "#6b7280", points: [{ x: 0, t: 0 }, { x: 0, t: 7 }] },
+              { id: "moving", label: "이동 물체", color: "#2563eb", points: [{ x: 0, t: 0 }, { x: 6.5, t: 7.2 }] },
+              { id: "target", label: "도착점", color: "#0f9d6b", points: [{ x: 7.5, t: 0 }, { x: 7.5, t: 7.4 }] }
             ],
             annotations: [],
             explanation: "빛원뿔 안에서 이동 물체의 세계선과 두 사건만 비교하는 단순 도식입니다.",
@@ -525,18 +644,28 @@
           return { w: w, h: h };
         }
         function renderer(size, range) {
-          var pad = 42;
-          var scale = Math.min((size.w - pad * 2) / (range * 2), (size.h - pad * 2) / (range * 2));
-          var cx = size.w / 2;
-          var cy = size.h / 2;
+          var padL = 78;
+          var padR = 52;
+          var padT = 48;
+          var padB = 76;
+          var scaleX = (size.w - padL - padR) / range;
+          var scaleY = (size.h - padT - padB) / range;
+          var cx = padL;
+          var cy = size.h - padB;
           return {
             toScreen: function (x, t) {
-              return { x: cx + x * scale, y: cy - t * scale };
+              return { x: cx + x * scaleX, y: cy - t * scaleY };
             },
             range: range,
-            scale: scale,
+            scale: Math.min(scaleX, scaleY),
+            scaleX: scaleX,
+            scaleY: scaleY,
             cx: cx,
-            cy: cy
+            cy: cy,
+            padL: padL,
+            padR: padR,
+            padT: padT,
+            padB: padB
           };
         }
         function linePoints(fn, min, max, steps) {
@@ -562,6 +691,30 @@
           ctx.stroke();
           ctx.restore();
         }
+        function drawArrowHead(from, to, color, width) {
+          var dx = to.x - from.x;
+          var dy = to.y - from.y;
+          var len = Math.sqrt(dx * dx + dy * dy);
+          if (!len) return;
+          var ux = dx / len;
+          var uy = dy / len;
+          var size = Math.max(9, (width || 2) * 4.5);
+          ctx.save();
+          ctx.fillStyle = color;
+          ctx.beginPath();
+          ctx.moveTo(to.x, to.y);
+          ctx.lineTo(to.x - ux * size - uy * size * 0.42, to.y - uy * size + ux * size * 0.42);
+          ctx.lineTo(to.x - ux * size + uy * size * 0.42, to.y - uy * size - ux * size * 0.42);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        }
+        function drawArrow(r, from, to, color, width, dash) {
+          drawPath(r, [from, to], color, width, dash);
+          var a = r.toScreen(from.x, from.t);
+          var b = r.toScreen(to.x, to.t);
+          drawArrowHead(a, b, color, width);
+        }
         function drawText(r, text, x, t, color, size) {
           var s = r.toScreen(x, t);
           ctx.save();
@@ -580,22 +733,20 @@
           var R = r.range;
           ctx.fillStyle = "#ffffff";
           ctx.fillRect(0, 0, canvas.width, canvas.height);
-          drawPath(r, [{ x: -R, t: 0 }, { x: R, t: 0 }], "#111827", 2);
-          drawPath(r, [{ x: 0, t: -R }, { x: 0, t: R }], "#111827", 2);
-          var tick = Math.max(1, Math.ceil(R / 4));
-          for (var i = -R; i <= R; i += tick) {
+          drawArrow(r, { x: 0, t: 0 }, { x: R, t: 0 }, "#6b7280", 1.6);
+          drawArrow(r, { x: 0, t: 0 }, { x: 0, t: R }, "#6b7280", 1.6);
+          var tick = Math.max(1, Math.ceil(R / 5));
+          for (var i = tick; i <= R; i += tick) {
             if (i === 0) continue;
-            drawPath(r, [{ x: i, t: -0.08 }, { x: i, t: 0.08 }], "#9ca3af", 1);
-            drawPath(r, [{ x: -0.08, t: i }, { x: 0.08, t: i }], "#9ca3af", 1);
+            drawPath(r, [{ x: i, t: -0.11 }, { x: i, t: 0.11 }], "#9ca3af", 1);
+            drawPath(r, [{ x: -0.11, t: i }, { x: 0.11, t: i }], "#9ca3af", 1);
           }
-          drawText(r, "x", R - 0.45, -0.35, "#111827", 14);
-          drawText(r, "ct", 0.16, R - 0.5, "#111827", 14);
+          drawText(r, "x", R - 0.35, 0.2, "#111827", 15);
+          drawText(r, "ct", 0.18, R - 0.25, "#111827", 15);
         }
         function drawLightCone(r) {
           var R = r.range;
-          drawPath(r, [{ x: -R, t: -R }, { x: R, t: R }], "#ef4444", 1.8, [7, 5]);
-          drawPath(r, [{ x: -R, t: R }, { x: R, t: -R }], "#ef4444", 1.8, [7, 5]);
-          drawText(r, "빛원뿔", Math.min(R - 1.35, 3), Math.min(R - 1.35, 3), "#ef4444", 12);
+          drawArrow(r, { x: 0, t: 0 }, { x: R * 0.88, t: R * 0.88 }, "#cbd5e1", 1.5, [7, 6]);
         }
         function drawHyperbolas(r) {
           [0.5, 1, 1.5, 2, 3, 4, 5].forEach(function (rad) {
@@ -611,14 +762,14 @@
         }
         function drawSkewGrid(r, beta) {
           var R = r.range;
-          drawPath(r, [{ x: -R, t: -beta * R }, { x: R, t: beta * R }], "#2563eb", 2.6);
+          drawArrow(r, { x: 0, t: 0 }, { x: R, t: beta * R }, "#2f80ed", 2.2, [8, 6]);
           if (Math.abs(beta) > 0.02) {
-            drawPath(r, [{ x: beta * -R, t: -R }, { x: beta * R, t: R }], "#0f9d6b", 2.6);
+            drawArrow(r, { x: 0, t: 0 }, { x: beta * R, t: R }, "#2563eb", 2.8);
           } else {
-            drawPath(r, [{ x: 0, t: -R }, { x: 0, t: R }], "#0f9d6b", 2.6, [5, 4]);
+            drawArrow(r, { x: 0, t: 0 }, { x: 0, t: R }, "#2563eb", 2.8, [5, 4]);
           }
-          drawText(r, "x'", R - 1.45, beta * (R - 1.45), "#2563eb", 14);
-          drawText(r, "ct'", beta * (R - 2.1), R - 1.35, "#0f9d6b", 14);
+          drawText(r, "x'", R - 0.95, beta * (R - 0.95), "#2f80ed", 14);
+          drawText(r, "ct'", beta * (R - 1.25), R - 0.65, "#2563eb", 14);
         }
         function shortEventLabel(ev, index) {
           var id = String((ev && ev.id) || "").trim();
@@ -629,6 +780,11 @@
           (spec.worldlines || []).slice(0, 6).forEach(function (wl) {
             var pts = (wl.points || []).map(function (p) { return { x: Number(p.x) || 0, t: Number(p.t) || 0 }; });
             drawPath(r, pts, wl.color || "#2563eb", 2.8);
+            if (pts.length >= 2) {
+              var a = r.toScreen(pts[pts.length - 2].x, pts[pts.length - 2].t);
+              var b = r.toScreen(pts[pts.length - 1].x, pts[pts.length - 1].t);
+              drawArrowHead(a, b, wl.color || "#2563eb", 2.8);
+            }
             if (renderMode === "boost") {
               drawPath(r, pts.map(function (p) { return boost(p, eta); }), wl.color || "#2563eb", 2.2, [8, 5]);
             }
@@ -659,7 +815,7 @@
             }
           });
         }
-        function render() {
+        function drawScene() {
           var beta = currentBeta();
           var eta = currentEta();
           betaOut.textContent = fmt(beta);
@@ -672,6 +828,45 @@
           if (renderMode === "skew") drawSkewGrid(r, beta);
           drawWorldlines(r, eta);
           drawEvents(r, eta);
+        }
+        function renderOn(targetCanvas, targetCtx) {
+          var prevCanvas = canvas;
+          var prevCtx = ctx;
+          canvas = targetCanvas;
+          ctx = targetCtx;
+          drawScene();
+          canvas = prevCanvas;
+          ctx = prevCtx;
+        }
+        function render() {
+          renderOn(mainCanvas, mainCtx);
+          renderZoom();
+        }
+        function renderZoom() {
+          if (zoomModal.hidden) return;
+          var stage = document.getElementById("studyZoomStage");
+          var baseW = Math.max(900, Math.max(1, stage.clientWidth - 6));
+          var cssW = Math.round(baseW * zoomLevel);
+          var cssH = Math.round(cssW / 1.62);
+          zoomCanvas.style.width = cssW + "px";
+          zoomCanvas.style.height = cssH + "px";
+          renderOn(zoomCanvas, zoomCtx);
+          document.getElementById("zoomScaleOut").textContent = Math.round(zoomLevel * 100) + "%";
+        }
+        function openZoom() {
+          zoomModal.hidden = false;
+          document.body.style.overflow = "hidden";
+          zoomLevel = 1;
+          renderZoom();
+          document.getElementById("closeZoomBtn").focus();
+        }
+        function closeZoom() {
+          zoomModal.hidden = true;
+          document.body.style.overflow = "";
+        }
+        function setZoom(next) {
+          zoomLevel = clamp(next, 0.75, 2.5);
+          renderZoom();
         }
         function syncFromBeta() {
           var beta = currentBeta();
@@ -838,6 +1033,23 @@
           });
         });
         analyzeBtn.addEventListener("click", analyze);
+        document.getElementById("openZoomBtn").addEventListener("click", openZoom);
+        document.getElementById("closeZoomBtn").addEventListener("click", closeZoom);
+        document.getElementById("zoomMinusBtn").addEventListener("click", function () {
+          setZoom(zoomLevel - 0.25);
+        });
+        document.getElementById("zoomPlusBtn").addEventListener("click", function () {
+          setZoom(zoomLevel + 0.25);
+        });
+        document.getElementById("zoomFitBtn").addEventListener("click", function () {
+          setZoom(1);
+        });
+        zoomModal.addEventListener("click", function (e) {
+          if (e.target === zoomModal) closeZoom();
+        });
+        window.addEventListener("keydown", function (e) {
+          if (e.key === "Escape" && !zoomModal.hidden) closeZoom();
+        });
         document.getElementById("downloadBtn").addEventListener("click", downloadPng);
         document.getElementById("resetBtn").addEventListener("click", function () {
           document.getElementById("description").value = "";

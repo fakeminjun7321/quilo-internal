@@ -1,0 +1,762 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#243ba2" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <title>공부 — Quilo</title>
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("theme");
+          if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+          document.documentElement.setAttribute("data-theme", t);
+        } catch (e) {}
+      })();
+    </script>
+    <link rel="stylesheet" href="/style.css" />
+    <style>
+      .study-shell {
+        display: grid;
+        gap: 22px;
+      }
+      .study-top {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+      .study-status {
+        display: inline-flex;
+        align-items: center;
+        min-height: 34px;
+        padding: 7px 11px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        color: var(--text-muted);
+        background: var(--surface);
+        font-size: 12.5px;
+        font-weight: 720;
+      }
+      .study-lock {
+        padding: 28px 22px;
+        border: 1px dashed var(--border-strong);
+        border-radius: var(--radius);
+        background: var(--surface);
+        color: var(--text-muted);
+        text-align: center;
+      }
+      .study-lock strong {
+        display: block;
+        color: var(--text);
+        font-size: 17px;
+        margin-bottom: 7px;
+      }
+      #studyGate[hidden],
+      #studyMain[hidden] {
+        display: none !important;
+      }
+      .study-workbench {
+        display: grid;
+        grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+        gap: 18px;
+        align-items: start;
+      }
+      .study-controls,
+      .study-output {
+        display: grid;
+        gap: 14px;
+        min-width: 0;
+      }
+      .study-control-group {
+        display: grid;
+        gap: 10px;
+        padding-bottom: 14px;
+        border-bottom: 1px solid var(--border);
+      }
+      .study-control-group:last-child {
+        padding-bottom: 0;
+        border-bottom: 0;
+      }
+      .study-mode {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .study-mode label {
+        display: grid;
+        gap: 4px;
+        min-height: 72px;
+        padding: 10px 11px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--surface-2);
+        color: var(--text);
+        cursor: pointer;
+      }
+      .study-mode input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+      }
+      .study-mode label:has(input:checked) {
+        border-color: var(--accent-border);
+        background: var(--accent-soft);
+        color: var(--accent-text);
+      }
+      .study-mode strong {
+        font-size: 13px;
+      }
+      .study-mode span {
+        color: var(--text-muted);
+        font-size: 11.5px;
+        line-height: 1.35;
+      }
+      .study-range {
+        display: grid;
+        grid-template-columns: 42px minmax(0, 1fr) 72px;
+        gap: 10px;
+        align-items: center;
+        color: var(--text-muted);
+        font-size: 12.5px;
+        font-weight: 720;
+      }
+      .study-range output {
+        text-align: right;
+        color: var(--text);
+        font-variant-numeric: tabular-nums;
+      }
+      .study-range input[type="range"] {
+        width: 100%;
+      }
+      .study-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .study-actions button {
+        min-height: 40px;
+        padding: 8px 14px;
+        border-radius: 10px;
+        font: inherit;
+        font-size: 13.5px;
+        font-weight: 740;
+        cursor: pointer;
+      }
+      .study-actions .primary {
+        border: 1px solid var(--accent);
+        background: var(--accent);
+        color: var(--on-accent);
+      }
+      .study-actions .secondary {
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--text);
+      }
+      .study-actions button:disabled {
+        opacity: 0.55;
+        cursor: default;
+      }
+      .study-canvas-wrap {
+        overflow: hidden;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: #fff;
+      }
+      #minkowskiCanvas {
+        display: block;
+        width: 100%;
+        aspect-ratio: 1.45;
+        min-height: 360px;
+        background: #fff;
+      }
+      .study-meta {
+        display: grid;
+        gap: 10px;
+      }
+      .study-meta h2 {
+        margin: 0;
+        font-size: 18px;
+      }
+      .study-meta p {
+        margin: 0;
+        color: var(--text-muted);
+        line-height: 1.65;
+        font-size: 14px;
+      }
+      .study-list {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+      .study-list section {
+        min-width: 0;
+        border-top: 1px solid var(--border);
+        padding-top: 10px;
+      }
+      .study-list h3 {
+        margin: 0 0 6px;
+        color: var(--text-muted);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .study-list ul {
+        margin: 0;
+        padding-left: 18px;
+        color: var(--text-muted);
+        font-size: 13px;
+        line-height: 1.55;
+      }
+      .study-message {
+        min-height: 20px;
+        color: var(--text-muted);
+        font-size: 13px;
+        line-height: 1.55;
+      }
+      .study-message.error {
+        color: var(--danger);
+      }
+      .study-gate-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 40px;
+        margin-top: 8px;
+        padding: 8px 16px;
+        border-radius: 10px;
+        background: var(--accent);
+        color: var(--on-accent);
+        font-size: 13.5px;
+        font-weight: 760;
+        text-decoration: none;
+      }
+      .study-gate-btn:hover {
+        background: var(--accent-hover);
+        color: var(--on-accent);
+        text-decoration: none;
+      }
+      @media (max-width: 880px) {
+        .study-workbench {
+          grid-template-columns: 1fr;
+        }
+        #minkowskiCanvas {
+          min-height: 300px;
+        }
+      }
+      @media (max-width: 560px) {
+        .study-mode,
+        .study-list {
+          grid-template-columns: 1fr;
+        }
+        .study-range {
+          grid-template-columns: 34px minmax(0, 1fr) 64px;
+        }
+        .tool-card {
+          padding: 18px;
+        }
+      }
+    </style>
+  </head>
+  <body class="landing">
+    <div class="landing-bg" aria-hidden="true"></div>
+    <nav class="landing-nav">
+      <div class="landing-nav-inner">
+        <a href="/" class="brand"><span class="brand-mark" aria-hidden="true">Q</span> Quilo</a>
+        <div class="landing-nav-actions">
+          <a href="/" class="nav-link">메인</a>
+          <a href="/create.html" class="nav-link">창작</a>
+          <button type="button" id="themeToggle" class="theme-toggle" aria-label="다크 모드로 전환" title="다크 모드로 전환">
+            <span class="theme-icon-light" aria-hidden="true">🌙</span>
+            <span class="theme-icon-dark" aria-hidden="true">☀️</span>
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <main class="landing-shell study-shell">
+      <section class="section" style="border-top:0">
+        <div class="study-top">
+          <div class="tool-page-head" style="margin:0">
+            <h1>공부</h1>
+            <p>상대론 문제 사진이나 상황 설명을 Claude가 해석하고, 민코프스키 평면은 브라우저가 직접 계산해 그립니다.</p>
+          </div>
+          <span class="study-status" id="studyStatus">접근 확인 중</span>
+        </div>
+      </section>
+
+      <section id="studyGate" class="study-lock" hidden></section>
+
+      <section id="studyMain" class="tool-card" hidden>
+        <div class="study-workbench">
+          <div class="study-controls">
+            <div class="study-control-group">
+              <label class="tool-label">문제 사진
+                <input id="problemImage" class="tool-input" type="file" accept=".png,.jpg,.jpeg,.webp,.gif,image/png,image/jpeg,image/webp,image/gif" />
+              </label>
+              <label class="tool-label">상황 설명
+                <textarea id="description" class="tool-input" placeholder="예: 우주선 S'가 지구계 S에 대해 v=0.6c로 움직인다. 원점에서 빛 신호를 보내고 x=3 광초 지점의 사건 A를 함께 표시해줘."></textarea>
+              </label>
+            </div>
+
+            <div class="study-control-group">
+              <span class="tool-label">렌더링 방식</span>
+              <div class="study-mode" role="radiogroup" aria-label="렌더링 방식">
+                <label>
+                  <input type="radio" name="renderMode" value="skew" checked />
+                  <strong>기울어진 좌표계</strong>
+                  <span>정지계 위에 이동계 x', ct' 격자 표시</span>
+                </label>
+                <label>
+                  <input type="radio" name="renderMode" value="boost" />
+                  <strong>쌍곡회전</strong>
+                  <span>원본 도형과 로런츠 변환 도형 비교</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="study-control-group">
+              <label class="study-range">
+                <span>β</span>
+                <input id="betaRange" type="range" min="-0.95" max="0.95" value="0.50" step="0.01" />
+                <output id="betaOut">0.50</output>
+              </label>
+              <label class="study-range">
+                <span>η</span>
+                <input id="etaRange" type="range" min="-2.50" max="2.50" value="0.55" step="0.01" />
+                <output id="etaOut">0.55</output>
+              </label>
+            </div>
+
+            <div class="study-control-group">
+              <div class="study-actions">
+                <button id="analyzeBtn" class="primary" type="button">Claude로 분석</button>
+                <button id="downloadBtn" class="secondary" type="button">PNG 다운로드</button>
+                <button id="resetBtn" class="secondary" type="button">초기화</button>
+              </div>
+              <p id="studyMsg" class="study-message"></p>
+            </div>
+          </div>
+
+          <div class="study-output">
+            <div class="study-canvas-wrap">
+              <canvas id="minkowskiCanvas"></canvas>
+            </div>
+            <div class="study-meta">
+              <h2 id="diagramTitle">민코프스키 평면</h2>
+              <p id="diagramExplanation">샘플 도식입니다. 설명을 쓰거나 문제 사진을 올린 뒤 분석하면 사건과 세계선이 업데이트됩니다. AI 해석은 학습 보조이므로 반드시 직접 검토하세요.</p>
+              <div class="study-list">
+                <section>
+                  <h3>사건</h3>
+                  <ul id="eventList"></ul>
+                </section>
+                <section>
+                  <h3>세계선</h3>
+                  <ul id="worldlineList"></ul>
+                </section>
+                <section>
+                  <h3>가정</h3>
+                  <ul id="assumptionList"></ul>
+                </section>
+                <section>
+                  <h3>주의</h3>
+                  <ul id="warningList"></ul>
+                </section>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-links">
+        <a href="/">메인</a>
+        <a href="/tools/index.html">도구 모음</a>
+        <a href="/guide.html">이용 가이드</a>
+        <a href="https://blog.naver.com/physicjun1905" target="_blank" rel="noopener">블로그</a>
+      </div>
+      <div class="footer-copy">© 2026 Quilo · MIT License</div>
+    </footer>
+
+    <script src="/theme.js"></script>
+    <script>
+      (function () {
+        "use strict";
+        var FEATURE = "relativity-study";
+        var canvas = document.getElementById("minkowskiCanvas");
+        var ctx = canvas.getContext("2d");
+        var betaRange = document.getElementById("betaRange");
+        var etaRange = document.getElementById("etaRange");
+        var betaOut = document.getElementById("betaOut");
+        var etaOut = document.getElementById("etaOut");
+        var msg = document.getElementById("studyMsg");
+        var spec = defaultSpec();
+        var renderMode = "skew";
+
+        function esc(s) {
+          return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+            return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+          });
+        }
+        function clamp(n, min, max) {
+          n = Number(n);
+          if (!isFinite(n)) return min;
+          return Math.max(min, Math.min(max, n));
+        }
+        function atanh(x) {
+          x = clamp(x, -0.999, 0.999);
+          return 0.5 * Math.log((1 + x) / (1 - x));
+        }
+        function fmt(n) {
+          if (!isFinite(n)) return "0";
+          return Number(n).toFixed(2);
+        }
+        function defaultSpec() {
+          return {
+            title: "민코프스키 평면",
+            beta: 0.5,
+            eta: atanh(0.5),
+            events: [
+              { id: "O", label: "원점 사건", x: 0, t: 0, color: "#0f9d6b" },
+              { id: "A", label: "사건 A", x: 2.2, t: 2.7, color: "#2563eb" }
+            ],
+            worldlines: [
+              { id: "earth", label: "정지 관찰자", color: "#6b7280", points: [{ x: 0, t: -4 }, { x: 0, t: 4 }] },
+              { id: "ship", label: "이동 관찰자", color: "#2563eb", points: [{ x: -2, t: -4 }, { x: 2, t: 4 }] },
+              { id: "light", label: "빛 신호", color: "#d4453f", points: [{ x: -3, t: -3 }, { x: 3, t: 3 }] }
+            ],
+            annotations: [{ label: "ct = x", x: 3.55, t: 3.35, color: "#d4453f" }],
+            explanation: "샘플 도식입니다. β 슬라이더를 움직이면 이동계 축과 쌍곡회전 결과가 함께 바뀝니다.",
+            assumptions: ["c=1 단위계 사용", "β=0.5는 초기 샘플값"],
+            warnings: ["AI 분석 전 샘플 좌표입니다."]
+          };
+        }
+        function pointList() {
+          var pts = [];
+          (spec.events || []).forEach(function (p) { pts.push(p); });
+          (spec.annotations || []).forEach(function (p) { pts.push(p); });
+          (spec.worldlines || []).forEach(function (w) {
+            (w.points || []).forEach(function (p) { pts.push(p); });
+          });
+          return pts;
+        }
+        function currentBeta() {
+          return clamp(Number(betaRange.value), -0.95, 0.95);
+        }
+        function currentEta() {
+          return clamp(Number(etaRange.value), -2.5, 2.5);
+        }
+        function boost(p, eta) {
+          return {
+            x: p.x * Math.cosh(eta) + p.t * Math.sinh(eta),
+            t: p.x * Math.sinh(eta) + p.t * Math.cosh(eta)
+          };
+        }
+        function worldRange(eta) {
+          var m = 4;
+          pointList().forEach(function (p) {
+            m = Math.max(m, Math.abs(Number(p.x) || 0), Math.abs(Number(p.t) || 0));
+            if (renderMode === "boost") {
+              var q = boost({ x: Number(p.x) || 0, t: Number(p.t) || 0 }, eta);
+              m = Math.max(m, Math.abs(q.x), Math.abs(q.t));
+            }
+          });
+          return Math.min(12, Math.max(4, Math.ceil(m + 1)));
+        }
+        function setupCanvas() {
+          var rect = canvas.getBoundingClientRect();
+          var dpr = window.devicePixelRatio || 1;
+          var w = Math.max(520, rect.width || 720);
+          var h = Math.max(330, rect.height || 480);
+          canvas.width = Math.round(w * dpr);
+          canvas.height = Math.round(h * dpr);
+          ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          return { w: w, h: h };
+        }
+        function renderer(size, range) {
+          var pad = 42;
+          var scale = Math.min((size.w - pad * 2) / (range * 2), (size.h - pad * 2) / (range * 2));
+          var cx = size.w / 2;
+          var cy = size.h / 2;
+          return {
+            toScreen: function (x, t) {
+              return { x: cx + x * scale, y: cy - t * scale };
+            },
+            range: range,
+            scale: scale,
+            cx: cx,
+            cy: cy
+          };
+        }
+        function linePoints(fn, min, max, steps) {
+          var pts = [];
+          for (var i = 0; i <= steps; i++) {
+            var u = min + (max - min) * i / steps;
+            pts.push(fn(u));
+          }
+          return pts;
+        }
+        function drawPath(r, pts, color, width, dash) {
+          if (!pts || pts.length < 2) return;
+          ctx.save();
+          ctx.strokeStyle = color;
+          ctx.lineWidth = width || 1;
+          ctx.setLineDash(dash || []);
+          ctx.beginPath();
+          pts.forEach(function (p, i) {
+            var s = r.toScreen(p.x, p.t);
+            if (i === 0) ctx.moveTo(s.x, s.y);
+            else ctx.lineTo(s.x, s.y);
+          });
+          ctx.stroke();
+          ctx.restore();
+        }
+        function drawText(r, text, x, t, color, size) {
+          var s = r.toScreen(x, t);
+          ctx.save();
+          var font = (size || 12) + "px -apple-system, BlinkMacSystemFont, Apple SD Gothic Neo, Pretendard, sans-serif";
+          ctx.font = font;
+          var tx = s.x + 7;
+          var ty = s.y - 7;
+          var width = ctx.measureText(String(text || "")).width;
+          ctx.fillStyle = "rgba(255, 255, 255, 0.78)";
+          ctx.fillRect(tx - 3, ty - (size || 12), width + 6, (size || 12) + 5);
+          ctx.fillStyle = color || "#1f2937";
+          ctx.fillText(text, tx, ty);
+          ctx.restore();
+        }
+        function drawGrid(r) {
+          var R = r.range;
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          for (var i = -R; i <= R; i++) {
+            var c = i === 0 ? "#aeb6c2" : "#e5e7eb";
+            drawPath(r, [{ x: -R, t: i }, { x: R, t: i }], c, i === 0 ? 1.4 : 1);
+            drawPath(r, [{ x: i, t: -R }, { x: i, t: R }], c, i === 0 ? 1.4 : 1);
+          }
+          drawPath(r, [{ x: -R, t: 0 }, { x: R, t: 0 }], "#111827", 2);
+          drawPath(r, [{ x: 0, t: -R }, { x: 0, t: R }], "#111827", 2);
+          drawText(r, "x", R - 0.45, -0.35, "#111827", 14);
+          drawText(r, "ct", 0.16, R - 0.5, "#111827", 14);
+        }
+        function drawLightCone(r) {
+          var R = r.range;
+          drawPath(r, [{ x: -R, t: -R }, { x: R, t: R }], "#d4453f", 2);
+          drawPath(r, [{ x: -R, t: R }, { x: R, t: -R }], "#d4453f", 2);
+          drawText(r, "ct = x", Math.min(R - 1.2, 3), Math.min(R - 1.2, 3), "#d4453f", 12);
+          drawText(r, "ct = -x", Math.min(R - 1.6, 3), -Math.min(R - 1.2, 3), "#d4453f", 12);
+        }
+        function drawHyperbolas(r) {
+          [0.5, 1, 1.5, 2, 3, 4, 5].forEach(function (rad) {
+            [-1, 1].forEach(function (sgn) {
+              drawPath(r, linePoints(function (u) {
+                return { x: sgn * rad * Math.cosh(u), t: rad * Math.sinh(u) };
+              }, -2.2, 2.2, 90), "#eef1f5", 1);
+              drawPath(r, linePoints(function (u) {
+                return { x: rad * Math.sinh(u), t: sgn * rad * Math.cosh(u) };
+              }, -2.2, 2.2, 90), "#eef1f5", 1);
+            });
+          });
+        }
+        function drawSkewGrid(r, beta) {
+          var R = r.range;
+          var gamma = 1 / Math.sqrt(1 - beta * beta);
+          for (var k = -R; k <= R; k++) {
+            if (k === 0) continue;
+            drawPath(r, linePoints(function (t) {
+              return { x: beta * t + k / gamma, t: t };
+            }, -R, R, 2), "#dbe7ff", 1);
+            drawPath(r, linePoints(function (x) {
+              return { x: x, t: beta * x + k / gamma };
+            }, -R, R, 2), "#dbe7ff", 1);
+          }
+          drawPath(r, [{ x: -R, t: -beta * R }, { x: R, t: beta * R }], "#2563eb", 2.4);
+          if (Math.abs(beta) > 0.02) {
+            drawPath(r, [{ x: beta * -R, t: -R }, { x: beta * R, t: R }], "#0f9d6b", 2.4);
+          } else {
+            drawPath(r, [{ x: 0, t: -R }, { x: 0, t: R }], "#0f9d6b", 2.4, [5, 4]);
+          }
+          drawText(r, "x'", R - 1.45, beta * (R - 1.45), "#2563eb", 14);
+          drawText(r, "ct'", beta * (R - 2.1), R - 1.35, "#0f9d6b", 14);
+        }
+        function drawWorldlines(r, eta) {
+          (spec.worldlines || []).forEach(function (wl) {
+            var pts = (wl.points || []).map(function (p) { return { x: Number(p.x) || 0, t: Number(p.t) || 0 }; });
+            drawPath(r, pts, wl.color || "#2563eb", 2.4);
+            if (renderMode === "boost") {
+              drawPath(r, pts.map(function (p) { return boost(p, eta); }), wl.color || "#2563eb", 3, [7, 4]);
+            }
+            if (pts.length) drawText(r, wl.label || wl.id || "세계선", pts[pts.length - 1].x, pts[pts.length - 1].t, wl.color || "#2563eb", 12);
+          });
+        }
+        function drawEvents(r, eta) {
+          (spec.events || []).forEach(function (ev) {
+            var p = { x: Number(ev.x) || 0, t: Number(ev.t) || 0 };
+            var s = r.toScreen(p.x, p.t);
+            ctx.save();
+            ctx.fillStyle = ev.color || "#0f9d6b";
+            ctx.beginPath();
+            ctx.arc(s.x, s.y, 5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+            drawText(r, ev.label || ev.id || "사건", p.x, p.t, ev.color || "#0f9d6b", 12);
+            if (renderMode === "boost") {
+              var q = boost(p, eta);
+              var sq = r.toScreen(q.x, q.t);
+              ctx.save();
+              ctx.strokeStyle = ev.color || "#0f9d6b";
+              ctx.lineWidth = 2.4;
+              ctx.beginPath();
+              ctx.arc(sq.x, sq.y, 7, 0, Math.PI * 2);
+              ctx.stroke();
+              ctx.restore();
+              drawText(r, (ev.label || ev.id || "사건") + "'", q.x, q.t, ev.color || "#0f9d6b", 12);
+            }
+          });
+          (spec.annotations || []).forEach(function (a) {
+            drawText(r, a.label || "", Number(a.x) || 0, Number(a.t) || 0, a.color || "#64748b", 12);
+          });
+        }
+        function render() {
+          var beta = currentBeta();
+          var eta = currentEta();
+          betaOut.textContent = fmt(beta);
+          etaOut.textContent = fmt(eta);
+          var size = setupCanvas();
+          var r = renderer(size, worldRange(eta));
+          ctx.clearRect(0, 0, size.w, size.h);
+          drawGrid(r);
+          drawHyperbolas(r);
+          drawLightCone(r);
+          if (renderMode === "skew") drawSkewGrid(r, beta);
+          drawWorldlines(r, eta);
+          drawEvents(r, eta);
+        }
+        function syncFromBeta() {
+          var beta = currentBeta();
+          etaRange.value = fmt(atanh(beta));
+          render();
+        }
+        function syncFromEta() {
+          var eta = currentEta();
+          betaRange.value = fmt(Math.tanh(eta));
+          render();
+        }
+        function updateLists() {
+          document.getElementById("diagramTitle").textContent = spec.title || "민코프스키 평면";
+          document.getElementById("diagramExplanation").textContent = spec.explanation || "AI 해석은 학습 보조이므로 반드시 직접 검토하세요.";
+          function fill(id, arr, fallback, mapper) {
+            var el = document.getElementById(id);
+            arr = Array.isArray(arr) ? arr : [];
+            if (!arr.length) {
+              el.innerHTML = "<li>" + esc(fallback) + "</li>";
+              return;
+            }
+            el.innerHTML = arr.map(function (x) { return "<li>" + esc(mapper ? mapper(x) : x) + "</li>"; }).join("");
+          }
+          fill("eventList", spec.events, "표시할 사건 없음", function (e) {
+            return (e.label || e.id || "사건") + " (" + fmt(e.x) + ", " + fmt(e.t) + ")";
+          });
+          fill("worldlineList", spec.worldlines, "표시할 세계선 없음", function (w) {
+            return w.label || w.id || "세계선";
+          });
+          fill("assumptionList", spec.assumptions, "추가 가정 없음");
+          fill("warningList", spec.warnings, "주의 없음");
+        }
+        function setMessage(text, isError) {
+          msg.textContent = text || "";
+          msg.classList.toggle("error", !!isError);
+        }
+        function applySpec(next) {
+          spec = Object.assign(defaultSpec(), next || {});
+          betaRange.value = fmt(clamp(Number(spec.beta), -0.95, 0.95));
+          etaRange.value = fmt(isFinite(Number(spec.eta)) ? clamp(Number(spec.eta), -2.5, 2.5) : atanh(currentBeta()));
+          updateLists();
+          render();
+        }
+        async function analyze() {
+          var desc = document.getElementById("description").value.trim();
+          var file = document.getElementById("problemImage").files[0];
+          if (!desc && !file) {
+            setMessage("상황 설명을 쓰거나 문제 사진을 올려 주세요.", true);
+            return;
+          }
+          var btn = document.getElementById("analyzeBtn");
+          btn.disabled = true;
+          setMessage("Claude가 문제를 읽고 도식 명세를 만드는 중입니다.");
+          try {
+            var fd = new FormData();
+            fd.append("description", desc);
+            fd.append("modeHint", renderMode === "skew" ? "기울어진 좌표계" : "쌍곡회전");
+            if (file) fd.append("image", file);
+            var res = await fetch("/api/study/relativity/analyze", { method: "POST", body: fd });
+            var data = await res.json().catch(function () { return {}; });
+            if (!res.ok) throw new Error(data.error || "분석에 실패했습니다.");
+            applySpec(data);
+            setMessage("분석 완료. β와 η를 조절하며 도식을 확인해 보세요.");
+          } catch (e) {
+            setMessage(e.message || "분석에 실패했습니다.", true);
+          } finally {
+            btn.disabled = false;
+          }
+        }
+        function downloadPng() {
+          render();
+          var a = document.createElement("a");
+          a.href = canvas.toDataURL("image/png");
+          a.download = (spec.title || "minkowski-plane") + ".png";
+          a.click();
+        }
+        async function initAccess() {
+          var status = document.getElementById("studyStatus");
+          var gate = document.getElementById("studyGate");
+          var main = document.getElementById("studyMain");
+          try {
+            var meRes = await fetch("/api/me");
+            if (!meRes.ok) throw new Error("login");
+            var betaRes = await fetch("/api/me/beta");
+            var beta = betaRes.ok ? await betaRes.json() : { features: [], admin: false };
+            var ok = beta.admin === true || (beta.features || []).indexOf(FEATURE) >= 0;
+            if (!ok) {
+              status.textContent = "베타 권한 필요";
+              gate.hidden = false;
+              gate.innerHTML = "<strong>상대론 공부 도구는 베타 테스터에게만 열려 있습니다.</strong><p>사용을 원하면 운영자에게 요청해 주세요.</p><p><a class=\"study-gate-btn\" href=\"/\">메인으로</a></p>";
+              return;
+            }
+            status.textContent = beta.admin ? "관리자 접근" : "베타 접근 가능";
+            main.hidden = false;
+            applySpec(spec);
+          } catch (_) {
+            status.textContent = "로그인 필요";
+            gate.hidden = false;
+            gate.innerHTML = "<strong>로그인 후 사용할 수 있습니다.</strong><p>Claude 분석 기능은 로그인한 베타 사용자에게만 제공됩니다.</p><p><a class=\"study-gate-btn\" href=\"/login.html\">로그인</a></p>";
+          }
+        }
+
+        betaRange.addEventListener("input", syncFromBeta);
+        etaRange.addEventListener("input", syncFromEta);
+        document.querySelectorAll('input[name="renderMode"]').forEach(function (r) {
+          r.addEventListener("change", function () {
+            renderMode = r.value;
+            render();
+          });
+        });
+        document.getElementById("analyzeBtn").addEventListener("click", analyze);
+        document.getElementById("downloadBtn").addEventListener("click", downloadPng);
+        document.getElementById("resetBtn").addEventListener("click", function () {
+          document.getElementById("description").value = "";
+          document.getElementById("problemImage").value = "";
+          setMessage("");
+          applySpec(defaultSpec());
+        });
+        window.addEventListener("resize", render);
+        initAccess();
+      })();
+    </script>
+  </body>
+</html>

@@ -4329,6 +4329,9 @@ app.use(require("./lib/artifacts-routes")({ requireAdmin, requireAdminOrBeta, ge
 // 채점은 브라우저(Pyodide)에서 수행. 베타 게이트("coding-test") — 관리자/테스터 한정.
 app.use("/api/coding", require("./lib/coding-routes")({ requireAdminOrBeta, getSessionUser }));
 
+// 공부 탭: 상대론 민코프스키 평면 생성기. Claude는 도식 JSON만 만들고 그림은 브라우저가 렌더링.
+app.use("/api/study", require("./lib/study-routes")({ requireBeta, getSessionUser }));
+
 // 공지사항: 공개 읽기(활성) + 관리자 CRUD. Supabase 테이블 없으면 메모리 fallback.
 app.use("/api/announcements", require("./lib/announcement-routes")({ requireAdmin }));
 
@@ -5043,6 +5046,12 @@ app.listen(PORT, async () => {
       if (seeded) console.log("  ✓ 베타 기능 등록: 문제집 메이커(problem-set)");
     } catch (e) {
       console.warn(`  ⚠ 베타 기능 등록 실패(problem-set): ${e.message}`);
+    }
+    try {
+      const seeded = await supa.ensureBetaFeature("relativity-study", "상대론 공부");
+      if (seeded) console.log("  ✓ 베타 기능 등록: 상대론 공부(relativity-study)");
+    } catch (e) {
+      console.warn(`  ⚠ 베타 기능 등록 실패(relativity-study): ${e.message}`);
     }
     // 문제집 메이커 최대 문제 수(관리자 설정값)를 app_settings 에서 로드(있으면).
     try {

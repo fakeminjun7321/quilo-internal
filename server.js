@@ -2742,6 +2742,7 @@ app.post(
       "free",
       "problem-set",
       "form-maker",
+      "math-inquiry",
     ]);
     const allowedModels = GPT_OK_TYPES.has(reportType)
       ? [...ALLOWED_MODELS, ...GPT_REPORT_MODELS]

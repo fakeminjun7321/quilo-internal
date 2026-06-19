@@ -558,6 +558,11 @@
         var modelsAvailable = true;
         var spec = defaultSpec();
         var renderMode = "skew";
+        var compactView = false;
+        var placedLabels = [];
+        var forcedSize = null;
+        var sceneW = 720;
+        var sceneH = 480;
 
         function esc(s) {
           return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
@@ -599,7 +604,7 @@
               { id: "moving", label: "이동 물체", color: "#2563eb", points: [{ x: 0, t: 0 }, { x: 6.5, t: 7.2 }] },
               { id: "target", label: "도착점", color: "#0f9d6b", points: [{ x: 7.5, t: 0 }, { x: 7.5, t: 7.4 }] }
             ],
-            annotations: [{ label: "불변쌍곡선", x: 4.8, t: 3.5, color: "#b45309" }],
+            annotations: [],
             segments: [
               { label: "측정선", kind: "bracket", from: { x: 0, t: 0 }, to: { x: 6.5, t: 0 }, color: "#047857" }
             ],
@@ -645,13 +650,23 @@
           return Math.min(24, Math.max(4, Math.ceil(m + 2)));
         }
         function setupCanvas() {
-          var rect = canvas.getBoundingClientRect();
-          var dpr = window.devicePixelRatio || 1;
-          var w = Math.max(520, rect.width || 720);
-          var h = Math.max(330, rect.height || 480);
+          var dpr, w, h;
+          if (forcedSize) {
+            // PNG 내보내기: 화면 DPR과 무관하게 고정 2x로 선명하게 렌더한다.
+            w = forcedSize.w;
+            h = forcedSize.h;
+            dpr = forcedSize.scale;
+          } else {
+            var rect = canvas.getBoundingClientRect();
+            dpr = window.devicePixelRatio || 1;
+            w = Math.max(520, rect.width || 720);
+            h = Math.max(330, rect.height || 480);
+          }
           canvas.width = Math.round(w * dpr);
           canvas.height = Math.round(h * dpr);
           ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+          sceneW = w;
+          sceneH = h;
           return { w: w, h: h };
         }
         function renderer(size, range) {
@@ -726,20 +741,43 @@
           var b = r.toScreen(to.x, to.t);
           drawArrowHead(a, b, color, width);
         }
+        // 라벨 겹침 방지: 같은 렌더에서 이미 놓인 라벨 사각형과 겹치면 세로로 살짝 밀어 자리를 잡는다.
+        function labelRectsOverlap(a, b) {
+          return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+        }
+        function placeLabelY(tx, ty, width, fontSize, cssH) {
+          var step = fontSize + 5;
+          var offsets = [0, step, -step, 2 * step, -2 * step, 3 * step];
+          var lo = fontSize + 8;
+          var hi = Math.max(lo, cssH - 8);
+          for (var i = 0; i < offsets.length; i++) {
+            var cand = clamp(ty + offsets[i], lo, hi);
+            var rect = { x: tx - 3, y: cand - fontSize - 2, w: width + 6, h: fontSize + 6 };
+            var hit = false;
+            for (var j = 0; j < placedLabels.length; j++) {
+              if (labelRectsOverlap(rect, placedLabels[j])) { hit = true; break; }
+            }
+            if (!hit) { placedLabels.push(rect); return cand; }
+          }
+          var fallback = clamp(ty, lo, hi);
+          placedLabels.push({ x: tx - 3, y: fallback - fontSize - 2, w: width + 6, h: fontSize + 6 });
+          return fallback;
+        }
         function drawText(r, text, x, t, color, size) {
           var s = r.toScreen(x, t);
           ctx.save();
-          var font = (size || 12) + "px -apple-system, BlinkMacSystemFont, Apple SD Gothic Neo, Pretendard, sans-serif";
+          var fontSize = size || 12;
+          var font = fontSize + "px -apple-system, BlinkMacSystemFont, Apple SD Gothic Neo, Pretendard, sans-serif";
           ctx.font = font;
           var tx = s.x + 7;
           var ty = s.y - 7;
           var width = ctx.measureText(String(text || "")).width;
-          var cssW = canvas.getBoundingClientRect().width || canvas.width;
-          var cssH = canvas.getBoundingClientRect().height || canvas.height;
+          var cssW = sceneW;
+          var cssH = sceneH;
           tx = clamp(tx, 8, Math.max(8, cssW - width - 8));
-          ty = clamp(ty, (size || 12) + 8, Math.max((size || 12) + 8, cssH - 8));
+          ty = placeLabelY(tx, clamp(ty, fontSize + 8, Math.max(fontSize + 8, cssH - 8)), width, fontSize, cssH);
           ctx.fillStyle = "rgba(255, 255, 255, 0.78)";
-          ctx.fillRect(tx - 3, ty - (size || 12), width + 6, (size || 12) + 5);
+          ctx.fillRect(tx - 3, ty - fontSize, width + 6, fontSize + 5);
           ctx.fillStyle = color || "#1f2937";
           ctx.fillText(text, tx, ty);
           ctx.restore();
@@ -774,19 +812,6 @@
           ctx.stroke();
           ctx.restore();
         }
-        function screenArrow(a, b, color, width, dash) {
-          screenLine(a, b, color, width, dash);
-          drawArrowHead(a, b, color, width || 2);
-        }
-        function screenText(text, x, y, color, size, weight, align) {
-          ctx.save();
-          ctx.fillStyle = color || "#111827";
-          ctx.font = (weight || 700) + " " + (size || 16) + "px -apple-system, BlinkMacSystemFont, Apple SD Gothic Neo, Pretendard, sans-serif";
-          ctx.textAlign = align || "left";
-          ctx.textBaseline = "alphabetic";
-          ctx.fillText(text, x, y);
-          ctx.restore();
-        }
         function screenLabel(text, x, y, color, size, weight, align) {
           var s = String(text || "").trim();
           if (!s) return;
@@ -794,14 +819,14 @@
           var fontSize = size || 13;
           ctx.font = (weight || 700) + " " + fontSize + "px -apple-system, BlinkMacSystemFont, Apple SD Gothic Neo, Pretendard, sans-serif";
           var width = ctx.measureText(s).width;
-          var cssW = canvas.getBoundingClientRect().width || canvas.width;
-          var cssH = canvas.getBoundingClientRect().height || canvas.height;
+          var cssW = sceneW;
+          var cssH = sceneH;
           var tx = x;
           var ty = y;
           if ((align || "left") === "center") tx -= width / 2;
           if (align === "right") tx -= width;
           tx = clamp(tx, 8, Math.max(8, cssW - width - 8));
-          ty = clamp(ty, fontSize + 8, Math.max(fontSize + 8, cssH - 8));
+          ty = placeLabelY(tx, clamp(ty, fontSize + 8, Math.max(fontSize + 8, cssH - 8)), width, fontSize, cssH);
           ctx.fillStyle = "rgba(255,255,255,0.78)";
           ctx.fillRect(tx - 4, ty - fontSize - 2, width + 8, fontSize + 7);
           ctx.fillStyle = color || "#111827";
@@ -809,123 +834,6 @@
           ctx.textBaseline = "alphabetic";
           ctx.fillText(s, tx, ty);
           ctx.restore();
-        }
-        function screenCircle(x, y, color, fill, radius) {
-          ctx.save();
-          ctx.lineWidth = 3;
-          ctx.strokeStyle = color;
-          ctx.fillStyle = fill || "#fff";
-          ctx.beginPath();
-          ctx.arc(x, y, radius || 7, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-          ctx.restore();
-        }
-        function screenBracket(x1, x2, y, color) {
-          ctx.save();
-          ctx.strokeStyle = color;
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          ctx.moveTo(x1, y);
-          ctx.lineTo(x2, y);
-          ctx.moveTo(x1, y - 10);
-          ctx.lineTo(x1, y + 10);
-          ctx.moveTo(x2, y - 10);
-          ctx.lineTo(x2, y + 10);
-          ctx.stroke();
-          ctx.restore();
-        }
-        function drawMuonFrameLengthDiagram(size) {
-          var W = size.w;
-          var H = size.h;
-          ctx.fillStyle = "#fff";
-          ctx.fillRect(0, 0, W, H);
-
-          var axis = "#6f7683";
-          var blue = "#1f63d4";
-          var green = "#15946b";
-          var orange = "#c75a2a";
-          var amber = "#b56b13";
-          var muted = "#6b7280";
-          var compact = W < 560;
-          function fs(n) {
-            return Math.max(11, Math.round(n * (compact ? 0.74 : 1)));
-          }
-          function copy(full, short) {
-            return compact ? short : full;
-          }
-          var origin = { x: W * 0.31, y: H * 0.79 };
-          var left = W * 0.06;
-          var right = W * 0.90;
-          var top = H * 0.16;
-          var bottom = H * 0.89;
-
-          screenText(copy("뮤온계(S′)에서 본 길이수축", "뮤온계 길이수축"), W * 0.50, H * 0.08, "#111827", fs(18), 760, "center");
-          screenArrow({ x: left, y: origin.y }, { x: right, y: origin.y }, axis, 1.8);
-          screenArrow({ x: origin.x, y: bottom }, { x: origin.x, y: top }, axis, 1.8);
-          screenText("x′", right - 30, origin.y + 30, "#111827", fs(18), 700);
-          screenText("ct′", origin.x - 28, top + 28, axis, fs(18), 700);
-
-          for (var i = 1; i <= 3; i++) {
-            var tx = origin.x + (right - origin.x) * i / 4;
-            var ty = origin.y - (origin.y - top) * i / 4;
-            screenLine({ x: tx, y: origin.y - 8 }, { x: tx, y: origin.y + 8 }, "#a8b0bd", 1);
-            screenLine({ x: origin.x - 8, y: ty }, { x: origin.x + 8, y: ty }, "#a8b0bd", 1);
-          }
-
-          screenArrow({ x: origin.x, y: bottom - 18 }, { x: origin.x, y: top + 26 }, blue, 3);
-          screenText(copy("뮤온 (정지)", "뮤온"), origin.x + 18, H * 0.36, blue, fs(20), 800);
-
-          var topA = { x: W * 0.13, y: H * 0.18 };
-          var topB = { x: W * 0.45, y: H * 0.89 };
-          var groundA = { x: W * 0.56, y: H * 0.18 };
-          var groundB = { x: W * 0.84, y: H * 0.89 };
-          screenLine(topA, topB, green, 2.6);
-          screenLine(groundA, groundB, green, 2.6);
-          screenText(copy("생성 고도", "고도"), W * 0.07, topA.y + 32, green, fs(20), 800);
-          screenText(copy("지면 (다가옴)", "지면"), groundA.x + 12, groundA.y + 34, green, fs(20), 800);
-
-          var contractedLeft = { x: W * 0.42, y: origin.y };
-          var contractedRight = { x: W * 0.80, y: origin.y };
-          var properLeft = { x: W * 0.17, y: H * 0.35 };
-          screenCircle(properLeft.x, properLeft.y, orange, "#fff", 7);
-          screenCircle(contractedLeft.x, contractedLeft.y, green, "#fff", 7);
-          screenCircle(contractedRight.x, contractedRight.y, "#6b7280", "#fff", 7);
-
-          screenArrow(properLeft, contractedRight, orange, 3.5);
-          screenText(copy("수축 전 고유길이  D₀ = 10", "D₀ = 10"), W * 0.55, H * 0.52, orange, fs(19), 800);
-          if (!compact) screenText("(지면계의 ‘지금’을 따라 잰 값)", W * 0.55, H * 0.56, muted, 14, 500);
-
-          screenBracket(contractedLeft.x, contractedRight.x, origin.y + H * 0.075, "#047857");
-          screenText(copy("수축된 거리  D = D₀/γ = 8", "D = D₀/γ = 8"), (contractedLeft.x + contractedRight.x) / 2, origin.y + H * 0.14, "#047857", fs(20), 800, "center");
-          if (!compact) screenText("(t′=0, 뮤온의 ‘지금’을 따라 잰 값)", (contractedLeft.x + contractedRight.x) / 2, origin.y + H * 0.18, muted, 14, 500, "center");
-          if (!compact) screenText("지면 ‘지금’", right - 18, origin.y - 34, muted, 14, 600, "right");
-
-          ctx.save();
-          ctx.strokeStyle = amber;
-          ctx.lineWidth = 2;
-          ctx.setLineDash([7, 6]);
-          ctx.beginPath();
-          ctx.moveTo(W * 0.67, H * 0.76);
-          ctx.bezierCurveTo(W * 0.68, H * 0.62, W * 0.72, H * 0.50, W * 0.78, H * 0.42);
-          ctx.stroke();
-          ctx.restore();
-          screenText("보정쌍곡선", W * 0.56, H * 0.61, "#374151", fs(15), 650);
-          if (!compact) screenLine({ x: W * 0.65, y: H * 0.60 }, { x: W * 0.71, y: H * 0.57 }, "#9ca3af", 1, [5, 5]);
-
-          screenText("O", origin.x + 10, origin.y - 10, "#0f9d6b", fs(16), 800);
-        }
-        function drawHyperbolas(r) {
-          [0.5, 1, 1.5, 2, 3, 4, 5].forEach(function (rad) {
-            [-1, 1].forEach(function (sgn) {
-              drawPath(r, linePoints(function (u) {
-                return { x: sgn * rad * Math.cosh(u), t: rad * Math.sinh(u) };
-              }, -2.2, 2.2, 90), "#eef1f5", 1);
-              drawPath(r, linePoints(function (u) {
-                return { x: rad * Math.sinh(u), t: sgn * rad * Math.cosh(u) };
-              }, -2.2, 2.2, 90), "#eef1f5", 1);
-            });
-          });
         }
         function drawSkewGrid(r, beta) {
           var R = r.range;
@@ -938,23 +846,27 @@
           drawText(r, "x'", R - 0.95, beta * (R - 0.95), "#2f80ed", 14);
           drawText(r, "ct'", beta * (R - 1.25), R - 0.65, "#2563eb", 14);
         }
-        function shouldDrawInvariantCue() {
-          var type = String(spec.diagramType || "");
-          if (type && type !== "minkowski-clean" && type !== "muon-frame-length-contraction") return true;
-          return (spec.annotations || []).some(function (a) {
-            return /쌍곡|불변|보정/.test(String(a && a.label ? a.label : ""));
-          });
-        }
         function drawInvariantCue(r) {
-          if (!shouldDrawInvariantCue()) return;
+          // 서버가 diagramType과 실제 사건으로 계산한 calibration만 그린다.
+          // axis "t" → 시간꼴 ct=√(k²+x²) (정점 (0,k)), axis "x" → 공간꼴 x=√(k²+ct²) (정점 (k,0)).
+          var cal = spec.calibration;
+          if (!cal) return;
+          var k = clamp(Number(cal.value), 0.3, r.range);
+          if (!isFinite(k) || k <= 0) return;
           var R = r.range;
-          var a = Math.max(1.6, R * 0.36);
-          var start = R * 0.08;
-          var end = R * 0.58;
-          var pts = linePoints(function (t) {
-            return { x: Math.sqrt(a * a + t * t), t: t };
-          }, start, end, 44);
-          drawPath(r, pts, "#b56b13", 1.5, [6, 5]);
+          var span = Math.max(0.6, Math.sqrt(Math.max(0, R * R - k * k)));
+          var u = Math.min(span, R * 0.95);
+          var pts;
+          if (cal.axis === "t") {
+            pts = linePoints(function (x) { return { x: x, t: Math.sqrt(k * k + x * x) }; }, 0, u, 48);
+          } else {
+            pts = linePoints(function (t) { return { x: Math.sqrt(k * k + t * t), t: t }; }, 0, u, 48);
+          }
+          drawPath(r, pts, "#b56b13", 1.6, [6, 5]);
+          if (!compactView && pts.length) {
+            var mid = pts[Math.floor(pts.length * 0.6)];
+            drawText(r, cal.label || "보정쌍곡선", mid.x, mid.t, "#b45309", 12);
+          }
         }
         function drawSegmentOnScreen(a, b, color, width, dash, kind) {
           var dx = b.x - a.x;
@@ -975,11 +887,16 @@
           var s = String(label || "").trim();
           if (!compact) return s;
           if (/고유시간|Δτ/.test(s)) return "Δτ";
-          if (/정지계 시간|Δt/.test(s)) return "Δt=γΔτ";
-          if (/수축 전|고유길이|D0|D₀/.test(s)) return "D₀";
-          if (/수축된|D=D0|D=D₀/.test(s)) return "D=D₀/γ";
+          if (/좌표시간|정지계 시간|Δt=|Δt/.test(s)) return "Δt=γΔτ";
+          if (/수축길이/.test(s)) return "L₀/γ";
+          if (/고유길이/.test(s)) return "L₀";
+          if (/수축거리/.test(s)) return "D=D₀/γ";
+          if (/고유거리/.test(s)) return "D₀";
+          if (/왕복/.test(s)) return "Δt(왕복)";
+          if (/거리 d|d=c/.test(s)) return "d";
+          if (/건너뛴/.test(s)) return "건너뜀";
           if (/S′|기울/.test(s)) return "S′ 지금";
-          if (/S에서|동시/.test(s)) return "S 동시";
+          if (/S 동시|S에서|동시/.test(s)) return "S 동시";
           return s.length > 8 ? s.slice(0, 8) : s;
         }
         function drawSegments(r, eta) {
@@ -990,7 +907,7 @@
             var b = r.toScreen(Number(to.x) || 0, Number(to.t) || 0);
             var color = (seg && seg.color) || "#047857";
             var kind = (seg && seg.kind) || "line";
-            var compact = (canvas.getBoundingClientRect().width || canvas.width) < 560;
+            var compact = compactView;
             drawSegmentOnScreen(a, b, color, 2.8, seg && seg.dashed ? [7, 6] : null, kind);
             var labelX = (a.x + b.x) / 2;
             var labelY = (a.y + b.y) / 2 - 12;
@@ -1083,11 +1000,10 @@
           betaOut.textContent = fmt(beta);
           etaOut.textContent = fmt(eta);
           var size = setupCanvas();
+          compactView = size.w < 560;
+          placedLabels = [];
           ctx.clearRect(0, 0, size.w, size.h);
-          if (spec.diagramType === "muon-frame-length-contraction") {
-            drawMuonFrameLengthDiagram(size);
-            return;
-          }
+          // 모든 diagramType은 같은 좌표 기반 렌더러 경로를 탄다(뮤온 전용 픽셀 그림 제거).
           var r = renderer(size, worldRange(eta));
           drawGrid(r);
           drawLightCone(r);
@@ -1240,8 +1156,11 @@
         }
         function applySpec(next) {
           spec = Object.assign(defaultSpec(), next || {});
-          betaRange.value = fmt(clamp(Number(spec.beta), -0.95, 0.95));
-          etaRange.value = fmt(isFinite(Number(spec.eta)) ? clamp(Number(spec.eta), -2.5, 2.5) : atanh(currentBeta()));
+          // 슬라이더는 서버가 계산한 물리값(frame.beta 우선)에서 시작해야 축과 도식이 어긋나지 않는다.
+          var baseBeta = spec.frame && isFinite(Number(spec.frame.beta)) ? Number(spec.frame.beta) : Number(spec.beta);
+          baseBeta = clamp(baseBeta, -0.95, 0.95);
+          betaRange.value = fmt(baseBeta);
+          etaRange.value = fmt(isFinite(Number(spec.eta)) ? clamp(Number(spec.eta), -2.5, 2.5) : atanh(baseBeta));
           updateLists();
           render();
         }
@@ -1278,9 +1197,21 @@
           }
         }
         function downloadPng() {
-          render();
+          // 화면 캔버스는 비레티나에서 1x라 흐리다. 분리된 오프스크린 캔버스에 고정 2x로 다시 그려 선명하게 내보낸다.
+          var off = document.createElement("canvas");
+          var offCtx = off.getContext("2d");
+          var prevForced = forcedSize;
+          forcedSize = { w: 1440, h: Math.round(1440 / 1.62), scale: 2 };
+          var url;
+          try {
+            renderOn(off, offCtx);
+            url = off.toDataURL("image/png");
+          } finally {
+            forcedSize = prevForced;
+            render();
+          }
           var a = document.createElement("a");
-          a.href = canvas.toDataURL("image/png");
+          a.href = url;
           a.download = (spec.title || "minkowski-plane") + ".png";
           a.click();
         }

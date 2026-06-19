@@ -2808,7 +2808,7 @@ textarea.tool-input {
 .topnav-menu {
   display: flex;
   align-items: center;
-  gap: 34px;
+  gap: 20px;
   flex: 1;
 }
 /* 계정 + 테마 토글은 오른쪽 끝으로 (가운데 항목들은 넓게 펼쳐짐) */
@@ -2823,14 +2823,15 @@ textarea.tool-input {
   border: 0;
   cursor: pointer;
   font: inherit;
-  font-size: 15.5px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--text);
-  padding: 9px 10px;
+  padding: 9px 9px;
   border-radius: var(--radius-sm);
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  white-space: nowrap;
 }
 /* hidden 속성이 .nav-dd-btn 의 display:inline-flex 에 덮이지 않도록(베타 메뉴 가림 보장) */
 .nav-dd-btn[hidden] {
@@ -3029,7 +3030,9 @@ textarea.tool-input {
   min-height: 72px;
 }
 /* 드롭다운은 클릭으로만 연다(호버 자동 열림 없음) — SNU식, 의도치 않은 열림 방지 */
-@media (max-width: 760px) {
+/* 항목이 많아(보고서/도구/예시/수행평가/커뮤니티/창작/공부 + 계정) 좁은 폭에서 줄바꿈으로
+   글자가 세로로 쪼개지므로, 한 줄에 다 들어가지 않는 폭부터는 햄버거 메뉴로 전환한다. */
+@media (max-width: 1080px) {
   .topnav-burger {
     display: inline-block;
   }

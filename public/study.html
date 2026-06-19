@@ -174,24 +174,41 @@
         min-height: 360px;
         background: #fff;
       }
-      .study-meta {
+      .study-caption {
         display: grid;
-        gap: 10px;
+        gap: 5px;
+        padding: 12px 14px 14px;
+        border-top: 1px solid #eef2f7;
+        background: #fff;
       }
-      .study-meta h2 {
+      .study-caption h2 {
         margin: 0;
-        font-size: 18px;
+        color: #111827;
+        font-size: 15px;
+        line-height: 1.35;
       }
-      .study-meta p {
+      .study-caption p {
         margin: 0;
+        color: #4b5563;
+        line-height: 1.55;
+        font-size: 13px;
+      }
+      .study-details {
+        border-top: 1px solid var(--border);
+        padding-top: 8px;
+      }
+      .study-details summary {
         color: var(--text-muted);
-        line-height: 1.65;
-        font-size: 14px;
+        cursor: pointer;
+        font-size: 12.5px;
+        font-weight: 740;
+        user-select: none;
       }
       .study-list {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 10px;
+        margin-top: 10px;
       }
       .study-list section {
         min-width: 0;
@@ -316,7 +333,7 @@
                 <label>
                   <input type="radio" name="renderMode" value="skew" checked />
                   <strong>기울어진 좌표계</strong>
-                  <span>정지계 위에 이동계 x', ct' 격자 표시</span>
+                  <span>정지계 위에 이동계 x', ct' 축 표시</span>
                 </label>
                 <label>
                   <input type="radio" name="renderMode" value="boost" />
@@ -361,10 +378,13 @@
           <div class="study-output">
             <div class="study-canvas-wrap">
               <canvas id="minkowskiCanvas"></canvas>
+              <div class="study-caption">
+                <h2 id="diagramTitle">민코프스키 평면</h2>
+                <p id="diagramExplanation">핵심 축과 세계선만 표시한 샘플 도식입니다. AI 해석은 반드시 직접 검토하세요.</p>
+              </div>
             </div>
-            <div class="study-meta">
-              <h2 id="diagramTitle">민코프스키 평면</h2>
-              <p id="diagramExplanation">샘플 도식입니다. 설명을 쓰거나 문제 사진을 올린 뒤 분석하면 사건과 세계선이 업데이트됩니다. AI 해석은 학습 보조이므로 반드시 직접 검토하세요.</p>
+            <details class="study-details">
+              <summary>세부 해석 보기</summary>
               <div class="study-list">
                 <section>
                   <h3>사건</h3>
@@ -383,7 +403,7 @@
                   <ul id="warningList"></ul>
                 </section>
               </div>
-            </div>
+            </details>
           </div>
         </div>
       </section>
@@ -436,24 +456,30 @@
           if (!isFinite(n)) return "0";
           return Number(n).toFixed(2);
         }
+        function compactCaption(text) {
+          var s = String(text || "").replace(/\s+/g, " ").trim();
+          if (!s) return "AI 해석은 학습 보조이므로 반드시 직접 검토하세요.";
+          var parts = s.match(/[^.!?。！？]+[.!?。！？]?/g) || [s];
+          s = parts.slice(0, 2).join(" ").trim();
+          return s.length > 180 ? s.slice(0, 177).trim() + "..." : s;
+        }
         function defaultSpec() {
           return {
             title: "민코프스키 평면",
             beta: 0.5,
             eta: atanh(0.5),
             events: [
-              { id: "O", label: "원점 사건", x: 0, t: 0, color: "#0f9d6b" },
-              { id: "A", label: "사건 A", x: 2.2, t: 2.7, color: "#2563eb" }
+              { id: "O", label: "출발", x: 0, t: 0, color: "#0f9d6b" },
+              { id: "A", label: "도착", x: 1.8, t: 3.1, color: "#2563eb" }
             ],
             worldlines: [
-              { id: "earth", label: "정지 관찰자", color: "#6b7280", points: [{ x: 0, t: -4 }, { x: 0, t: 4 }] },
-              { id: "ship", label: "이동 관찰자", color: "#2563eb", points: [{ x: -2, t: -4 }, { x: 2, t: 4 }] },
-              { id: "light", label: "빛 신호", color: "#d4453f", points: [{ x: -3, t: -3 }, { x: 3, t: 3 }] }
+              { id: "rest", label: "정지계", color: "#6b7280", points: [{ x: 0, t: -4 }, { x: 0, t: 4 }] },
+              { id: "moving", label: "이동 물체", color: "#2563eb", points: [{ x: -2, t: -4 }, { x: 2, t: 4 }] }
             ],
-            annotations: [{ label: "ct = x", x: 3.55, t: 3.35, color: "#d4453f" }],
-            explanation: "샘플 도식입니다. β 슬라이더를 움직이면 이동계 축과 쌍곡회전 결과가 함께 바뀝니다.",
+            annotations: [],
+            explanation: "빛원뿔 안에서 이동 물체의 세계선과 두 사건만 비교하는 단순 도식입니다.",
             assumptions: ["c=1 단위계 사용", "β=0.5는 초기 샘플값"],
-            warnings: ["AI 분석 전 샘플 좌표입니다."]
+            warnings: []
           };
         }
         function pointList() {
@@ -554,22 +580,22 @@
           var R = r.range;
           ctx.fillStyle = "#ffffff";
           ctx.fillRect(0, 0, canvas.width, canvas.height);
-          for (var i = -R; i <= R; i++) {
-            var c = i === 0 ? "#aeb6c2" : "#e5e7eb";
-            drawPath(r, [{ x: -R, t: i }, { x: R, t: i }], c, i === 0 ? 1.4 : 1);
-            drawPath(r, [{ x: i, t: -R }, { x: i, t: R }], c, i === 0 ? 1.4 : 1);
-          }
           drawPath(r, [{ x: -R, t: 0 }, { x: R, t: 0 }], "#111827", 2);
           drawPath(r, [{ x: 0, t: -R }, { x: 0, t: R }], "#111827", 2);
+          var tick = Math.max(1, Math.ceil(R / 4));
+          for (var i = -R; i <= R; i += tick) {
+            if (i === 0) continue;
+            drawPath(r, [{ x: i, t: -0.08 }, { x: i, t: 0.08 }], "#9ca3af", 1);
+            drawPath(r, [{ x: -0.08, t: i }, { x: 0.08, t: i }], "#9ca3af", 1);
+          }
           drawText(r, "x", R - 0.45, -0.35, "#111827", 14);
           drawText(r, "ct", 0.16, R - 0.5, "#111827", 14);
         }
         function drawLightCone(r) {
           var R = r.range;
-          drawPath(r, [{ x: -R, t: -R }, { x: R, t: R }], "#d4453f", 2);
-          drawPath(r, [{ x: -R, t: R }, { x: R, t: -R }], "#d4453f", 2);
-          drawText(r, "ct = x", Math.min(R - 1.2, 3), Math.min(R - 1.2, 3), "#d4453f", 12);
-          drawText(r, "ct = -x", Math.min(R - 1.6, 3), -Math.min(R - 1.2, 3), "#d4453f", 12);
+          drawPath(r, [{ x: -R, t: -R }, { x: R, t: R }], "#ef4444", 1.8, [7, 5]);
+          drawPath(r, [{ x: -R, t: R }, { x: R, t: -R }], "#ef4444", 1.8, [7, 5]);
+          drawText(r, "빛원뿔", Math.min(R - 1.35, 3), Math.min(R - 1.35, 3), "#ef4444", 12);
         }
         function drawHyperbolas(r) {
           [0.5, 1, 1.5, 2, 3, 4, 5].forEach(function (rad) {
@@ -585,37 +611,31 @@
         }
         function drawSkewGrid(r, beta) {
           var R = r.range;
-          var gamma = 1 / Math.sqrt(1 - beta * beta);
-          for (var k = -R; k <= R; k++) {
-            if (k === 0) continue;
-            drawPath(r, linePoints(function (t) {
-              return { x: beta * t + k / gamma, t: t };
-            }, -R, R, 2), "#dbe7ff", 1);
-            drawPath(r, linePoints(function (x) {
-              return { x: x, t: beta * x + k / gamma };
-            }, -R, R, 2), "#dbe7ff", 1);
-          }
-          drawPath(r, [{ x: -R, t: -beta * R }, { x: R, t: beta * R }], "#2563eb", 2.4);
+          drawPath(r, [{ x: -R, t: -beta * R }, { x: R, t: beta * R }], "#2563eb", 2.6);
           if (Math.abs(beta) > 0.02) {
-            drawPath(r, [{ x: beta * -R, t: -R }, { x: beta * R, t: R }], "#0f9d6b", 2.4);
+            drawPath(r, [{ x: beta * -R, t: -R }, { x: beta * R, t: R }], "#0f9d6b", 2.6);
           } else {
-            drawPath(r, [{ x: 0, t: -R }, { x: 0, t: R }], "#0f9d6b", 2.4, [5, 4]);
+            drawPath(r, [{ x: 0, t: -R }, { x: 0, t: R }], "#0f9d6b", 2.6, [5, 4]);
           }
           drawText(r, "x'", R - 1.45, beta * (R - 1.45), "#2563eb", 14);
           drawText(r, "ct'", beta * (R - 2.1), R - 1.35, "#0f9d6b", 14);
         }
+        function shortEventLabel(ev, index) {
+          var id = String((ev && ev.id) || "").trim();
+          if (id && id.length <= 3) return id;
+          return String.fromCharCode(65 + (index % 26));
+        }
         function drawWorldlines(r, eta) {
-          (spec.worldlines || []).forEach(function (wl) {
+          (spec.worldlines || []).slice(0, 6).forEach(function (wl) {
             var pts = (wl.points || []).map(function (p) { return { x: Number(p.x) || 0, t: Number(p.t) || 0 }; });
-            drawPath(r, pts, wl.color || "#2563eb", 2.4);
+            drawPath(r, pts, wl.color || "#2563eb", 2.8);
             if (renderMode === "boost") {
-              drawPath(r, pts.map(function (p) { return boost(p, eta); }), wl.color || "#2563eb", 3, [7, 4]);
+              drawPath(r, pts.map(function (p) { return boost(p, eta); }), wl.color || "#2563eb", 2.2, [8, 5]);
             }
-            if (pts.length) drawText(r, wl.label || wl.id || "세계선", pts[pts.length - 1].x, pts[pts.length - 1].t, wl.color || "#2563eb", 12);
           });
         }
         function drawEvents(r, eta) {
-          (spec.events || []).forEach(function (ev) {
+          (spec.events || []).slice(0, 8).forEach(function (ev, index) {
             var p = { x: Number(ev.x) || 0, t: Number(ev.t) || 0 };
             var s = r.toScreen(p.x, p.t);
             ctx.save();
@@ -624,7 +644,7 @@
             ctx.arc(s.x, s.y, 5, 0, Math.PI * 2);
             ctx.fill();
             ctx.restore();
-            drawText(r, ev.label || ev.id || "사건", p.x, p.t, ev.color || "#0f9d6b", 12);
+            drawText(r, shortEventLabel(ev, index), p.x, p.t, ev.color || "#0f9d6b", 12);
             if (renderMode === "boost") {
               var q = boost(p, eta);
               var sq = r.toScreen(q.x, q.t);
@@ -635,11 +655,8 @@
               ctx.arc(sq.x, sq.y, 7, 0, Math.PI * 2);
               ctx.stroke();
               ctx.restore();
-              drawText(r, (ev.label || ev.id || "사건") + "'", q.x, q.t, ev.color || "#0f9d6b", 12);
+              if (index < 3) drawText(r, shortEventLabel(ev, index) + "'", q.x, q.t, ev.color || "#0f9d6b", 12);
             }
-          });
-          (spec.annotations || []).forEach(function (a) {
-            drawText(r, a.label || "", Number(a.x) || 0, Number(a.t) || 0, a.color || "#64748b", 12);
           });
         }
         function render() {
@@ -651,7 +668,6 @@
           var r = renderer(size, worldRange(eta));
           ctx.clearRect(0, 0, size.w, size.h);
           drawGrid(r);
-          drawHyperbolas(r);
           drawLightCone(r);
           if (renderMode === "skew") drawSkewGrid(r, beta);
           drawWorldlines(r, eta);
@@ -669,7 +685,7 @@
         }
         function updateLists() {
           document.getElementById("diagramTitle").textContent = spec.title || "민코프스키 평면";
-          document.getElementById("diagramExplanation").textContent = spec.explanation || "AI 해석은 학습 보조이므로 반드시 직접 검토하세요.";
+          document.getElementById("diagramExplanation").textContent = compactCaption(spec.explanation);
           function fill(id, arr, fallback, mapper) {
             var el = document.getElementById(id);
             arr = Array.isArray(arr) ? arr : [];

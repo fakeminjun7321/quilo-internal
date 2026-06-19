@@ -586,6 +586,7 @@
         }
         function defaultSpec() {
           return {
+            diagramType: "minkowski-clean",
             title: "민코프스키 평면",
             beta: 0.5,
             eta: atanh(0.5),
@@ -598,7 +599,10 @@
               { id: "moving", label: "이동 물체", color: "#2563eb", points: [{ x: 0, t: 0 }, { x: 6.5, t: 7.2 }] },
               { id: "target", label: "도착점", color: "#0f9d6b", points: [{ x: 7.5, t: 0 }, { x: 7.5, t: 7.4 }] }
             ],
-            annotations: [],
+            annotations: [{ label: "불변쌍곡선", x: 4.8, t: 3.5, color: "#b45309" }],
+            segments: [
+              { label: "측정선", kind: "bracket", from: { x: 0, t: 0 }, to: { x: 6.5, t: 0 }, color: "#047857" }
+            ],
             explanation: "빛원뿔 안에서 이동 물체의 세계선과 두 사건만 비교하는 단순 도식입니다.",
             assumptions: ["c=1 단위계 사용", "β=0.5는 초기 샘플값"],
             warnings: []
@@ -608,6 +612,10 @@
           var pts = [];
           (spec.events || []).forEach(function (p) { pts.push(p); });
           (spec.annotations || []).forEach(function (p) { pts.push(p); });
+          (spec.segments || []).forEach(function (seg) {
+            if (seg && seg.from) pts.push(seg.from);
+            if (seg && seg.to) pts.push(seg.to);
+          });
           (spec.worldlines || []).forEach(function (w) {
             (w.points || []).forEach(function (p) { pts.push(p); });
           });
@@ -726,6 +734,10 @@
           var tx = s.x + 7;
           var ty = s.y - 7;
           var width = ctx.measureText(String(text || "")).width;
+          var cssW = canvas.getBoundingClientRect().width || canvas.width;
+          var cssH = canvas.getBoundingClientRect().height || canvas.height;
+          tx = clamp(tx, 8, Math.max(8, cssW - width - 8));
+          ty = clamp(ty, (size || 12) + 8, Math.max((size || 12) + 8, cssH - 8));
           ctx.fillStyle = "rgba(255, 255, 255, 0.78)";
           ctx.fillRect(tx - 3, ty - (size || 12), width + 6, (size || 12) + 5);
           ctx.fillStyle = color || "#1f2937";
@@ -773,6 +785,29 @@
           ctx.textAlign = align || "left";
           ctx.textBaseline = "alphabetic";
           ctx.fillText(text, x, y);
+          ctx.restore();
+        }
+        function screenLabel(text, x, y, color, size, weight, align) {
+          var s = String(text || "").trim();
+          if (!s) return;
+          ctx.save();
+          var fontSize = size || 13;
+          ctx.font = (weight || 700) + " " + fontSize + "px -apple-system, BlinkMacSystemFont, Apple SD Gothic Neo, Pretendard, sans-serif";
+          var width = ctx.measureText(s).width;
+          var cssW = canvas.getBoundingClientRect().width || canvas.width;
+          var cssH = canvas.getBoundingClientRect().height || canvas.height;
+          var tx = x;
+          var ty = y;
+          if ((align || "left") === "center") tx -= width / 2;
+          if (align === "right") tx -= width;
+          tx = clamp(tx, 8, Math.max(8, cssW - width - 8));
+          ty = clamp(ty, fontSize + 8, Math.max(fontSize + 8, cssH - 8));
+          ctx.fillStyle = "rgba(255,255,255,0.78)";
+          ctx.fillRect(tx - 4, ty - fontSize - 2, width + 8, fontSize + 7);
+          ctx.fillStyle = color || "#111827";
+          ctx.textAlign = "left";
+          ctx.textBaseline = "alphabetic";
+          ctx.fillText(s, tx, ty);
           ctx.restore();
         }
         function screenCircle(x, y, color, fill, radius) {
@@ -903,6 +938,95 @@
           drawText(r, "x'", R - 0.95, beta * (R - 0.95), "#2f80ed", 14);
           drawText(r, "ct'", beta * (R - 1.25), R - 0.65, "#2563eb", 14);
         }
+        function shouldDrawInvariantCue() {
+          var type = String(spec.diagramType || "");
+          if (type && type !== "minkowski-clean" && type !== "muon-frame-length-contraction") return true;
+          return (spec.annotations || []).some(function (a) {
+            return /쌍곡|불변|보정/.test(String(a && a.label ? a.label : ""));
+          });
+        }
+        function drawInvariantCue(r) {
+          if (!shouldDrawInvariantCue()) return;
+          var R = r.range;
+          var a = Math.max(1.6, R * 0.36);
+          var start = R * 0.08;
+          var end = R * 0.58;
+          var pts = linePoints(function (t) {
+            return { x: Math.sqrt(a * a + t * t), t: t };
+          }, start, end, 44);
+          drawPath(r, pts, "#b56b13", 1.5, [6, 5]);
+        }
+        function drawSegmentOnScreen(a, b, color, width, dash, kind) {
+          var dx = b.x - a.x;
+          var dy = b.y - a.y;
+          var len = Math.sqrt(dx * dx + dy * dy);
+          if (!len) return;
+          screenLine(a, b, color, width, dash);
+          if (kind === "arrow") drawArrowHead(a, b, color, width || 2);
+          if (kind === "bracket") {
+            var nx = -dy / len;
+            var ny = dx / len;
+            var tick = 9;
+            screenLine({ x: a.x - nx * tick, y: a.y - ny * tick }, { x: a.x + nx * tick, y: a.y + ny * tick }, color, width || 2);
+            screenLine({ x: b.x - nx * tick, y: b.y - ny * tick }, { x: b.x + nx * tick, y: b.y + ny * tick }, color, width || 2);
+          }
+        }
+        function compactSegmentLabel(label, compact) {
+          var s = String(label || "").trim();
+          if (!compact) return s;
+          if (/고유시간|Δτ/.test(s)) return "Δτ";
+          if (/정지계 시간|Δt/.test(s)) return "Δt=γΔτ";
+          if (/수축 전|고유길이|D0|D₀/.test(s)) return "D₀";
+          if (/수축된|D=D0|D=D₀/.test(s)) return "D=D₀/γ";
+          if (/S′|기울/.test(s)) return "S′ 지금";
+          if (/S에서|동시/.test(s)) return "S 동시";
+          return s.length > 8 ? s.slice(0, 8) : s;
+        }
+        function drawSegments(r, eta) {
+          (spec.segments || []).slice(0, 4).forEach(function (seg) {
+            var from = (seg && seg.from) || { x: 0, t: 0 };
+            var to = (seg && seg.to) || { x: 1, t: 0 };
+            var a = r.toScreen(Number(from.x) || 0, Number(from.t) || 0);
+            var b = r.toScreen(Number(to.x) || 0, Number(to.t) || 0);
+            var color = (seg && seg.color) || "#047857";
+            var kind = (seg && seg.kind) || "line";
+            var compact = (canvas.getBoundingClientRect().width || canvas.width) < 560;
+            drawSegmentOnScreen(a, b, color, 2.8, seg && seg.dashed ? [7, 6] : null, kind);
+            var labelX = (a.x + b.x) / 2;
+            var labelY = (a.y + b.y) / 2 - 12;
+            var align = "center";
+            if (Math.abs(a.y - b.y) < 10) labelY += 34;
+            if (Math.abs(a.x - b.x) < 10) {
+              labelX += compact ? 18 : 34;
+              labelY += 8;
+              align = "left";
+            }
+            screenLabel(compactSegmentLabel(seg && seg.label, compact), labelX, labelY, color, compact ? 11 : 13, 760, align);
+            if (renderMode === "boost") {
+              var bf = boost({ x: Number(from.x) || 0, t: Number(from.t) || 0 }, eta);
+              var bt = boost({ x: Number(to.x) || 0, t: Number(to.t) || 0 }, eta);
+              var ba = r.toScreen(bf.x, bf.t);
+              var bb = r.toScreen(bt.x, bt.t);
+              drawSegmentOnScreen(ba, bb, color, 2, [5, 5], kind === "arrow" ? "arrow" : "line");
+            }
+          });
+        }
+        function drawAnnotations(r) {
+          (spec.annotations || []).slice(0, 3).forEach(function (a) {
+            drawText(r, a.label || "주석", Number(a.x) || 0, Number(a.t) || 0, a.color || "#64748b", 12);
+          });
+        }
+        function shortWorldlineLabel(label) {
+          var s = String(label || "").trim();
+          s = s
+            .replace("움직이는 관찰자", "관찰자")
+            .replace("정지 관찰자", "정지계")
+            .replace("오른쪽 위치", "오른쪽")
+            .replace("왼쪽 위치", "왼쪽")
+            .replace("가까운 끝", "앞 끝")
+            .replace("물체 끝", "뒤 끝");
+          return s.length > 8 ? s.slice(0, 8) : s;
+        }
         function shortEventLabel(ev, index) {
           var id = String((ev && ev.id) || "").trim();
           if (id && id.length <= 3) return id;
@@ -919,6 +1043,12 @@
             }
             if (renderMode === "boost") {
               drawPath(r, pts.map(function (p) { return boost(p, eta); }), wl.color || "#2563eb", 2.2, [8, 5]);
+            }
+            if (pts.length) {
+              var first = pts[0];
+              var last = pts[pts.length - 1];
+              var labelPoint = { x: (first.x + last.x) / 2, t: (first.t + last.t) / 2 };
+              drawText(r, shortWorldlineLabel(wl.label || wl.id || "세계선"), labelPoint.x, labelPoint.t, wl.color || "#2563eb", 12);
             }
           });
         }
@@ -962,8 +1092,11 @@
           drawGrid(r);
           drawLightCone(r);
           if (renderMode === "skew") drawSkewGrid(r, beta);
+          drawInvariantCue(r);
           drawWorldlines(r, eta);
+          drawSegments(r, eta);
           drawEvents(r, eta);
+          drawAnnotations(r);
         }
         function renderOn(targetCanvas, targetCtx) {
           var prevCanvas = canvas;

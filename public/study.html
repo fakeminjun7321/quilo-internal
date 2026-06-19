@@ -73,6 +73,9 @@
         gap: 14px;
         min-width: 0;
       }
+      .study-output {
+        scroll-margin-top: 86px;
+      }
       .study-control-group {
         display: grid;
         gap: 10px;
@@ -365,7 +368,7 @@
           padding: 18px;
         }
         #minkowskiCanvas {
-          min-height: 330px;
+          min-height: 420px;
         }
         .study-zoom-modal {
           padding: 10px;
@@ -631,7 +634,7 @@
               m = Math.max(m, Math.abs(q.x), Math.abs(q.t));
             }
           });
-          return Math.min(12, Math.max(4, Math.ceil(m + 1)));
+          return Math.min(24, Math.max(4, Math.ceil(m + 2)));
         }
         function setupCanvas() {
           var rect = canvas.getBoundingClientRect();
@@ -748,6 +751,135 @@
           var R = r.range;
           drawArrow(r, { x: 0, t: 0 }, { x: R * 0.88, t: R * 0.88 }, "#cbd5e1", 1.5, [7, 6]);
         }
+        function screenLine(a, b, color, width, dash) {
+          ctx.save();
+          ctx.strokeStyle = color;
+          ctx.lineWidth = width || 1;
+          ctx.setLineDash(dash || []);
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
+          ctx.restore();
+        }
+        function screenArrow(a, b, color, width, dash) {
+          screenLine(a, b, color, width, dash);
+          drawArrowHead(a, b, color, width || 2);
+        }
+        function screenText(text, x, y, color, size, weight, align) {
+          ctx.save();
+          ctx.fillStyle = color || "#111827";
+          ctx.font = (weight || 700) + " " + (size || 16) + "px -apple-system, BlinkMacSystemFont, Apple SD Gothic Neo, Pretendard, sans-serif";
+          ctx.textAlign = align || "left";
+          ctx.textBaseline = "alphabetic";
+          ctx.fillText(text, x, y);
+          ctx.restore();
+        }
+        function screenCircle(x, y, color, fill, radius) {
+          ctx.save();
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = color;
+          ctx.fillStyle = fill || "#fff";
+          ctx.beginPath();
+          ctx.arc(x, y, radius || 7, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.stroke();
+          ctx.restore();
+        }
+        function screenBracket(x1, x2, y, color) {
+          ctx.save();
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(x1, y);
+          ctx.lineTo(x2, y);
+          ctx.moveTo(x1, y - 10);
+          ctx.lineTo(x1, y + 10);
+          ctx.moveTo(x2, y - 10);
+          ctx.lineTo(x2, y + 10);
+          ctx.stroke();
+          ctx.restore();
+        }
+        function drawMuonFrameLengthDiagram(size) {
+          var W = size.w;
+          var H = size.h;
+          ctx.fillStyle = "#fff";
+          ctx.fillRect(0, 0, W, H);
+
+          var axis = "#6f7683";
+          var blue = "#1f63d4";
+          var green = "#15946b";
+          var orange = "#c75a2a";
+          var amber = "#b56b13";
+          var muted = "#6b7280";
+          var compact = W < 560;
+          function fs(n) {
+            return Math.max(11, Math.round(n * (compact ? 0.74 : 1)));
+          }
+          function copy(full, short) {
+            return compact ? short : full;
+          }
+          var origin = { x: W * 0.31, y: H * 0.79 };
+          var left = W * 0.06;
+          var right = W * 0.90;
+          var top = H * 0.16;
+          var bottom = H * 0.89;
+
+          screenText(copy("뮤온계(S′)에서 본 길이수축", "뮤온계 길이수축"), W * 0.50, H * 0.08, "#111827", fs(18), 760, "center");
+          screenArrow({ x: left, y: origin.y }, { x: right, y: origin.y }, axis, 1.8);
+          screenArrow({ x: origin.x, y: bottom }, { x: origin.x, y: top }, axis, 1.8);
+          screenText("x′", right - 30, origin.y + 30, "#111827", fs(18), 700);
+          screenText("ct′", origin.x - 28, top + 28, axis, fs(18), 700);
+
+          for (var i = 1; i <= 3; i++) {
+            var tx = origin.x + (right - origin.x) * i / 4;
+            var ty = origin.y - (origin.y - top) * i / 4;
+            screenLine({ x: tx, y: origin.y - 8 }, { x: tx, y: origin.y + 8 }, "#a8b0bd", 1);
+            screenLine({ x: origin.x - 8, y: ty }, { x: origin.x + 8, y: ty }, "#a8b0bd", 1);
+          }
+
+          screenArrow({ x: origin.x, y: bottom - 18 }, { x: origin.x, y: top + 26 }, blue, 3);
+          screenText(copy("뮤온 (정지)", "뮤온"), origin.x + 18, H * 0.36, blue, fs(20), 800);
+
+          var topA = { x: W * 0.13, y: H * 0.18 };
+          var topB = { x: W * 0.45, y: H * 0.89 };
+          var groundA = { x: W * 0.56, y: H * 0.18 };
+          var groundB = { x: W * 0.84, y: H * 0.89 };
+          screenLine(topA, topB, green, 2.6);
+          screenLine(groundA, groundB, green, 2.6);
+          screenText(copy("생성 고도", "고도"), W * 0.07, topA.y + 32, green, fs(20), 800);
+          screenText(copy("지면 (다가옴)", "지면"), groundA.x + 12, groundA.y + 34, green, fs(20), 800);
+
+          var contractedLeft = { x: W * 0.42, y: origin.y };
+          var contractedRight = { x: W * 0.80, y: origin.y };
+          var properLeft = { x: W * 0.17, y: H * 0.35 };
+          screenCircle(properLeft.x, properLeft.y, orange, "#fff", 7);
+          screenCircle(contractedLeft.x, contractedLeft.y, green, "#fff", 7);
+          screenCircle(contractedRight.x, contractedRight.y, "#6b7280", "#fff", 7);
+
+          screenArrow(properLeft, contractedRight, orange, 3.5);
+          screenText(copy("수축 전 고유길이  D₀ = 10", "D₀ = 10"), W * 0.55, H * 0.52, orange, fs(19), 800);
+          if (!compact) screenText("(지면계의 ‘지금’을 따라 잰 값)", W * 0.55, H * 0.56, muted, 14, 500);
+
+          screenBracket(contractedLeft.x, contractedRight.x, origin.y + H * 0.075, "#047857");
+          screenText(copy("수축된 거리  D = D₀/γ = 8", "D = D₀/γ = 8"), (contractedLeft.x + contractedRight.x) / 2, origin.y + H * 0.14, "#047857", fs(20), 800, "center");
+          if (!compact) screenText("(t′=0, 뮤온의 ‘지금’을 따라 잰 값)", (contractedLeft.x + contractedRight.x) / 2, origin.y + H * 0.18, muted, 14, 500, "center");
+          if (!compact) screenText("지면 ‘지금’", right - 18, origin.y - 34, muted, 14, 600, "right");
+
+          ctx.save();
+          ctx.strokeStyle = amber;
+          ctx.lineWidth = 2;
+          ctx.setLineDash([7, 6]);
+          ctx.beginPath();
+          ctx.moveTo(W * 0.67, H * 0.76);
+          ctx.bezierCurveTo(W * 0.68, H * 0.62, W * 0.72, H * 0.50, W * 0.78, H * 0.42);
+          ctx.stroke();
+          ctx.restore();
+          screenText("보정쌍곡선", W * 0.56, H * 0.61, "#374151", fs(15), 650);
+          if (!compact) screenLine({ x: W * 0.65, y: H * 0.60 }, { x: W * 0.71, y: H * 0.57 }, "#9ca3af", 1, [5, 5]);
+
+          screenText("O", origin.x + 10, origin.y - 10, "#0f9d6b", fs(16), 800);
+        }
         function drawHyperbolas(r) {
           [0.5, 1, 1.5, 2, 3, 4, 5].forEach(function (rad) {
             [-1, 1].forEach(function (sgn) {
@@ -821,8 +953,12 @@
           betaOut.textContent = fmt(beta);
           etaOut.textContent = fmt(eta);
           var size = setupCanvas();
-          var r = renderer(size, worldRange(eta));
           ctx.clearRect(0, 0, size.w, size.h);
+          if (spec.diagramType === "muon-frame-length-contraction") {
+            drawMuonFrameLengthDiagram(size);
+            return;
+          }
+          var r = renderer(size, worldRange(eta));
           drawGrid(r);
           drawLightCone(r);
           if (renderMode === "skew") drawSkewGrid(r, beta);
@@ -842,10 +978,20 @@
           renderOn(mainCanvas, mainCtx);
           renderZoom();
         }
+        function zoomBaseWidth(stage) {
+          return Math.max(900, Math.max(1, stage.clientWidth - 6));
+        }
+        function fitZoomLevel() {
+          var stage = document.getElementById("studyZoomStage");
+          var baseW = zoomBaseWidth(stage);
+          var fitW = Math.max(1, stage.clientWidth - 44) / baseW;
+          var fitH = (Math.max(1, stage.clientHeight - 44) * 1.62) / baseW;
+          return Math.min(1, fitW, fitH);
+        }
         function renderZoom() {
           if (zoomModal.hidden) return;
           var stage = document.getElementById("studyZoomStage");
-          var baseW = Math.max(900, Math.max(1, stage.clientWidth - 6));
+          var baseW = zoomBaseWidth(stage);
           var cssW = Math.round(baseW * zoomLevel);
           var cssH = Math.round(cssW / 1.62);
           zoomCanvas.style.width = cssW + "px";
@@ -856,8 +1002,9 @@
         function openZoom() {
           zoomModal.hidden = false;
           document.body.style.overflow = "hidden";
-          zoomLevel = 1;
+          zoomLevel = clamp(fitZoomLevel(), 0.35, 1);
           renderZoom();
+          document.getElementById("studyZoomStage").scrollTo({ left: 0, top: 0 });
           document.getElementById("closeZoomBtn").focus();
         }
         function closeZoom() {
@@ -865,7 +1012,7 @@
           document.body.style.overflow = "";
         }
         function setZoom(next) {
-          zoomLevel = clamp(next, 0.75, 2.5);
+          zoomLevel = clamp(next, 0.35, 2.5);
           renderZoom();
         }
         function syncFromBeta() {
@@ -902,6 +1049,12 @@
         function setMessage(text, isError) {
           msg.textContent = text || "";
           msg.classList.toggle("error", !!isError);
+        }
+        function focusDiagram() {
+          var output = document.querySelector(".study-output");
+          if (output && typeof output.scrollIntoView === "function") {
+            output.scrollIntoView({ block: "start", inline: "nearest" });
+          }
         }
         function modelProviderLabel(provider) {
           if (provider === "openai") return "GPT";
@@ -983,6 +1136,7 @@
             var data = await res.json().catch(function () { return {}; });
             if (!res.ok) throw new Error(data.error || "분석에 실패했습니다.");
             applySpec(data);
+            focusDiagram();
             setMessage("분석 완료" + (data.modelLabel ? " (" + data.modelLabel + ")" : "") + ". β와 η를 조절하며 도식을 확인해 보세요.");
           } catch (e) {
             setMessage(e.message || "분석에 실패했습니다.", true);
@@ -1042,7 +1196,8 @@
           setZoom(zoomLevel + 0.25);
         });
         document.getElementById("zoomFitBtn").addEventListener("click", function () {
-          setZoom(1);
+          setZoom(fitZoomLevel());
+          document.getElementById("studyZoomStage").scrollTo({ left: 0, top: 0 });
         });
         zoomModal.addEventListener("click", function (e) {
           if (e.target === zoomModal) closeZoom();

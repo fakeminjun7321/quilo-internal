@@ -215,6 +215,7 @@
       <button class="atab" data-go="ai">🤖 AI 보조</button>
       <button class="atab" data-go="users">👤 사용자</button>
       <button class="atab" data-go="beta">🧪 베타</button>
+      <button class="atab" data-go="grants">🔑 키 위임</button>
       <button class="atab" data-go="logs">📊 로그</button>
       <button class="atab" data-go="announce">📢 공지</button>
       <button class="atab" data-go="appeals">🛡 소명·제재</button>
@@ -297,6 +298,48 @@
         </table>
       </div>
       <p id="listStatus" class="hint"></p>
+    </section>
+
+    <section class="settings-card" id="grantsSection">
+      <div class="card-head">
+        <h2>🔑 API 키 위임</h2>
+        <button id="refreshGrants" class="secondary compact">새로고침</button>
+      </div>
+      <p class="hint">
+        지정한 사용자에게 일정 기간 동안 <b>관리자 키</b>로 무료 사용할 권한을 줍니다.
+        위임 기간에는 그 사용자의 보고서 생성과 <b>파일 챗봇</b>이 크레딧 차감 없이 서버 키로 실행됩니다.
+        개인 API 키를 저장하지는 않습니다. (DB: <code>api_key_grants</code> — 마이그레이션 필요)
+      </p>
+      <form id="grantAddForm" class="compact-form" style="margin-bottom: 14px">
+        <div class="field">
+          <label>
+            <span class="field-label">대상 사용자 이름</span>
+            <input id="grantName" maxlength="60" placeholder="사용자 이름" autocomplete="off" />
+          </label>
+        </div>
+        <div class="field">
+          <label>
+            <span class="field-label">기간(일)</span>
+            <input id="grantDays" type="number" min="0" max="365" value="7" style="width: 84px" />
+          </label>
+        </div>
+        <div class="field">
+          <label>
+            <span class="field-label">+시간(선택)</span>
+            <input id="grantHours" type="number" min="0" max="240" value="0" style="width: 84px" />
+          </label>
+        </div>
+        <div class="field">
+          <label>
+            <span class="field-label">메모(선택)</span>
+            <input id="grantNote" maxlength="200" placeholder="예: 시험기간 무료 사용" />
+          </label>
+        </div>
+        <button type="submit">위임 부여</button>
+        <span id="grantAddStatus" class="inline-status"></span>
+      </form>
+      <div id="grantList"></div>
+      <p id="grantStatus" class="hint"></p>
     </section>
 
     <section class="settings-card" id="betaSection">
@@ -1388,6 +1431,7 @@
           "사용자 추가": "users",
           "사용자 목록": "users",
           "베타 기능": "beta",
+          "API 키 위임": "grants",
           "보고서 생성 로그": "logs",
           "커뮤니티 소명": "appeals",
           "코드 에디터": "editor",
@@ -2448,5 +2492,162 @@
         }
       })();
     </script>
-</body>
+    <script>
+      // ── API 키 위임(grant) 패널 ──
+      (function () {
+        function esc(s) {
+          return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+            return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+          });
+        }
+        var listEl = document.getElementById("grantList");
+        var statusEl = document.getElementById("grantStatus");
+        if (!listEl) return;
+        function fmt(ts) {
+          try {
+            return new Date(ts).toLocaleString("ko-KR", {
+              dateStyle: "short",
+              timeStyle: "short",
+            });
+          } catch (e) {
+            return ts;
+          }
+        }
+        function loadGrants() {
+          statusEl.textContent = "불러오는 중...";
+          fetch("/api/grants")
+            .then(function (r) {
+              return r.json();
+            })
+            .then(function (d) {
+              if (d.error) {
+                statusEl.textContent = "오류: " + d.error;
+                listEl.innerHTML = "";
+                return;
+              }
+              renderGrants(d.grants || []);
+              statusEl.textContent = "";
+            })
+            .catch(function () {
+              statusEl.textContent = "목록을 불러오지 못했습니다.";
+            });
+        }
+        window.loadGrants = loadGrants;
+        function renderGrants(grants) {
+          if (!grants.length) {
+            listEl.innerHTML = '<p class="hint">아직 위임이 없습니다.</p>';
+            return;
+          }
+          listEl.innerHTML = grants
+            .map(function (g) {
+              var badge = g.active
+                ? '<span style="color:#16a34a;font-weight:600">활성</span>'
+                : '<span style="opacity:.6">만료/회수</span>';
+              var revokeBtn = g.active
+                ? '<button data-act="revoke" data-id="' +
+                  esc(g.id) +
+                  '" style="color:red;font-size:12px;margin-left:6px">회수</button>'
+                : "";
+              return (
+                '<div style="border:1px solid var(--border,#e2e8f0);border-radius:10px;padding:12px;margin-bottom:10px">' +
+                '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+                "<b>" +
+                esc(g.userName || g.userId) +
+                "</b> " +
+                badge +
+                '<span style="margin-left:auto;font-size:12px;opacity:.7">만료: ' +
+                esc(fmt(g.expiresAt)) +
+                "</span>" +
+                revokeBtn +
+                "</div>" +
+                (g.note
+                  ? '<div style="margin-top:6px;font-size:13px">메모: ' +
+                    esc(g.note) +
+                    "</div>"
+                  : "") +
+                '<div style="margin-top:4px;font-size:11px;opacity:.5">부여: ' +
+                esc(g.grantedByName || "관리자") +
+                " · " +
+                esc(fmt(g.createdAt)) +
+                "</div>" +
+                "</div>"
+              );
+            })
+            .join("");
+        }
+        listEl.addEventListener("click", function (e) {
+          var btn = e.target.closest("[data-act='revoke']");
+          if (!btn) return;
+          if (!confirm("이 위임을 회수할까요? 즉시 무료 사용이 중단됩니다.")) return;
+          fetch(
+            "/api/grants/" +
+              encodeURIComponent(btn.getAttribute("data-id")) +
+              "/revoke",
+            { method: "POST" }
+          )
+            .then(function (r) {
+              return r.json();
+            })
+            .then(function (d) {
+              if (d.error) alert(d.error);
+              loadGrants();
+            })
+            .catch(function () {
+              alert("회수 실패");
+            });
+        });
+        var form = document.getElementById("grantAddForm");
+        form &&
+          form.addEventListener("submit", function (e) {
+            e.preventDefault();
+            var st = document.getElementById("grantAddStatus");
+            var name = document.getElementById("grantName").value.trim();
+            if (!name) {
+              st.textContent = "사용자 이름을 입력하세요.";
+              return;
+            }
+            var days = parseInt(document.getElementById("grantDays").value, 10) || 0;
+            var hours = parseInt(document.getElementById("grantHours").value, 10) || 0;
+            if (days <= 0 && hours <= 0) {
+              st.textContent = "기간을 1 이상으로 지정하세요.";
+              return;
+            }
+            st.textContent = "부여 중...";
+            fetch("/api/grants", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: name,
+                days: days,
+                hours: hours,
+                note: document.getElementById("grantNote").value.trim(),
+              }),
+            })
+              .then(function (r) {
+                return r.json();
+              })
+              .then(function (d) {
+                if (d.error) {
+                  st.textContent = "오류: " + d.error;
+                  return;
+                }
+                st.textContent = "완료";
+                document.getElementById("grantName").value = "";
+                document.getElementById("grantNote").value = "";
+                loadGrants();
+              })
+              .catch(function () {
+                st.textContent = "부여 실패";
+              });
+          });
+        var refreshBtn = document.getElementById("refreshGrants");
+        refreshBtn && refreshBtn.addEventListener("click", loadGrants);
+        var tabBtn = document.querySelector(
+          '#adminTabs .atab[data-go="grants"]'
+        );
+        tabBtn && tabBtn.addEventListener("click", loadGrants);
+        loadGrants();
+      })();
+    </script>
+  </body>
 </html>

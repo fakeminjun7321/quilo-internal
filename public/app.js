@@ -766,6 +766,21 @@ let currentStudentId = "";
             const el2 = document.getElementById("navBetaEditor");
             if (el2) el2.hidden = false;
           }
+          // 파일 챗봇(베타/위임): 관리자·테스터는 여기서, 위임(grant) 사용자는 access 조회로 노출.
+          if (b.admin === true || feats.includes("file-chat")) {
+            const elFc = document.getElementById("navBetaFilechat");
+            if (elFc) elFc.hidden = false;
+          } else {
+            fetch("/api/filechat/access")
+              .then((r) => (r.ok ? r.json() : { allowed: false }))
+              .then((a) => {
+                if (a && a.allowed) {
+                  const elFc = document.getElementById("navBetaFilechat");
+                  if (elFc) elFc.hidden = false;
+                }
+              })
+              .catch(() => {});
+          }
           if (b.admin === true || feats.includes("problem-set")) {
             const el3 = document.getElementById("navBetaProblemSet");
             if (el3) el3.hidden = false;
@@ -778,6 +793,18 @@ let currentStudentId = "";
             const cardFm = document.getElementById("rtFormMaker");
             if (cardFm) cardFm.hidden = false;
           }
+          // 스킬 스튜디오 신규 베타 4종: 관리자/테스터면 보고서 종류 카드를 허브 목록에 노출.
+          [
+            ["eng-exam-prep", "rtEngExam"],
+            ["korean-lit-exam", "rtKoreanLit"],
+            ["cap-translate", "rtCapTranslate"],
+            ["phys-mock-exam", "rtPhysMock"],
+          ].forEach(function (pair) {
+            if (b.admin === true || feats.includes(pair[0])) {
+              const card = document.getElementById(pair[1]);
+              if (card) card.hidden = false;
+            }
+          });
           // 물리 수행평가(베타): 상단 메뉴 바로가기는 제거됨 — 진입은 '수행평가 도움' 허브로 일원화.
           // 보고서 종류 탭(rtPhysInquiry)은 평소엔 숨기고, 허브에서 '?report=phys-inquiry' 로
           // 들어올 때만 노출·자동 선택한다(아래 딥링크 처리).
@@ -2513,6 +2540,123 @@ let currentStudentId = "";
           appendPolicyAcknowledgements(fd);
 
           await submitReport({ formEl: fmForm, buttonEl: fmBtn, formData: fd });
+        });
+      }
+
+      // ── 스킬 스튜디오 신규 베타 4종 (모두 ZIP 출력, 무료 베타) ───────────────
+      function pickModel(name) {
+        return (
+          document.querySelector('input[name="' + name + '"]:checked')?.value ||
+          "claude-opus-4-8"
+        );
+      }
+
+      // 영어 시험대비 3종
+      const engExamForm = document.getElementById("engExamForm");
+      if (engExamForm) {
+        engExamForm.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          if (currentJobId) return;
+          const files = Array.from(document.getElementById("engSource").files);
+          if (!files.length) {
+            alert("영어 지문 파일을 한 개 이상 올리세요.");
+            return;
+          }
+          const fd = new FormData();
+          fd.append("type", "eng-exam-prep");
+          files.forEach((f) => fd.append("source", f));
+          fd.append("userNotes", document.getElementById("engUserNotes").value.trim());
+          if (currentStudentId) fd.append("studentId", currentStudentId);
+          fd.append("model", pickModel("engModel"));
+          appendPolicyAcknowledgements(fd);
+          await submitReport({
+            formEl: engExamForm,
+            buttonEl: document.getElementById("engExamBtn"),
+            formData: fd,
+          });
+        });
+      }
+
+      // 국어(문학) 내신·모의고사
+      const koreanLitForm = document.getElementById("koreanLitForm");
+      if (koreanLitForm) {
+        koreanLitForm.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          if (currentJobId) return;
+          const src = Array.from(document.getElementById("klSource").files);
+          if (!src.length) {
+            alert("학습지(판서 포함) 파일을 한 개 이상 올리세요.");
+            return;
+          }
+          const bank = Array.from(document.getElementById("klBank").files);
+          const fd = new FormData();
+          fd.append("type", "korean-lit-exam");
+          src.forEach((f) => fd.append("source", f));
+          bank.forEach((f) => fd.append("bank", f));
+          fd.append("userNotes", document.getElementById("klUserNotes").value.trim());
+          if (currentStudentId) fd.append("studentId", currentStudentId);
+          fd.append("model", pickModel("klModel"));
+          appendPolicyAcknowledgements(fd);
+          await submitReport({
+            formEl: koreanLitForm,
+            buttonEl: document.getElementById("koreanLitBtn"),
+            formData: fd,
+          });
+        });
+      }
+
+      // Capstone .cap 번역본
+      const capTranslateForm = document.getElementById("capTranslateForm");
+      if (capTranslateForm) {
+        capTranslateForm.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          if (currentJobId) return;
+          const cap = document.getElementById("capFile").files[0];
+          if (!cap) {
+            alert(".cap 파일을 올리세요.");
+            return;
+          }
+          const fd = new FormData();
+          fd.append("type", "cap-translate");
+          fd.append("cap", cap);
+          fd.append("targetLang", document.getElementById("capTargetLang").value || "ko");
+          fd.append("model", pickModel("capModel"));
+          appendPolicyAcknowledgements(fd);
+          await submitReport({
+            formEl: capTranslateForm,
+            buttonEl: document.getElementById("capTranslateBtn"),
+            formData: fd,
+          });
+        });
+      }
+
+      // 물리 모의고사
+      const physMockForm = document.getElementById("physMockForm");
+      if (physMockForm) {
+        physMockForm.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          if (currentJobId) return;
+          const exam = document.getElementById("pmExam").files[0];
+          const textbook = document.getElementById("pmTextbook").files[0];
+          if (!exam || !textbook) {
+            alert("기출 시험지와 교과서 단원 PDF를 모두 올리세요.");
+            return;
+          }
+          const rubric = document.getElementById("pmRubric").files[0];
+          const fd = new FormData();
+          fd.append("type", "phys-mock-exam");
+          fd.append("exam", exam);
+          fd.append("textbook", textbook);
+          if (rubric) fd.append("rubric", rubric);
+          fd.append("userNotes", document.getElementById("pmUserNotes").value.trim());
+          if (currentStudentId) fd.append("studentId", currentStudentId);
+          fd.append("model", pickModel("pmModel"));
+          appendPolicyAcknowledgements(fd);
+          await submitReport({
+            formEl: physMockForm,
+            buttonEl: document.getElementById("physMockBtn"),
+            formData: fd,
+          });
         });
       }
 

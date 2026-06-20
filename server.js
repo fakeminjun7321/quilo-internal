@@ -465,6 +465,63 @@ const PIPELINES = {
     generateDocx: require("./lib/pipelines/form-maker/docx-gen").generateDocx,
     generateHwpx: require("./lib/pipelines/form-maker/hwpx-gen").generateHwpx,
   },
+
+  // 영어 시험대비 자료 3종 세트 (베타) — 영어 지문/학습지 → 모의고사+개념정리+빈칸학습지 PDF 3종 ZIP.
+  "eng-exam-prep": {
+    label: "영어 시험대비 자료 3종 세트",
+    filenamePrefix: "영어시험대비",
+    filenameSourceField: "source",
+    creditField: "result",
+    outputKind: "zip",
+    prepareInput: require("./lib/pipelines/eng-exam-prep/generate").prepareInput,
+    generateContent: require("./lib/pipelines/eng-exam-prep/generate")
+      .generateReportContent,
+    generateBundle: require("./lib/pipelines/eng-exam-prep/generate")
+      .generateBundle,
+  },
+
+  // 국어(문학) 내신·모의고사 (베타) — 학습지(판서)+문제은행 → 시험지·답안작성지·정답해설지 PDF ZIP.
+  "korean-lit-exam": {
+    label: "국어(문학) 내신·모의고사",
+    filenamePrefix: "국어문학",
+    filenameSourceField: "source",
+    creditField: "result",
+    outputKind: "zip",
+    prepareInput: require("./lib/pipelines/korean-lit-exam/generate")
+      .prepareInput,
+    generateContent: require("./lib/pipelines/korean-lit-exam/generate")
+      .generateReportContent,
+    generateBundle: require("./lib/pipelines/korean-lit-exam/generate")
+      .generateBundle,
+  },
+
+  // PASCO Capstone .cap 번역본 (베타) — .cap 의 화면 텍스트만 번역해 동일 구조의 .cap 재생성.
+  "cap-translate": {
+    label: "Capstone .cap 번역본",
+    filenamePrefix: "capstone_번역",
+    filenameSourceField: "cap",
+    creditField: "result",
+    outputKind: "zip",
+    prepareInput: require("./lib/pipelines/cap-translate/generate").prepareInput,
+    generateContent: require("./lib/pipelines/cap-translate/generate")
+      .generateReportContent,
+    generateBundle: require("./lib/pipelines/cap-translate/generate")
+      .generateBundle,
+  },
+
+  // 물리 모의고사 (베타) — 기출+교과서 단원 → draft·verify·reconcile → 시험지+답안 PDF + HWPX ZIP.
+  "phys-mock-exam": {
+    label: "물리 모의고사",
+    filenamePrefix: "물리모의고사",
+    filenameSourceField: "exam",
+    creditField: "result",
+    outputKind: "zip",
+    prepareInput: require("./lib/pipelines/phys-mock-exam/generate").prepareInput,
+    generateContent: require("./lib/pipelines/phys-mock-exam/generate")
+      .generateReportContent,
+    generateBundle: require("./lib/pipelines/phys-mock-exam/generate")
+      .generateBundle,
+  },
 };
 
 // 베타·무료 보고서 종류 — /api/generate 에서 테스터 한정 접근 + 크레딧 미차감.
@@ -473,6 +530,10 @@ const FREE_BETA_TYPES = new Set([
   "math-inquiry",
   "problem-set",
   "form-maker",
+  "eng-exam-prep",
+  "korean-lit-exam",
+  "cap-translate",
+  "phys-mock-exam",
 ]);
 const pricing = require("./lib/pricing");
 const {
@@ -2691,6 +2752,16 @@ app.post(
         console.warn("[generate] profile lookup failed:", e.message);
       }
     }
+    // API 키 위임(grant): 관리자가 지정한 사용자는 위임 기간 동안 크레딧 차감 없이
+    // 서버(관리자) 키로 실행한다. admin·무제한 계정은 이미 면제이므로 그 외만 조회.
+    let hasGrant = false;
+    if (!effectiveIsAdmin && !effectiveUnlimited && supa.isEnabled() && userInfo.id) {
+      try {
+        hasGrant = !!(await supa.getActiveGrant(userInfo.id));
+      } catch (_) {
+        hasGrant = false;
+      }
+    }
     pipelineInput.studentId =
       normalizeStudentId(pipelineInput.studentId) || postedStudentId || savedStudentId;
     pipelineInput.allowHighlights = effectiveIsAdmin;
@@ -2743,6 +2814,10 @@ app.post(
       "problem-set",
       "form-maker",
       "math-inquiry",
+      "eng-exam-prep",
+      "korean-lit-exam",
+      "cap-translate",
+      "phys-mock-exam",
     ]);
     const allowedModels = GPT_OK_TYPES.has(reportType)
       ? [...ALLOWED_MODELS, ...GPT_REPORT_MODELS]
@@ -2790,18 +2865,19 @@ app.post(
           "GPT 모델은 현재 서버에 키가 설정되지 않아 사용할 수 없습니다(GPT_API_KEY).",
       });
     }
-    // 베타·무료 보고서는 크레딧 미차감(0). 그 외는 모델별 단가.
+    // 베타·무료 보고서, 또는 활성 위임(grant) 사용자는 크레딧 미차감(0). 그 외는 모델별 단가.
     const isFreeBeta = FREE_BETA_TYPES.has(reportType);
-    const creditCost = isFreeBeta ? 0 : pricing.getModelCredits(model);
+    const creditCost = isFreeBeta || hasGrant ? 0 : pricing.getModelCredits(model);
     // AI 이미지 생성: 장당 1크레딧, 보고서당 최대 2장(lib/report-image-gen.js MAX_FIGURES 동기화).
     // 실제 차감은 생성된 장수만큼(runGeneration). 여기선 최악의 경우를 잔액 검증에 예약.
     const reservedImageCredits =
-      !isFreeBeta && pipelineInput.allowImageGen ? 1 * 2 : 0;
+      !isFreeBeta && !hasGrant && pipelineInput.allowImageGen ? 1 * 2 : 0;
 
-    // 크레딧 검증 (Supabase + 일반 사용자. admin·무제한 계정·무료 베타는 제외)
+    // 크레딧 검증 (Supabase + 일반 사용자. admin·무제한 계정·무료 베타·위임 사용자는 제외)
     // 권한 면제 판단은 fresh row(effectiveIsAdmin/effectiveUnlimited) 기준.
     if (
       !isFreeBeta &&
+      !hasGrant &&
       supa.isEnabled() &&
       userInfo.id &&
       !effectiveIsAdmin &&
@@ -2878,6 +2954,8 @@ app.post(
     job.reportType = reportType;
     job.model = model;
     job.creditCost = creditCost;
+    // 활성 위임 사용자는 과금 면제(아래 이미지 추가과금·크레딧 차감 단계에서 건너뜀).
+    job.billingExempt = hasGrant;
     if (userInfo.id) {
       activeJobByUser.set(userInfo.id, job.id);
     }
@@ -3873,6 +3951,7 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
     if (
       generatedFigureCount > 0 &&
       typeof job.creditCost === "number" &&
+      !job.billingExempt &&
       !FREE_BETA_TYPES.has(job.reportType)
     ) {
       job.creditCost += generatedFigureCount * 1;
@@ -4150,7 +4229,16 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
       const userIsAdmin = !!job.userInfo.isAdmin;
       const userUnlimited = !!job.userInfo.unlimited;
       if (
+        job.billingExempt &&
         !FREE_BETA_TYPES.has(job.reportType) &&
+        !userIsAdmin &&
+        !userUnlimited
+      ) {
+        pushProgress(job, "🔑 관리자 키 위임 — 크레딧이 차감되지 않았습니다.");
+      }
+      if (
+        !FREE_BETA_TYPES.has(job.reportType) &&
+        !job.billingExempt &&
         !userIsAdmin &&
         !userUnlimited &&
         supa.isEnabled() &&
@@ -4335,6 +4423,238 @@ app.use("/api/study", require("./lib/study-routes")({ requireBeta, getSessionUse
 
 // 공지사항: 공개 읽기(활성) + 관리자 CRUD. Supabase 테이블 없으면 메모리 fallback.
 app.use("/api/announcements", require("./lib/announcement-routes")({ requireAdmin }));
+
+// API 키 위임(grant): 관리자가 지정한 사용자에게 기간 한정으로 "관리자 키" 무료 사용권 부여.
+//   - 사용자: GET /api/grants/me (본인 상태)
+//   - 관리자: GET/POST /api/grants, POST /api/grants/:id/revoke
+app.use(
+  "/api/grants",
+  require("./lib/grant-routes")({ requireAuth, requireAdmin, getSessionUser }),
+);
+
+// ── 파일 챗봇(베타/위임): 파일을 올리고 Claude와 대화 ───────────────────────────
+// 서버(관리자) 키를 쓰므로 비용이 새지 않게 접근을 제한한다:
+//   관리자 OR 활성 위임(grant) OR 베타('file-chat') 만 사용 가능.
+const FILECHAT_ALLOWED_MODELS = ["claude-sonnet-4-6", "claude-opus-4-8"];
+const FILECHAT_MAX_TOKENS = parseInt(
+  process.env.FILECHAT_MAX_TOKENS || "4000",
+  10,
+);
+
+// 이 사용자가 파일 챗봇을 쓸 수 있는지(관리자/위임/베타). reason 도 함께.
+async function resolveFilechatAccess(u) {
+  if (!u || !u.id) return { allowed: false, reason: "" };
+  if (u.isAdmin) return { allowed: true, reason: "admin" };
+  if (!supa.isEnabled()) return { allowed: false, reason: "" };
+  try {
+    if (await supa.getActiveGrant(u.id)) return { allowed: true, reason: "grant" };
+  } catch (_) {}
+  try {
+    if (await supa.userHasBeta(u.id, "file-chat"))
+      return { allowed: true, reason: "beta" };
+  } catch (_) {}
+  return { allowed: false, reason: "" };
+}
+
+// 접근 가능 여부 조회(페이지 게이트용).
+app.get("/api/filechat/access", requireAuth, async (req, res) => {
+  const u = getSessionUser(req);
+  const acc = await resolveFilechatAccess(u);
+  res.json(acc);
+});
+
+// 대화 1턴: 직전 대화(messages JSON) + 현재 메시지(message) + 첨부파일(files[]) → 평문 스트림.
+// 무상태 서버이므로 클라이언트가 현재 첨부 파일 묶음을 매 턴 함께 보낸다(항상 맥락 보장).
+app.post("/api/filechat", requireAuth, upload.any(), async (req, res) => {
+  const u = getSessionUser(req);
+  const acc = await resolveFilechatAccess(u);
+  if (!acc.allowed) {
+    return res.status(403).json({
+      error: "파일 챗봇은 관리자·위임 사용자·베타 테스터만 사용할 수 있습니다.",
+    });
+  }
+
+  // 사용량 제한(IP 기준, 사이트 챗 버킷 공용)
+  const ip = req.ip || "unknown";
+  const lim = rateLimit.checkChatLimit(ip, CHAT_DAILY_MAX);
+  if (!lim.allowed) {
+    return res.status(429).json({
+      error:
+        lim.reason === "rate"
+          ? "잠시 후 다시 시도해 주세요(요청이 너무 빠릅니다)."
+          : "오늘 사용량이 많습니다. 잠시 후 다시 시도해 주세요.",
+    });
+  }
+
+  // 직전 대화(텍스트만) + 현재 메시지
+  let priorTurns = [];
+  try {
+    const parsed = JSON.parse(String(req.body.messages || "[]"));
+    if (Array.isArray(parsed)) priorTurns = parsed;
+  } catch (_) {}
+  priorTurns = priorTurns
+    .filter(
+      (m) =>
+        m &&
+        (m.role === "user" || m.role === "assistant") &&
+        typeof m.content === "string" &&
+        m.content.trim(),
+    )
+    .slice(-10)
+    .map((m) => ({ role: m.role, content: m.content.slice(0, 6000) }));
+
+  const userText = String(req.body.message || "").slice(0, 8000).trim();
+  const files = (req.files || []).slice(0, 6);
+  if (!userText && !files.length) {
+    return res.status(400).json({ error: "메시지나 파일을 입력하세요." });
+  }
+
+  // 모델: Sonnet 기본, Opus 선택 가능. 관리자는 Fable 도 허용.
+  const reqModel = String(req.body.model || "").trim();
+  let model = FILECHAT_ALLOWED_MODELS.includes(reqModel)
+    ? reqModel
+    : "claude-sonnet-4-6";
+  if (isFableModel(reqModel) && u.isAdmin && !FABLE_DISABLED) {
+    model = "claude-fable-5";
+  }
+
+  rateLimit.recordChatAttempt(ip);
+
+  const {
+    prepareImageForAnthropic,
+    toAnthropicImageBlock,
+    getBatchImageOptions,
+  } = require("./lib/anthropic-media");
+  const {
+    FILES_BETA,
+    uploadFileToAnthropic,
+    deleteAnthropicFile,
+  } = require("./lib/anthropic-files");
+
+  // 현재 user 턴 content[] 구성: 첨부 블록 + 텍스트
+  const content = [];
+  const uploadedFileIds = [];
+  let usedFileApi = false;
+  const skipped = [];
+  const imageCount = files.filter(
+    (f) =>
+      /^image\//i.test(f.mimetype || "") ||
+      /\.(png|jpe?g|gif|webp)$/i.test(f.originalname || ""),
+  ).length;
+  const imageOptions = getBatchImageOptions(imageCount);
+
+  for (const f of files) {
+    const name = normalizeUploadFilename(f.originalname || "file");
+    const ext = (name.split(".").pop() || "").toLowerCase();
+    const mime = f.mimetype || "";
+    try {
+      if (/^image\//i.test(mime) || ["png", "jpg", "jpeg", "gif", "webp"].includes(ext)) {
+        const prepared = await prepareImageForAnthropic(
+          { buffer: f.buffer, name, mimetype: mime },
+          imageOptions,
+        );
+        if (prepared.ok) content.push(toAnthropicImageBlock(prepared));
+        else skipped.push(`${name}(이미지 처리 실패)`);
+      } else if (ext === "pdf" || /pdf/i.test(mime)) {
+        const sizeMb = (f.buffer.length || 0) / (1024 * 1024);
+        if (sizeMb >= 4.5) {
+          const fileId = await uploadFileToAnthropic(f.buffer, name);
+          uploadedFileIds.push(fileId);
+          usedFileApi = true;
+          content.push({ type: "document", source: { type: "file", file_id: fileId } });
+        } else {
+          content.push({
+            type: "document",
+            source: {
+              type: "base64",
+              media_type: "application/pdf",
+              data: f.buffer.toString("base64"),
+            },
+          });
+        }
+      } else if (
+        ["txt", "md", "csv", "tsv", "json", "log"].includes(ext) ||
+        /^text\//i.test(mime)
+      ) {
+        let text = "";
+        try {
+          text = f.buffer.toString("utf8");
+        } catch (_) {
+          text = "";
+        }
+        text = text.slice(0, 30000);
+        content.push({ type: "text", text: `[첨부 파일: ${name}]\n${text}` });
+      } else {
+        skipped.push(`${name}(지원하지 않는 형식)`);
+      }
+    } catch (e) {
+      skipped.push(`${name}(${e.message})`);
+    }
+  }
+
+  if (userText) content.push({ type: "text", text: userText });
+  else if (content.length)
+    content.push({
+      type: "text",
+      text: "첨부한 파일을 분석하고 핵심을 한국어로 정리해 주세요.",
+    });
+  if (skipped.length)
+    content.unshift({
+      type: "text",
+      text: `(처리하지 못한 파일: ${skipped.join(", ")})`,
+    });
+
+  const messages = [...priorTurns, { role: "user", content }];
+  const system =
+    "당신은 Quilo의 파일 분석 도우미입니다. 사용자가 올린 파일(PDF·이미지·표·텍스트)과 " +
+    "대화 맥락을 근거로 정확하고 친절하게 한국어로 답합니다. 파일에 없는 내용을 지어내지 말고, " +
+    "확실하지 않으면 모른다고 답하세요. 표·수식·코드가 필요하면 깔끔하게 정리해 보여 주세요.";
+
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("X-Accel-Buffering", "no");
+  let wrote = false;
+  try {
+    const Anthropic = require("@anthropic-ai/sdk");
+    const client = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+      timeout: 10 * 60 * 1000,
+    });
+    const reqOpts = usedFileApi
+      ? { headers: { "anthropic-beta": FILES_BETA } }
+      : undefined;
+    const stream = client.messages.stream(
+      {
+        model,
+        max_tokens: FILECHAT_MAX_TOKENS,
+        system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
+        messages,
+      },
+      reqOpts,
+    );
+    stream.on("text", (t) => {
+      wrote = true;
+      try {
+        res.write(t);
+      } catch (_) {}
+    });
+    await stream.finalMessage();
+    res.end();
+  } catch (e) {
+    console.error("[filechat] stream:", e.message);
+    try {
+      if (!wrote)
+        res.write("죄송해요, 응답 생성 중 오류가 났어요. 잠시 후 다시 시도해 주세요.");
+      res.end();
+    } catch (_) {}
+  } finally {
+    if (uploadedFileIds.length) {
+      Promise.all(
+        uploadedFileIds.map((id) => deleteAnthropicFile(id).catch(() => {})),
+      ).catch(() => {});
+    }
+  }
+});
 
 app.get("/api/cloud/status", requireAuth, async (req, res) => {
   const u = getSessionUser(req);
@@ -5052,6 +5372,26 @@ app.listen(PORT, async () => {
       if (seeded) console.log("  ✓ 베타 기능 등록: 상대론 공부(relativity-study)");
     } catch (e) {
       console.warn(`  ⚠ 베타 기능 등록 실패(relativity-study): ${e.message}`);
+    }
+    try {
+      const seeded = await supa.ensureBetaFeature("file-chat", "파일 챗봇");
+      if (seeded) console.log("  ✓ 베타 기능 등록: 파일 챗봇(file-chat)");
+    } catch (e) {
+      console.warn(`  ⚠ 베타 기능 등록 실패(file-chat): ${e.message}`);
+    }
+    // 스킬 스튜디오 신규 베타 보고서 4종(영어/국어/캡스톤 번역/물리 모의고사).
+    for (const [k, label] of [
+      ["eng-exam-prep", "영어 시험대비 3종"],
+      ["korean-lit-exam", "국어 문학 시험"],
+      ["cap-translate", "Capstone 번역"],
+      ["phys-mock-exam", "물리 모의고사"],
+    ]) {
+      try {
+        const seeded = await supa.ensureBetaFeature(k, label);
+        if (seeded) console.log(`  ✓ 베타 기능 등록: ${label}(${k})`);
+      } catch (e) {
+        console.warn(`  ⚠ 베타 기능 등록 실패(${k}): ${e.message}`);
+      }
     }
     // 문제집 메이커 최대 문제 수(관리자 설정값)를 app_settings 에서 로드(있으면).
     try {

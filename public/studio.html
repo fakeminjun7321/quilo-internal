@@ -131,6 +131,7 @@
             <div class="modeseg" id="modeseg">
               <button data-mode="auto" class="on">🤖 자동</button>
               <button data-mode="app">🧩 앱</button>
+              <button data-mode="design">🎨 디자인</button>
               <button data-mode="image">🖼 이미지</button>
             </div>
             <div class="thumbs" id="thumbs"></div>
@@ -242,8 +243,10 @@
           ? "만들 이미지를 설명하세요 (예: 비커 아이콘, 플랫 · Enter 전송)"
           : m === "app"
             ? "만들 웹앱·위젯·도구를 설명하세요 (Enter 전송)"
-            : "파일 올리고 무엇이든 말하세요 — 분석·문서 생성·앱·이미지 (Enter 전송)";
-        $("chips").style.display = m === "image" ? "none" : "flex";
+            : m === "design"
+              ? "만들 디자인을 설명하세요 — 슬라이드 덱·프로토타입·시안 비교·모바일 목업 (Enter 전송)"
+              : "파일 올리고 무엇이든 말하세요 — 분석·문서 생성·앱·이미지 (Enter 전송)";
+        $("chips").style.display = m === "image" || m === "design" ? "none" : "flex";
         populateModels(m === "image");
       }
       function imagePostBubble(bubble, url, verIdx, kind, info) {
@@ -503,6 +506,7 @@
         if (!prompt && !attached.length) return;
         if (mode === "image") return genImagePost(prompt);
         if (mode === "app") return buildApp(prompt);
+        if (mode === "design") return buildApp(prompt, false, true);
         return autoRoute(prompt);
       }
 
@@ -521,16 +525,17 @@
         return urls;
       }
 
-      // 🧩 앱 만들기(기존 빌드 경로)
-      async function buildApp(prompt, skipUser) {
+      // 🧩 앱 만들기 / 🎨 디자인(designMode) — 둘 다 멀티파일 프로젝트 빌드 경로 공유.
+      async function buildApp(prompt, skipUser, designMode) {
         if (!prompt) return;
         if (!skipUser) { addUserMsg(prompt); $("prompt").value = ""; autoGrow(); }
         busy = true; updateSendUI();
-        const thinking = addMsg("ai", `<span class="spin"></span> 만드는 중… (20~60초)`, true);
+        const thinking = addMsg("ai", `<span class="spin"></span> ${designMode ? "디자인 만드는 중… (30~90초)" : "만드는 중… (20~60초)"}`, true);
         try {
           const imgUrls = await uploadImageAttachments();
           // 멀티파일 프로젝트 모드: 현재 프로젝트 파일을 함께 보내고 전체를 다시 받는다.
           const body = { prompt, model: $("model").value, summary: true, project: true };
+          if (designMode) body.design = true;
           if (projectHasFiles()) body.projectFiles = Object.keys(project.files).map((p) => ({ path: p, content: project.files[p] }));
           if (imgUrls.length) body.images = imgUrls;
           if (chatTurns.length) body.history = chatTurns.slice(-8);
@@ -567,6 +572,7 @@
         busy = false; updateSendUI();
         if (route.action === "ask") return addMsg("ai", esc(route.ask || "무엇을 만들까요? 조금 더 알려주세요."));
         if (route.action === "app") return buildApp(prompt, true);
+        if (route.action === "design") return buildApp(prompt, true, true);
         if (route.action === "image") return genImagePost(prompt, true);
         if (route.action === "generate" && route.reportType) return runGenerate(route, prompt);
         return runChat(prompt);

@@ -596,10 +596,46 @@
           if (!acc) bubble.textContent = "(빈 응답)";
           chatTurns.push({ role: "user", content: prompt }, { role: "assistant", content: acc });
           attached = []; renderThumbs();
+          // 안전망: 대화 응답에 완결된 HTML 이 통째로 들어왔으면(잘못 분류된 빌드 요청 등),
+          // 코드 덤프로 끝내지 말고 '미리보기로 열기' 버튼을 띄워 실제 결과물로 변환.
+          const foundHtml = extractHtmlFromText(acc);
+          if (foundHtml) {
+            const bar = document.createElement("div");
+            bar.style.cssText = "margin-top:9px;display:flex;gap:8px;align-items:center;flex-wrap:wrap";
+            const note = document.createElement("span");
+            note.style.cssText = "font-size:11.5px;color:var(--mut)";
+            note.textContent = "만들 수 있는 HTML이 들어 있어요 —";
+            const btn = document.createElement("button");
+            btn.textContent = "▶ 미리보기로 열기";
+            btn.style.cssText = "background:var(--acc);color:#fff;border:0;border-radius:8px;padding:5px 11px;font:inherit;font-size:12px;cursor:pointer";
+            btn.onclick = () => {
+              applyProject({ files: { "index.html": foundHtml }, entry: "index.html" });
+              pushVersion("대화에서 가져온 HTML", prompt);
+              if (!defaultTitle) defaultTitle = prompt.slice(0, 30);
+              showTab("preview"); $("app").classList.add("showstage");
+              btn.disabled = true; btn.textContent = "✓ 미리보기에 열림";
+            };
+            bar.appendChild(note); bar.appendChild(btn);
+            bubble.appendChild(bar);
+          }
         } catch (e) {
           bubble.dataset.thinking = "";
           bubble.innerHTML = "⚠ " + esc(e.message || "대화 실패");
         } finally { busy = false; updateSendUI(); }
+      }
+
+      // 대화 텍스트에서 완결된 HTML 추출(코드펜스 또는 raw doctype). 없으면 null.
+      function extractHtmlFromText(t) {
+        const s = String(t || "");
+        let m = s.match(/```html\s*([\s\S]*?)```/i);
+        if (m && /<\/(html|body|main|section|div)>/i.test(m[1])) return m[1].trim();
+        m = s.match(/```\s*([\s\S]*?)```/);
+        if (m && /<!doctype html|<html[\s>]/i.test(m[1])) return m[1].trim();
+        const lo = s.toLowerCase();
+        const a = lo.indexOf("<!doctype html");
+        const b = lo.lastIndexOf("</html>");
+        if (a >= 0 && b > a) return s.slice(a, b + 7).trim();
+        return null;
       }
 
       // 📄 문서 생성 — /api/generate(jobId) → SSE 진행 → 다운로드 카드

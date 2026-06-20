@@ -555,9 +555,22 @@
         } finally { busy = false; updateSendUI(); }
       }
 
-      // 🤖 자동: 의도 라우팅 → 대화 / 문서생성 / 앱 / 이미지 / 되묻기
+      // 명백한 '만들기' 요청을 결정적으로 분류(LLM 라우터 변동성 회피). 동사가 있어야 발동(오탐 방지).
+      function quickBuildIntent(msg) {
+        const m = String(msg || "");
+        if (!/(만들어|만들죠|만드는|만들 ?수|제작|짜\s?줘|짜\s?주|개발해|개발 ?좀|코딩해|구현해|\bbuild\b|\bcreate\b|\bmake\b)/i.test(m)) return null;
+        if (/(슬라이드|덱|deck|프레젠테이션|발표\s?자료|프로토타입|prototype|목업|mock\s?up|와이어프레임|wireframe|시안)/i.test(m)) return "design";
+        return "app";
+      }
+
+      // 🤖 자동: 의도 라우팅 → 대화 / 문서생성 / 앱 / 디자인 / 이미지 / 되묻기
       async function autoRoute(prompt) {
         addUserMsg(prompt); $("prompt").value = ""; autoGrow();
+        // 결정적 가드: 첨부 파일이 없고 명백한 '만들어줘' 류 요청이면 라우터를 거치지 않고 바로 빌드.
+        if (!attached.length) {
+          const q = quickBuildIntent(prompt);
+          if (q) return buildApp(prompt, true, q === "design");
+        }
         busy = true; updateSendUI();
         const thinking = addMsg("ai", `<span class="spin"></span> 무엇을 할지 보는 중…`, true);
         let route;

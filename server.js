@@ -2677,12 +2677,22 @@ app.post(
     // 베타 feature key 는 reportType 과 동일하게 관리(관리자탭 베타 관리에서 지정).
     if (FREE_BETA_TYPES.has(reportType)) {
       if (!userInfo.isAdmin) {
+        // 스튜디오로 일원화한 생성기 4종은 스튜디오 베타('create') 보유자도 허용
+        // (메인 허브 카드는 숨겼고 스튜디오가 진입점이므로).
+        const STUDIO_SKILL_TYPES = new Set([
+          "eng-exam-prep",
+          "korean-lit-exam",
+          "cap-translate",
+          "phys-mock-exam",
+        ]);
         let hasBeta = false;
         try {
           hasBeta =
             supa.isEnabled() &&
             userInfo.id &&
-            (await supa.userHasBeta(userInfo.id, reportType));
+            ((await supa.userHasBeta(userInfo.id, reportType)) ||
+              (STUDIO_SKILL_TYPES.has(reportType) &&
+                (await supa.userHasBeta(userInfo.id, "create"))));
         } catch {
           hasBeta = false;
         }
@@ -4452,6 +4462,11 @@ async function resolveFilechatAccess(u) {
   try {
     if (await supa.userHasBeta(u.id, "file-chat"))
       return { allowed: true, reason: "beta" };
+  } catch (_) {}
+  // 스튜디오로 일원화 — 스튜디오 베타('create') 보유자도 파일 대화 허용.
+  try {
+    if (await supa.userHasBeta(u.id, "create"))
+      return { allowed: true, reason: "studio" };
   } catch (_) {}
   return { allowed: false, reason: "" };
 }

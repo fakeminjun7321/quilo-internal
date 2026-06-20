@@ -793,18 +793,8 @@ let currentStudentId = "";
             const cardFm = document.getElementById("rtFormMaker");
             if (cardFm) cardFm.hidden = false;
           }
-          // 스킬 스튜디오 신규 베타 4종: 관리자/테스터면 보고서 종류 카드를 허브 목록에 노출.
-          [
-            ["eng-exam-prep", "rtEngExam"],
-            ["korean-lit-exam", "rtKoreanLit"],
-            ["cap-translate", "rtCapTranslate"],
-            ["phys-mock-exam", "rtPhysMock"],
-          ].forEach(function (pair) {
-            if (b.admin === true || feats.includes(pair[0])) {
-              const card = document.getElementById(pair[1]);
-              if (card) card.hidden = false;
-            }
-          });
+          // 스킬 스튜디오 생성기 4종(영어/국어/캡스톤/물리모의)은 스튜디오로 일원화됨 →
+          // 메인 허브 카드는 숨김 유지(rtEngExam 등). 진입은 /studio.html 에서.
           // 물리 수행평가(베타): 상단 메뉴 바로가기는 제거됨 — 진입은 '수행평가 도움' 허브로 일원화.
           // 보고서 종류 탭(rtPhysInquiry)은 평소엔 숨기고, 허브에서 '?report=phys-inquiry' 로
           // 들어올 때만 노출·자동 선택한다(아래 딥링크 처리).

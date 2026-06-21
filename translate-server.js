@@ -30,6 +30,7 @@ const {
   prepareImageForAnthropic,
   toAnthropicImageBlock,
 } = require("./lib/anthropic-media");
+const { assertGeneratedOutputMagic } = require("./lib/output-validate");
 
 const app = express();
 app.disable("x-powered-by");
@@ -328,12 +329,17 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) 
       result = await translatePdf({ pdfBuffer, model, signal: ac.signal, onProgress });
     }
 
-    job.result = result.buffer;
+    const pdfOutput = assertGeneratedOutputMagic(
+      result.buffer,
+      "pdf",
+      "PDF translation output",
+    );
+    job.result = pdfOutput;
     job.mimeType = "application/pdf";
     job.filename = buildTranslatedFilename(originalName, effectiveMode === "retypeset" ? "_재조판" : "_KO");
     job.status = "done";
     const totalSec = Math.floor((Date.now() - t0) / 1000);
-    const outKB = Math.round(result.buffer.length / 1024);
+    const outKB = Math.round(pdfOutput.length / 1024);
     pushProgress(
       job,
       effectiveMode === "retypeset"

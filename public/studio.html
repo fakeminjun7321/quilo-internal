@@ -287,7 +287,7 @@
         const tpls = TEMPLATES.map((x, i) => `<button data-tpl="${i}"><b>${esc(x.t)}</b><span>${esc(x.p.slice(0, 38))}…</span></button>`).join("");
         $("msgs").innerHTML =
           `<div class="empty"><h3>✨ 파일 올리고, 무엇이든 시키세요</h3>` +
-          `<div>📎 로 PDF·이미지·데이터·.cap 을 올리고 말하면 AI가 알아서 처리해요 — <b>분석·대화</b>, <b>문서 생성</b>(영어 시험대비·국어 문학·물리 모의고사·Capstone 번역), <b>웹앱·위젯</b>, <b>이미지</b>. 아래는 앱 만들기 예시예요:</div>` +
+          `<div>📎 로 PDF·이미지·데이터·.cap 을 올리고 말하면 AI가 알아서 처리해요 — <b>분석·대화</b>, <b>문서 생성</b>(영어 시험대비·국어 문학·물리 모의고사·Capstone 번역), <b>웹앱·위젯</b>, <b>이미지</b>. 물리 모의고사는 기출 시험지 PDF와 교과서 단원 PDF를 모두 첨부해 주세요. 아래는 앱 만들기 예시예요:</div>` +
           `<div class="tpl">${tpls}</div></div>`;
         $("msgs").querySelectorAll("[data-tpl]").forEach((b) => b.onclick = () => { const x = TEMPLATES[+b.dataset.tpl]; $("prompt").value = x.p; send(); });
       }
@@ -652,6 +652,7 @@
       }
 
       // 📄 문서 생성 — /api/generate(jobId) → SSE 진행 → 다운로드 카드
+      // phys-mock-exam needs route.fileRoles for both required files: exam and textbook.
       const GEN_DEFAULT_FIELD = { "eng-exam-prep": "source", "korean-lit-exam": "source", "cap-translate": "cap", "phys-mock-exam": "exam" };
       async function runGenerate(route, prompt) {
         busy = true; updateSendUI();

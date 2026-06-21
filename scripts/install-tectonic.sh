@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Render 빌드용: Tectonic(self-contained XeLaTeX) 정적 바이너리를 bin/ 에 설치한다.
 # - 재조판(re-typeset) PDF 번역(Claude→LaTeX→Tectonic→PDF)에 필요.
-# - 실패해도 빌드는 계속(그 기능만 비활성). PATH 에 이미 있으면(brew 등) 건너뜀.
+# - npm postinstall에서도 설치 실패 시 non-zero로 끝내 배포 단계에서 드러나게 한다.
+# - PATH 에 이미 있으면(brew 등) 건너뜀.
 # - 첫 컴파일 때 TeX 패키지를 받아 캐시하므로 런타임 네트워크가 필요하다.
-set -u
+set -euo pipefail
 VER="0.15.0"
 
 if command -v tectonic >/dev/null 2>&1; then
@@ -31,5 +32,6 @@ if curl -fsSL --max-time 120 "$URL" | tar xz -C bin tectonic; then
   chmod +x bin/tectonic
   echo "tectonic installed → bin/tectonic"
 else
-  echo "WARN: tectonic download failed — re-typeset PDF will be unavailable"
+  echo "ERROR: tectonic download/extract failed — re-typeset PDF will be unavailable" >&2
+  exit 1
 fi

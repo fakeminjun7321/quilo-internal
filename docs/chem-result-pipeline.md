@@ -139,7 +139,7 @@ HWPX 출력은 Python 의존성이 필요하다. Render 빌드에서 `.venv` 생
 12. 같은 사용자의 기존 실행 중 job 자동 abort
 13. 새 job 생성 후 `runGeneration()` 비동기 실행
 14. 클라이언트에는 `{ jobId }` 반환
-15. 클라이언트는 `/api/jobs/:id/events` SSE로 진행 로그 수신
+15. 클라이언트는 `/api/jobs/:id/stream` SSE로 진행 로그 수신
 
 ## 7. chem-result pipeline registry
 

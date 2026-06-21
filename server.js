@@ -12,6 +12,7 @@ const {
   normalizeFontFaceForFormat,
 } = require("./lib/document-fonts");
 const styleRef = require("./lib/style-ref");
+const { assertGeneratedOutputMagic } = require("./lib/output-validate");
 
 // 프로세스 전역 안전망: 처리되지 않은 예외/거부가 서버 프로세스 전체를 죽여
 // 진행 중인 다른 사용자 작업까지 같이 날리지 않도록, 최후 백스톱으로 로깅만 한다.
@@ -3689,7 +3690,12 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) 
       });
     }
 
-    job.result = result.buffer;
+    const pdfOutput = assertGeneratedOutputMagic(
+      result.buffer,
+      "pdf",
+      "PDF translation output",
+    );
+    job.result = pdfOutput;
     job.mimeType = "application/pdf";
     job.filename = buildTranslatedFilename(
       originalName,
@@ -3698,7 +3704,7 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) 
     job.status = "done";
 
     const totalSec = Math.floor((Date.now() - t0) / 1000);
-    const outKB = Math.round(result.buffer.length / 1024);
+    const outKB = Math.round(pdfOutput.length / 1024);
     pushProgress(
       job,
       effectiveMode === "retypeset"
@@ -4074,7 +4080,7 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
         signal: ac.signal,
         onProgress: (msg) => pushProgress(job, msg),
       });
-      buffer = bundle.buffer;
+      buffer = assertGeneratedOutputMagic(bundle.buffer, "zip", "bundle ZIP");
       const buildSec = Math.floor((Date.now() - tBuildStart) / 1000);
       pushProgress(
         job,
@@ -4088,8 +4094,9 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
       pushProgress(job, `📄 .${ext} 파일 빌드 중...`);
       buffer =
         format === "hwpx"
-          ? await pipeline.generateHwpx(content)
+          ? await pipeline.generateHwpx(content, { signal: ac.signal })
           : await pipeline.generateDocx(content);
+      buffer = assertGeneratedOutputMagic(buffer, ext, `.${ext} output`);
       const buildSec = Math.floor((Date.now() - tBuildStart) / 1000);
       const sizeKB = Math.round(buffer.length / 1024);
       pushProgress(job, `✓ .${ext} 빌드 완료 (${sizeKB}KB, ${buildSec}초)`);

@@ -29,7 +29,68 @@ import math
 import html
 from collections import defaultdict
 
+
+def _isolate_stdout_for_json_protocol():
+    """Keep fd 1 reserved for intentional JSON replies only.
+
+    PyMuPDF/MuPDF can write diagnostics at the native fd level. Save the original
+    stdout pipe for JSON responses, then redirect process stdout to stderr so any
+    accidental/native stdout noise stays diagnostic and cannot corrupt the protocol.
+    """
+    saved_fd = None
+    try:
+        try:
+            sys.stdout.flush()
+        except Exception:
+            pass
+        saved_fd = os.dup(1)
+        os.dup2(2, 1)
+        return saved_fd
+    except Exception:
+        if saved_fd is not None:
+            try:
+                os.close(saved_fd)
+            except Exception:
+                pass
+        return None
+
+
+_JSON_STDOUT_FD = _isolate_stdout_for_json_protocol()
+
 import fitz  # PyMuPDF
+
+
+def _disable_mupdf_diagnostics():
+    tools = getattr(fitz, "TOOLS", None)
+    if tools is None:
+        return
+    for name in ("mupdf_display_warnings", "mupdf_display_errors"):
+        fn = getattr(tools, name, None)
+        if not callable(fn):
+            continue
+        try:
+            fn(False)
+        except TypeError:
+            try:
+                fn(0)
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+
+_disable_mupdf_diagnostics()
+
+
+def write_json_response(obj):
+    data = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+    if _JSON_STDOUT_FD is None:
+        sys.stdout.write(data.decode("utf-8"))
+        sys.stdout.flush()
+        return
+    offset = 0
+    while offset < len(data):
+        offset += os.write(_JSON_STDOUT_FD, data[offset:])
 
 
 def _clean_ko(s):
@@ -1158,7 +1219,7 @@ def cmd_extract(pdf_path):
         "table_regions": table_regions,
         "fitz": fitz_ver,
     }
-    sys.stdout.write(json.dumps(out, ensure_ascii=False))
+    write_json_response(out)
     doc.close()
 
 
@@ -1223,18 +1284,15 @@ def cmd_analyze(pdf_path):
     eqs = text.count("=")
     math_score = greek * 3 + syms * 3 + subsup * 2 + eqs
     density = round((math_score / max(total, 1)) * 1000, 2)
-    sys.stdout.write(
-        json.dumps(
-            {
-                "page_count": n,
-                "text_chars": total,
-                "scanned": scanned,
-                "math_score": math_score,
-                "math_density": density,
-                "two_column": two_column,
-            },
-            ensure_ascii=False,
-        )
+    write_json_response(
+        {
+            "page_count": n,
+            "text_chars": total,
+            "scanned": scanned,
+            "math_score": math_score,
+            "math_density": density,
+            "two_column": two_column,
+        }
     )
     doc.close()
 
@@ -1287,18 +1345,15 @@ def cmd_rasterize(pdf_path, out_dir, target_width_px=1400, max_pages=20):
             out_path = os.path.join(out_dir, f"p-{i:03d}-{t:02d}.png")
             pix.save(out_path)
             files.append(out_path)
-    sys.stdout.write(
-        json.dumps(
-            {
-                "page_count": n,
-                "rendered_pages": rendered,
-                "tiles": len(files),
-                "truncated": truncated,
-                "target_width_px": target_width_px,
-                "files": files,
-            },
-            ensure_ascii=False,
-        )
+    write_json_response(
+        {
+            "page_count": n,
+            "rendered_pages": rendered,
+            "tiles": len(files),
+            "truncated": truncated,
+            "target_width_px": target_width_px,
+            "files": files,
+        }
     )
     doc.close()
 
@@ -2026,7 +2081,7 @@ def cmd_render(pdf_path, out_path, font_path):
 
     doc.save(out_path, garbage=3, deflate=True)
     doc.close()
-    sys.stdout.write(json.dumps({"ok": True, "replaced": replaced, "shrunk": shrunk}))
+    write_json_response({"ok": True, "replaced": replaced, "shrunk": shrunk})
 
 
 def cmd_split(pdf_path, out_dir, pages_per_chunk=5):
@@ -2048,9 +2103,7 @@ def cmd_split(pdf_path, out_dir, pages_per_chunk=5):
         chunks.append({"path": path, "start": start + 1, "end": end})
         ci += 1
     src.close()
-    sys.stdout.write(
-        json.dumps({"page_count": n, "chunks": chunks}, ensure_ascii=False)
-    )
+    write_json_response({"page_count": n, "chunks": chunks})
 
 
 def _figure_caption(tblocks, reg, gap=80.0):
@@ -2154,9 +2207,7 @@ def cmd_figures(pdf_path, out_dir, zoom=3.0):
                     "h": pix.height,
                 }
             )
-    sys.stdout.write(
-        json.dumps({"page_count": len(doc), "figures": figs_out}, ensure_ascii=False)
-    )
+    write_json_response({"page_count": len(doc), "figures": figs_out})
     doc.close()
 
 

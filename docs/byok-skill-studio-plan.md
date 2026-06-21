@@ -10,7 +10,7 @@
 사용자 추가 요청 2가지를 우선 구현했다. 이건 아래 BYOK(개인키 암호화 저장) 설계를 **대체**한다 —
 "관리자 키를 빌려 쓰는 위임" 모델이 더 단순하고 안전하기 때문(개인 키를 서버에 저장하지 않음).
 
-### A. API 키 위임(grant) — 관리자가 지정한 사용자가 기간 한정으로 관리자 키 무료 사용
+### A. API 키 위임(grant) — 관리자가 지정한 사용자가 기간 한정으로 관리자 키를 크레딧 차감 없이 사용
 - **핵심 통찰**: 모든 보고서 생성은 이미 서버 `ANTHROPIC_API_KEY`로 돈다. 따라서 "관리자 키로 사용"
   = **위임 기간 동안 그 사용자의 생성·챗봇이 크레딧 차감 없이 서버 키로 실행**되는 것. 개인 키 저장 불필요
   → `secret-box.js`/`user_api_keys` 암호화 테이블 **전부 불필요**(위험 표면 제거).
@@ -32,7 +32,7 @@
 - `public/index.html`+`app.js`: 도구 메뉴에 "파일 챗봇" 링크(관리자/베타/위임 시 노출).
 
 ### 배포 전 할 일 (지금은 안 함 — 라이브 작업 중)
-1. Supabase SQL editor에 `db/migrations/20260620_add_api_key_grants.sql` 실행(없으면 위임은 비활성/무료해제 안 됨, 사이트는 정상).
+1. Supabase SQL editor에 `db/migrations/20260620_add_api_key_grants.sql` 실행(없으면 위임은 비활성이고 크레딧 면제가 적용되지 않음, 사이트는 정상).
 2. 환경변수 추가 불필요(서버 `ANTHROPIC_API_KEY` 그대로). 선택: `FILECHAT_MAX_TOKENS`(기본 4000).
 3. 패치노트(`lib/version-info.js`)는 **공개 시점에** 추가 — 지금은 관리자/베타 한정이라 보류.
 4. 공개 저장소 동기화 시 plan 문서/PII 점검.
@@ -142,8 +142,8 @@ problem-set는 기존 존재. 신규 4종을 `lib/pipelines/<name>/`에 자체�
 - 베타 feature key 신설: 예 `skill-studio`. `requireAdminOrBeta("skill-studio")`로 페이지·엔드포인트·실행 전부 보호.
 - `db/migrations`에 `insert into beta_features('skill-studio', ...)` 시드(enabled=true, 테스터 지정).
 - 프런트: 허브에서 카드/탭 숨김 + `isAdmin || beta` 일 때만 노출(기존 패턴).
-- **크레딧**: BYOK 스킬은 사용자 본인 키로 과금되므로 크레딧 차감 안 함. 단 `FREE_BETA_TYPES`(=무료+게이트)와 별개로, 비관리자 실행 시 **해당 provider 키가 저장돼 있어야 실행 허용**(없으면 키 등록 안내).
-- 관리자는 키 없이도 env 키로 실행(무료).
+- **크레딧**: BYOK 스킬은 사용자 본인 키로 과금되므로 크레딧 차감 안 함. 단 `FREE_BETA_TYPES`는 역사적 이름의 "크레딧 면제 + 베타 게이트" allowlist이며, `type=free`/자유 보고서 이름과 무관하다. 비관리자 실행 시 **해당 provider 키가 저장돼 있어야 실행 허용**(없으면 키 등록 안내).
+- 관리자는 키 없이도 env 키로 실행(서비스 크레딧 차감 없음).
 
 ## 6. 프런트엔드
 

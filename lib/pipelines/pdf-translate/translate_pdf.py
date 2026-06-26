@@ -2142,7 +2142,7 @@ def _figure_caption(tblocks, reg, gap=80.0):
     return ""
 
 
-def cmd_figures(pdf_path, out_dir, zoom=3.0):
+def cmd_figures(pdf_path, out_dir, zoom=3.0, max_figures=80):
     """텍스트 PDF 의 그림/도표 영역을 PNG 로 잘라 out_dir 에 저장하고 메타데이터를 낸다.
     재조판(re-typeset) 시 원본 그림을 \\includegraphics 로 복원하기 위한 입력.
     번호는 페이지 순·세로 위→아래 순으로 매겨 Claude 마커 순서와 맞춘다."""
@@ -2151,6 +2151,11 @@ def cmd_figures(pdf_path, out_dir, zoom=3.0):
     except Exception:
         zoom = 3.0
     zoom = max(1.5, min(5.0, zoom))
+    try:
+        max_figures = int(max_figures)
+    except Exception:
+        max_figures = 80
+    max_figures = max(1, min(500, max_figures))
     doc = fitz.open(pdf_path)
     os.makedirs(out_dir, exist_ok=True)
     figs_out = []
@@ -2168,6 +2173,8 @@ def cmd_figures(pdf_path, out_dir, zoom=3.0):
         mat = fitz.Matrix(zoom, zoom)
         pr = page.rect
         for reg in regs:
+            if n >= max_figures:
+                break
             if reg.width < 45 or reg.height < 45:
                 continue  # 너무 작음(아이콘·기호 조각) → 그림으로 보지 않음
             # 축 라벨·화살촉이 잘리지 않게 약간 여백을 주되, 페이지 밖으로 안 나가게.
@@ -2207,6 +2214,8 @@ def cmd_figures(pdf_path, out_dir, zoom=3.0):
                     "h": pix.height,
                 }
             )
+        if n >= max_figures:
+            break
     write_json_response({"page_count": len(doc), "figures": figs_out})
     doc.close()
 
@@ -2230,8 +2239,8 @@ def main():
             # split <pdf> <out_dir> [pages_per_chunk]
             cmd_split(*sys.argv[2:5])
         elif mode == "figures":
-            # figures <pdf> <out_dir> [zoom] — 재조판 그림 복원용 크롭 추출
-            cmd_figures(*sys.argv[2:5])
+            # figures <pdf> <out_dir> [zoom] [max_figures] — 재조판 그림 복원용 크롭 추출
+            cmd_figures(*sys.argv[2:6])
         else:
             sys.stderr.write(f"unknown mode: {mode}\n")
             sys.exit(2)

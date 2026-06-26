@@ -19,7 +19,7 @@ create or replace function deduct_credit(
 returns numeric
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 declare
   new_balance numeric;
@@ -29,12 +29,12 @@ begin
   end if;
 
   if p_col = 'pre_credits_usd' then
-    update users
+    update public.users
       set pre_credits_usd = greatest(coalesce(pre_credits_usd, 0) - p_amount, 0)
       where id::text = p_user_id
       returning pre_credits_usd into new_balance;
   elsif p_col = 'result_credits_usd' then
-    update users
+    update public.users
       set result_credits_usd = greatest(coalesce(result_credits_usd, 0) - p_amount, 0)
       where id::text = p_user_id
       returning result_credits_usd into new_balance;
@@ -50,6 +50,9 @@ begin
 end;
 $$;
 
+revoke all on function public.deduct_credit(text, text, numeric) from public, anon, authenticated;
+grant execute on function public.deduct_credit(text, text, numeric) to service_role;
+
 -- ---------------------------------------------------------------------------
 -- 통합 크레딧 포인트(정수) 원자적 차감 RPC
 -- 모델별 과금(Opus 3 / Sonnet 1)으로 전환한 새 크레딧제용.
@@ -62,7 +65,7 @@ create or replace function spend_credits(
 returns integer
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, pg_temp
 as $$
 declare
   new_balance integer;
@@ -71,7 +74,7 @@ begin
     raise exception 'invalid amount: %', p_amount;
   end if;
 
-  update users
+  update public.users
     set credits = greatest(coalesce(credits, 0) - p_amount, 0)
     where id::text = p_user_id
     returning credits into new_balance;
@@ -83,3 +86,6 @@ begin
   return new_balance;
 end;
 $$;
+
+revoke all on function public.spend_credits(text, integer) from public, anon, authenticated;
+grant execute on function public.spend_credits(text, integer) to service_role;

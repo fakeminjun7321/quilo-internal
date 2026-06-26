@@ -27,24 +27,14 @@ set credits = (
 where coalesce(is_admin, false) = false
   and coalesce(credits, 0) = 0;
 
--- 3) 베타테스터 특수 계정: testtest / testtest
---    - unlimited = true  : 크레딧 차감 없이 무제한 사용
---    - restricted_model  : Sonnet 4.6만 사용 가능 (Opus 불가)
-insert into users (
-  name, student_id, password_hash, unlimited, restricted_model, is_admin, credits
-)
-values (
-  'testtest',
-  'beta',
-  '68061c73403499eb0bcee3013a539204:e6e7a7c69321ffc6b1bd70d0bc616212658b475017f6e748583f0fa5a7bd868c544030f26acda7819f66ab22a426ea7581fbe8aa60d2ae983e5f1ef3c4359f58',
-  true,
-  'claude-sonnet-4-6',
-  false,
-  0
-)
-on conflict (name) do update set
-  unlimited = true,
-  restricted_model = 'claude-sonnet-4-6',
-  password_hash = excluded.password_hash;
+-- 3) 공개 저장소에는 알려진 비밀번호/무제한 계정 seed를 두지 않는다.
+--    이미 과거 스크립트를 운영 DB에 적용했다면 아래 정리 SQL을 1회 실행:
+--
+-- update users
+-- set unlimited = false,
+--     restricted_model = null,
+--     credits = 0
+-- where name = 'testtest'
+--   and student_id = 'beta';
 
 -- 끝. (원자적 차감 함수는 db/credit-rpc.sql 의 spend_credits 를 적용)

@@ -739,14 +739,6 @@ app.use((req, res, next) => {
 // 물리 수행평가는 큰 PDF 를 Files API 로 업로드해 Anthropic 32MB 요청 한도를 우회한다.
 const MAX_UPLOAD_BYTES =
   parseInt(process.env.MAX_UPLOAD_MB || "64", 10) * 1024 * 1024;
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: MAX_UPLOAD_BYTES,
-    files: 50,
-    parts: 90,
-  },
-});
 
 // 한 요청 누적 업로드 상한(Render 메모리 보호). multer 의 per-file 64MB·files:50 는
 // 그대로 두되(정상 다중 사진/데이터 입력 보존), memoryStorage 특성상 한 요청이
@@ -754,15 +746,71 @@ const upload = multer({
 // 본문을 버퍼링하기 전에 가볍게 거부한다(헤더가 없으면 통과 — 스트리밍 호환).
 const MAX_TOTAL_UPLOAD_BYTES =
   parseInt(process.env.MAX_TOTAL_UPLOAD_MB || "192", 10) * 1024 * 1024;
+function uploadTooLargeMessage() {
+  return `파일이 너무 큽니다 (업로드 합계 최대 ${Math.round(
+    MAX_TOTAL_UPLOAD_BYTES / 1024 / 1024,
+  )}MB). 파일 수를 줄이거나 여러 번 나눠 생성해보세요.`;
+}
+function aggregateMemoryStorage(maxTotalBytes = MAX_TOTAL_UPLOAD_BYTES) {
+  return {
+    _handleFile(req, file, cb) {
+      const chunks = [];
+      let size = 0;
+      let called = false;
+      req._uploadTotalBytes = req._uploadTotalBytes || 0;
+      const done = (err, info) => {
+        if (called) return;
+        called = true;
+        cb(err, info);
+      };
+      file.stream.on("data", (chunk) => {
+        if (called) return;
+        const len = chunk.length || 0;
+        size += len;
+        req._uploadTotalBytes += len;
+        if (req._uploadTotalBytes > maxTotalBytes) {
+          const err = new Error(uploadTooLargeMessage());
+          err.status = 413;
+          err.expose = true;
+          err.code = "LIMIT_TOTAL_UPLOAD_SIZE";
+          done(err);
+          return;
+        }
+        chunks.push(chunk);
+      });
+      file.stream.on("error", (err) => done(err));
+      file.stream.on("end", () =>
+        done(null, {
+          buffer: Buffer.concat(chunks, size),
+          size,
+        }),
+      );
+    },
+    _removeFile(_req, file, cb) {
+      delete file.buffer;
+      cb(null);
+    },
+  };
+}
+function makeUpload(limits = {}) {
+  return multer({
+    storage: aggregateMemoryStorage(MAX_TOTAL_UPLOAD_BYTES),
+    limits: {
+      fileSize: MAX_UPLOAD_BYTES,
+      files: 50,
+      parts: 90,
+      ...limits,
+    },
+  });
+}
+const upload = makeUpload();
 function limitTotalUpload(req, res, next) {
   const raw = req.headers["content-length"];
   if (raw != null && raw !== "") {
     const len = Number(raw);
     if (Number.isFinite(len) && len > MAX_TOTAL_UPLOAD_BYTES) {
       return res.status(413).json({
-        error: `파일이 너무 큽니다 (업로드 합계 최대 ${Math.round(
-          MAX_TOTAL_UPLOAD_BYTES / 1024 / 1024,
-        )}MB). 파일 수를 줄이거나 여러 번 나눠 생성해보세요.`,
+        error: uploadTooLargeMessage(),
       });
     }
   }
@@ -773,6 +821,30 @@ function limitTotalUpload(req, res, next) {
 
 function getSessionUser(req) {
   return req.session && req.session.userInfo ? req.session.userInfo : null;
+}
+
+async function refreshSessionUser(req, { failClosed = false } = {}) {
+  const u = getSessionUser(req);
+  if (!u || !u.id || !supa.isEnabled()) return u;
+  try {
+    const fresh = await supa.findUserById(u.id);
+    if (!fresh) {
+      req.session = null;
+      return null;
+    }
+    req.session.userInfo = {
+      ...u,
+      name: fresh.name || u.name,
+      studentId: normalizeStudentId(fresh.student_id),
+      isAdmin: !!fresh.is_admin,
+      unlimited: !!fresh.unlimited,
+      restrictedModel: fresh.restricted_model || null,
+    };
+    return req.session.userInfo;
+  } catch (e) {
+    if (failClosed) throw e;
+    return u;
+  }
 }
 
 function requireAuth(req, res, next) {
@@ -786,11 +858,19 @@ function requireAuth(req, res, next) {
   return res.redirect("/login.html");
 }
 
-function requireAdmin(req, res, next) {
+async function requireAdmin(req, res, next) {
   const u = getSessionUser(req);
   if (!u) return res.status(401).json({ error: "로그인이 필요합니다." });
-  if (!u.isAdmin) return res.status(403).json({ error: "관리자만 접근 가능합니다." });
-  next();
+  try {
+    const fresh = await refreshSessionUser(req, { failClosed: true });
+    if (!fresh) return res.status(401).json({ error: "로그인이 필요합니다." });
+    if (!fresh.isAdmin)
+      return res.status(403).json({ error: "관리자만 접근 가능합니다." });
+    next();
+  } catch (e) {
+    console.warn("[auth] admin privilege refresh failed:", e.message);
+    return res.status(503).json({ error: "권한 확인 중 오류가 발생했습니다." });
+  }
 }
 
 // 베타 기능 게이트: 관리자이거나, 해당 베타가 enabled 이고 테스터로 지정된 사용자만 통과.
@@ -820,7 +900,13 @@ function getProblemSetMaxProblems() {
 
 function requireBeta(key) {
   return async (req, res, next) => {
-    const u = getSessionUser(req);
+    let u;
+    try {
+      u = await refreshSessionUser(req, { failClosed: true });
+    } catch (e) {
+      console.warn("[auth] beta privilege refresh failed:", e.message);
+      return res.status(503).json({ error: "권한 확인 중 오류가 발생했습니다." });
+    }
     if (!u) return res.status(401).json({ error: "로그인이 필요합니다." });
     if (u.isAdmin) return next(); // 관리자는 접근·한도 모두 면제
     try {
@@ -853,7 +939,13 @@ function requireBeta(key) {
 // 핸들러에서 getSessionUser(req).isAdmin 으로 유료 모델 접근을 추가 제한한다.
 function requireAdminOrBeta(key) {
   return async (req, res, next) => {
-    const u = getSessionUser(req);
+    let u;
+    try {
+      u = await refreshSessionUser(req, { failClosed: true });
+    } catch (e) {
+      console.warn("[auth] admin/beta privilege refresh failed:", e.message);
+      return res.status(503).json({ error: "권한 확인 중 오류가 발생했습니다." });
+    }
     if (!u) return res.status(401).json({ error: "로그인이 필요합니다." });
     if (u.isAdmin) return next();
     try {
@@ -2672,7 +2764,14 @@ app.post(
       return res.status(400).json({ error: e.message });
     }
 
-    const userInfo = getSessionUser(req);
+    let userInfo;
+    try {
+      userInfo = await refreshSessionUser(req, { failClosed: true });
+    } catch (e) {
+      console.warn("[generate] privilege refresh failed:", e.message);
+      return res.status(503).json({ error: "권한 확인 중 오류가 발생했습니다." });
+    }
+    if (!userInfo) return res.status(401).json({ error: "로그인이 필요합니다." });
 
     // 베타 보고서 종류(예: phys-inquiry) 접근 제한 — 관리자 또는 지정 베타테스터만.
     // 베타 feature key 는 reportType 과 동일하게 관리(관리자탭 베타 관리에서 지정).
@@ -2793,7 +2892,7 @@ app.post(
     }
 
     // 시간당 사용 횟수 제한 (admin 제외, 일반 사용자만)
-    if (!userInfo.isAdmin && userInfo.id) {
+    if (!effectiveIsAdmin && userInfo.id) {
       const limit = rateLimit.checkUserGenLimit(userInfo.id);
       if (!limit.allowed) {
         const unlockTime = new Date(limit.unlockAt).toLocaleString("ko-KR", {
@@ -2940,7 +3039,7 @@ app.post(
     // 모델·크레딧 단가(model, creditCost)는 위 잔액 검증 단계에서 이미 결정됨.
 
     // 모든 검증 통과 — 일반 사용자는 rate limit 카운트 증가
-    if (!userInfo.isAdmin && userInfo.id) {
+    if (!effectiveIsAdmin && userInfo.id) {
       rateLimit.recordUserGenAttempt(userInfo.id);
     }
 
@@ -3424,7 +3523,11 @@ async function extractFiguresForRetypeset(pdfBuffer, { signal, onProgress }) {
   const pdfPath = path.join(tmpDir, "in.pdf");
   try {
     fs.writeFileSync(pdfPath, pdfBuffer);
-    const meta = await extractFigures(pdfPath, tmpDir, { signal });
+    const maxFigures = Math.max(
+      1,
+      parseInt(process.env.PDF_RETYPESET_MAX_FIGURES || "80", 10) || 80,
+    );
+    const meta = await extractFigures(pdfPath, tmpDir, { signal, maxFigures });
     const figs = (meta.figures || [])
       .map((f) => {
         try {
@@ -3469,17 +3572,19 @@ async function prepareScannedRouting(pdfBuffer, { signal, onProgress }) {
     let scanned = false;
     let mathDensity = 0;
     let twoColumn = false;
+    let pageCount = 0;
     try {
       const a = await analyzePdf(pdfPath, { signal });
       scanned = !!a.scanned;
       mathDensity = Number(a.math_density) || 0;
       twoColumn = !!a.two_column;
+      pageCount = Math.max(0, Number(a.page_count) || 0);
     } catch (e) {
       onProgress(`⚠ 텍스트 레이어 분석을 건너뜁니다: ${e.message}`);
-      return { scanned: false, imageBlocks: null, mathDensity: 0, twoColumn: false };
+      return { scanned: false, imageBlocks: null, mathDensity: 0, twoColumn: false, pageCount: 0 };
     }
     if (!scanned)
-      return { scanned: false, imageBlocks: null, mathDensity, twoColumn };
+      return { scanned: false, imageBlocks: null, mathDensity, twoColumn, pageCount };
 
     onProgress(
       "🖼️ 텍스트 레이어가 없는 스캔/이미지 PDF 감지 → 고해상도 OCR 재조판으로 전환",
@@ -3562,6 +3667,12 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) 
       signal: ac.signal,
       onProgress,
     });
+    const maxTextPages = parseInt(process.env.PDF_TRANSLATE_MAX_PAGES || "80", 10);
+    if (!routing.scanned && routing.pageCount > maxTextPages) {
+      throw new Error(
+        `페이지가 너무 많습니다 (${routing.pageCount}쪽 > 상한 ${maxTextPages}쪽). 파일을 나눠서 시도하세요.`,
+      );
+    }
 
     // 변환 방식 결정.
     // - 명시적 '재조판' → 그대로.
@@ -3964,16 +4075,21 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
     const generatedFigureCount = Array.isArray(content.__figures)
       ? content.__figures.length
       : 0;
+    const generatedImageEditCount = Math.max(
+      0,
+      Math.trunc(Number(content.__imageEdits) || 0),
+    );
+    const billableGeneratedImages = generatedFigureCount + generatedImageEditCount;
     if (
-      generatedFigureCount > 0 &&
+      billableGeneratedImages > 0 &&
       typeof job.creditCost === "number" &&
       !job.billingExempt &&
       !FREE_BETA_TYPES.has(job.reportType)
     ) {
-      job.creditCost += generatedFigureCount * 1;
+      job.creditCost += billableGeneratedImages * 1;
       pushProgress(
         job,
-        `🖼 AI 개념도 ${generatedFigureCount}장 — +${generatedFigureCount}크레딧 추가 과금`,
+        `🖼 AI 이미지 ${billableGeneratedImages}장 — +${billableGeneratedImages}크레딧 추가 과금`,
       );
     }
 
@@ -4429,7 +4545,15 @@ app.use(
 app.use("/api/lab", require("./lib/lab-routes")());
 
 // 창작(만들기): AI 아티팩트 빌더 — 생성은 관리자/베타('create'), 보기는 모두 공개.
-app.use(require("./lib/artifacts-routes")({ requireAdmin, requireAdminOrBeta, getSessionUser }));
+app.use(
+  require("./lib/artifacts-routes")({
+    requireAdmin,
+    requireAdminOrBeta,
+    getSessionUser,
+    refreshSessionUser,
+    sessionSecret: SESSION_SECRET,
+  }),
+);
 
 // 코딩 테스트(정보 수행평가 대비, 베타): 문제 본문·테스트·채점 하니스 제공.
 // 채점은 브라우저(Pyodide)에서 수행. 베타 게이트("coding-test") — 관리자/테스터 한정.
@@ -4457,6 +4581,11 @@ const FILECHAT_MAX_TOKENS = parseInt(
   process.env.FILECHAT_MAX_TOKENS || "4000",
   10,
 );
+const filechatUpload = makeUpload({
+  fileSize: Math.min(MAX_UPLOAD_BYTES, 24 * 1024 * 1024),
+  files: 6,
+  parts: 16,
+});
 
 // 이 사용자가 파일 챗봇을 쓸 수 있는지(관리자/위임/베타). reason 도 함께.
 async function resolveFilechatAccess(u) {
@@ -4478,23 +4607,35 @@ async function resolveFilechatAccess(u) {
   return { allowed: false, reason: "" };
 }
 
-// 접근 가능 여부 조회(페이지 게이트용).
-app.get("/api/filechat/access", requireAuth, async (req, res) => {
-  const u = getSessionUser(req);
-  const acc = await resolveFilechatAccess(u);
-  res.json(acc);
-});
-
-// 대화 1턴: 직전 대화(messages JSON) + 현재 메시지(message) + 첨부파일(files[]) → 평문 스트림.
-// 무상태 서버이므로 클라이언트가 현재 첨부 파일 묶음을 매 턴 함께 보낸다(항상 맥락 보장).
-app.post("/api/filechat", requireAuth, upload.any(), async (req, res) => {
-  const u = getSessionUser(req);
+async function requireFilechatAccess(req, res, next) {
+  let u;
+  try {
+    u = await refreshSessionUser(req, { failClosed: true });
+  } catch (e) {
+    console.warn("[filechat] privilege refresh failed:", e.message);
+    return res.status(503).json({ error: "권한 확인 중 오류가 발생했습니다." });
+  }
   const acc = await resolveFilechatAccess(u);
   if (!acc.allowed) {
     return res.status(403).json({
       error: "파일 챗봇은 관리자·위임 사용자·베타 테스터만 사용할 수 있습니다.",
     });
   }
+  req.filechatAccess = acc;
+  next();
+}
+
+// 접근 가능 여부 조회(페이지 게이트용).
+app.get("/api/filechat/access", requireAuth, async (req, res) => {
+  const u = await refreshSessionUser(req);
+  const acc = await resolveFilechatAccess(u);
+  res.json(acc);
+});
+
+// 대화 1턴: 직전 대화(messages JSON) + 현재 메시지(message) + 첨부파일(files[]) → 평문 스트림.
+// 무상태 서버이므로 클라이언트가 현재 첨부 파일 묶음을 매 턴 함께 보낸다(항상 맥락 보장).
+app.post("/api/filechat", requireAuth, limitTotalUpload, requireFilechatAccess, filechatUpload.any(), async (req, res) => {
+  const u = getSessionUser(req);
 
   // 사용량 제한(IP 기준, 사이트 챗 버킷 공용)
   const ip = req.ip || "unknown";
@@ -5229,8 +5370,15 @@ app.use(
   }),
 );
 
-app.get("/admin", (req, res) => {
-  const u = getSessionUser(req);
+app.get("/admin", async (req, res) => {
+  let u = getSessionUser(req);
+  if (!u) return res.redirect("/login.html");
+  try {
+    u = await refreshSessionUser(req, { failClosed: true });
+  } catch (e) {
+    console.warn("[auth] admin page privilege refresh failed:", e.message);
+    return res.status(503).send("권한 확인 중 오류가 발생했습니다.");
+  }
   if (!u) return res.redirect("/login.html");
   if (!u.isAdmin) return res.status(403).send("관리자만 접근 가능합니다.");
   res.sendFile(path.join(__dirname, "public", "admin.html"));

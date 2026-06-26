@@ -353,7 +353,7 @@
 
       function renderProblem(p) {
         var examples = (p.tests || []).filter(function (t) { return !t.hidden; });
-        var hiddenCount = (p.tests || []).length - examples.length;
+        var hiddenCount = Number(p.hidden_test_count || 0);
         var html = "";
         html += '<div class="ct-titlerow">' +
           '<span class="ct-diff d-' + esc(p.difficulty) + '">' + esc(p.difficulty) + "</span>" +
@@ -367,14 +367,14 @@
         if (p.constraints_md) {
           html += '<div class="ct-constraints"><div class="lab" style="font-size:11.5px;font-weight:800;color:#b45309;margin-bottom:2px">제약 조건</div><div class="ct-prose">' + mdToHtml(p.constraints_md) + "</div></div>";
         }
-        html += '<div class="ct-section-h">예시 (' + examples.length + "개)" + (hiddenCount ? " · 숨은 테스트 " + hiddenCount + "개" : "") + "</div>";
+        html += '<div class="ct-section-h">예시 (' + examples.length + "개)" + (hiddenCount ? " · 숨은 테스트 " + hiddenCount + "개는 비공개" : "") + "</div>";
         examples.forEach(function (t) { html += exampleHtml(p, t); });
 
         html += '<div class="ct-editor-wrap">' +
           '<div class="ct-editor-bar"><span>🐍 Python</span><span style="flex:1"></span><span class="muted" style="color:#94a3b8">' + esc(p.entry) + "() 함수를 완성하세요</span></div>" +
           '<div class="ct-editor" id="ctEditor"></div></div>';
         html += '<div class="ct-btns">' +
-          '<button class="qbtn primary" id="btnSubmit">✅ 제출 (전체 채점)</button>' +
+          '<button class="qbtn primary" id="btnSubmit">✅ 제출 (공개 테스트)</button>' +
           '<button class="qbtn" id="btnRunEx">▶ 예제 실행</button>' +
           '<button class="qbtn" id="btnConsole">🖥 콘솔 실행</button>' +
           '<button class="qbtn" id="btnReset">↺ 초기화</button>' +
@@ -595,7 +595,7 @@
         var cls = examplesOnly ? "run" : allPass ? "pass" : "fail";
         var head = examplesOnly
           ? "▶ 예제 " + passed + "/" + total + " 통과"
-          : allPass ? "✅ 정답입니다! 모든 테스트 " + passed + "/" + total + " 통과"
+          : allPass ? "✅ 공개 테스트 " + passed + "/" + total + " 통과"
                     : "❌ " + passed + "/" + total + " 통과 — 다시 시도해 보세요";
         var html = '<div class="ct-summary ' + cls + '">' + esc(head) + "</div>";
         results.forEach(function (r, i) {

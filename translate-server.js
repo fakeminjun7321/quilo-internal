@@ -71,7 +71,10 @@ const CODES = String(
 const tokenFor = (code) =>
   crypto.createHmac("sha256", SECRET).update("v1:" + code).digest("hex");
 const VALID_TOKENS = new Set(CODES.map(tokenFor));
-const OPEN_NO_GATE = CODES.length === 0 && !IS_PROD; // 로컬 개방, 프로덕션은 차단
+const OPEN_NO_GATE =
+  CODES.length === 0 &&
+  !IS_PROD &&
+  process.env.TRANSLATE_ALLOW_OPEN_DEV === "1"; // 명시 opt-in 로컬 개방
 
 function parseCookies(req) {
   const out = {};
@@ -185,7 +188,11 @@ async function extractFiguresForRetypeset(pdfBuffer, { signal, onProgress }) {
   const pdfPath = path.join(tmpDir, "in.pdf");
   try {
     fs.writeFileSync(pdfPath, pdfBuffer);
-    const meta = await extractFigures(pdfPath, tmpDir, { signal });
+    const maxFigures = Math.max(
+      1,
+      parseInt(process.env.PDF_RETYPESET_MAX_FIGURES || "80", 10) || 80,
+    );
+    const meta = await extractFigures(pdfPath, tmpDir, { signal, maxFigures });
     return (meta.figures || [])
       .map((f) => {
         try { return { n: f.n, page: f.page, caption: f.caption || "", buffer: fs.readFileSync(f.file) }; }
@@ -204,17 +211,18 @@ async function prepareScannedRouting(pdfBuffer, { signal, onProgress }) {
   const pdfPath = path.join(tmpDir, "in.pdf");
   try {
     fs.writeFileSync(pdfPath, pdfBuffer);
-    let scanned = false, mathDensity = 0, twoColumn = false;
+    let scanned = false, mathDensity = 0, twoColumn = false, pageCount = 0;
     try {
       const a = await analyzePdf(pdfPath, { signal });
       scanned = !!a.scanned;
       mathDensity = Number(a.math_density) || 0;
       twoColumn = !!a.two_column;
+      pageCount = Math.max(0, Number(a.page_count) || 0);
     } catch (e) {
       onProgress(`⚠ 텍스트 레이어 분석을 건너뜁니다: ${e.message}`);
-      return { scanned: false, imageBlocks: null, mathDensity: 0, twoColumn: false };
+      return { scanned: false, imageBlocks: null, mathDensity: 0, twoColumn: false, pageCount: 0 };
     }
-    if (!scanned) return { scanned: false, imageBlocks: null, mathDensity, twoColumn };
+    if (!scanned) return { scanned: false, imageBlocks: null, mathDensity, twoColumn, pageCount };
     onProgress("🖼️ 텍스트 레이어가 없는 스캔/이미지 PDF 감지 → 고해상도 OCR 재조판으로 전환");
     const maxPages = parseInt(process.env.PDF_OCR_MAX_PAGES || "30", 10);
     const meta = await rasterizePages(pdfPath, tmpDir, { maxPages, signal });
@@ -292,6 +300,12 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) 
     pushProgress(job, `📥 PDF 수신 (${Math.round(pdfBuffer.length / 1024)}KB)`);
     const onProgress = (msg) => pushProgress(job, msg);
     const routing = await prepareScannedRouting(pdfBuffer, { signal: ac.signal, onProgress });
+    const maxTextPages = parseInt(process.env.PDF_TRANSLATE_MAX_PAGES || "80", 10);
+    if (!routing.scanned && routing.pageCount > maxTextPages) {
+      throw new Error(
+        `페이지가 너무 많습니다 (${routing.pageCount}쪽 > 상한 ${maxTextPages}쪽). 파일을 나눠서 시도하세요.`,
+      );
+    }
     const TH = Number(process.env.PDF_AUTO_MATH_THRESHOLD || 12);
     const isAuto = mode !== "inplace" && mode !== "retypeset";
     const needsRetypeset = routing.scanned || (routing.mathDensity || 0) >= TH;

@@ -13,3 +13,7 @@ create table if not exists app_settings (
   value      jsonb not null,
   updated_at timestamptz not null default now()
 );
+
+alter table public.app_settings enable row level security;
+revoke all on table public.app_settings from anon, authenticated;
+grant select, insert, update, delete on table public.app_settings to service_role;

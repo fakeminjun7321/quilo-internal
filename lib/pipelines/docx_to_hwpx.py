@@ -20,6 +20,7 @@ import tempfile
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 EQ_TOOL = os.path.join(ROOT, "lib", "equation", "hwpx_equation_tool.py")
+STEP_TIMEOUT = max(5, int(os.environ.get("DOCX_TO_HWPX_STEP_TIMEOUT_SEC", "90")))
 
 
 def _math_to_markers(node):
@@ -45,7 +46,10 @@ def main():
 
     with tempfile.TemporaryDirectory() as td:
         # 1) docx → AST
-        ast_bytes = subprocess.check_output([pandoc, in_docx, "-t", "json"])
+        ast_bytes = subprocess.check_output(
+            [pandoc, in_docx, "-t", "json"],
+            timeout=STEP_TIMEOUT,
+        )
         ast = json.loads(ast_bytes)
         # 2) Math → 마커
         ast = _math_to_markers(ast)
@@ -54,7 +58,10 @@ def main():
             json.dump(ast, f, ensure_ascii=False)
         # 3) AST(.json) → HWPX (마커 텍스트 포함). pypandoc-hwpx 가 .json 입력을 처리.
         marked = os.path.join(td, "marked.hwpx")
-        subprocess.check_call([py, "-m", "pypandoc_hwpx.cli", mod, "-o", marked])
+        subprocess.check_call(
+            [py, "-m", "pypandoc_hwpx.cli", mod, "-o", marked],
+            timeout=STEP_TIMEOUT,
+        )
         # 4) 마커가 있으면 한컴 수식 객체로 치환. 없으면 그대로.
         #    마커는 zip 내부 section XML 에 (압축되어) 있으므로 zip 안을 읽어 확인한다.
         has_marker = False
@@ -69,10 +76,13 @@ def main():
         except Exception:
             has_marker = True  # 불확실하면 변환을 시도(안전)
         if has_marker:
-            r = subprocess.run([py, EQ_TOOL, "replace", marked, out_hwpx])
-            # 수식 치환이 실패해도 문서 자체는 살린다(마커가 LaTeX 텍스트로 보임).
+            r = subprocess.run(
+                [py, EQ_TOOL, "replace", marked, out_hwpx],
+                timeout=STEP_TIMEOUT,
+            )
             if r.returncode != 0 or not os.path.exists(out_hwpx):
-                shutil.copy(marked, out_hwpx)
+                sys.stderr.write("equation marker postprocess failed; refusing raw-marker HWPX\n")
+                return 1
         else:
             shutil.copy(marked, out_hwpx)
     return 0

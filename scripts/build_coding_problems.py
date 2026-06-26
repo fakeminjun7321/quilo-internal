@@ -1062,13 +1062,16 @@ def bake_and_verify():
 
 
 def to_public(problem):
-    """problems.json 으로 내보낼 형태 — 레퍼런스 풀이(solution)는 제외."""
+    """problems.json 으로 내보낼 형태 — 레퍼런스 풀이와 숨은 테스트는 제외."""
     keep = {
         "id", "week", "title", "difficulty", "tags", "summary",
         "statement_md", "constraints_md", "mode", "entry", "compare",
         "starter", "tests",
     }
     out = {k: v for k, v in problem.items() if k in keep}
+    tests = problem.get("tests") or []
+    out["hidden_test_count"] = sum(1 for t in tests if t.get("hidden"))
+    out["tests"] = [{**t, "hidden": False} for t in tests if not t.get("hidden")]
     out.setdefault("mode", "function")
     out.setdefault("compare", "value")
     return out

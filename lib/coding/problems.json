@@ -25,9 +25,11 @@
     {
      "name": "구구단 전체",
      "args": "()",
-     "expected": "'2 x 1 = 2 | 3 x 1 = 3 | 4 x 1 = 4 | 5 x 1 = 5 | 6 x 1 = 6 | 7 x 1 = 7 | 8 x 1 = 8 | 9 x 1 = 9\\n2 x 2 = 4 | 3 x 2 = 6 | 4 x 2 = 8 | 5 x 2 = 10 | 6 x 2 = 12 | 7 x 2 = 14 | 8 x 2 = 16 | 9 x 2 = 18\\n2 x 3 = 6 | 3 x 3 = 9 | 4 x 3 = 12 | 5 x 3 = 15 | 6 x 3 = 18 | 7 x 3 = 21 | 8 x 3 = 24 | 9 x 3 = 27\\n2 x 4 = 8 | 3 x 4 = 12 | 4 x 4 = 16 | 5 x 4 = 20 | 6 x 4 = 24 | 7 x 4 = 28 | 8 x 4 = 32 | 9 x 4 = 36\\n2 x 5 = 10 | 3 x 5 = 15 | 4 x 5 = 20 | 5 x 5 = 25 | 6 x 5 = 30 | 7 x 5 = 35 | 8 x 5 = 40 | 9 x 5 = 45\\n2 x 6 = 12 | 3 x 6 = 18 | 4 x 6 = 24 | 5 x 6 = 30 | 6 x 6 = 36 | 7 x 6 = 42 | 8 x 6 = 48 | 9 x 6 = 54\\n2 x 7 = 14 | 3 x 7 = 21 | 4 x 7 = 28 | 5 x 7 = 35 | 6 x 7 = 42 | 7 x 7 = 49 | 8 x 7 = 56 | 9 x 7 = 63\\n2 x 8 = 16 | 3 x 8 = 24 | 4 x 8 = 32 | 5 x 8 = 40 | 6 x 8 = 48 | 7 x 8 = 56 | 8 x 8 = 64 | 9 x 8 = 72\\n2 x 9 = 18 | 3 x 9 = 27 | 4 x 9 = 36 | 5 x 9 = 45 | 6 x 9 = 54 | 7 x 9 = 63 | 8 x 9 = 72 | 9 x 9 = 81'"
+     "expected": "'2 x 1 = 2 | 3 x 1 = 3 | 4 x 1 = 4 | 5 x 1 = 5 | 6 x 1 = 6 | 7 x 1 = 7 | 8 x 1 = 8 | 9 x 1 = 9\\n2 x 2 = 4 | 3 x 2 = 6 | 4 x 2 = 8 | 5 x 2 = 10 | 6 x 2 = 12 | 7 x 2 = 14 | 8 x 2 = 16 | 9 x 2 = 18\\n2 x 3 = 6 | 3 x 3 = 9 | 4 x 3 = 12 | 5 x 3 = 15 | 6 x 3 = 18 | 7 x 3 = 21 | 8 x 3 = 24 | 9 x 3 = 27\\n2 x 4 = 8 | 3 x 4 = 12 | 4 x 4 = 16 | 5 x 4 = 20 | 6 x 4 = 24 | 7 x 4 = 28 | 8 x 4 = 32 | 9 x 4 = 36\\n2 x 5 = 10 | 3 x 5 = 15 | 4 x 5 = 20 | 5 x 5 = 25 | 6 x 5 = 30 | 7 x 5 = 35 | 8 x 5 = 40 | 9 x 5 = 45\\n2 x 6 = 12 | 3 x 6 = 18 | 4 x 6 = 24 | 5 x 6 = 30 | 6 x 6 = 36 | 7 x 6 = 42 | 8 x 6 = 48 | 9 x 6 = 54\\n2 x 7 = 14 | 3 x 7 = 21 | 4 x 7 = 28 | 5 x 7 = 35 | 6 x 7 = 42 | 7 x 7 = 49 | 8 x 7 = 56 | 9 x 7 = 63\\n2 x 8 = 16 | 3 x 8 = 24 | 4 x 8 = 32 | 5 x 8 = 40 | 6 x 8 = 48 | 7 x 8 = 56 | 8 x 8 = 64 | 9 x 8 = 72\\n2 x 9 = 18 | 3 x 9 = 27 | 4 x 9 = 36 | 5 x 9 = 45 | 6 x 9 = 54 | 7 x 9 = 63 | 8 x 9 = 72 | 9 x 9 = 81'",
+     "hidden": false
     }
    ],
+   "hidden_test_count": 0,
    "mode": "function",
    "compare": "value"
   },
@@ -49,27 +51,11 @@
     {
      "name": "2x3",
      "args": "([[1, 2, 3], [4, 5, 6]],)",
-     "expected": "[[1, 4], [2, 5], [3, 6]]"
-    },
-    {
-     "name": "3x2",
-     "hidden": true,
-     "args": "([[1, 2], [3, 4], [5, 6]],)",
-     "expected": "[[1, 3, 5], [2, 4, 6]]"
-    },
-    {
-     "name": "1x1",
-     "hidden": true,
-     "args": "([[7]],)",
-     "expected": "[[7]]"
-    },
-    {
-     "name": "3x4",
-     "hidden": true,
-     "args": "([[1,2,3,4],[5,6,7,8],[9,10,11,12]],)",
-     "expected": "[[1, 5, 9], [2, 6, 10], [3, 7, 11], [4, 8, 12]]"
+     "expected": "[[1, 4], [2, 5], [3, 6]]",
+     "hidden": false
     }
    ],
+   "hidden_test_count": 3,
    "mode": "function",
    "compare": "value"
   },
@@ -91,27 +77,11 @@
     {
      "name": "inlets",
      "args": "(['listen','silent','enlist','hello','tinsel'], 'inlets')",
-     "expected": "['listen', 'silent', 'enlist', 'tinsel']"
-    },
-    {
-     "name": "abc",
-     "hidden": true,
-     "args": "(['cab','bca','xyz','ab','abc','aabbcc'], 'abc')",
-     "expected": "['cab', 'bca', 'abc']"
-    },
-    {
-     "name": "aabb",
-     "hidden": true,
-     "args": "(['abab','baba','abc','aabb','ab'], 'aabb')",
-     "expected": "['abab', 'baba', 'aabb']"
-    },
-    {
-     "name": "대소문자",
-     "hidden": true,
-     "args": "(['rat','tar','car','art','ART'], 'art')",
-     "expected": "['rat', 'tar', 'art']"
+     "expected": "['listen', 'silent', 'enlist', 'tinsel']",
+     "hidden": false
     }
    ],
+   "hidden_test_count": 3,
    "mode": "function",
    "compare": "value"
   },
@@ -133,27 +103,11 @@
     {
      "name": "기본",
      "args": "([1,5,9], [2,4,8], [3,6,7])",
-     "expected": "[3, 6, 9]"
-    },
-    {
-     "name": "혼합",
-     "hidden": true,
-     "args": "([10,20,30], [5,25,15], [12,1,40])",
-     "expected": "[12, 25, 40]"
-    },
-    {
-     "name": "단일",
-     "hidden": true,
-     "args": "([0], [0], [0])",
-     "expected": "[0]"
-    },
-    {
-     "name": "음수",
-     "hidden": true,
-     "args": "([-1,-5], [-2,-3], [-9,-4])",
-     "expected": "[-1, -3]"
+     "expected": "[3, 6, 9]",
+     "hidden": false
     }
    ],
+   "hidden_test_count": 3,
    "mode": "function",
    "compare": "value"
   },
@@ -175,33 +129,11 @@
     {
      "name": "n=30",
      "args": "(30,)",
-     "expected": "[2, 3, 5, 7, 11, 13, 17, 19, 23, 29]"
-    },
-    {
-     "name": "n=2",
-     "hidden": true,
-     "args": "(2,)",
-     "expected": "[2]"
-    },
-    {
-     "name": "n=10",
-     "hidden": true,
-     "args": "(10,)",
-     "expected": "[2, 3, 5, 7]"
-    },
-    {
-     "name": "n=1",
-     "hidden": true,
-     "args": "(1,)",
-     "expected": "[]"
-    },
-    {
-     "name": "n=50",
-     "hidden": true,
-     "args": "(50,)",
-     "expected": "[2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47]"
+     "expected": "[2, 3, 5, 7, 11, 13, 17, 19, 23, 29]",
+     "hidden": false
     }
    ],
+   "hidden_test_count": 4,
    "mode": "function",
    "compare": "value"
   },
@@ -223,27 +155,11 @@
     {
      "name": "ATGCGTA",
      "args": "('ATGCGTA',)",
-     "expected": "({'A': 2, 'T': 2, 'G': 2, 'C': 1}, 'TACGCAT')"
-    },
-    {
-     "name": "AAAA",
-     "hidden": true,
-     "args": "('AAAA',)",
-     "expected": "({'A': 4, 'T': 0, 'G': 0, 'C': 0}, 'TTTT')"
-    },
-    {
-     "name": "ATGC",
-     "hidden": true,
-     "args": "('ATGC',)",
-     "expected": "({'A': 1, 'T': 1, 'G': 1, 'C': 1}, 'TACG')"
-    },
-    {
-     "name": "혼합",
-     "hidden": true,
-     "args": "('GGGCCCAAATTT',)",
-     "expected": "({'A': 3, 'T': 3, 'G': 3, 'C': 3}, 'CCCGGGTTTAAA')"
+     "expected": "({'A': 2, 'T': 2, 'G': 2, 'C': 1}, 'TACGCAT')",
+     "hidden": false
     }
    ],
+   "hidden_test_count": 3,
    "mode": "function",
    "compare": "value"
   },
@@ -266,27 +182,11 @@
     {
      "name": "기본",
      "args": "([101,102,103,104,105], [102,104])",
-     "expected": "[105, 101, 103]"
-    },
-    {
-     "name": "퇴장없음",
-     "hidden": true,
-     "args": "([1,2,3], [])",
-     "expected": "[1, 2, 3]"
-    },
-    {
-     "name": "중복입장",
-     "hidden": true,
-     "args": "([5,5,6,7], [6])",
-     "expected": "[5, 7]"
-    },
-    {
-     "name": "전원퇴장",
-     "hidden": true,
-     "args": "([1,2,3], [1,2,3])",
-     "expected": "[]"
+     "expected": "[105, 101, 103]",
+     "hidden": false
     }
    ],
+   "hidden_test_count": 3,
    "mode": "function"
   },
   {
@@ -307,33 +207,11 @@
     {
      "name": "기본",
      "args": "([2,5,1,2,3,5,1,2,4],)",
-     "expected": "2"
-    },
-    {
-     "name": "중복없음",
-     "hidden": true,
-     "args": "([1,2,3,4],)",
-     "expected": "-1"
-    },
-    {
-     "name": "즉시중복",
-     "hidden": true,
-     "args": "([7,7],)",
-     "expected": "7"
-    },
-    {
-     "name": "긴배열",
-     "hidden": true,
-     "args": "([3,1,4,1,5,9,2,6],)",
-     "expected": "1"
-    },
-    {
-     "name": "빈배열",
-     "hidden": true,
-     "args": "([],)",
-     "expected": "-1"
+     "expected": "2",
+     "hidden": false
     }
    ],
+   "hidden_test_count": 4,
    "mode": "function",
    "compare": "value"
   },
@@ -355,38 +233,17 @@
     {
      "name": "abcabcbb",
      "args": "('abcabcbb',)",
-     "expected": "3"
+     "expected": "3",
+     "hidden": false
     },
     {
      "name": "pwwkew",
      "args": "('pwwkew',)",
-     "expected": "3"
-    },
-    {
-     "name": "bbbbb",
-     "hidden": true,
-     "args": "('bbbbb',)",
-     "expected": "1"
-    },
-    {
-     "name": "빈문자열",
-     "hidden": true,
-     "args": "('',)",
-     "expected": "0"
-    },
-    {
-     "name": "모두다름",
-     "hidden": true,
-     "args": "('abcdef',)",
-     "expected": "6"
-    },
-    {
-     "name": "dvdf",
-     "hidden": true,
-     "args": "('dvdf',)",
-     "expected": "3"
+     "expected": "3",
+     "hidden": false
     }
    ],
+   "hidden_test_count": 4,
    "mode": "function",
    "compare": "value"
   },
@@ -409,27 +266,11 @@
     {
      "name": "기본",
      "args": "(['eat','tea','tan','ate','nat','bat'],)",
-     "expected": "[['eat', 'tea', 'ate'], ['tan', 'nat'], ['bat']]"
-    },
-    {
-     "name": "중복단어",
-     "hidden": true,
-     "args": "(['a','b','a'],)",
-     "expected": "[['a', 'a'], ['b']]"
-    },
-    {
-     "name": "3글자",
-     "hidden": true,
-     "args": "(['abc','cba','bca','xy'],)",
-     "expected": "[['abc', 'cba', 'bca'], ['xy']]"
-    },
-    {
-     "name": "빈입력",
-     "hidden": true,
-     "args": "([],)",
-     "expected": "[]"
+     "expected": "[['eat', 'tea', 'ate'], ['tan', 'nat'], ['bat']]",
+     "hidden": false
     }
    ],
+   "hidden_test_count": 3,
    "mode": "function"
   },
   {
@@ -450,15 +291,11 @@
     {
      "name": "HELLO WORLD",
      "args": "('KHOOR ZRUOG. WKLV LV D WHVW.',)",
-     "expected": "[(10, 'AXEEH PHKEW. MABL BL T MXLM.'), (2, 'IFMMP XPSME. UIJT JT B UFTU.'), (22, 'OLSSV DVYSK. AOPZ PZ H ALZA.')]"
-    },
-    {
-     "name": "다른 문장",
-     "hidden": true,
-     "args": "('WKH TXLFN EURZQ IRA.',)",
-     "expected": "[(13, 'JXU GKYSA RHEMD VEN.'), (7, 'PDA MQEYG XNKSJ BKT.'), (4, 'SGD PTHBJ AQNVM ENW.')]"
+     "expected": "[(10, 'AXEEH PHKEW. MABL BL T MXLM.'), (2, 'IFMMP XPSME. UIJT JT B UFTU.'), (22, 'OLSSV DVYSK. AOPZ PZ H ALZA.')]",
+     "hidden": false
     }
    ],
+   "hidden_test_count": 1,
    "mode": "function",
    "compare": "value"
   },
@@ -480,33 +317,11 @@
     {
      "name": "기본",
      "args": "('GATATATGCATATACTT', 'ATAT')",
-     "expected": "[1, 3, 9]"
-    },
-    {
-     "name": "AAAA",
-     "hidden": true,
-     "args": "('AAAA', 'AA')",
-     "expected": "[0, 1, 2]"
-    },
-    {
-     "name": "ABCABC",
-     "hidden": true,
-     "args": "('ABCABC', 'ABC')",
-     "expected": "[0, 3]"
-    },
-    {
-     "name": "없음",
-     "hidden": true,
-     "args": "('XYZ', 'A')",
-     "expected": "[]"
-    },
-    {
-     "name": "겹침",
-     "hidden": true,
-     "args": "('ATATAT', 'ATAT')",
-     "expected": "[0, 2]"
+     "expected": "[1, 3, 9]",
+     "hidden": false
     }
    ],
+   "hidden_test_count": 4,
    "mode": "function",
    "compare": "value"
   },
@@ -531,18 +346,11 @@
      "files": {
       "server.log": "INFO: User logged in\nERROR 404: Page not found /home\nWARNING: High CPU usage\nERROR 404: Image missing /logo.png\n"
      },
-     "expected": "['ERROR 404: Page not found /home', 'ERROR 404: Image missing /logo.png']"
-    },
-    {
-     "name": "404 없음",
-     "hidden": true,
-     "args": "('server.log',)",
-     "files": {
-      "server.log": "INFO: ok\nERROR 500: boom\n"
-     },
-     "expected": "[]"
+     "expected": "['ERROR 404: Page not found /home', 'ERROR 404: Image missing /logo.png']",
+     "hidden": false
     }
    ],
+   "hidden_test_count": 1,
    "mode": "function",
    "compare": "value"
   },
@@ -567,27 +375,11 @@
      "files": {
       "big_data.txt": "L1\nL2\nL3\nL4\nL5\nL6\nL7\n"
      },
-     "expected": "[['L1', 'L2', 'L3'], ['L4', 'L5', 'L6'], ['L7']]"
-    },
-    {
-     "name": "4줄/2",
-     "hidden": true,
-     "args": "('big_data.txt', 2)",
-     "files": {
-      "big_data.txt": "a\nb\nc\nd\n"
-     },
-     "expected": "[['a', 'b'], ['c', 'd']]"
-    },
-    {
-     "name": "3줄/10",
-     "hidden": true,
-     "args": "('big_data.txt', 10)",
-     "files": {
-      "big_data.txt": "x\ny\nz\n"
-     },
-     "expected": "[['x', 'y', 'z']]"
+     "expected": "[['L1', 'L2', 'L3'], ['L4', 'L5', 'L6'], ['L7']]",
+     "hidden": false
     }
    ],
+   "hidden_test_count": 2,
    "mode": "function",
    "compare": "value"
   },
@@ -613,9 +405,11 @@
      "files": {
       "routers.csv": "name,type,memory,price\nNetgear Nighthawk,Wi-Fi 6,1GB,199.99\nTP-Link Archer,Wi-Fi 5,512MB,89.99\nAsus RT,Wi-Fi 6,1024kB,129.95\n"
      },
-     "expected": "['[Wi-Fi 5] TP-Link Archer - 524288.0KiB / $89.99', '[Wi-Fi 6] Asus RT - 1024.0KiB / $129.95', '[Wi-Fi 6] Netgear Nighthawk - 1048576.0KiB / $199.99']"
+     "expected": "['[Wi-Fi 5] TP-Link Archer - 524288.0KiB / $89.99', '[Wi-Fi 6] Asus RT - 1024.0KiB / $129.95', '[Wi-Fi 6] Netgear Nighthawk - 1048576.0KiB / $199.99']",
+     "hidden": false
     }
    ],
+   "hidden_test_count": 0,
    "mode": "function",
    "compare": "value"
   },
@@ -641,18 +435,11 @@
      "files": {
       "grades.csv": "과학영재교,2,1,홍길동,95\n과학영재교,2,1,이순신,N/A\n과학영재교,2,2,장영실,100\n"
      },
-     "expected": "{'과학영재교': {'2': {'1': {'홍길동': 95, '이순신': 0}, '2': {'장영실': 100}}}}"
-    },
-    {
-     "name": "빈점수",
-     "hidden": true,
-     "args": "('grades.csv',)",
-     "files": {
-      "grades.csv": "A고,1,3,김철수,\nA고,1,3,박영희,88\n"
-     },
-     "expected": "{'A고': {'1': {'3': {'김철수': 0, '박영희': 88}}}}"
+     "expected": "{'과학영재교': {'2': {'1': {'홍길동': 95, '이순신': 0}, '2': {'장영실': 100}}}}",
+     "hidden": false
     }
    ],
+   "hidden_test_count": 1,
    "mode": "function",
    "compare": "value"
   },
@@ -679,9 +466,11 @@
      "files": {
       "stars.txt": "S1,5800,4.83,10\nS2,3500,2.0,0\nS3,9000,1.5,100\nS4,2500,5.0,10\nS5,6000,abc,50\nS6,4500,8.0,25\n"
      },
-     "expected": "[('S1', 5800.0, 4.83), ('S3', 9000.0, -3.5), ('S6', 4500.0, 6.01)]"
+     "expected": "[('S1', 5800.0, 4.83), ('S3', 9000.0, -3.5), ('S6', 4500.0, 6.01)]",
+     "hidden": false
     }
    ],
+   "hidden_test_count": 0,
    "mode": "function"
   },
   {
@@ -706,18 +495,11 @@
      "files": {
       "genome.fasta": ">SEQ_001\nATGCGATCG\nGCTAGCTA\n>SEQ_002\nTTAACG\n"
      },
-     "expected": "{'SEQ_001': 17, 'SEQ_002': 6}"
-    },
-    {
-     "name": "단일 서열",
-     "hidden": true,
-     "args": "('genome.fasta',)",
-     "files": {
-      "genome.fasta": ">G1\nAAAA\nTTTT\nGG\n"
-     },
-     "expected": "{'G1': 10}"
+     "expected": "{'SEQ_001': 17, 'SEQ_002': 6}",
+     "hidden": false
     }
    ],
+   "hidden_test_count": 1,
    "mode": "function",
    "compare": "value"
   },
@@ -739,27 +521,11 @@
     {
      "name": "예시 트리",
      "args": "({'Documents': {'resume.pdf': 120, 'Code': {'main.py': 15, 'utils.py': 8, 'data': {'users.csv': 45}}}, 'Downloads': {'setup.exe': 1500, 'image.png': 350}},)",
-     "expected": "2038"
-    },
-    {
-     "name": "평탄",
-     "hidden": true,
-     "args": "({'a': 1, 'b': 2, 'c': 3},)",
-     "expected": "6"
-    },
-    {
-     "name": "빈 트리",
-     "hidden": true,
-     "args": "({},)",
-     "expected": "0"
-    },
-    {
-     "name": "깊은 중첩",
-     "hidden": true,
-     "args": "({'x': {'y': {'z': {'f': 10}}}, 'g': 5},)",
-     "expected": "15"
+     "expected": "2038",
+     "hidden": false
     }
    ],
+   "hidden_test_count": 3,
    "mode": "function",
    "compare": "value"
   },
@@ -782,15 +548,11 @@
     {
      "name": "단일 인자 캐싱",
      "epilogue": "calls = []\n@cache\ndef square(x):\n    calls.append(x)\n    return x * x\nr1 = square(3)\nr2 = square(3)\nr3 = square(4)\nr4 = square(3)\nresult = (r1, r2, r3, r4, calls)\n",
-     "expected": "(9, 9, 16, 9, [3, 4])"
-    },
-    {
-     "name": "다중 인자 캐싱",
-     "hidden": true,
-     "epilogue": "hits = []\n@cache\ndef add(a, b):\n    hits.append((a, b))\n    return a + b\nresult = (add(1, 2), add(1, 2), add(2, 3), len(hits))\n",
-     "expected": "(3, 3, 5, 2)"
+     "expected": "(9, 9, 16, 9, [3, 4])",
+     "hidden": false
     }
    ],
+   "hidden_test_count": 1,
    "compare": "value"
   },
   {
@@ -812,15 +574,11 @@
     {
      "name": "6줄 로그",
      "epilogue": "raw = ('2026-05-26 192.168.0.10 200\\n'\n       '2026-05-26 192.168.0.15 404\\n'\n       '2026-05-26 10.0.1.20 200\\n'\n       '2026-05-26 192.168.0.45 500\\n'\n       '2026-05-26 172.16.0.12 301\\n'\n       '2026-05-26 10.0.1.55 403')\nresult = list(stream_errors(raw))\n",
-     "expected": "[{'ip': '192.168.0.15', 'status': 404}, {'ip': '192.168.0.45', 'status': 500}, {'ip': '10.0.1.55', 'status': 403}]"
-    },
-    {
-     "name": "제너레이터 여부",
-     "hidden": true,
-     "epilogue": "g = stream_errors('2026-05-26 1.1.1.1 500')\nresult = (type(g).__name__, list(g))\n",
-     "expected": "('generator', [{'ip': '1.1.1.1', 'status': 500}])"
+     "expected": "[{'ip': '192.168.0.15', 'status': 404}, {'ip': '192.168.0.45', 'status': 500}, {'ip': '10.0.1.55', 'status': 403}]",
+     "hidden": false
     }
    ],
+   "hidden_test_count": 1,
    "compare": "value"
   },
   {
@@ -841,33 +599,11 @@
     {
      "name": "기본",
      "args": "([1, [2, [3, 4], 5], 6, [7, 8, [9]]],)",
-     "expected": "[1, 2, 3, 4, 5, 6, 7, 8, 9]"
-    },
-    {
-     "name": "이중",
-     "hidden": true,
-     "args": "([[1, [2]], 3],)",
-     "expected": "[1, 2, 3]"
-    },
-    {
-     "name": "빈리스트",
-     "hidden": true,
-     "args": "([],)",
-     "expected": "[]"
-    },
-    {
-     "name": "평탄",
-     "hidden": true,
-     "args": "([1, 2, 3],)",
-     "expected": "[1, 2, 3]"
-    },
-    {
-     "name": "깊은중첩",
-     "hidden": true,
-     "args": "([[[[5]]]],)",
-     "expected": "[5]"
+     "expected": "[1, 2, 3, 4, 5, 6, 7, 8, 9]",
+     "hidden": false
     }
    ],
+   "hidden_test_count": 4,
    "mode": "function",
    "compare": "value"
   },
@@ -890,9 +626,11 @@
     {
      "name": "독립성 검증",
      "epilogue": "t = {'store_name': '기본 지점', 'daily_sales': [120, 150, 90]}\ngangnam = safe_copy(t)\nhongdae = safe_copy(t)\ngangnam['store_name'] = '강남점'\ngangnam['daily_sales'][1] = 500\nresult = (hongdae['store_name'], hongdae['daily_sales'], t['daily_sales'], gangnam['daily_sales'])\n",
-     "expected": "('기본 지점', [120, 150, 90], [120, 150, 90], [120, 500, 90])"
+     "expected": "('기본 지점', [120, 150, 90], [120, 150, 90], [120, 500, 90])",
+     "hidden": false
     }
    ],
+   "hidden_test_count": 0,
    "compare": "value"
   },
   {
@@ -913,21 +651,11 @@
     {
      "name": "기본",
      "args": "([{'order_id':101,'item':'파이썬 웹 개발 책','price':32000,'status':'completed'},{'order_id':102,'item':'맥북 충전기','price':89000,'status':'cancelled'},{'order_id':103,'item':'무선 마우스','price':45000,'status':'completed'},{'order_id':104,'item':'모니터 암','price':125000,'status':'completed'},{'order_id':105,'item':'USB 메모리','price':15000,'status':'cancelled'}],)",
-     "expected": "[{'order_id': 101, 'item': '파이썬 웹 개발 책', 'tax_included_price': 35200.0}, {'order_id': 103, 'item': '무선 마우스', 'tax_included_price': 49500.0}, {'order_id': 104, 'item': '모니터 암', 'tax_included_price': 137500.0}]"
-    },
-    {
-     "name": "전부 취소",
-     "hidden": true,
-     "args": "([{'order_id':1,'item':'A','price':1000,'status':'cancelled'}],)",
-     "expected": "[]"
-    },
-    {
-     "name": "단일 완료",
-     "hidden": true,
-     "args": "([{'order_id':9,'item':'B','price':10000,'status':'completed'}],)",
-     "expected": "[{'order_id': 9, 'item': 'B', 'tax_included_price': 11000.0}]"
+     "expected": "[{'order_id': 101, 'item': '파이썬 웹 개발 책', 'tax_included_price': 35200.0}, {'order_id': 103, 'item': '무선 마우스', 'tax_included_price': 49500.0}, {'order_id': 104, 'item': '모니터 암', 'tax_included_price': 137500.0}]",
+     "hidden": false
     }
    ],
+   "hidden_test_count": 2,
    "mode": "function",
    "compare": "value"
   }

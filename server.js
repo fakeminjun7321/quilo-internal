@@ -4799,6 +4799,30 @@ app.use("/api/coding", require("./lib/coding-routes")({ requireAdminOrBeta, getS
 // 공부 탭: 상대론 민코프스키 평면 생성기. Claude는 도식 JSON만 만들고 그림은 브라우저가 렌더링.
 app.use("/api/study", require("./lib/study-routes")({ requireBeta, getSessionUser }));
 
+// 바이브 코딩 생성기(창작 탭): 아이디어 한 문장 → AI 프로젝트 설계. 로그인 사용자 + 크레딧 차감.
+app.use(
+  "/api/vibe",
+  require("./lib/vibe-routes")({
+    requireAuth,
+    getSessionUser,
+    refreshSessionUser,
+    supa,
+    pricing,
+  }),
+);
+
+// 고급 물리 문제 스튜디오(수행평가 탭): 주제·난이도 → AI 심화 물리 문제+풀이. 로그인 사용자 + 크레딧 차감.
+app.use(
+  "/api/physics-studio",
+  require("./lib/physics-studio-routes")({
+    requireAuth,
+    getSessionUser,
+    refreshSessionUser,
+    supa,
+    pricing,
+  }),
+);
+
 // 공지사항: 공개 읽기(활성) + 관리자 CRUD. Supabase 테이블 없으면 메모리 fallback.
 app.use("/api/announcements", require("./lib/announcement-routes")({ requireAdmin }));
 

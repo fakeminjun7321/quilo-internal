@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="canonical" href="https://quilolab.com/vibe-coding.html" />
+    <meta name="description" content="바이브 코딩 생성기 — 아이디어 한 문장을 AI가 프로젝트 설계·MVP·첫 작업·검증 루틴·학습 가이드로 정리합니다." />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#2563eb" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <title>바이브 코딩 생성기 — Quilo</title>
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("theme");
+          if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+          document.documentElement.setAttribute("data-theme", t);
+        } catch (e) {}
+      })();
+    </script>
+    <link rel="stylesheet" href="/style.css" />
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Apple SD Gothic Neo", "맑은 고딕", sans-serif; background: var(--bg); color: var(--text); }
+      header { display: flex; align-items: center; gap: 14px; padding: 14px 20px; background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 5; }
+      header .brand { font-weight: var(--fw-heavy); font-size: 17px; text-decoration: none; color: var(--text); display: flex; align-items: center; gap: 8px; }
+      header .brand .qmark { width: 26px; height: 26px; border-radius: var(--radius-sm); background: var(--accent); color: var(--on-accent); display: grid; place-items: center; font-weight: var(--fw-heavy); }
+      header nav { margin-left: auto; display: flex; gap: 14px; align-items: center; }
+      header nav a { color: var(--text-muted); text-decoration: none; font-size: 14px; }
+      .wrap { max-width: 1080px; margin: 0 auto; padding: 20px 16px 80px; }
+      .intro h1 { margin: 6px 0 6px; font-size: 26px; letter-spacing: -0.02em; }
+      .intro p { margin: 0; color: var(--text-muted); font-size: 14px; line-height: 1.6; }
+      .grid { display: grid; grid-template-columns: 380px 1fr; gap: 18px; align-items: start; margin-top: 18px; }
+      @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+      .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+      .field { margin-bottom: 12px; }
+      .field label { display: block; font-size: 13px; font-weight: var(--fw-semibold); color: var(--text-muted); margin-bottom: 5px; }
+      textarea, input[type="text"], select { width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: var(--radius-sm); font: inherit; background: var(--bg); color: var(--text); }
+      textarea { min-height: 96px; resize: vertical; line-height: 1.55; }
+      .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+      .btn { background: var(--accent); color: var(--on-accent); border: 0; border-radius: var(--radius-sm); padding: 11px 16px; font: inherit; font-weight: var(--fw-bold); cursor: pointer; }
+      .btn:hover { background: var(--accent-hover); }
+      .btn:disabled { opacity: 0.55; cursor: default; }
+      .btn.ghost { background: transparent; color: var(--text-muted); border: 1px solid var(--border); font-weight: var(--fw-medium); }
+      .costline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; color: var(--text-muted); margin: 4px 0 10px; }
+      .pill { display: inline-block; font-size: 11.5px; padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-text); font-weight: var(--fw-bold); }
+      .muted { color: var(--text-faint); font-size: 13px; }
+      .err { color: var(--danger); font-size: 13px; margin: 8px 0; white-space: pre-wrap; }
+      .locked { border: 1px dashed var(--border-strong); border-radius: var(--radius); padding: 30px 18px; text-align: center; color: var(--text-muted); background: var(--surface); }
+      .result h2 { font-size: 22px; margin: 0 0 2px; }
+      .result .tag { color: var(--text-muted); font-size: 14px; margin: 0 0 14px; }
+      .sec { margin: 18px 0 6px; font-size: 13px; font-weight: var(--fw-heavy); letter-spacing: .03em; color: var(--accent-text); text-transform: uppercase; }
+      .box { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 11px 13px; margin-bottom: 8px; background: var(--bg); }
+      .box b { color: var(--text); }
+      .box .sub { color: var(--text-muted); font-size: 13px; margin-top: 3px; line-height: 1.6; }
+      .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+      .chip { font-size: 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 3px 9px; color: var(--text-muted); }
+      .readiness { display: flex; align-items: center; gap: 12px; }
+      .ring { --p: 0; width: 58px; height: 58px; border-radius: 50%; background: conic-gradient(var(--accent) calc(var(--p) * 1%), var(--surface-2) 0); display: grid; place-items: center; flex: none; }
+      .ring span { width: 44px; height: 44px; border-radius: 50%; background: var(--surface); display: grid; place-items: center; font-weight: var(--fw-heavy); font-size: 15px; }
+      pre.prompt { white-space: pre-wrap; word-break: break-word; background: var(--console-bg); color: var(--console-text); border-radius: var(--radius-sm); padding: 12px 14px; font-size: 12.5px; line-height: 1.6; overflow-x: auto; }
+      .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+      .spinner { display: inline-block; width: 15px; height: 15px; border: 2px solid var(--on-accent); border-top-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: -2px; }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      .placeholder { border: 1px dashed var(--border); border-radius: var(--radius); padding: 38px 18px; text-align: center; color: var(--text-faint); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <a class="brand" href="/"><span class="qmark">Q</span> Quilo</a>
+      <nav>
+        <a href="/create.html">← 창작</a>
+        <button type="button" id="themeToggle" class="theme-toggle" aria-label="다크 모드로 전환" title="테마 전환">
+          <span class="theme-icon-light" aria-hidden="true">🌙</span>
+          <span class="theme-icon-dark" aria-hidden="true">☀️</span>
+        </button>
+      </nav>
+    </header>
+
+    <div class="wrap">
+      <section class="intro">
+        <h1>✨ 바이브 코딩 생성기</h1>
+        <p>만들고 싶은 걸 한 문장으로 적으면, AI가 그 아이디어에 맞춘 프로젝트 설계·MVP·화면 구성·첫 작업·검증 루틴·학습 가이드를 만들어 줍니다. 그대로 AI 코딩 도구에 붙여넣어 시작할 작업 지시문도 함께 만들어요.</p>
+      </section>
+
+      <div id="gate" class="locked" style="display: none">
+        🔒 이 기능은 <b>로그인한 사용자</b>가 이용할 수 있어요.
+        <div style="margin-top: 12px"><a class="btn" href="/login.html" style="text-decoration: none">로그인하기</a></div>
+      </div>
+
+      <div class="grid" id="app" style="display: none">
+        <div class="card" id="formCard">
+          <div class="field">
+            <label for="idea">아이디어 한 문장</label>
+            <textarea id="idea" placeholder="예: 학교 급식 사진을 찍으면 영양 정보를 추정해 기록해 주는 웹앱"></textarea>
+          </div>
+          <div class="two">
+            <div class="field">
+              <label for="mood">분위기 / 톤</label>
+              <input type="text" id="mood" placeholder="예: 깔끔하고 빠릿한" />
+            </div>
+            <div class="field">
+              <label for="area">영역 / 분야</label>
+              <input type="text" id="area" placeholder="예: 학교/교육, 생산성" />
+            </div>
+          </div>
+          <div class="two">
+            <div class="field">
+              <label for="scope">스코프</label>
+              <select id="scope">
+                <option value="주말 프로젝트">주말 프로젝트</option>
+                <option value="MVP" selected>MVP</option>
+                <option value="정식 제품">정식 제품</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="stack">선호 스택 (선택)</label>
+              <input type="text" id="stack" placeholder="예: React, 바닐라 JS" />
+            </div>
+          </div>
+          <div class="field">
+            <label for="model">생성 모델</label>
+            <select id="model"></select>
+          </div>
+          <div class="costline">
+            <span>예상 차감 <span class="pill" id="cost">–</span></span>
+            <span id="bal" class="muted"></span>
+          </div>
+          <button class="btn" id="go" style="width: 100%">설계 생성</button>
+          <div class="err" id="err"></div>
+        </div>
+
+        <div id="out">
+          <div class="placeholder">왼쪽에 아이디어를 적고 <b>설계 생성</b>을 누르면 여기에 프로젝트 설계가 나타납니다.</div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+      let modelCredits = {}, lastResult = null;
+
+      async function api(path, opts) {
+        const r = await fetch(path, { credentials: "same-origin", headers: { "Content-Type": "application/json" }, ...opts });
+        let j = null; try { j = await r.json(); } catch {}
+        if (!r.ok) { const e = new Error((j && j.error) || ("오류 " + r.status)); e.status = r.status; throw e; }
+        return j;
+      }
+
+      async function boot() {
+        // 로그인 + 잔액 확인
+        let bal;
+        try { bal = await api("/api/me/balance"); }
+        catch (e) { if (e.status === 401) { $("gate").style.display = "block"; return; } }
+        $("app").style.display = "grid";
+        modelCredits = (bal && bal.modelCredits) || {};
+        if (bal && !bal.isAdmin && typeof bal.credits === "number") $("bal").textContent = "· 보유 크레딧 " + bal.credits;
+        else if (bal && bal.isAdmin) $("bal").textContent = "· 관리자(무제한)";
+        // 모델 목록
+        try {
+          const cfg = await api("/api/vibe/config");
+          const opts = (cfg.models || []).map((m) => `<option value="${esc(m.id)}"${m.id === cfg.defaultModel ? " selected" : ""}>${esc(m.label)}</option>`).join("");
+          $("model").innerHTML = opts || `<option value="claude-opus-4-8">Claude Opus 4.8</option>`;
+          (cfg.models || []).forEach((m) => { if (typeof m.credits === "number") modelCredits[m.id] = m.credits; });
+        } catch {}
+        updateCost();
+        $("model").onchange = updateCost;
+      }
+      function updateCost() {
+        const c = modelCredits[$("model").value];
+        $("cost").textContent = c === 0 ? "무료" : (typeof c === "number" ? c + " 크레딧" : "–");
+      }
+
+      async function generate() {
+        const idea = $("idea").value.trim();
+        if (idea.length < 3) { $("err").textContent = "아이디어를 한 문장 이상 적어 주세요."; return; }
+        $("err").textContent = "";
+        $("go").disabled = true; $("go").innerHTML = '<span class="spinner"></span> 생성 중…';
+        $("out").innerHTML = '<div class="placeholder"><span class="spinner" style="border-color:var(--accent);border-top-color:transparent"></span> AI가 프로젝트를 설계하고 있어요… (보통 30초~2분)</div>';
+        try {
+          const j = await api("/api/vibe/generate", {
+            method: "POST",
+            body: JSON.stringify({ idea, mood: $("mood").value, area: $("area").value, scope: $("scope").value, stack: $("stack").value, model: $("model").value }),
+          });
+          lastResult = j.result;
+          render(j.result);
+          if (typeof j.newBalance === "number") $("bal").textContent = "· 보유 크레딧 " + j.newBalance;
+        } catch (e) {
+          if (e.status === 401) { location.href = "/login.html"; return; }
+          $("out").innerHTML = '<div class="placeholder">생성에 실패했습니다.</div>';
+          $("err").textContent = e.message;
+        } finally {
+          $("go").disabled = false; $("go").textContent = "설계 생성";
+        }
+      }
+
+      function listBox(arr, fmt) { return (arr || []).map(fmt).join(""); }
+
+      function render(r) {
+        const rd = r.buildReadiness || {};
+        const html = `
+          <div class="card result">
+            <div class="toolbar">
+              <button class="btn ghost" id="copyMd">📋 마크다운 복사</button>
+              <button class="btn ghost" id="dlMd">⬇ 다운로드</button>
+            </div>
+            <h2>${esc(r.title || "프로젝트")}</h2>
+            <p class="tag">${esc(r.tagline || "")}</p>
+            ${rd.score != null ? `<div class="readiness"><div class="ring" style="--p:${rd.score}"><span>${rd.score}</span></div><div class="sub"><b style="color:var(--text)">빌드 준비 점수</b><div class="muted">${(rd.reasons || []).map(esc).join(" · ")}</div></div></div>` : ""}
+            ${r.problem ? `<div class="sec">문제</div><div class="box sub">${esc(r.problem)}</div>` : ""}
+            ${r.targetUser ? `<div class="sec">주 사용자</div><div class="box sub">${esc(r.targetUser)}</div>` : ""}
+            ${(r.mvp || []).length ? `<div class="sec">MVP 핵심 기능</div>${listBox(r.mvp, (m) => `<div class="box"><b>${esc(m.feature)}</b><div class="sub">${esc(m.why)}</div></div>`)}` : ""}
+            ${(r.screens || []).length ? `<div class="sec">화면 / 뷰</div>${listBox(r.screens, (s) => `<div class="box"><b>${esc(s.name)}</b><div class="sub">${esc(s.purpose)}</div>${(s.elements || []).length ? `<div class="chips" style="margin-top:6px">${(s.elements || []).map((e) => `<span class="chip">${esc(e)}</span>`).join("")}</div>` : ""}</div>`)}` : ""}
+            ${(r.modules || []).length ? `<div class="sec">코드 모듈</div>${listBox(r.modules, (m) => `<div class="box"><b>${esc(m.name)}</b><div class="sub">${esc(m.responsibility)}</div></div>`)}` : ""}
+            ${(r.dataModel || []).length ? `<div class="sec">데이터 모델</div>${listBox(r.dataModel, (d) => `<div class="box"><b>${esc(d.entity)}</b>${(d.fields || []).length ? `<div class="chips" style="margin-top:6px">${(d.fields || []).map((f) => `<span class="chip">${esc(f)}</span>`).join("")}</div>` : ""}</div>`)}` : ""}
+            ${(r.firstTasks || []).length ? `<div class="sec">첫 작업 (순서대로)</div>${(r.firstTasks || []).map((t, i) => `<div class="box"><b>${i + 1}. ${esc(t.task)}</b><div class="sub">${esc(t.detail)}</div>${t.done ? `<div class="muted" style="margin-top:4px">✓ 완료 기준: ${esc(t.done)}</div>` : ""}</div>`).join("")}` : ""}
+            ${r.stack ? `<div class="sec">권장 스택</div><div class="box">${(r.stack.recommended || []).length ? `<div class="chips">${(r.stack.recommended || []).map((s) => `<span class="chip">${esc(s)}</span>`).join("")}</div>` : ""}${r.stack.rationale ? `<div class="sub" style="margin-top:6px">${esc(r.stack.rationale)}</div>` : ""}</div>` : ""}
+            ${(r.validation || []).length ? `<div class="sec">검증 루틴</div><div class="box sub"><ul style="margin:0;padding-left:18px">${(r.validation || []).map((v) => `<li>${esc(v)}</li>`).join("")}</ul></div>` : ""}
+            ${(r.risks || []).length ? `<div class="sec">막힐 만한 지점</div>${listBox(r.risks, (x) => `<div class="box"><b>${esc(x.risk)}</b><div class="sub">→ ${esc(x.mitigation)}</div></div>`)}` : ""}
+            ${(r.variations || []).length ? `<div class="sec">다른 각도</div>${listBox(r.variations, (v) => `<div class="box"><b>${esc(v.angle)}</b><div class="sub">${esc(v.idea)}</div></div>`)}` : ""}
+            ${(r.launchChecklist || []).length ? `<div class="sec">출시 체크리스트</div><div class="box sub"><ul style="margin:0;padding-left:18px">${(r.launchChecklist || []).map((v) => `<li>${esc(v)}</li>`).join("")}</ul></div>` : ""}
+            ${(r.guideCards || []).length ? `<div class="sec">바이브 코딩 기본기</div>${listBox(r.guideCards, (g) => `<div class="box"><b>${esc(g.title)}</b><div class="sub">${esc(g.body)}</div></div>`)}` : ""}
+            ${r.aiPrompt ? `<div class="sec">AI 코딩 도구용 작업 지시문</div><pre class="prompt">${esc(r.aiPrompt)}</pre>` : ""}
+          </div>`;
+        $("out").innerHTML = html;
+        $("copyMd").onclick = () => { const md = toMarkdown(lastResult); navigator.clipboard.writeText(md).then(() => flash("copyMd", "✓ 복사됨"), () => {}); };
+        $("dlMd").onclick = () => download((lastResult.title || "project") + ".md", toMarkdown(lastResult));
+      }
+      function flash(id, t) { const b = $(id); const o = b.textContent; b.textContent = t; setTimeout(() => (b.textContent = o), 1400); }
+
+      function toMarkdown(r) {
+        const L = [];
+        L.push(`# ${r.title || "프로젝트"}`, "", `> ${r.tagline || ""}`, "");
+        if (r.problem) L.push(`## 문제`, r.problem, "");
+        if (r.targetUser) L.push(`## 주 사용자`, r.targetUser, "");
+        if ((r.mvp || []).length) { L.push(`## MVP 핵심 기능`); r.mvp.forEach((m) => L.push(`- **${m.feature}** — ${m.why}`)); L.push(""); }
+        if ((r.screens || []).length) { L.push(`## 화면 / 뷰`); r.screens.forEach((s) => L.push(`- **${s.name}** — ${s.purpose}${(s.elements || []).length ? ` (${s.elements.join(", ")})` : ""}`)); L.push(""); }
+        if ((r.modules || []).length) { L.push(`## 코드 모듈`); r.modules.forEach((m) => L.push(`- **${m.name}** — ${m.responsibility}`)); L.push(""); }
+        if ((r.dataModel || []).length) { L.push(`## 데이터 모델`); r.dataModel.forEach((d) => L.push(`- **${d.entity}**: ${(d.fields || []).join(", ")}`)); L.push(""); }
+        if ((r.firstTasks || []).length) { L.push(`## 첫 작업`); r.firstTasks.forEach((t, i) => L.push(`${i + 1}. **${t.task}** — ${t.detail}${t.done ? ` _(완료: ${t.done})_` : ""}`)); L.push(""); }
+        if (r.stack) { L.push(`## 권장 스택`, `${(r.stack.recommended || []).join(", ")}`, r.stack.rationale || "", ""); }
+        if ((r.validation || []).length) { L.push(`## 검증 루틴`); r.validation.forEach((v) => L.push(`- ${v}`)); L.push(""); }
+        if ((r.risks || []).length) { L.push(`## 막힐 만한 지점`); r.risks.forEach((x) => L.push(`- **${x.risk}** → ${x.mitigation}`)); L.push(""); }
+        if ((r.variations || []).length) { L.push(`## 다른 각도`); r.variations.forEach((v) => L.push(`- **${v.angle}**: ${v.idea}`)); L.push(""); }
+        if ((r.launchChecklist || []).length) { L.push(`## 출시 체크리스트`); r.launchChecklist.forEach((v) => L.push(`- [ ] ${v}`)); L.push(""); }
+        if ((r.guideCards || []).length) { L.push(`## 바이브 코딩 기본기`); r.guideCards.forEach((g) => L.push(`### ${g.title}`, g.body, "")); }
+        if (r.aiPrompt) L.push(`## AI 코딩 도구용 작업 지시문`, "```", r.aiPrompt, "```", "");
+        return L.join("\n");
+      }
+      function download(name, text) {
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(new Blob([text], { type: "text/markdown" }));
+        a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      }
+
+      $("go").onclick = generate;
+      boot();
+    </script>
+    <script src="/theme.js"></script>
+  </body>
+</html>

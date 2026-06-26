@@ -453,8 +453,8 @@ FORMULA_CHAR_CLASS = (
     r"A-Za-z0-9"
     + _FORMULA_GREEK
     + _FORMULA_OPERATORS
-    + r"_\{\}\^\*\s\+\-=−–—≈≃≤≥<>/\\\(\)\[\]\.,\|"
-    r"·×√½°%′'⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻₀₁₂₃₄₅₆₇₈₉₊₋\u0307\u0308"
+    + r"_\{\}\^\*\s\+\-=−–—≈≃≅≡≤≥≠<>/\\\(\)\[\]\.,\|"
+    r"·×√½°%′'⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻₀₁₂₃₄₅₆₇₈₉₊₋\u0302\u0303\u0304\u0307\u0308"
 )
 # 식의 '첫 글자'로도 연산자/그리스가 올 수 있어야 '▽·E=...', '∭_V ...=...',
 # '∠ABC = 90°', '∞ = ...' 가 통째로 승격된다(연산자 prefix 가 산문에 떨어지는
@@ -466,9 +466,127 @@ FORMULA_START_CLASS = (
 )
 INLINE_FORMULA_RE = re.compile(
     rf"(?<![A-Za-z0-9_])([{FORMULA_START_CLASS}][{FORMULA_CHAR_CLASS}]{{0,120}}?"
-    rf"(?:=|≈|≃|≤|≥)"
+    rf"(?:=|≈|≃|≅|≡|≤|≥|≠|∝)"
     rf"[{FORMULA_CHAR_CLASS}]{{1,160}})"
 )
+
+
+# ── 키보드로 못 치는 기호 = 한글 수식 객체 트리거 (사용자 규칙 2026-06-15) ──────
+# 수식 한 덩어리 전체가 키보드(영문·숫자·= + - * ( ) . , 등)로만 되면 텍스트로 두고,
+# 키보드로 못 치는 기호가 하나라도 있으면 그 수식 '전체'를 한글 수식 객체로 만든다.
+# STRONG 트리거: 그리스, 미적분/관계/집합/기하 연산자, 유니코드 위·아래첨자, 특수문자
+# (ℏℓÅ°∞½ 등), 그리고 키보드로 치지만 텍스트로 위첨자·아래첨자·분수로 안 보이는 ^ _ /.
+# WEAK(· × → ← 등)는 단독 트리거에서 제외 — 영문 나열 'divergence·curl' 이 수식으로
+# 오인되지 않게(강한 트리거가 같이 있을 때만 수식에 포함). a + b = 0 처럼 키보드로만
+# 되는 식은 트리거가 없어 텍스트로 남는다.
+_EQ_TRIGGER_SYMBOLS = (
+    _FORMULA_GREEK
+    + "\u2207\u25bd\u2202\u222b\u222c\u222d\u222e\u222f\u2230\u2211\u220f\u221a"
+    + "\u2248\u2243\u2245\u2261\u2264\u2265\u2260\u226a\u226b\u221d\u221e"
+    + "\u2208\u2209\u2282\u2283\u2286\u2287\u222a\u2229\u2200\u2203\u2205"
+    + "\u22a5\u2225\u2220\u2234\u2235\u27e8\u27e9\u00b1\u2213\u00f7"
+    + "\u2070\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079\u207a\u207b\u207f\u2071"
+    + "\u2080\u2081\u2082\u2083\u2084\u2085\u2086\u2087\u2088\u2089\u208a\u208b"
+    + "\u210f\u2113\u00c5\u00b5\u00b0\u00bd\u00bc\u00be\u2153\u2154\u215b\u2032\u2033"
+    + "\u2090\u2091\u2092\u2093\u2094\u2095\u2096\u2097\u2098\u2099"
+    + "\u0302\u0303\u0304\u0307\u0308"
+)
+_EQ_TRIGGER_RE = re.compile("[" + _EQ_TRIGGER_SYMBOLS + r"\^_/]")
+
+# '/'·'_' 만 빼고 본 '진짜' 강한 트리거(그리스·연산자·유니코드 첨자·특수문자·^·{}스크립트).
+# '/'·'_' 는 날짜(2026/06/15)·경로(data/run1.csv)·약어(TCP/IP)·인용키(Lee_2020) 등
+# 비수식 산문에 흔해서 단독으로는 수식 근거가 못 된다. 이 정규식이 한 번이라도
+# 잡히면(=ε·^·{} 등이 같이 있으면) 그 토큰은 '/'·'_' 와 무관하게 진짜 수식이다.
+_STRONG_TRIGGER_RE = re.compile("[" + _EQ_TRIGGER_SYMBOLS + r"\^{}]")
+
+
+def _needs_equation(expr):
+    """수식 한 덩어리가 키보드로만 안 되면(기호/^/_// 포함) True — 수식 객체로."""
+    return bool(_EQ_TRIGGER_RE.search(str(expr or "")))
+
+
+# ── '/'·'_' 단독 트리거 오탐 가드 (사용자 규칙 2026-06-15) ─────────────────────
+# '/'·'_' 외에 강한 트리거(_STRONG_TRIGGER_RE)가 같이 있으면 진짜 수식이므로
+# 통과(q/ε₀, x^2, I_{pivot}=mgdT^{2}/(4π²) 등). 강한 트리거가 전혀 없고 '/'·'_'
+# 만으로 후보가 됐다면, 아래 산문 패턴(날짜·경로·버전·약어·단위·비율·인용키·
+# 한글 사이 나열 슬래시 등)은 수식이 아니라 텍스트로 본다.
+_DATEISH_RE = re.compile(r"^\d{1,4}/\d{1,4}(?:/\d{1,4})*$")           # 2026/06/15, 3/14, 9/10, 24/7
+_PATHISH_RE = re.compile(r"[A-Za-z0-9_.\-]+/[A-Za-z0-9_./\-]")        # data/run1.csv, /api/x, a/b/c
+_VERSIONISH_RE = re.compile(r"[A-Za-z]?\d+\.\d")                       # v2.0, 1.5  (점 찍힌 버전/소수)
+# '_' 가 분수/첨자가 아니라 식별자(파일명·인용키·이메일 로컬파트)의 구분자인 경우:
+# '두 글자 이상' 단어 뒤의 '_' 는 식별자 구분자로 본다(Lee_2020, my_file_name,
+# first_last). 물리 아래첨자는 base 가 보통 한 글자라서(I_pivot, v_cm, x_max,
+# T_0) 여기 안 걸리고 정상 승격된다.
+_IDENT_UNDERSCORE_RE = re.compile(r"[A-Za-z]{2,}_[A-Za-z0-9]")
+
+
+def _slash_underscore_is_prose(core):
+    """'/'·'_' 만으로 수식 후보가 된 산문(날짜·경로·약어·비율·인용키)인지 판정.
+
+    강한 트리거(_STRONG_TRIGGER_RE: 그리스·연산자·유니코드첨자·^·{} 등)가 하나라도
+    있으면 진짜 수식이므로 False(가드 통과). '/'·'_' 가 유일한 트리거일 때만
+    아래 비수식 패턴을 텍스트로 돌린다(True).
+    """
+    s = str(core or "")
+    if _STRONG_TRIGGER_RE.search(s):
+        return False  # ε·^·{} 등 진짜 수식 신호가 있으면 가드하지 않는다.
+    has_slash = "/" in s
+    has_underscore = "_" in s
+    if not has_slash and not has_underscore:
+        return False  # '/'·'_' 가 없으면 이 가드 대상 아님(다른 트리거가 처리).
+
+    if has_slash:
+        # 슬래시 양쪽에 피연산자(영문/숫자/그리스)가 모두 있어야 분수 후보.
+        # 한글 사이/끝에 매달린 슬래시(속도/시간 → 토큰이 '/' 뿐)는 피연산자 없음.
+        if not re.search(r"[A-Za-z0-9]/[A-Za-z0-9]", s):
+            return True
+        if _DATEISH_RE.match(s):
+            return True  # 날짜·정수 비율·24/7 류
+        if _PATHISH_RE.search(s) and (s.count("/") >= 2 or "." in s or s.startswith("/")):
+            return True  # 경로·라우트·URL 조각(data/run1.csv, /api/x, a/b/c.pdf)
+        if _VERSIONISH_RE.search(s):
+            return True  # 버전 문자열(v2.0/beta)
+        # 단일 슬래시 약어/단위/영문 나열(TCP/IP, m/s, input/output, w/o, N/A …):
+        # 양쪽이 순수 영숫자(첨자·연산자 없음)이고 슬래시가 하나뿐이면 산문.
+        if s.count("/") == 1 and re.fullmatch(r"[A-Za-z0-9]+/[A-Za-z0-9]+", s):
+            return True
+
+    if has_underscore and _IDENT_UNDERSCORE_RE.search(s):
+        return True  # Lee_2020, my_file_name, first_last (식별자·인용키)
+
+    return False
+
+
+def _is_real_math(core):
+    """수식 후보가 한국어 산문·영문 나열이 아닌 진짜 수식 조각인지(트리거 무관)."""
+    core = str(core or "").strip()
+    if not core or "{{EQ" in core:
+        return False
+    if re.search(r"[가-힣]", core):
+        return False
+    if pre.count_english_prose_stopwords(core) >= 2:
+        return False
+    if core.count("|") % 2:
+        return False
+    # 중괄호가 안 맞으면(스트레이 '}}' 등) 수식이 아니다 — 정상 첨자 x^{2}·I_{cm} 은
+    # 항상 짝이 맞는다. 짝 안 맞는 '}}' 조각을 승격하면 마커 경계가 어긋나 2차 통과가
+    # 다르게 재분리(비멱등)된다. 마커 토막을 또 승격하는 경로를 원천 차단한다.
+    if core.count("{") != core.count("}"):
+        return False
+    # 피연산자 없는 퇴화 조각(단독 '^','²','√','/','_','=' 등)은 수식이 아니다.
+    # 진짜 식 조각은 base 글자(ASCII 영문/숫자·그리스)가 하나라도 있어야 한다.
+    # 이게 없으면 마커 재분리(2차 통과)가 만든 토막을 또 승격해 비멱등이 된다.
+    if not re.search(r"[A-Za-z0-9" + _FORMULA_GREEK + r"]", core):
+        return False
+    # '/'·'_' 만으로 후보가 된 날짜·경로·버전·약어·비율·인용키 산문은 텍스트로 둔다.
+    if _slash_underscore_is_prose(core):
+        return False
+    return True
+
+
+# 공백 없는 한 덩어리 토큰(= 없이도) — 강한 트리거가 있으면 통째 수식화한다.
+_SYMBOL_TOKEN_RE = re.compile("[" + FORMULA_CHAR_CLASS.replace(r"\s", "") + "]+")
+
 
 
 PLAIN_SUBSCRIPTS = str.maketrans({
@@ -486,12 +604,49 @@ PLAIN_SUBSCRIPTS = str.maketrans({
 
 
 def _subscript_digit_notation(text):
-    """x_2 → x₂ (유니코드 아래첨자) — 산문·수식 승격 양쪽에서 안전한 표기."""
+    """x_2 → x₂ (유니코드 아래첨자) — 산문·수식 승격 양쪽에서 안전한 표기.
+
+    base 글자는 단독 변수여야 한다 — 앞에 다른 글자가 붙은 단어 중간('Le|e_2020'의
+    e)이나 뒤에 숫자가 더 이어지는 연도/식별자('_2020')는 아래첨자가 아니므로 둔다.
+    그래야 인용키 Lee_2020 이 Lee₂020 으로 둔갑해 수식 트리거로 오인되지 않는다.
+    """
     return re.sub(
-        r"([A-Za-zαβγδθλμπρστφωΩΔΣ])_([0-9])",
+        r"(?<![A-Za-z])([A-Za-zαβγδθλμπρστφωΩΔΣ])_([0-9])(?![0-9])",
         lambda m: f"{m.group(1)}{m.group(2).translate(PLAIN_SUBSCRIPTS)}",
         str(text or ""),
     )
+
+
+# ── AI식 줄표(삽입구 dash) 후처리 안전망 (사용자 규칙 2026-06-15) ──────────────
+# 모델이 프롬프트를 어기고 ' — '/' – '/' -- ' 를 삽입구로 쓰면, 최종 산문에서
+# 쉼표로 바꾼다(AI 문체 제거). 수식 마커/객체 안과 수학 마이너스(-, U+2212),
+# 붙은 범위 en-dash('10–20')는 절대 건드리지 않는다.
+#   ⚠ 이 함수는 normalize_physics_equation_markers 가 마커 구간을 분리한 뒤
+#     '평문 구간'에만 적용한다. 마커 내부(hp:equation 변환 대상)에는 닿지 않는다.
+_AI_DASH_INLINE_RE = re.compile(r"\s+(?:—|–|--)\s+")
+# 문장 끝/줄 끝에 매달린 단독 줄표(앞 공백 + em/en/이중하이픈 + 공백 없음) 제거.
+_AI_DASH_TRAILING_RE = re.compile(r"\s+(?:—|--)(?=\s*$)", re.MULTILINE)
+# 어절 사이에 공백 없이 붙은 em-dash / 이중하이픈(범위가 아닌 삽입구) → 쉼표.
+# en-dash(–)는 '10–20' 같은 숫자 범위 보존을 위해 여기서 제외한다.
+_AI_DASH_TIGHT_RE = re.compile(r"(?<=[가-힣A-Za-z])(?:—|--)(?=[가-힣A-Za-z])")
+
+
+def _strip_ai_dashes(segment):
+    """평문 구간에서 AI식 삽입구 줄표를 쉼표로 정리한다(마커 밖 산문 전용).
+
+    - ' — '/' – '/' -- '(공백 둘러싼 줄표) → ', '
+    - 문장 끝 ' —'/' --'(단독, 뒤 공백 없음) → 제거
+    - '단어—단어'/'단어--단어'(공백 없이 붙은 삽입구 줄표) → ', '
+    보존: 수학 '-'(U+002D)·'−'(U+2212), '10–20' 같은 붙은 en-dash 숫자 범위.
+    (마커 {{EQ...}} / hp:equation 내부는 호출부에서 이미 분리되어 들어오지 않는다.)
+    """
+    s = str(segment or "")
+    if not s:
+        return s
+    s = _AI_DASH_INLINE_RE.sub(", ", s)
+    s = _AI_DASH_TRAILING_RE.sub("", s)
+    s = _AI_DASH_TIGHT_RE.sub(", ", s)
+    return s
 
 
 def _flatten_label_subscripts(text):
@@ -795,6 +950,9 @@ def _promote_plain_physics_segment(segment):
     평문 구간만 이 함수로 넘긴다(마커 내부 재가공 방지).
     """
     s = str(segment or "")
+    # AI식 삽입구 줄표(' — '/' – '/' -- ')를 쉼표로 정리한다. 이 구간은 호출부에서
+    # 이미 마커 밖 평문만 떼어 넘기므로 수식 객체/마이너스에는 닿지 않는다.
+    s = _strip_ai_dashes(s)
     # 파손/비정형 마커 잔재("{{EQ:" 미폐쇄 등)가 섞인 구간은 건드리지 않는다(방어).
     if "{{EQ" in s:
         return s
@@ -824,14 +982,79 @@ def _promote_plain_physics_segment(segment):
             trailing = core[-1] + trailing
             core = core[:-1].rstrip()
         core, trailing = trim_formula_edges(core, trailing)
-        if not is_probable_physics_formula(core):
+        if not _is_real_math(core):
+            return raw
+        # 키보드로만 되는 식(a + b = 0)은 수식 객체로 안 만들고 텍스트로 둔다.
+        if not _needs_equation(core):
+            return raw
+        # 관계식 우변이 비면(A = , 한국어 정의문 'A = 면적' 토막)은 산문으로 남긴다.
+        rhs = re.split(r"=|≈|≃|≅|≡|≤|≥|≠|∝", core)[-1]
+        if not re.search(rf"[A-Za-z0-9{_FORMULA_GREEK}]", rhs):
             return raw
         latex = rich_formula_to_latex(core)
         if not latex:
             return raw
         return f"{leading}{{{{EQ-LATEX:{latex}}}}}{trailing}"
 
-    return _flatten_labels_outside_markers(INLINE_FORMULA_RE.sub(repl, s))
+    promoted = INLINE_FORMULA_RE.sub(repl, s)
+    # = 가 없는 기호 토큰(∇·F, δ³(r), q/ε₀, x^2 …)도 통째로 수식화한다. 위 관계식
+    # 승격이 만든 마커 안은 건드리지 않는다(이중 처리 방지).
+    promoted = _promote_symbol_tokens_outside_markers(promoted)
+    return _flatten_labels_outside_markers(promoted)
+
+
+# URL/DOI/도메인/이메일/파일경로 — '/' 트리거가 분수로 오인하지 않게 토큰 단위로 제외.
+_URLISH_RE = re.compile(
+    r"https?://|www\.|@\w|^10\.\d|\.(?:com|org|net|edu|gov|io|dev|kr|co|html|pdf|jpg|png)\b",
+    re.IGNORECASE,
+)
+
+
+def _promote_symbol_tokens(segment):
+    """공백 없는 한 덩어리 토큰에 강한 수식 기호가 있으면 통째로 수식화한다."""
+    def repl(m):
+        tok = m.group(0)
+        if _URLISH_RE.search(tok):
+            return tok
+        leading = ""
+        trailing = ""
+        core = tok
+        while core and core[0] in ".,;:":
+            leading += core[0]
+            core = core[1:]
+        while core and core[-1] in ".,;:":
+            trailing = core[-1] + trailing
+            core = core[:-1]
+        core, trail2 = trim_formula_edges(core, "")
+        trailing = trail2 + trailing
+        if not core or not _needs_equation(core):
+            return tok
+        if not _is_real_math(core):
+            return tok
+        latex = rich_formula_to_latex(core)
+        if not latex:
+            return tok
+        return f"{leading}{{{{EQ-LATEX:{latex}}}}}{trailing}"
+
+    return _SYMBOL_TOKEN_RE.sub(repl, segment)
+
+
+def _promote_symbol_tokens_outside_markers(s):
+    """{{EQ*:...}} 마커 밖 평문에만 기호 토큰 승격을 적용한다."""
+    s = str(s or "")
+    if "{{EQ" not in s:
+        return _promote_symbol_tokens(s)
+    spans = pre.find_equation_spans(s)
+    if not spans:
+        return s  # 파손 마커 추정 — 안전하게 그대로 둔다.
+    out = []
+    pos = 0
+    for start, end, _kind, _body in spans:
+        out.append(_promote_symbol_tokens(s[pos:start]))
+        out.append(s[start:end])
+        pos = end
+    out.append(_promote_symbol_tokens(s[pos:]))
+    return "".join(out)
 
 
 def normalize_physics_equation_markers(text):
@@ -1224,7 +1447,11 @@ def add_photo_blocks(doc, photo_indices, photos, fig_counter, caption_prefix, ta
                 desc = (caption_prefix or "실험 사진") if gpos == 0 else ""
             else:
                 desc = caption_prefix or "실험 사진"
-            caption = f"[그림 {fig_counter['value']}] {desc}".rstrip()
+            d = (desc or "").strip()
+            if re.match(r"^\s*(\[\s*)?(그림|그래프)\b", d):
+                caption = d
+            else:
+                caption = f"[그림 {fig_counter['value']}] {d}".rstrip()
             captions.append(caption)
 
             img_cell = table.cell(0, col)

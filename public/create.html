@@ -6,8 +6,18 @@
     <meta name="description" content="창작 — AI로 미니 웹앱·시각자료를 대화로 만들고 공유하는 바이브 코딩 스튜디오." />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>창작 — AI로 만들고 공유하기</title>
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("theme");
+          if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+          document.documentElement.setAttribute("data-theme", t);
+        } catch (e) {}
+      })();
+    </script>
+    <link rel="stylesheet" href="/style.css" />
     <style>
-      :root { --bg:#f6f7fb; --card:#fff; --bd:#e3e6ef; --ink:#1c2333; --mut:#6b7280; --acc:#3b5bdb; --accd:#2f49b0; }
+      :root { --card:var(--surface); --bd:var(--border); --ink:var(--text); --mut:var(--text-muted); --acc:var(--accent); --accd:var(--accent-hover); }
       * { box-sizing: border-box; }
       body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Apple SD Gothic Neo","맑은 고딕",sans-serif; background:var(--bg); color:var(--ink); }
       header { display:flex; align-items:center; gap:14px; padding:14px 20px; background:var(--card); border-bottom:1px solid var(--bd); position:sticky; top:0; z-index:5; }
@@ -17,15 +27,15 @@
       header nav a.on { color:var(--acc); font-weight:700; }
       .container { max-width:1200px; margin:0 auto; padding:18px 16px 60px; }
       .card { background:var(--card); border:1px solid var(--bd); border-radius:14px; padding:16px; }
-      button { background:var(--acc); color:#fff; border:0; border-radius:8px; padding:9px 14px; font:inherit; font-weight:600; cursor:pointer; }
+      button { background:var(--acc); color:var(--on-accent); border:0; border-radius:8px; padding:9px 14px; font:inherit; font-weight:600; cursor:pointer; }
       button:hover { background:var(--accd); }
-      button.sec { background:#eef1fb; color:var(--accd); }
+      button.sec { background:var(--accent-soft); color:var(--accent-text); }
       button.ghost { background:transparent; color:var(--mut); border:1px solid var(--bd); }
       .muted { color:var(--mut); font-size:13px; }
       .gallery { display:grid; grid-template-columns: repeat(auto-fill, minmax(240px,1fr)); gap:14px; }
       .g-card { background:var(--card); border:1px solid var(--bd); border-radius:14px; overflow:hidden; text-decoration:none; color:inherit; transition:transform .12s, box-shadow .12s; display:flex; flex-direction:column; }
       .g-card:hover { transform:translateY(-3px); box-shadow:0 10px 24px #1c233314; }
-      .g-thumb { height:150px; border-bottom:1px solid var(--bd); background:#fafbff; overflow:hidden; position:relative; }
+      .g-thumb { height:150px; border-bottom:1px solid var(--bd); background:var(--surface-2); overflow:hidden; position:relative; }
       .g-thumb iframe { border:0; width:200%; height:300px; transform:scale(.5); transform-origin:top left; pointer-events:none; background:#fff; }
       .g-meta { padding:10px 12px; }
       .g-meta .t { font-weight:700; font-size:14px; margin-bottom:3px; }
@@ -33,20 +43,20 @@
       .secthead { display:flex; align-items:center; gap:10px; margin:22px 0 12px; }
       .secthead h2 { font-size:16px; margin:0; }
       .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-      .notice { background:#eef1fb; border:1px solid #d7defb; color:#33408a; border-radius:10px; padding:12px 14px; font-size:13.5px; margin-bottom:20px; }
+      .notice { background:var(--accent-soft); border:1px solid var(--accent-border); color:var(--accent-text); border-radius:10px; padding:12px 14px; font-size:13.5px; margin-bottom:20px; }
       .create-intro { margin:6px 0 18px; }
       .create-intro h1 { margin:0 0 6px; font-size:28px; letter-spacing:-0.02em; }
       .create-intro p { margin:0; color:var(--mut); font-size:14px; line-height:1.6; }
-      .empty { border:1px dashed var(--bd); border-radius:14px; padding:18px 16px; background:#fafbff; color:var(--mut); font-size:14px; }
+      .empty { border:1px dashed var(--bd); border-radius:14px; padding:18px 16px; background:var(--surface-2); color:var(--mut); font-size:14px; }
       .empty strong { display:block; color:var(--ink); margin-bottom:4px; }
       .gallery > .empty { grid-column:1 / -1; }
       .myrow { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
-      .myrow button { padding:4px 9px; font-size:12px; font-weight:500; }
+      .myrow button { padding:8px 11px; min-height:44px; font-size:12px; font-weight:500; }
       .item { border:1px solid var(--bd); border-radius:8px; padding:8px 10px; font-size:13px; margin-top:8px; background:var(--card); }
-      .pill { display:inline-block; font-size:11px; padding:1px 7px; border-radius:99px; background:#eef1fb; color:var(--accd); }
-      .pill.priv { background:#fdeaea; color:#b42318; }
+      .pill { display:inline-block; font-size:11px; padding:1px 7px; border-radius:99px; background:var(--accent-soft); color:var(--accent-text); }
+      .pill.priv { background:var(--danger-soft); color:var(--danger); }
       /* 스튜디오 런처 히어로 */
-      .launch { background:linear-gradient(135deg,#3b5bdb,#6f86ff); color:#fff; border-radius:16px; padding:22px 22px; display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
+      .launch { background:linear-gradient(135deg,var(--accent),#6f86ff); color:#fff; border-radius:16px; padding:22px 22px; display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
       .launch .lt { flex:1; min-width:220px; }
       .launch h1 { margin:0 0 4px; font-size:22px; }
       .launch p { margin:0; opacity:.92; font-size:14px; line-height:1.5; }
@@ -62,6 +72,10 @@
         <a href="/">메인</a>
         <a href="/community.html">커뮤니티</a>
         <a href="/create.html" class="on">창작</a>
+        <button type="button" id="themeToggle" class="theme-toggle" aria-label="다크 모드로 전환" title="다크 모드로 전환">
+          <span class="theme-icon-light" aria-hidden="true">🌙</span>
+          <span class="theme-icon-dark" aria-hidden="true">☀️</span>
+        </button>
       </nav>
     </header>
 
@@ -93,23 +107,23 @@
 
       <!-- 갤러리 (모두 공개) -->
       <div class="secthead"><h2>🌐 모두의 창작</h2><span class="muted" id="galcount"></span>
-        <select id="sort" style="margin-left:auto"><option value="new">최신순</option><option value="likes">인기순(좋아요)</option><option value="views">조회순</option></select>
+        <select id="sort" aria-label="정렬 기준" title="정렬 기준" style="margin-left:auto"><option value="new">최신순</option><option value="likes">인기순(좋아요)</option><option value="views">조회순</option></select>
       </div>
       <div id="chips" class="row" style="margin-bottom:12px"></div>
       <div class="gallery" id="gallery"><div class="empty"><strong>갤러리를 불러오는 중입니다.</strong>잠시만 기다려 주세요.</div></div>
     </div>
 
     <!-- 댓글 모달 -->
-    <div id="cmtModal" style="display:none;position:fixed;inset:0;background:#0008;z-index:50;align-items:center;justify-content:center;padding:16px">
+    <div id="cmtModal" role="dialog" aria-modal="true" aria-labelledby="cmtTitle" style="display:none;position:fixed;inset:0;background:#0008;z-index:50;align-items:center;justify-content:center;padding:16px">
       <div class="card" style="width:min(520px,100%);max-height:84vh;display:flex;flex-direction:column">
         <div class="row" style="justify-content:space-between;align-items:center">
           <b id="cmtTitle">💬 댓글</b>
-          <button id="cmtClose" class="ghost" style="padding:3px 10px">✕</button>
+          <button id="cmtClose" class="ghost" style="padding:3px 10px" aria-label="댓글 닫기" title="닫기">✕</button>
         </div>
         <input type="hidden" id="cmtSlug" />
         <div id="cmtList" style="flex:1;overflow:auto;margin:10px 0;min-height:120px;max-height:46vh"></div>
         <div class="row" style="gap:8px">
-          <input id="cmtText" placeholder="댓글을 입력하세요 (로그인 필요)" maxlength="1000" style="flex:1;padding:8px 10px;border:1px solid var(--bd);border-radius:8px;font:inherit" />
+          <input id="cmtText" placeholder="댓글을 입력하세요 (로그인 필요)" aria-label="댓글 입력" maxlength="1000" style="flex:1;padding:8px 10px;border:1px solid var(--bd);border-radius:8px;font:inherit" />
           <button id="cmtSend">등록</button>
         </div>
       </div>
@@ -176,15 +190,15 @@
         $("gallery").innerHTML = items.map((x)=>`
           <div class="g-card">
             <a href="/p/${encodeURIComponent(x.slug)}" target="_blank" style="text-decoration:none;color:inherit">
-              <div class="g-thumb"><iframe loading="lazy" sandbox="allow-scripts" src="/p/${encodeURIComponent(x.slug)}"></iframe></div>
+              <div class="g-thumb"><iframe loading="lazy" sandbox="allow-scripts" title="${esc(x.title)} 미리보기" src="/p/${encodeURIComponent(x.slug)}"></iframe></div>
               <div class="g-meta"><div class="t">${esc(x.title)}${x.forked_from?' <span class="pill">리믹스</span>':''}</div><div class="b">${esc(x.owner||"")} · <span class="pill">${esc(x.category||"기타")}</span> · 👁 ${x.views||0}</div></div>
             </a>
             <div class="myrow" style="padding:0 12px 10px">
-              <button class="ghost" data-like="${esc(x.slug)}">❤ <span>${x.likes||0}</span></button>
-              ${canCreate?`<a href="/studio.html?remix=${encodeURIComponent(x.slug)}"><button class="ghost">🔀 리믹스</button></a>`:""}
-              <button class="ghost" data-cmt="${esc(x.slug)}" data-title="${esc(x.title)}">💬</button>
-              <button class="ghost" data-embed="${esc(x.slug)}">📋 임베드</button>
-              <button class="ghost" data-report="${esc(x.slug)}" style="margin-left:auto">🚩</button>
+              <button class="ghost" data-like="${esc(x.slug)}" aria-label="좋아요" title="좋아요">❤ <span>${x.likes||0}</span></button>
+              ${canCreate?`<a href="/studio.html?remix=${encodeURIComponent(x.slug)}"><button class="ghost" aria-label="리믹스" title="리믹스">🔀 리믹스</button></a>`:""}
+              <button class="ghost" data-cmt="${esc(x.slug)}" data-title="${esc(x.title)}" aria-label="댓글" title="댓글">💬</button>
+              <button class="ghost" data-embed="${esc(x.slug)}" aria-label="임베드 코드 복사" title="임베드 코드 복사">📋 임베드</button>
+              <button class="ghost" data-report="${esc(x.slug)}" aria-label="신고" title="신고" style="margin-left:auto">🚩</button>
             </div>
           </div>`).join("");
         $("gallery").querySelectorAll("[data-like]").forEach((b)=>b.onclick=()=>like(b.dataset.like,b));
@@ -242,9 +256,11 @@
       $("sort").onchange=renderGallery;
       $("cmtClose").onclick=()=>$("cmtModal").style.display="none";
       $("cmtModal").onclick=(e)=>{ if(e.target===$("cmtModal")) $("cmtModal").style.display="none"; };
+      document.addEventListener("keydown",(e)=>{ if(e.key==="Escape"&&$("cmtModal").style.display!=="none") $("cmtModal").style.display="none"; });
       $("cmtSend").onclick=sendComment;
       $("cmtText").onkeydown=(e)=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); sendComment(); } };
       init();
     </script>
+    <script src="/theme.js"></script>
   </body>
 </html>

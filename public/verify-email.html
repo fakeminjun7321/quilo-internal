@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="theme-color" content="#243ba2" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>이메일 인증 — Quilo</title>
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("theme");
+          if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+          document.documentElement.setAttribute("data-theme", t);
+        } catch (e) {}
+      })();
+    </script>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body class="landing">
+    <div class="landing-bg" aria-hidden="true"></div>
+
+    <nav class="landing-nav">
+      <div class="landing-nav-inner">
+        <a href="/" class="brand">
+          <span class="brand-mark" aria-hidden="true">Q</span>
+          Quilo
+        </a>
+      </div>
+    </nav>
+
+    <main class="landing-shell">
+      <section class="section" style="border-top:0;display:flex;justify-content:center">
+        <div class="login-card" style="width:100%;max-width:460px;text-align:center">
+          <div class="auth-head" style="margin-bottom:14px">
+            <h1>학교 이메일 인증</h1>
+            <p class="hint" id="lead">아래 버튼을 눌러 인증을 완료하세요.</p>
+          </div>
+          <div id="iconWrap" style="font-size:42px;line-height:1;margin:6px 0 14px">🎓</div>
+          <div class="form-actions" style="justify-content:center">
+            <button type="button" id="confirmBtn" class="btn btn-primary btn-lg">이메일 인증하기</button>
+          </div>
+          <p id="result" class="hint" style="margin:14px 0 0"></p>
+          <p class="hint" style="margin:14px 0 0">
+            <a href="/" id="homeLink">메인으로 돌아가기</a>
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-copy">© 2026 Quilo · MIT License</div>
+    </footer>
+
+    <script>
+      (function () {
+        const params = new URLSearchParams(location.search);
+        const token = params.get("token") || "";
+        const btn = document.getElementById("confirmBtn");
+        const result = document.getElementById("result");
+        const lead = document.getElementById("lead");
+        const icon = document.getElementById("iconWrap");
+
+        if (!token) {
+          btn.disabled = true;
+          lead.textContent = "잘못된 인증 링크입니다. 메일의 버튼을 다시 눌러 주세요.";
+          icon.textContent = "⚠️";
+          return;
+        }
+
+        btn.addEventListener("click", async () => {
+          btn.disabled = true;
+          btn.textContent = "인증 중...";
+          result.style.color = "";
+          result.textContent = "";
+          try {
+            const res = await fetch("/api/verify-email/confirm", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ token }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "인증 실패");
+            icon.textContent = "✅";
+            lead.textContent = "이메일 인증이 완료되었습니다.";
+            result.style.color = "var(--success,#16a34a)";
+            result.textContent =
+              "이제 관리자 승인을 기다려 주세요. 승인되면 보고서 생성을 사용할 수 있습니다.";
+            btn.style.display = "none";
+            setTimeout(() => {
+              location.href = "/";
+            }, 2500);
+          } catch (ex) {
+            icon.textContent = "⚠️";
+            result.style.color = "var(--danger,#dc2626)";
+            result.textContent = ex.message;
+            btn.textContent = "다시 시도";
+            btn.disabled = false;
+          }
+        });
+      })();
+    </script>
+    <script src="/theme.js"></script>
+  </body>
+</html>

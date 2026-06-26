@@ -65,6 +65,18 @@
   --surface-soft: var(--surface-2);
   --surface-raised: var(--surface);
   --warning-bg: var(--warning-soft);
+
+  /* ── 추가 토큰 (P1, 테마 무관 상수 + var 참조) ── */
+  --radius-full: 999px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --pad-card: 18px;
+  --focus-ring: 0 0 0 3px var(--ring);
+  --inset-ring: 0 0 0 1px var(--accent) inset;
 }
 
 html[data-theme="dark"] {
@@ -661,6 +673,11 @@ select {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%235e6672' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 12px center;
+}
+
+/* 다크: chevron stroke 색을 밝게 오버라이드 */
+html[data-theme="dark"] select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239aa3b0' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
 }
 
 form p {
@@ -3097,3 +3114,47 @@ textarea.tool-input {
 
 /* hidden 속성이 label{display:inline-flex} 에 가려지지 않도록 (관리자 전용 모델 게이트) */
 .segmented label[hidden]{display:none !important;}
+
+/* ============================================================
+   공유 베이스 컴포넌트 (P1, .btn 클래스 스코프 한정 — 요소 button 시스템과 분리)
+   ============================================================ */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 42px;
+  padding: 0 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+  text-decoration: none;
+  transition: .12s;
+}
+.btn:hover,
+.btn:focus-visible {
+  box-shadow: var(--focus-ring);
+  outline: none;
+}
+.btn-primary {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+}
+
+/* 공유 pill */
+.badge,
+.chip {
+  font-size: 12px;
+  border-radius: var(--radius-full);
+  padding: 2px 9px;
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  border: 1px solid var(--accent-border);
+  display: inline-flex;
+  align-items: center;
+}

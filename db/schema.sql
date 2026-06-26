@@ -4,9 +4,21 @@
 -- ── 사용자 테이블 ────────────────────────────────────────────────────────────
 create table if not exists users (
   id uuid primary key default gen_random_uuid(),
-  name text not null unique,
+  -- name = 표시용 이름(이름, 중복 가능), username = 로그인 아이디(고유)
+  name text not null,
+  username text,
   student_id text not null default '',
   password_hash text not null,
+  -- 학생 인증(2단계): 학교 이메일 인증 + 관리자 승인. 보고서 생성 게이트.
+  email text,
+  email_verified boolean not null default false,
+  approved boolean not null default false,
+  email_verify_token_hash text,
+  email_verify_email text,
+  email_verify_expires_at timestamptz,
+  email_verify_sent_at timestamptz,
+  approved_at timestamptz,
+  approved_by uuid references users(id) on delete set null,
   budget_usd numeric(10, 4) not null default 0,
   spent_usd numeric(10, 4) not null default 0,
   pre_credits_usd numeric(10, 4) not null default 0,
@@ -22,6 +34,13 @@ create table if not exists users (
 );
 
 create index if not exists users_name_idx on users (lower(name));
+-- 로그인 아이디(username)는 대소문자 무시 고유.
+create unique index if not exists users_username_lower_key on users (lower(username));
+-- 학교 이메일은 계정당 1개(검증 완료된 이메일만 고유).
+create unique index if not exists users_email_lower_key
+  on users (lower(email)) where email is not null and email <> '';
+create index if not exists users_email_verify_token_idx
+  on users (email_verify_token_hash) where email_verify_token_hash is not null;
 
 -- ── 사용량 로그 ──────────────────────────────────────────────────────────────
 create table if not exists usage_logs (

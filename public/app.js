@@ -101,10 +101,124 @@ let currentStudentId = "";
           if (!d.isAdmin) loadBalance();
           loadFiles();
           loadCloudStatus();
+          applyVerificationState(d);
         } else {
           applyReportTypeAccess([]);
+          applyVerificationState(null);
         }
       }
+
+      // ── 학생 인증(2단계) 배너 ────────────────────────────────────────────
+      // 로그인했지만 (관리자가 아니고) 이메일 인증 또는 관리자 승인이 안 된 사용자에게
+      // 인증 안내를 띄운다. 보고서 생성 자체는 서버(/api/generate)가 막는다.
+      let _verifyState = { reportEligible: true };
+      function applyVerificationState(d) {
+        _verifyState = d || { reportEligible: true };
+        const banner = document.getElementById("verifyBanner");
+        if (!banner) return;
+        // 로그아웃·관리자·자격충족이면 숨김.
+        if (!d || d.isAdmin || d.reportEligible) {
+          banner.hidden = true;
+          document.body.dataset.reportEligible = d && !d.reportEligible ? "no" : "yes";
+          return;
+        }
+        document.body.dataset.reportEligible = "no";
+        banner.hidden = false;
+        const title = document.getElementById("verifyTitle");
+        const msg = document.getElementById("verifyMsg");
+        const form = document.getElementById("verifyEmailForm");
+        const input = document.getElementById("verifyEmailInput");
+        const btn = document.getElementById("verifyEmailBtn");
+        const label = document.getElementById("verifyEmailLabel");
+        const domains = Array.isArray(d.allowedEmailDomains) && d.allowedEmailDomains.length
+          ? d.allowedEmailDomains
+          : ["ts.hs.kr"];
+        if (label) label.textContent = `학교 이메일 (@${domains[0]})`;
+        if (input && !input.value) input.placeholder = `ts250002@${domains[0]}`;
+
+        if (!d.emailVerified) {
+          // 1단계: 이메일 인증.
+          if (title) title.textContent = "1단계 · 학교 이메일 인증";
+          if (form) form.style.display = "flex";
+          if (d.pendingEmail) {
+            if (input && !input.value) input.value = d.pendingEmail;
+            if (btn) btn.textContent = "인증 메일 다시 보내기";
+            if (msg)
+              msg.innerHTML =
+                `<b>${escapeHtmlClient(d.pendingEmail)}</b> 로 인증 메일을 보냈습니다. 메일의 <b>이메일 인증하기</b> 버튼(또는 링크)을 누르세요. 메일이 안 보이면 스팸함을 확인하거나 아래에서 다시 보내세요.`;
+          } else {
+            if (btn) btn.textContent = "인증 메일 보내기";
+            if (msg)
+              msg.textContent = `학교 이메일(@${domains[0]})을 입력하면 인증 링크를 보내드립니다. 인증 후 관리자 승인을 받으면 보고서를 만들 수 있습니다.`;
+          }
+        } else {
+          // 2단계: 관리자 승인 대기.
+          if (title) title.textContent = "2단계 · 관리자 승인 대기 중";
+          if (form) form.style.display = "none";
+          if (msg)
+            msg.innerHTML =
+              "✅ 학교 이메일 인증이 완료되었습니다. <b>관리자 승인</b>을 기다려 주세요. 승인되면 보고서 생성을 사용할 수 있습니다.";
+        }
+      }
+
+      function escapeHtmlClient(s) {
+        return String(s == null ? "" : s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      // 인증 메일 (재)요청 폼
+      document
+        .getElementById("verifyEmailForm")
+        ?.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const input = document.getElementById("verifyEmailInput");
+          const btn = document.getElementById("verifyEmailBtn");
+          const status = document.getElementById("verifyStatus");
+          const email = (input?.value || "").trim();
+          if (!email) return;
+          if (btn) {
+            btn.disabled = true;
+            btn.dataset.label = btn.textContent;
+            btn.textContent = "보내는 중...";
+          }
+          if (status) status.style.display = "none";
+          try {
+            const res = await fetch("/api/verify-email/request", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ email }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "발송 실패");
+            if (status) {
+              status.style.display = "block";
+              status.style.color = "var(--success,#16a34a)";
+              status.textContent = data.alreadyVerified
+                ? "이미 인증된 이메일입니다. 새로고침 해주세요."
+                : `✅ ${email} 로 인증 메일을 보냈습니다. 메일의 링크를 눌러 인증을 완료하세요.`;
+            }
+            // pendingEmail 갱신을 위해 상태 다시 읽기
+            try {
+              const me = await fetch("/api/me").then((r) => (r.ok ? r.json() : null));
+              if (me) applyVerificationState(me);
+            } catch (_) {}
+          } catch (ex) {
+            if (status) {
+              status.style.display = "block";
+              status.style.color = "var(--danger,#dc2626)";
+              status.textContent = ex.message;
+            }
+          } finally {
+            if (btn) {
+              btn.disabled = false;
+              btn.textContent = btn.dataset.label || "인증 메일 보내기";
+            }
+          }
+        });
 
       // Confirm session
       // ── 상단 공지 티커(마퀴) ──────────────────────────────────────────

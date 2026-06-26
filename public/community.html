@@ -5,7 +5,7 @@
     <link rel="canonical" href="https://quilolab.com/community.html" />
     <meta name="description" content="Quilo 커뮤니티 — 기능 건의·버그 제보 게시판과 사이트 기술을 코드로 공개하는 '랩'. 실험 보고서 생성 도구를 함께 만들어 갑니다." />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#243ba2" />
+    <meta name="theme-color" content="#2563eb" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
@@ -22,64 +22,64 @@
       .cmwrap { max-width: 860px; margin: 0 auto; padding: 18px 16px 80px; }
       .cmhead { display: flex; align-items: center; gap: 12px; margin: 8px 0 18px; }
       .cmhead a.logo { display: flex; align-items: center; gap: 8px; text-decoration: none; color: inherit; font-weight: 800; font-size: 19px; }
-      .cmhead .qmark { width: 30px; height: 30px; border-radius: 8px; background: #2950e6; color: #fff; display: grid; place-items: center; font-weight: 800; }
-      .cmtabs { display: flex; gap: 6px; border-bottom: 1px solid #e2e6f3; margin-bottom: 16px; }
-      .cmtabs button { background: none; border: 0; padding: 10px 14px; font-size: 15px; font-weight: 600; color: #64748b; cursor: pointer; border-bottom: 2px solid transparent; }
-      .cmtabs button.active { color: #2950e6; border-bottom-color: #2950e6; }
-      .cmcard { border: 1px solid #e2e6f3; border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; background: var(--card-bg, #fff); }
+      .cmhead .qmark { width: 30px; height: 30px; border-radius: 8px; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; font-weight: 800; }
+      .cmtabs { display: flex; gap: 6px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+      .cmtabs button { background: none; border: 0; padding: 10px 14px; min-height: 44px; font-size: 15px; font-weight: 600; color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; }
+      .cmtabs button.active { color: var(--accent-text); border-bottom-color: var(--accent); }
+      .cmcard { border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; background: var(--surface); }
       .cmpost-title { font-weight: 700; font-size: 16px; margin: 0 0 4px; }
-      .cmpost-body { white-space: pre-wrap; word-break: break-word; color: #334155; font-size: 14.5px; line-height: 1.6; }
-      .cmmeta { font-size: 12.5px; color: #94a3b8; margin-top: 8px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-      .cmbadge { display: inline-block; font-size: 11.5px; padding: 1px 8px; border-radius: 999px; background: #eef2ff; color: #3958d6; font-weight: 600; }
-      .cmbadge.suggestion { background: #fff4e5; color: #b45309; }
-      .vote { display: inline-flex; align-items: center; gap: 5px; border: 1px solid #d7ddf0; border-radius: 999px; padding: 3px 11px; background: none; cursor: pointer; font-size: 13px; color: #475569; }
-      .vote.on { background: #2950e6; color: #fff; border-color: #2950e6; }
-      .linkbtn { background: none; border: 0; color: #2950e6; cursor: pointer; font-size: 13px; padding: 0; }
-      .cmtextarea, .cminput { width: 100%; box-sizing: border-box; border: 1px solid #d7ddf0; border-radius: 8px; padding: 9px 11px; font: inherit; font-size: 14px; }
+      .cmpost-body { white-space: pre-wrap; word-break: break-word; color: var(--text); font-size: 14.5px; line-height: 1.6; }
+      .cmmeta { font-size: 12.5px; color: var(--text-faint); margin-top: 8px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+      .cmbadge { display: inline-block; font-size: 11.5px; padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
+      .cmbadge.suggestion { background: var(--warning-soft); color: var(--warning); }
+      .vote { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border-strong); border-radius: 999px; padding: 3px 11px; min-height: 36px; background: none; cursor: pointer; font-size: 13px; color: var(--text-muted); }
+      .vote.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+      .linkbtn { background: none; border: 0; color: var(--accent-text); cursor: pointer; font-size: 13px; padding: 6px 4px; min-height: 44px; display: inline-flex; align-items: center; }
+      .cmtextarea, .cminput { width: 100%; box-sizing: border-box; border: 1px solid var(--border-strong); border-radius: 8px; padding: 9px 11px; font: inherit; font-size: 14px; }
       .cmtextarea { min-height: 90px; resize: vertical; }
       .cmrow { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
-      .comments { margin-top: 12px; border-top: 1px dashed #e2e6f3; padding-top: 10px; }
-      .comment { font-size: 13.5px; padding: 6px 0; border-bottom: 1px solid #f1f4fb; }
-      .comment .who { color: #64748b; font-size: 12px; }
-      .muted { color: #94a3b8; font-size: 13px; }
-      .err { color: #dc2626; font-size: 13px; margin: 6px 0; }
+      .comments { margin-top: 12px; border-top: 1px dashed var(--border); padding-top: 10px; }
+      .comment { font-size: 13.5px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+      .comment .who { color: var(--text-muted); font-size: 12px; }
+      .muted { color: var(--text-faint); font-size: 13px; }
+      .err { color: var(--danger); font-size: 13px; margin: 6px 0; }
       .cmintro { margin: 8px 0 18px; padding: 12px 0 4px; }
       .cmintro h1 { margin: 0 0 6px; font-size: 28px; letter-spacing: -0.02em; }
-      .cmintro p { margin: 0; color: #64748b; font-size: 14px; line-height: 1.6; }
-      .cmempty { border: 1px dashed #d7ddf0; border-radius: 12px; padding: 18px 16px; background: #f8faff; color: #64748b; font-size: 14px; }
-      .cmempty strong { display: block; color: #334155; font-size: 15px; margin-bottom: 4px; }
+      .cmintro p { margin: 0; color: var(--text-muted); font-size: 14px; line-height: 1.6; }
+      .cmempty { border: 1px dashed var(--border-strong); border-radius: 12px; padding: 18px 16px; background: var(--surface-2); color: var(--text-muted); font-size: 14px; }
+      .cmempty strong { display: block; color: var(--text); font-size: 15px; margin-bottom: 4px; }
       .pill-filter { display: flex; gap: 6px; margin-bottom: 12px; }
-      .pill-filter button { border: 1px solid #d7ddf0; background: none; border-radius: 999px; padding: 4px 12px; font-size: 13px; cursor: pointer; color: #475569; }
-      .pill-filter button.active { background: #2950e6; color: #fff; border-color: #2950e6; }
-      .labbody { white-space: pre-wrap; word-break: break-word; line-height: 1.7; font-size: 14.5px; color: #334155; }
-      .labtag { font-size: 11.5px; color: #2950e6; font-weight: 700; letter-spacing: .02em; }
+      .pill-filter button { border: 1px solid var(--border-strong); background: none; border-radius: 999px; padding: 4px 12px; min-height: 36px; font-size: 13px; cursor: pointer; color: var(--text-muted); }
+      .pill-filter button.active { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+      .labbody { white-space: pre-wrap; word-break: break-word; line-height: 1.7; font-size: 14.5px; color: var(--text); }
+      .labtag { font-size: 11.5px; color: var(--accent-text); font-weight: 700; letter-spacing: .02em; }
       /* 랩(기술 공개) 아코디언 + 마크다운 + 코드 */
-      .labitem { border:1px solid #e2e6f3; border-radius:12px; margin-bottom:10px; overflow:hidden; background:var(--card-bg,#fff); }
+      .labitem { border:1px solid var(--border); border-radius:12px; margin-bottom:10px; overflow:hidden; background:var(--surface); }
       .labhead { width:100%; text-align:left; background:none; border:0; padding:13px 15px; cursor:pointer; display:flex; align-items:center; gap:10px; flex-wrap:wrap; font:inherit; }
-      .labhead:hover { background:#f7f9ff; }
-      .labhead .labtag { font-size:11px; color:#2950e6; font-weight:700; background:#eef2ff; border-radius:999px; padding:2px 9px; white-space:nowrap; }
-      .labhead .labtitle { font-weight:700; font-size:15.5px; color:#1e293b; }
-      .labhead .labsummary { color:#94a3b8; font-size:12.5px; flex-basis:100%; margin-left:2px; }
-      .labhead .labchevron { margin-left:auto; color:#94a3b8; transition:transform .15s; }
+      .labhead:hover { background:var(--surface-2); }
+      .labhead .labtag { font-size:11px; color:var(--accent-text); font-weight:700; background:var(--accent-soft); border-radius:999px; padding:2px 9px; white-space:nowrap; }
+      .labhead .labtitle { font-weight:700; font-size:15.5px; color:var(--text); }
+      .labhead .labsummary { color:var(--text-faint); font-size:12.5px; flex-basis:100%; margin-left:2px; }
+      .labhead .labchevron { margin-left:auto; color:var(--text-faint); transition:transform .15s; }
       .labitem.open .labhead .labchevron { transform:rotate(90deg); }
-      .labbodywrap { padding:4px 16px 16px; border-top:1px solid #eef1f8; }
-      .md-h { margin:16px 0 6px; font-weight:700; color:#1e293b; }
-      h3.md-h { font-size:16px; } h4.md-h { font-size:14.5px; color:#334155; }
-      .labbodywrap p { line-height:1.7; font-size:14px; color:#334155; margin:7px 0; }
+      .labbodywrap { padding:4px 16px 16px; border-top:1px solid var(--border); }
+      .md-h { margin:16px 0 6px; font-weight:700; color:var(--text); }
+      h3.md-h { font-size:16px; } h4.md-h { font-size:14.5px; color:var(--text); }
+      .labbodywrap p { line-height:1.7; font-size:14px; color:var(--text); margin:7px 0; }
       .labbodywrap ul { margin:6px 0 10px 2px; padding-left:18px; }
-      .labbodywrap li { line-height:1.6; font-size:14px; color:#334155; margin:3px 0; }
-      .labbodywrap code { background:#f1f3f9; border-radius:5px; padding:1px 5px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12.5px; color:#b91c5c; }
-      pre.md-code { background:#0f172a; color:#e2e8f0; border-radius:10px; padding:12px 14px; overflow-x:auto; margin:10px 0; }
+      .labbodywrap li { line-height:1.6; font-size:14px; color:var(--text); margin:3px 0; }
+      .labbodywrap code { background:var(--surface-2); border-radius:5px; padding:1px 5px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12.5px; color:var(--danger); }
+      pre.md-code { background:var(--console-bg); color:var(--console-text); border-radius:10px; padding:12px 14px; overflow-x:auto; margin:10px 0; }
       pre.md-code code { background:none; color:inherit; padding:0; font-size:12.5px; line-height:1.55; white-space:pre; }
-      .labfiles { margin-top:14px; border-top:1px dashed #e2e6f3; padding-top:12px; }
-      .labfiles h4 { margin:0 0 8px; font-size:13.5px; color:#475569; }
-      .labfile { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:6px 0; border-bottom:1px solid #f1f4fb; }
-      .labfile .fpath { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12.5px; color:#334155; }
-      .labfile .flabel { color:#94a3b8; font-size:12px; }
-      .labfile .fsize { color:#cbd5e1; font-size:11.5px; }
+      .labfiles { margin-top:14px; border-top:1px dashed var(--border); padding-top:12px; }
+      .labfiles h4 { margin:0 0 8px; font-size:13.5px; color:var(--text-muted); }
+      .labfile { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:6px 0; border-bottom:1px solid var(--border); }
+      .labfile .fpath { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12.5px; color:var(--text); }
+      .labfile .flabel { color:var(--text-faint); font-size:12px; }
+      .labfile .fsize { color:var(--text-faint); font-size:11.5px; }
       .labfile .fspring { flex:1; }
-      .labfile a.dl, .labfile button.fview { font-size:12px; border:1px solid #d7ddf0; background:#fff; color:#2950e6; border-radius:7px; padding:4px 10px; cursor:pointer; text-decoration:none; }
-      .labfile a.dl:hover, .labfile button.fview:hover { background:#eef2ff; }
+      .labfile a.dl, .labfile button.fview { font-size:12px; border:1px solid var(--border-strong); background:var(--surface); color:var(--accent-text); border-radius:7px; padding:4px 10px; cursor:pointer; text-decoration:none; }
+      .labfile a.dl:hover, .labfile button.fview:hover { background:var(--accent-soft); }
     </style>
   </head>
   <body>
@@ -96,24 +96,24 @@
         <p>기능 요청과 개선 아이디어를 모아 보는 공간입니다. 랩 탭에서는 개발자가 공개한 구현 노트를 확인할 수 있습니다.</p>
       </section>
 
-      <div class="cmtabs">
-        <button id="tabSuggest" class="active" onclick="showTab('suggest')">건의 · 기능요청</button>
-        <button id="tabLab" onclick="showTab('lab')">랩 (기술 공개)</button>
+      <div class="cmtabs" role="tablist" aria-label="커뮤니티 탭">
+        <button id="tabSuggest" class="active" role="tab" aria-selected="true" onclick="showTab('suggest')">건의 · 기능요청</button>
+        <button id="tabLab" role="tab" aria-selected="false" onclick="showTab('lab')">랩 (기술 공개)</button>
       </div>
 
       <!-- 건의 · 기능요청 -->
       <section id="paneSuggest">
-        <div class="pill-filter">
-          <button data-cat="" class="active">전체</button>
-          <button data-cat="feature">기능 요청</button>
-          <button data-cat="suggestion">건의사항</button>
+        <div class="pill-filter" role="tablist" aria-label="게시글 분류 필터">
+          <button data-cat="" class="active" role="tab" aria-selected="true">전체</button>
+          <button data-cat="feature" role="tab" aria-selected="false">기능 요청</button>
+          <button data-cat="suggestion" role="tab" aria-selected="false">건의사항</button>
         </div>
 
         <div id="writeBox" class="cmcard" style="display:none">
-          <input id="newTitle" class="cminput" maxlength="200" placeholder="제목" />
-          <textarea id="newBody" class="cmtextarea" maxlength="5000" placeholder="개발자에게 추가했으면 하는 기능이나 건의사항을 적어주세요." style="margin-top:8px"></textarea>
+          <input id="newTitle" class="cminput" maxlength="200" placeholder="제목" aria-label="제목" />
+          <textarea id="newBody" class="cmtextarea" maxlength="5000" placeholder="개발자에게 추가했으면 하는 기능이나 건의사항을 적어주세요." aria-label="내용" style="margin-top:8px"></textarea>
           <div class="cmrow">
-            <select id="newCat" class="cminput" style="max-width:160px">
+            <select id="newCat" class="cminput" aria-label="분류" style="max-width:160px">
               <option value="feature">기능 요청</option>
               <option value="suggestion">건의사항</option>
             </select>
@@ -125,13 +125,13 @@
           글을 쓰려면 <a href="/">로그인</a>이 필요합니다. (읽기는 누구나 가능)
         </div>
 
-        <div id="postList"><div class="cmempty"><strong>게시글을 불러오는 중입니다.</strong>잠시만 기다려 주세요.</div></div>
+        <div id="postList" aria-live="polite" aria-busy="true"><div class="cmempty"><strong>게시글을 불러오는 중입니다.</strong>잠시만 기다려 주세요.</div></div>
       </section>
 
       <!-- 랩 -->
       <section id="paneLab" style="display:none">
         <p class="muted" style="margin-top:0">개발자가 직접 공개하는 기술·구현 노트입니다.</p>
-        <div id="labList"></div>
+        <div id="labList" aria-live="polite"></div>
       </section>
     </div>
 
@@ -153,6 +153,8 @@
         document.getElementById("paneLab").style.display = t === "lab" ? "" : "none";
         document.getElementById("tabSuggest").classList.toggle("active", t === "suggest");
         document.getElementById("tabLab").classList.toggle("active", t === "lab");
+        document.getElementById("tabSuggest").setAttribute("aria-selected", t === "suggest" ? "true" : "false");
+        document.getElementById("tabLab").setAttribute("aria-selected", t === "lab" ? "true" : "false");
         if (t === "lab") renderLab();
       }
 
@@ -310,6 +312,7 @@
 
       async function loadPosts() {
         const list = document.getElementById("postList");
+        list.setAttribute("aria-busy", "true");
         list.innerHTML = '<div class="cmempty"><strong>게시글을 불러오는 중입니다.</strong>잠시만 기다려 주세요.</div>';
         try {
           const r = await fetch("/api/community/posts" + (curCat ? "?category=" + curCat : ""));
@@ -323,6 +326,8 @@
           posts.forEach((p) => list.appendChild(renderPost(p)));
         } catch (e) {
           list.innerHTML = '<p class="err">' + esc(e.message) + "</p>";
+        } finally {
+          list.setAttribute("aria-busy", "false");
         }
       }
 
@@ -338,7 +343,7 @@
             `<button class="vote ${p.voted ? "on" : ""}" data-id="${p.id}">▲ 공감 <b>${p.upvotes || 0}</b></button>` +
             `<button class="linkbtn toggle-comments" data-id="${p.id}">💬 댓글 ${p.comment_count || 0}</button>` +
             `<span>${esc(p.author_name || "익명")}</span><span>${fmtDate(p.created_at)}</span>` +
-            (canDel ? `<button class="linkbtn del-post" data-id="${p.id}" style="color:#dc2626">삭제</button>` : "") +
+            (canDel ? `<button class="linkbtn del-post" data-id="${p.id}" style="color:var(--danger)">삭제</button>` : "") +
           `</div>` +
           `<div class="comments" id="cm-${p.id}" style="display:none"></div>`;
         card.querySelector(".vote").addEventListener("click", () => votePost(p.id, card));
@@ -380,11 +385,11 @@
             cs.map((c) => {
               const canDel = me && (me.isAdmin || me.id === c.user_id);
               return `<div class="comment"><span class="who">${esc(c.author_name || "익명")} · ${fmtDate(c.created_at)}</span>` +
-                (canDel ? ` <button class="linkbtn del-cm" data-cid="${c.id}" style="color:#dc2626;font-size:11px">삭제</button>` : "") +
+                (canDel ? ` <button class="linkbtn del-cm" data-cid="${c.id}" style="color:var(--danger);font-size:11px">삭제</button>` : "") +
                 `<div>${esc(c.body)}</div></div>`;
             }).join("") +
             (me
-              ? `<div class="cmrow"><input class="cminput cm-input" maxlength="2000" placeholder="댓글 달기" style="flex:1" /><button class="btn cm-send">등록</button></div><span class="err cm-err"></span>`
+              ? `<div class="cmrow"><input class="cminput cm-input" maxlength="2000" placeholder="댓글 달기" aria-label="댓글 달기" style="flex:1" /><button class="btn cm-send">등록</button></div><span class="err cm-err"></span>`
               : `<p class="muted" style="margin:6px 0 0">댓글을 쓰려면 <a href="/">로그인</a>하세요.</p>`);
           box.querySelectorAll(".del-cm").forEach((b) =>
             b.addEventListener("click", async () => {
@@ -477,8 +482,9 @@
       // 카테고리 필터
       document.querySelectorAll(".pill-filter button").forEach((b) =>
         b.addEventListener("click", () => {
-          document.querySelectorAll(".pill-filter button").forEach((x) => x.classList.remove("active"));
+          document.querySelectorAll(".pill-filter button").forEach((x) => { x.classList.remove("active"); x.setAttribute("aria-selected", "false"); });
           b.classList.add("active");
+          b.setAttribute("aria-selected", "true");
           curCat = b.dataset.cat || "";
           loadPosts();
         })

@@ -2,7 +2,7 @@
 <html lang="ko">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Quilo Code (베타)</title>
     <link rel="icon" href="/favicon.ico" />
     <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs/loader.js"></script>
@@ -81,6 +81,10 @@
       .ide-statusbar #stMsg{color:#cfe9ff}
       .ide-statusbar select.ide-lang{background:transparent;color:#fff;border:none;font:inherit;font-size:12px;cursor:pointer}
       .ide-statusbar select.ide-lang option{color:#000}
+      .ide-statusbar span[role="button"]{cursor:pointer}
+      /* 포커스 표시(접근성): IDE 자체 액센트(#007acc) 사용 — 디자인 시스템 색 아님 */
+      .qide :focus-visible{outline:2px solid #007acc;outline-offset:1px;border-radius:3px}
+      .qide.light :focus-visible{outline-color:#0e639c}
       /* 라이트 테마(셸) — Monaco 자체는 'vs' 테마로 전환 */
       .qide.light{background:#fff;color:#333}
       .qide.light .qt-titlebar{background:#dddddd;color:#333;border-bottom-color:#ccc}
@@ -117,19 +121,19 @@
       <div class="qt-titlebar"><span class="qt-title">Quilo Code <span class="qt-beta">베타</span></span></div>
       <div class="qt-body">
         <div class="ide-activity">
-          <button data-act="explorer" class="on" title="탐색기">🗂</button>
-          <button data-act="run" title="실행 (Ctrl/⌘+Enter)">▶</button>
-          <button data-act="agent" class="on" title="Agent (AI)">✨</button>
-          <span style="flex:1"></span>
-          <button data-act="home" title="메인으로">🏠</button>
+          <button data-act="explorer" class="on" aria-label="탐색기" title="탐색기">🗂</button>
+          <button data-act="run" aria-label="실행 (Ctrl/Cmd+Enter)" title="실행 (Ctrl/⌘+Enter)">▶</button>
+          <button data-act="agent" class="on" aria-label="Agent (AI)" title="Agent (AI)">✨</button>
+          <span style="flex:1" aria-hidden="true"></span>
+          <button data-act="home" aria-label="메인으로" title="메인으로">🏠</button>
         </div>
         <div class="ide-side" id="ideSide">
           <div class="ide-side-head">
             <span>탐색기</span>
             <span class="ide-side-actions">
-              <button id="ideOpenFile" title="로컬 파일 열기">📂</button>
-              <button id="ideOpenFolder" title="로컬 폴더 열기">📁</button>
-              <button id="ideNewFile" title="새 파일">＋</button>
+              <button id="ideOpenFile" aria-label="로컬 파일 열기" title="로컬 파일 열기">📂</button>
+              <button id="ideOpenFolder" aria-label="로컬 폴더 열기" title="로컬 폴더 열기">📁</button>
+              <button id="ideNewFile" aria-label="새 파일" title="새 파일">＋</button>
             </span>
           </div>
           <div id="ideFiles"></div>
@@ -151,8 +155,8 @@
             <div class="ide-panel-tabs">
               <button data-panel="output" class="on">출력</button>
               <button data-panel="preview">미리보기</button>
-              <span style="flex:1"></span>
-              <button id="idePanelClose" title="패널 접기">▾</button>
+              <span style="flex:1" aria-hidden="true"></span>
+              <button id="idePanelClose" aria-label="패널 접기" title="패널 접기">▾</button>
             </div>
             <div class="ide-panel-body">
               <pre id="ceOut" class="ide-pane on">▶ 실행(또는 Ctrl/⌘+Enter)을 누르면 결과가 여기에 표시됩니다.</pre>
@@ -162,9 +166,9 @@
         </div>
         <div class="ide-agent" id="ideAgent">
           <div class="ide-agent-head">
-            <span>✨ Agent</span><span style="flex:1"></span>
-            <button id="agentClear" title="대화 비우기">🗑</button>
-            <button id="agentClose" title="닫기">✕</button>
+            <span>✨ Agent</span><span style="flex:1" aria-hidden="true"></span>
+            <button id="agentClear" aria-label="대화 비우기" title="대화 비우기">🗑</button>
+            <button id="agentClose" aria-label="닫기" title="닫기">✕</button>
           </div>
           <div class="ide-agent-msgs" id="agentMsgs">
             <div class="ide-agent-empty">코드에 대해 무엇이든 물어보세요.<br />예: 이 함수 버그 고쳐줘 · 정렬 함수 짜줘 · 이 코드 설명해줘</div>
@@ -173,17 +177,17 @@
             <textarea id="agentPrompt" rows="2" placeholder="무엇이든 물어보세요  (현재 파일 자동 첨부 · Ctrl/⌘+Enter)"></textarea>
             <div class="ide-agent-bar">
               <select id="agentModel" title="AI 모델"></select>
-              <button id="agentSend" title="보내기 (Ctrl/⌘+Enter)">↑</button>
+              <button id="agentSend" aria-label="보내기 (Ctrl/Cmd+Enter)" title="보내기 (Ctrl/⌘+Enter)">↑</button>
             </div>
           </div>
         </div>
       </div>
       <div class="ide-statusbar">
-        <span id="stRun" title="실행 (Ctrl/⌘+Enter)">▶ 실행</span>
-        <span id="stSave" title="디스크에 저장 (Ctrl/⌘+S)">💾 저장</span>
-        <span id="stDownload" title="현재 파일 다운로드">⬇ 다운로드</span>
-        <span id="stPip" title="Python 패키지 설치 (pip / micropip)">📦 pip</span>
-        <span id="stFormat" title="문서 포맷 (Shift+⌥+F)">⌗ 포맷</span>
+        <span id="stRun" role="button" tabindex="0" aria-label="실행 (Ctrl/Cmd+Enter)" title="실행 (Ctrl/⌘+Enter)">▶ 실행</span>
+        <span id="stSave" role="button" tabindex="0" aria-label="디스크에 저장 (Ctrl/Cmd+S)" title="디스크에 저장 (Ctrl/⌘+S)">💾 저장</span>
+        <span id="stDownload" role="button" tabindex="0" aria-label="현재 파일 다운로드" title="현재 파일 다운로드">⬇ 다운로드</span>
+        <span id="stPip" role="button" tabindex="0" aria-label="Python 패키지 설치 (pip / micropip)" title="Python 패키지 설치 (pip / micropip)">📦 pip</span>
+        <span id="stFormat" role="button" tabindex="0" aria-label="문서 포맷 (Shift+Alt+F)" title="문서 포맷 (Shift+⌥+F)">⌗ 포맷</span>
         <span id="stMsg"></span>
         <span style="flex:1"></span>
         <span id="stPos">Ln 1, Col 1</span>
@@ -195,8 +199,8 @@
           <option value="markdown">Markdown</option>
           <option value="application/json">JSON</option>
         </select>
-        <span id="stMinimap" title="미니맵 토글">🗺</span>
-        <span id="stTheme" title="라이트/다크 전환">🌙</span>
+        <span id="stMinimap" role="button" tabindex="0" aria-label="미니맵 토글" title="미니맵 토글">🗺</span>
+        <span id="stTheme" role="button" tabindex="0" aria-label="라이트/다크 전환" title="라이트/다크 전환">🌙</span>
         <span>UTF-8</span>
       </div>
       <input type="file" id="ideFileInput" multiple hidden />
@@ -690,6 +694,15 @@
           try { localStorage.setItem("ceTheme", light ? "light" : "dark"); } catch (e) {}
         }
         document.getElementById("stTheme").onclick = function () { applyTheme(!ide.classList.contains("light")); };
+        // 상태바 role="button" span 키보드 활성화(Enter/Space) — onclick 위임
+        Array.prototype.forEach.call(document.querySelectorAll('.ide-statusbar span[role="button"]'), function (el) {
+          el.addEventListener("keydown", function (e) {
+            if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+              e.preventDefault();
+              if (typeof el.onclick === "function") el.onclick(e);
+            }
+          });
+        });
         document.getElementById("stMinimap").onclick = function () {
           var on = !(editor.getOption(monaco.editor.EditorOption.minimap).enabled);
           applyMinimap(on);

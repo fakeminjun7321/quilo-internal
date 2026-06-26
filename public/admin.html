@@ -5,7 +5,7 @@
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <meta name="theme-color" content="#243ba2" />
+    <meta name="theme-color" content="#2563eb" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>관리자 — Quilo</title>
     <script>
@@ -172,9 +172,9 @@
     </style>
     <style>
       #adminTabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 16px; }
-      #adminTabs button.atab { font: inherit; font-size: 13px; font-weight: 600; padding: 8px 14px; border: 1px solid #d8e0ee; background: #fff; color: #475569; border-radius: 9px; cursor: pointer; }
-      #adminTabs button.atab.on { background: #243ba2; color: #fff; border-color: #243ba2; }
-      #adminTabs button.atab:hover { border-color: #243ba2; }
+      #adminTabs button.atab { font: inherit; font-size: 13px; font-weight: 600; padding: 8px 14px; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); border-radius: 9px; cursor: pointer; }
+      #adminTabs button.atab.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+      #adminTabs button.atab:hover { border-color: var(--accent); }
       .CodeMirror { height: 360px; border: 1px solid #e6e8f0; border-radius: 10px; font-size: 13.5px; }
     </style>
   </head>
@@ -211,29 +211,29 @@
       </div>
     </header>
 
-    <nav id="adminTabs" aria-label="관리자 섹션">
-      <button class="atab" data-go="ai">🤖 AI 보조</button>
-      <button class="atab" data-go="users">👤 사용자</button>
-      <button class="atab" data-go="beta">🧪 베타</button>
-      <button class="atab" data-go="grants">🔑 키 위임</button>
-      <button class="atab" data-go="logs">📊 로그</button>
-      <button class="atab" data-go="announce">📢 공지</button>
-      <button class="atab" data-go="appeals">🛡 소명·제재</button>
-      <button class="atab" data-go="editor">🧩 코드 에디터</button>
+    <nav id="adminTabs" aria-label="관리자 섹션" role="tablist">
+      <button class="atab" data-go="ai" role="tab" aria-selected="false">🤖 AI 보조</button>
+      <button class="atab" data-go="users" role="tab" aria-selected="false">👤 사용자</button>
+      <button class="atab" data-go="beta" role="tab" aria-selected="false">🧪 베타</button>
+      <button class="atab" data-go="grants" role="tab" aria-selected="false">🔑 키 위임</button>
+      <button class="atab" data-go="logs" role="tab" aria-selected="false">📊 로그</button>
+      <button class="atab" data-go="announce" role="tab" aria-selected="false">📢 공지</button>
+      <button class="atab" data-go="appeals" role="tab" aria-selected="false">🛡 소명·제재</button>
+      <button class="atab" data-go="editor" role="tab" aria-selected="false">🧩 코드 에디터</button>
     </nav>
 
     <section class="settings-card" id="adminAiSection">
       <h2>🤖 AI 관리자 보조</h2>
       <p class="hint">로그인·사용 로그·통계·베타 현황을 묻고, 크레딧 충전·rate 해제·베타 토글·사용자 생성 등 작업을 <b>확인 후 실행</b>할 수 있습니다. (질문 데이터는 외부 AI로 전송 — 관리자 전용)</p>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 9px">
-        <span style="font-size:12.5px;color:#475569;font-weight:700">모델</span>
-        <select id="aaModel" title="개조(무료) / 똑똑한 모델(유료)" style="padding:6px 9px;border:1px solid #d7dbe8;border-radius:8px;font:inherit;font-size:13px;max-width:300px"></select>
+        <span style="font-size:12.5px;color:var(--text-muted);font-weight:700">모델</span>
+        <select id="aaModel" title="개조(무료) / 똑똑한 모델(유료)" style="padding:6px 9px;border:1px solid var(--border);border-radius:8px;font:inherit;font-size:13px;max-width:300px"></select>
         <span class="hint" id="aaModelHint" style="font-size:12px;margin:0"></span>
       </div>
-      <div id="aaMsgs" style="border:1px solid #e6e8f0;border-radius:10px;background:#f6f7fb;padding:12px;min-height:110px;max-height:340px;overflow-y:auto;display:flex;flex-direction:column"></div>
+      <div id="aaMsgs" style="border:1px solid var(--border);border-radius:10px;background:var(--surface-2);padding:12px;min-height:110px;max-height:340px;overflow-y:auto;display:flex;flex-direction:column"></div>
       <div id="aaChips" style="margin-top:10px"></div>
       <div style="display:flex;gap:8px;margin-top:8px">
-        <textarea id="aaInput" rows="1" placeholder="예: 최근 로그인 실패가 많은 IP 있어?" style="flex:1;resize:none;border:1px solid #d7dbe8;border-radius:9px;padding:9px 11px;font:inherit;font-size:14px"></textarea>
+        <textarea id="aaInput" rows="1" placeholder="예: 최근 로그인 실패가 많은 IP 있어?" style="flex:1;resize:none;border:1px solid var(--border);border-radius:9px;padding:9px 11px;font:inherit;font-size:14px"></textarea>
         <button id="aaSend" class="secondary compact">전송</button>
       </div>
     </section>
@@ -285,7 +285,8 @@
         <table id="userTable">
           <thead>
             <tr>
-              <th>이름</th>
+              <th>이름 / 아이디</th>
+              <th>인증</th>
               <th>크레딧</th>
               <th>누적 사용</th>
               <th>관리자</th>
@@ -623,9 +624,19 @@
           const unlockBtn = isLocked
             ? `<button data-act="unlock" data-id="${u.id}" style="color: var(--accent-text)">잠금 해제</button>`
             : "";
+          const verifyCell = verifyStatusCell(u);
+          const approveBtn = isAdmin
+            ? ""
+            : u.approved
+              ? `<button data-act="approve" data-id="${u.id}" data-approved="1" style="color: var(--warning)">승인취소</button>`
+              : `<button data-act="approve" data-id="${u.id}" data-approved="0" style="color: var(--accent-text);font-weight:600">승인</button>`;
+          const uname = u.username && u.username !== u.name
+            ? `<br><small style="color: var(--text-muted)">@${escape(u.username)}</small>`
+            : "";
           const tr = document.createElement("tr");
           tr.innerHTML = `
-            <td>${escape(u.name)}</td>
+            <td>${escape(u.name)}${uname}</td>
+            <td>${verifyCell}</td>
             <td>${creditCell(u)}<br>
               <button data-act="topup" data-id="${u.id}" style="font-size: 11px; padding: 3px 6px;">± 크레딧</button>
             </td>
@@ -634,6 +645,7 @@
             <td>${rateText}</td>
             <td style="font-size: 11px">${new Date(u.created_at).toLocaleDateString()}</td>
             <td>
+              ${approveBtn}
               ${unlockBtn}
               <button data-act="edit" data-id="${u.id}">수정</button>
               <button data-act="model" data-id="${u.id}">모델: ${u.restricted_model ? modelShortList(u.restricted_model) + "만" : "전체"}</button>
@@ -650,7 +662,22 @@
         return String(s)
           .replace(/&/g, "&amp;")
           .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;");
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      // 학생 인증(2단계) 상태 셀: 이메일 인증 여부 + 관리자 승인 여부.
+      function verifyStatusCell(u) {
+        if (u.is_admin)
+          return '<span style="color: var(--text-muted)">관리자</span>';
+        const ev = u.email_verified
+          ? `<span style="color: var(--success)" title="${escape(u.email || "")}">📧 인증</span>`
+          : '<span style="color: var(--text-muted)">📧 미인증</span>';
+        const ap = u.approved
+          ? '<span style="color: var(--success)">✅ 승인</span>'
+          : '<span style="color: var(--warning)">⏳ 대기</span>';
+        return `<div style="font-size:11px;line-height:1.5">${ev}<br>${ap}</div>`;
       }
 
       document.getElementById("userTbody").addEventListener("click", async (e) => {
@@ -658,6 +685,29 @@
         if (!btn) return;
         const id = btn.dataset.id;
         const act = btn.dataset.act;
+        if (act === "approve") {
+          const currentlyApproved = btn.dataset.approved === "1";
+          const next = !currentlyApproved;
+          if (
+            !confirm(
+              next
+                ? "이 학생을 승인할까요? 승인하면 (이메일 인증을 마친 경우) 보고서 생성을 사용할 수 있습니다."
+                : "이 학생의 승인을 취소할까요? 보고서 생성이 다시 차단됩니다.",
+            )
+          )
+            return;
+          const res = await fetch(`/api/admin/users/${id}/approve`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ approved: next }),
+          });
+          if (!res.ok) {
+            const e = await res.json().catch(() => ({}));
+            return alert("실패: " + (e.error || "알 수 없음"));
+          }
+          loadUsers();
+          return;
+        }
         if (act === "unlock") {
           if (!confirm("이 사용자의 시간당 사용 잠금을 해제할까요?")) return;
           const res = await fetch(`/api/admin/users/${id}/unlock-rate`, {
@@ -1144,14 +1194,14 @@
           const note = d.store === "memory" ? ' <span class="hint">· 임시 저장(재시작 시 초기화 — announcements 테이블 SQL 적용 시 영구 저장)</span>' : "";
           if (!list.length) { box.innerHTML = '<span class="hint">등록된 공지가 없습니다.' + note + "</span>"; return; }
           box.innerHTML =
-            "<div style='font-size:12px;color:#94a3b8;margin-bottom:6px'>총 " + list.length + "개" + note + "</div>" +
+            "<div style='font-size:12px;color:var(--text-faint);margin-bottom:6px'>총 " + list.length + "개" + note + "</div>" +
             list.map((a) =>
-              "<div style='display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 0;border-bottom:1px solid #f1f4fb'>" +
-                "<span style='font-size:11px;font-weight:700;color:#2950e6;background:#eef2ff;border-radius:999px;padding:1px 8px'>" + escape(a.category || "공지") + "</span>" +
+              "<div style='display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 0;border-bottom:1px solid var(--border)'>" +
+                "<span style='font-size:11px;font-weight:700;color:var(--accent);background:var(--accent-soft);border-radius:999px;padding:1px 8px'>" + escape(a.category || "공지") + "</span>" +
                 "<span style='flex:1;min-width:140px;" + (a.active ? "" : "opacity:.45;text-decoration:line-through") + "'>" + escape(a.title) + "</span>" +
                 (a.link ? "<a href='" + escape(a.link) + "' target='_blank' style='font-size:12px'>링크</a>" : "") +
                 "<button class='secondary compact ann-toggle' data-id='" + escape(String(a.id)) + "' data-active='" + (a.active ? "1" : "0") + "'>" + (a.active ? "비활성화" : "활성화") + "</button>" +
-                "<button class='secondary compact ann-del' data-id='" + escape(String(a.id)) + "' style='color:#dc2626'>삭제</button>" +
+                "<button class='secondary compact ann-del' data-id='" + escape(String(a.id)) + "' style='color:var(--danger)'>삭제</button>" +
               "</div>"
             ).join("");
           box.querySelectorAll(".ann-toggle").forEach((b) => b.addEventListener("click", async () => {
@@ -1164,7 +1214,7 @@
             loadAnn();
           }));
         } catch (e) {
-          box.innerHTML = "<span class='hint' style='color:#dc2626'>" + escape(e.message) + "</span>";
+          box.innerHTML = "<span class='hint' style='color:var(--danger)'>" + escape(e.message) + "</span>";
         }
       }
       (function () {
@@ -1256,8 +1306,8 @@
           d.style.cssText =
             "margin:5px 0;padding:8px 11px;border-radius:11px;white-space:pre-wrap;font-size:13.5px;line-height:1.6;max-width:92%;" +
             (role === "user"
-              ? "background:#243ba2;color:#fff;align-self:flex-end;"
-              : "background:#fff;border:1px solid #e6e8f0;align-self:flex-start;");
+              ? "background:var(--accent);color:var(--on-accent);align-self:flex-end;"
+              : "background:var(--surface);border:1px solid var(--border);align-self:flex-start;");
           d.textContent = text;
           box.appendChild(d);
           box.scrollTop = box.scrollHeight;
@@ -1273,7 +1323,7 @@
           actions.forEach(function (a) {
             var card = document.createElement("div");
             card.style.cssText =
-              "align-self:flex-start;max-width:94%;margin:6px 0;padding:11px 13px;border:1px solid #ffd9a8;background:#fff8ee;border-radius:12px;font-size:13px;line-height:1.5;";
+              "align-self:flex-start;max-width:94%;margin:6px 0;padding:11px 13px;border:1px solid var(--warning-border);background:var(--warning-soft);border-radius:12px;font-size:13px;line-height:1.5;";
             var title = document.createElement("div");
             title.style.cssText =
               "font-weight:700;margin-bottom:8px;color:#7a4b00;";
@@ -1286,7 +1336,7 @@
               pw.placeholder = "새 계정 비밀번호 (5자 이상)";
               pw.autocomplete = "new-password";
               pw.style.cssText =
-                "display:block;width:100%;box-sizing:border-box;margin:0 0 8px;padding:7px 9px;border:1px solid #d7dbe8;border-radius:7px;font:inherit;";
+                "display:block;width:100%;box-sizing:border-box;margin:0 0 8px;padding:7px 9px;border:1px solid var(--border);border-radius:7px;font:inherit;";
               card.appendChild(pw);
             }
             var row = document.createElement("div");
@@ -1455,7 +1505,9 @@
             s.style.display = s.getAttribute("data-atab") === tab ? "" : "none";
           });
           tabBtns.forEach(function (b) {
-            b.classList.toggle("on", b.getAttribute("data-go") === tab);
+            var on = b.getAttribute("data-go") === tab;
+            b.classList.toggle("on", on);
+            b.setAttribute("aria-selected", on ? "true" : "false");
           });
           try {
             localStorage.setItem("adminTab", tab);
@@ -1498,15 +1550,15 @@
             ap.forEach(function (a) {
               var card = document.createElement("div");
               card.style.cssText =
-                "border:1px solid #e6e8f0;border-radius:9px;padding:11px 13px;margin-bottom:10px;background:" +
-                (a.status === "resolved" ? "#f3f6f4" : "#fff");
+                "border:1px solid var(--border);border-radius:9px;padding:11px 13px;margin-bottom:10px;background:" +
+                (a.status === "resolved" ? "var(--surface-2)" : "var(--surface)");
               var banned = a.banned_until
                 ? '<span style="color:#b45309">제재중 (~' +
                   new Date(a.banned_until).toLocaleString("ko-KR") +
                   ")</span>"
                 : '<span style="color:#16a34a">제재 없음</span>';
               card.innerHTML =
-                '<div style="font-size:12.5px;color:#64748b">' +
+                '<div style="font-size:12.5px;color:var(--text-muted)">' +
                 escA(a.author_name || "익명") +
                 " · " +
                 (a.kind === "comment" ? "댓글" : "글") +
@@ -1521,7 +1573,7 @@
                 escA(a.reason) +
                 "</div>" +
                 (a.blocked_text
-                  ? '<details style="margin:4px 0"><summary style="cursor:pointer;color:#64748b;font-size:12.5px">차단된 원문 보기</summary><div style="white-space:pre-wrap;font-size:13px;background:#f8fafc;padding:8px;border-radius:6px;margin-top:4px">' +
+                  ? '<details style="margin:4px 0"><summary style="cursor:pointer;color:var(--text-muted);font-size:12.5px">차단된 원문 보기</summary><div style="white-space:pre-wrap;font-size:13px;background:var(--surface-2);padding:8px;border-radius:6px;margin-top:4px">' +
                     escA(a.blocked_text) +
                     "</div></details>"
                   : "") +
@@ -1546,7 +1598,7 @@
             });
           } catch (e) {
             el.innerHTML =
-              '<p class="hint" style="color:#dc2626">' + escA(e.message) + "</p>";
+              '<p class="hint" style="color:var(--danger)">' + escA(e.message) + "</p>";
           }
         }
         async function resolveAppeal(id, unban) {

@@ -551,6 +551,12 @@ const {
   CATEGORY_LABELS: FEEDBACK_CATEGORY_LABELS,
   sendFeedbackEmail,
 } = require("./lib/feedback-mailer");
+const {
+  sendVerificationEmail,
+  allowedEmailDomains,
+  normalizeSchoolEmail,
+} = require("./lib/mailer");
+const { generateToken, hashToken } = require("./lib/auth");
 const { getVersionInfo } = require("./lib/version-info");
 const { translatePdf } = require("./lib/pipelines/pdf-translate/translate");
 const { retypesetPdf } = require("./lib/pipelines/pdf-translate/latex-gen");
@@ -835,10 +841,13 @@ async function refreshSessionUser(req, { failClosed = false } = {}) {
     req.session.userInfo = {
       ...u,
       name: fresh.name || u.name,
+      username: fresh.username || u.username || fresh.name || u.name,
       studentId: normalizeStudentId(fresh.student_id),
       isAdmin: !!fresh.is_admin,
       unlimited: !!fresh.unlimited,
       restrictedModel: fresh.restricted_model || null,
+      emailVerified: !!fresh.email_verified,
+      approved: !!fresh.approved,
     };
     return req.session.userInfo;
   } catch (e) {
@@ -1082,6 +1091,58 @@ setInterval(
   60 * 60 * 1000,
 );
 
+// ── 학생 인증(이메일 + 관리자 승인) 공통 헬퍼 ────────────────────────────────
+
+// 인증 토큰 유효시간(시간). 기본 24h.
+const EMAIL_VERIFY_TTL_HOURS = Math.max(
+  1,
+  Number(process.env.EMAIL_VERIFY_TTL_HOURS) || 24,
+);
+
+// 인증 링크 절대주소의 베이스. **서버가 신뢰하는** 환경변수를 최우선으로 쓴다.
+// x-forwarded-host 는 스푸핑 가능(trust proxy 도 sanitize 안 함)하므로, 토큰이 든
+// 인증 링크에는 절대 그대로 박지 않는다. 환경변수가 없을 때만(로컬 개발) 요청에서 추론.
+function publicBaseUrl(req) {
+  const env = (
+    process.env.PUBLIC_BASE_URL ||
+    process.env.APP_BASE_URL ||
+    process.env.RENDER_EXTERNAL_URL ||
+    ""
+  )
+    .trim()
+    .replace(/\/+$/, "");
+  if (env) return env;
+  const proto = (req.get("x-forwarded-proto") || req.protocol || "https")
+    .split(",")[0]
+    .trim();
+  const host = req.get("x-forwarded-host") || req.get("host") || "";
+  return host ? `${proto}://${host}` : "";
+}
+
+// 아이디(username) 형식 검증. 영문/숫자/._- 만, 3~30자.
+function normalizeUsername(value) {
+  return String(value || "").trim().slice(0, 30);
+}
+function isValidUsername(username) {
+  return /^[A-Za-z0-9._-]{3,30}$/.test(username);
+}
+
+// 한 사용자에게 학교 이메일 인증 메일을 발급(토큰 저장 + 발송). 성공 여부 반환.
+async function issueVerificationEmail(req, user, email) {
+  const token = generateToken(32);
+  const tokenHash = hashToken(token);
+  const expiresAt = Date.now() + EMAIL_VERIFY_TTL_HOURS * 60 * 60 * 1000;
+  await supa.setEmailVerification(user.id, { email, tokenHash, expiresAt });
+  const base = publicBaseUrl(req);
+  const link = `${base}/verify-email.html?token=${encodeURIComponent(token)}`;
+  const result = await sendVerificationEmail({
+    to: email,
+    name: user.name,
+    link,
+  });
+  return { result, link };
+}
+
 // ── Login routes ─────────────────────────────────────────────────────────────
 
 app.post("/api/login", async (req, res) => {
@@ -1096,9 +1157,10 @@ app.post("/api/login", async (req, res) => {
   rateLimit.recordLoginAttempt(ip);
 
   // 만 14세·약관 동의는 회원가입(/api/signup)에서만 받는다. 로그인은 기존 사용자라 불필요.
+  // 로그인 식별자는 아이디(username). 기존 계정은 username = name 으로 백필되어 동일하게 동작.
   const { username, password } = req.body || {};
   if (!username || !password) {
-    return res.status(400).json({ error: "이름과 비밀번호를 입력하세요." });
+    return res.status(400).json({ error: "아이디와 비밀번호를 입력하세요." });
   }
   const name = String(username).trim().slice(0, 50);
 
@@ -1124,10 +1186,13 @@ app.post("/api/login", async (req, res) => {
     req.session.userInfo = {
       id: user.id,
       name: user.name,
+      username: user.username || user.name,
       studentId: normalizeStudentId(user.student_id),
       isAdmin: !!user.is_admin,
       unlimited: !!user.unlimited,
       restrictedModel: user.restricted_model || null,
+      emailVerified: !!user.email_verified,
+      approved: !!user.approved,
     };
     // 로그인 유지: 체크 시 30일 지속 쿠키, 아니면 브라우저/앱 세션 한정.
     // (cookie-session 은 req.sessionOptions 로 이번 응답의 쿠키 만료를 조절한다.)
@@ -1168,17 +1233,38 @@ app.post("/api/signup", async (req, res) => {
   }
   rateLimit.recordLoginAttempt(ip);
 
-  const { username, password, studentId, age14Confirmed, termsAccepted } =
-    req.body || {};
-  const name = String(username || "").trim().slice(0, 50);
-  if (!name || !password) {
-    return res.status(400).json({ error: "이름과 비밀번호를 입력하세요." });
+  // 아이디(username) + 이름(name) 분리. 학번(선택) + 학교 이메일(인증용).
+  const {
+    username,
+    name: nameField,
+    password,
+    studentId,
+    email,
+    age14Confirmed,
+    termsAccepted,
+  } = req.body || {};
+  const uname = normalizeUsername(username);
+  const name = String(nameField || "").trim().slice(0, 50);
+  if (!uname || !name || !password) {
+    return res
+      .status(400)
+      .json({ error: "아이디·이름·비밀번호를 모두 입력하세요." });
+  }
+  if (!isValidUsername(uname)) {
+    return res.status(400).json({
+      error: "아이디는 영문/숫자/._- 조합 3~30자여야 합니다.",
+    });
   }
   if (name.length < 2) {
     return res.status(400).json({ error: "이름은 2자 이상이어야 합니다." });
   }
   if (String(password).length < 6) {
     return res.status(400).json({ error: "비밀번호는 6자 이상이어야 합니다." });
+  }
+  // 학교 이메일 검증(도메인 제한). 1단계 인증에 사용.
+  const emailCheck = normalizeSchoolEmail(email);
+  if (!emailCheck.ok) {
+    return res.status(400).json({ error: emailCheck.reason });
   }
   if (!age14Confirmed) {
     return res
@@ -1197,42 +1283,149 @@ app.post("/api/signup", async (req, res) => {
   }
 
   try {
-    const existing = await supa.findUserByName(name);
+    const existing = await supa.findUserByUsername(uname);
     if (existing) {
       return res
         .status(409)
-        .json({ error: "이미 사용 중인 이름입니다. 다른 이름을 입력하세요." });
+        .json({ error: "이미 사용 중인 아이디입니다. 다른 아이디를 입력하세요." });
     }
-    // 신규 계정은 크레딧 0으로 시작 — 보고서 생성은 관리자/결제 충전 후 가능.
+    // 이미 인증된 같은 학교 이메일이 있으면 중복 가입 방지.
+    const emailOwner = await supa.findUserByEmail(emailCheck.email).catch(() => null);
+    if (emailOwner) {
+      return res.status(409).json({
+        error: "이 이메일은 이미 인증된 계정이 있습니다.",
+      });
+    }
+    // 신규 계정: 크레딧 0, 미인증·미승인. 보고서 생성은 이메일 인증 + 관리자 승인 후 가능.
     const user = await supa.createUser({
       name,
+      username: uname,
       password: String(password),
       preCreditsUsd: 0,
       resultCreditsUsd: 0,
       isAdmin: false,
+      approved: false,
+      emailVerified: false,
       studentId: String(studentId || "").trim().slice(0, 30),
     });
     req.session.userInfo = {
       id: user.id,
       name: user.name,
+      username: user.username || user.name,
       studentId: normalizeStudentId(user.student_id),
       isAdmin: false,
       unlimited: false,
       restrictedModel: null,
+      emailVerified: false,
+      approved: false,
     };
-    console.log(`[signup] ${user.name}`);
-    return res.json({ ok: true, user: user.name, isAdmin: false });
+
+    // 1단계: 인증 메일 발송.
+    let emailSent = false;
+    let emailReason = "";
+    try {
+      const { result } = await issueVerificationEmail(req, user, emailCheck.email);
+      emailSent = !!result.sent;
+      if (!result.sent) emailReason = result.reason || "";
+    } catch (e) {
+      console.warn("[signup] verification email failed:", e.message);
+      emailReason = "send_error";
+    }
+    console.log(
+      `[signup] ${user.username} (${user.name}) email=${emailCheck.email} sent=${emailSent}`,
+    );
+    return res.json({
+      ok: true,
+      user: user.name,
+      username: user.username,
+      isAdmin: false,
+      pendingEmail: emailCheck.email,
+      emailSent,
+      emailReason: process.env.NODE_ENV === "production" ? "" : emailReason,
+    });
   } catch (e) {
-    // 이름 unique 위반(동시 가입 레이스) → 409
+    // 아이디 unique 위반(동시 가입 레이스) → 409
     if (/duplicate key|unique|23505/i.test(e.message || "")) {
-      return res
-        .status(409)
-        .json({ error: "이미 사용 중인 이름입니다." });
+      return res.status(409).json({ error: "이미 사용 중인 아이디입니다." });
     }
     console.error("[signup] error:", e);
     return res
       .status(500)
       .json({ error: "회원가입 처리 중 오류가 발생했습니다." });
+  }
+});
+
+// 학교 이메일 인증 메일 (재)요청 — 로그인 사용자. 기존 계정의 재인증/재발송에도 사용.
+app.post("/api/verify-email/request", requireAuth, async (req, res) => {
+  if (!supa.isEnabled()) {
+    return res.status(503).json({ error: "DB가 일시적으로 사용 불가합니다." });
+  }
+  const ip = req.ip || "unknown";
+  const limit = rateLimit.checkLoginLimit(ip);
+  if (!limit.allowed) {
+    return res.status(429).json({
+      error: "요청이 너무 많습니다. 1분 후 다시 시도하세요.",
+    });
+  }
+  rateLimit.recordLoginAttempt(ip);
+
+  const u = getSessionUser(req);
+  if (!u || !u.id) return res.status(401).json({ error: "로그인이 필요합니다." });
+
+  const emailCheck = normalizeSchoolEmail(req.body && req.body.email);
+  if (!emailCheck.ok) {
+    return res.status(400).json({ error: emailCheck.reason });
+  }
+  try {
+    const fresh = await supa.findUserById(u.id);
+    if (!fresh) return res.status(401).json({ error: "로그인이 필요합니다." });
+    if (fresh.email_verified && fresh.email === emailCheck.email) {
+      return res.json({ ok: true, alreadyVerified: true, email: emailCheck.email });
+    }
+    // 다른 계정이 이미 인증한 이메일이면 거부.
+    const owner = await supa.findUserByEmail(emailCheck.email).catch(() => null);
+    if (owner && owner.id !== u.id) {
+      return res
+        .status(409)
+        .json({ error: "이 이메일은 이미 다른 계정에서 인증되었습니다." });
+    }
+    const { result } = await issueVerificationEmail(req, fresh, emailCheck.email);
+    if (!result.sent && result.reason === "not_configured") {
+      return res.status(503).json({
+        error:
+          "이메일 발송이 아직 설정되지 않았습니다. 관리자에게 문의하세요.",
+      });
+    }
+    return res.json({
+      ok: true,
+      email: emailCheck.email,
+      emailSent: !!result.sent,
+    });
+  } catch (e) {
+    console.error("[verify-email/request] error:", e);
+    return res.status(500).json({ error: "인증 메일 발송 중 오류가 발생했습니다." });
+  }
+});
+
+// 학교 이메일 인증 확정 — 메일 링크의 토큰을 POST 로 받는다(스캐너 prefetch 로 인한
+// GET 자동 소비를 피하려고 verify-email.html 이 버튼 클릭 시 POST 한다).
+app.post("/api/verify-email/confirm", async (req, res) => {
+  if (!supa.isEnabled()) {
+    return res.status(503).json({ error: "DB가 일시적으로 사용 불가합니다." });
+  }
+  const token = String((req.body && req.body.token) || "").trim();
+  if (!token) return res.status(400).json({ error: "잘못된 인증 링크입니다." });
+  try {
+    const out = await supa.verifyEmailToken(hashToken(token));
+    if (!out.ok) return res.status(400).json({ error: out.reason });
+    // 로그인 세션이 있으면 즉시 반영.
+    if (req.session && req.session.userInfo && req.session.userInfo.id === out.user.id) {
+      req.session.userInfo.emailVerified = true;
+    }
+    return res.json({ ok: true });
+  } catch (e) {
+    console.error("[verify-email/confirm] error:", e);
+    return res.status(500).json({ error: "이메일 인증 처리 중 오류가 발생했습니다." });
   }
 });
 
@@ -1250,6 +1443,12 @@ app.get("/api/me", async (req, res) => {
   let studentId = normalizeStudentId(u.studentId);
   let blockedReportTypes = [];
   let styleNote = "";
+  // 학생 인증 상태(세션값으로 우선, fresh row 로 보정).
+  let username = u.username || u.name;
+  let email = "";
+  let pendingEmail = "";
+  let emailVerified = !!u.emailVerified;
+  let approved = !!u.approved;
   if (supa.isEnabled() && u.id) {
     try {
       const freshUser = await supa.findUserById(u.id);
@@ -1262,18 +1461,35 @@ app.get("/api/me", async (req, res) => {
         blockedReportTypes = supa.normalizeBlockedTypes
           ? supa.normalizeBlockedTypes(freshUser.blocked_report_types)
           : [];
+        username = freshUser.username || freshUser.name || username;
+        email = String(freshUser.email || "");
+        pendingEmail = String(freshUser.email_verify_email || "");
+        emailVerified = !!freshUser.email_verified;
+        approved = !!freshUser.approved;
+        // 세션에도 최신 인증 상태 반영(이후 게이트 판단의 stale 방지).
+        req.session.userInfo.emailVerified = emailVerified;
+        req.session.userInfo.approved = approved;
       }
     } catch (e) {
       console.warn("[me] profile lookup failed:", e.message);
     }
   }
+  const reportEligible = !!u.isAdmin || (emailVerified && approved);
   return res.json({
     user: u.name,
+    username,
     isAdmin: !!u.isAdmin,
     studentId,
     styleNote,
     blockedReportTypes,
     fableDisabled: FABLE_DISABLED,
+    // 학생 인증(2단계) 상태
+    email,
+    pendingEmail,
+    emailVerified,
+    approved,
+    reportEligible,
+    allowedEmailDomains: allowedEmailDomains(),
   });
 });
 
@@ -2862,6 +3078,27 @@ app.post(
         console.warn("[generate] profile lookup failed:", e.message);
       }
     }
+
+    // ── 학생 인증 게이트(2단계) ───────────────────────────────────────────────
+    // 보고서 생성은 관리자이거나 (학교 이메일 인증 완료 AND 관리자 승인) 인 계정만.
+    // 권한 판단은 fresh row 기준(없으면 세션값). Supabase 미설정 시엔 게이트를 적용하지
+    // 않는다(로컬/오프라인 점검 — 그 경우 generate 자체가 크레딧 검증에서 막힘).
+    if (!effectiveIsAdmin && supa.isEnabled()) {
+      const evVerified = freshUser
+        ? !!freshUser.email_verified
+        : !!userInfo.emailVerified;
+      const evApproved = freshUser ? !!freshUser.approved : !!userInfo.approved;
+      if (!(evVerified && evApproved)) {
+        return res.status(403).json({
+          error: !evVerified
+            ? "학교 이메일 인증이 필요합니다. 메인 페이지에서 학교 이메일을 인증하세요."
+            : "관리자 승인 대기 중입니다. 승인 후 보고서를 생성할 수 있습니다.",
+          needsVerification: !evVerified,
+          needsApproval: evVerified && !evApproved,
+        });
+      }
+    }
+
     // API 키 위임(grant): 관리자가 지정한 사용자는 위임 기간 동안 크레딧 차감 없이
     // 서버(관리자) 키로 실행한다. admin·무제한 계정은 이미 면제이므로 그 외만 조회.
     let hasGrant = false;
@@ -5082,6 +5319,7 @@ app.post("/api/admin/users", requireAdmin, async (req, res) => {
     return res.status(503).json({ error: "Supabase 미설정" });
   const {
     name,
+    username,
     password,
     budgetUsd,
     budgetKrw,
@@ -5097,6 +5335,13 @@ app.post("/api/admin/users", requireAdmin, async (req, res) => {
       .status(400)
       .json({ error: "비밀번호는 최소 5자 이상이어야 합니다." });
   }
+  // 아이디 미지정 시 이름으로. 형식 검증(영문/숫자/._- 3~30자)은 지정된 경우만.
+  const uname = normalizeUsername(username || name);
+  if (username && !isValidUsername(uname)) {
+    return res
+      .status(400)
+      .json({ error: "아이디는 영문/숫자/._- 조합 3~30자여야 합니다." });
+  }
   // legacy budgetUsd/budgetKrw도 받지만 새 폼은 preCreditsUsd/resultCreditsUsd 사용 (충전 N건 → USD).
   let usd = Number(budgetUsd) || 0;
   if (!usd && budgetKrw) {
@@ -5108,15 +5353,44 @@ app.post("/api/admin/users", requireAdmin, async (req, res) => {
     return res.status(400).json({ error: "충전 금액은 음수일 수 없습니다." });
   }
   try {
+    // 관리자가 직접 발급한 계정은 학생 인증을 면제(인증 완료 + 승인 처리)한다.
     const user = await supa.createUser({
       name: String(name).trim(),
+      username: uname,
       password,
       budgetUsd: usd,
       preCreditsUsd: preUsd,
       resultCreditsUsd: resultUsd,
       isAdmin: !!isAdmin,
+      approved: true,
+      emailVerified: true,
     });
     res.json({ ok: true, user });
+  } catch (e) {
+    if (/duplicate key|unique|23505/i.test(e.message || "")) {
+      return res.status(409).json({ error: "이미 사용 중인 아이디입니다." });
+    }
+    console.error("[admin]", req.method, req.path, "error:", e);
+    res.status(500).json({ error: "처리 중 오류가 발생했습니다." });
+  }
+});
+
+// 관리자: 학생 계정 승인/승인취소 (2단계 인증의 2단계).
+app.post("/api/admin/users/:id/approve", requireAdmin, async (req, res) => {
+  if (!supa.isEnabled())
+    return res.status(503).json({ error: "Supabase 미설정" });
+  const approved = req.body && req.body.approved === false ? false : true;
+  try {
+    const me = getSessionUser(req);
+    const user = await supa.setApproved(
+      req.params.id,
+      approved,
+      (me && me.id) || null,
+    );
+    console.log(
+      `[admin] approve user=${user.username || user.name} approved=${approved}`,
+    );
+    res.json({ ok: true, approved, user });
   } catch (e) {
     console.error("[admin]", req.method, req.path, "error:", e);
     res.status(500).json({ error: "처리 중 오류가 발생했습니다." });
@@ -5128,6 +5402,7 @@ app.patch("/api/admin/users/:id", requireAdmin, async (req, res) => {
     return res.status(503).json({ error: "Supabase 미설정" });
   const {
     name,
+    username,
     password,
     budgetUsd,
     budgetKrw,
@@ -5136,7 +5411,13 @@ app.patch("/api/admin/users/:id", requireAdmin, async (req, res) => {
     restrictedModel,
     unlimited,
     blockedReportTypes,
+    approved,
   } = req.body || {};
+  if (username != null && username !== "" && !isValidUsername(normalizeUsername(username))) {
+    return res
+      .status(400)
+      .json({ error: "아이디는 영문/숫자/._- 조합 3~30자여야 합니다." });
+  }
   if (password != null && password !== "" && String(password).length < 5) {
     return res
       .status(400)
@@ -5181,6 +5462,9 @@ app.patch("/api/admin/users/:id", requireAdmin, async (req, res) => {
   }
   const patch = {};
   if (name) patch.name = String(name).trim();
+  if (username != null && username !== "")
+    patch.username = normalizeUsername(username);
+  if (approved != null) patch.approved = !!approved;
   if (password) patch.password = password;
   if (budgetUsd != null) patch.budgetUsd = Number(budgetUsd);
   else if (budgetKrw != null) {
@@ -5198,6 +5482,9 @@ app.patch("/api/admin/users/:id", requireAdmin, async (req, res) => {
     res.json({ ok: true, user });
   } catch (e) {
     console.error("[admin]", req.method, req.path, "error:", e);
+    if (/duplicate key|unique|23505/i.test(e.message || "")) {
+      return res.status(409).json({ error: "이미 사용 중인 아이디입니다." });
+    }
     // blocked_report_types 컬럼 미생성(마이그레이션 전) 친절 안내
     if (/blocked_report_types/.test(e.message || "")) {
       return res.status(409).json({

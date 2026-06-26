@@ -5,7 +5,7 @@
     <link rel="canonical" href="https://quilolab.com/study.html" />
     <meta name="description" content="공부 — 물리 개념을 도식으로 정리하는 학습 도구. 상대성이론 민코프스키 시공간 도표 생성 등 개념 시각화." />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#243ba2" />
+    <meta name="theme-color" content="#2563eb" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
@@ -114,6 +114,10 @@
         background: var(--accent-soft);
         color: var(--accent-text);
       }
+      .study-mode label:has(input:focus-visible) {
+        outline: none;
+        box-shadow: 0 0 0 3px var(--ring);
+      }
       .study-mode strong {
         font-size: 13px;
       }
@@ -145,7 +149,7 @@
         flex-wrap: wrap;
       }
       .study-actions button {
-        min-height: 40px;
+        min-height: 44px;
         padding: 8px 14px;
         border-radius: 10px;
         font: inherit;
@@ -172,7 +176,7 @@
         overflow: hidden;
         border: 1px solid var(--border);
         border-radius: var(--radius);
-        background: #fff;
+        background: var(--surface);
       }
       .study-canvas-tools {
         position: absolute;
@@ -184,17 +188,18 @@
       }
       .study-canvas-tools button,
       .study-zoom-actions button {
-        min-height: 32px;
-        padding: 6px 10px;
+        min-height: 44px;
+        min-width: 44px;
+        padding: 8px 12px;
         border: 1px solid var(--border);
         border-radius: 9px;
-        background: rgba(255, 255, 255, 0.92);
+        background: var(--surface);
         color: var(--text);
         font: inherit;
         font-size: 12.5px;
         font-weight: 760;
         cursor: pointer;
-        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
+        box-shadow: var(--shadow-sm);
       }
       #minkowskiCanvas {
         display: block;
@@ -207,18 +212,18 @@
         display: grid;
         gap: 5px;
         padding: 12px 14px 14px;
-        border-top: 1px solid #eef2f7;
-        background: #fff;
+        border-top: 1px solid var(--border);
+        background: var(--surface);
       }
       .study-caption h2 {
         margin: 0;
-        color: #111827;
+        color: var(--text);
         font-size: 15px;
         line-height: 1.35;
       }
       .study-caption p {
         margin: 0;
-        color: #4b5563;
+        color: var(--text-muted);
         line-height: 1.55;
         font-size: 13px;
       }
@@ -291,7 +296,7 @@
         min-width: 0;
         min-height: 0;
         border-radius: 14px;
-        background: #fff;
+        background: var(--surface);
         box-shadow: 0 24px 90px rgba(15, 23, 42, 0.32);
         overflow: hidden;
       }
@@ -301,8 +306,8 @@
         justify-content: space-between;
         gap: 12px;
         padding: 12px 14px;
-        border-bottom: 1px solid #e5e7eb;
-        color: #111827;
+        border-bottom: 1px solid var(--border);
+        color: var(--text);
       }
       .study-zoom-actions {
         display: flex;
@@ -312,7 +317,7 @@
       }
       .study-zoom-actions output {
         min-width: 50px;
-        color: #4b5563;
+        color: var(--text-muted);
         font-size: 12.5px;
         font-variant-numeric: tabular-nums;
         text-align: center;
@@ -322,13 +327,13 @@
         min-height: 0;
         overflow: auto;
         padding: 18px;
-        background: #f8fafc;
+        background: var(--surface-2);
       }
       #minkowskiZoomCanvas {
         display: block;
         max-width: none;
         background: #fff;
-        border: 1px solid #e5e7eb;
+        border: 1px solid var(--border);
         border-radius: 10px;
       }
       .study-gate-btn {
@@ -349,6 +354,10 @@
         background: var(--accent-hover);
         color: var(--on-accent);
         text-decoration: none;
+      }
+      .study-gate-btn:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 3px var(--ring);
       }
       @media (max-width: 880px) {
         .study-workbench {
@@ -476,7 +485,7 @@
               <div class="study-canvas-tools">
                 <button id="openZoomBtn" type="button">크게 보기</button>
               </div>
-              <canvas id="minkowskiCanvas"></canvas>
+              <canvas id="minkowskiCanvas" role="img" aria-label="민코프스키 시공간 도표 — 정지계와 이동계 좌표축, 세계선, 사건을 표시한 그래프"></canvas>
               <div class="study-caption">
                 <h2 id="diagramTitle">민코프스키 평면</h2>
                 <p id="diagramExplanation">핵심 축과 세계선만 표시한 샘플 도식입니다. AI 해석은 반드시 직접 검토하세요.</p>
@@ -531,7 +540,7 @@
           </div>
         </div>
         <div id="studyZoomStage" class="study-zoom-stage">
-          <canvas id="minkowskiZoomCanvas"></canvas>
+          <canvas id="minkowskiZoomCanvas" role="img" aria-label="민코프스키 시공간 도표 확대 보기 — 정지계와 이동계 좌표축, 세계선, 사건을 표시한 그래프"></canvas>
         </div>
       </div>
     </div>

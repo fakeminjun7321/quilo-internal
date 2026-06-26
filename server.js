@@ -5363,14 +5363,9 @@ app.get("/api/admin/exchange-rate", requireAdmin, async (req, res) => {
 
 // ── Static + index ──────────────────────────────────────────────────────────
 
-app.use(
-  express.static(path.join(__dirname, "public"), {
-    extensions: ["html"],
-    index: false,
-  }),
-);
-
-app.get("/admin", async (req, res) => {
+// express.static 의 extensions:["html"] 가 /admin -> public/admin.html 로 먼저
+// 해석하지 않도록, 관리자 페이지는 정적 파일 서빙보다 앞에서 인증한다.
+app.get(["/admin", "/admin.html"], async (req, res) => {
   let u = getSessionUser(req);
   if (!u) return res.redirect("/login.html");
   try {
@@ -5383,6 +5378,13 @@ app.get("/admin", async (req, res) => {
   if (!u.isAdmin) return res.status(403).send("관리자만 접근 가능합니다.");
   res.sendFile(path.join(__dirname, "public", "admin.html"));
 });
+
+app.use(
+  express.static(path.join(__dirname, "public"), {
+    extensions: ["html"],
+    index: false,
+  }),
+);
 
 app.get("/", (req, res) => {
   // 로그인 여부와 무관하게 같은 페이지(같은 골격)를 준다. 로그아웃 상태면

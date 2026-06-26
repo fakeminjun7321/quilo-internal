@@ -40,13 +40,13 @@
         overflow-y: auto;
         padding: 16px;
         border: 1px solid var(--border);
-        border-radius: 14px;
+        border-radius: var(--radius);
         background: var(--surface);
       }
       .fc-msg {
         max-width: 86%;
         padding: 10px 14px;
-        border-radius: 14px;
+        border-radius: var(--radius);
         white-space: pre-wrap;
         word-break: break-word;
         line-height: 1.55;
@@ -73,7 +73,7 @@
       .fc-composer {
         margin-top: 14px;
         border: 1px solid var(--border);
-        border-radius: 14px;
+        border-radius: var(--radius);
         padding: 12px;
         background: var(--surface);
       }
@@ -117,7 +117,7 @@
         min-height: 46px;
         max-height: 180px;
         padding: 10px 12px;
-        border-radius: 10px;
+        border-radius: var(--radius-sm);
         border: 1px solid var(--border);
         font: inherit;
         background: var(--surface);
@@ -133,7 +133,7 @@
       }
       .fc-tools select {
         padding: 4px 8px;
-        border-radius: 8px;
+        border-radius: var(--radius-sm);
         border: 1px solid var(--border);
         background: var(--surface);
         color: inherit;
@@ -143,7 +143,7 @@
       .fc-attach-btn {
         cursor: pointer;
         border: 1px solid var(--border);
-        border-radius: 8px;
+        border-radius: var(--radius-sm);
         padding: 5px 10px;
         font-size: 13px;
         background: var(--surface);
@@ -159,7 +159,7 @@
       .fc-badge {
         display: inline-block;
         font-size: 12px;
-        font-weight: 600;
+        font-weight: var(--fw-semibold);
         color: var(--success);
         margin-left: 6px;
       }

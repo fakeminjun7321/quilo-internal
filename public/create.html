@@ -21,38 +21,38 @@
       * { box-sizing: border-box; }
       body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Apple SD Gothic Neo","맑은 고딕",sans-serif; background:var(--bg); color:var(--ink); }
       header { display:flex; align-items:center; gap:14px; padding:14px 20px; background:var(--card); border-bottom:1px solid var(--bd); position:sticky; top:0; z-index:5; }
-      header .brand { font-weight:800; font-size:17px; text-decoration:none; color:var(--ink); }
+      header .brand { font-weight:var(--fw-heavy); font-size:17px; text-decoration:none; color:var(--ink); }
       header nav { margin-left:auto; display:flex; gap:14px; align-items:center; }
       header nav a { color:var(--mut); text-decoration:none; font-size:14px; }
-      header nav a.on { color:var(--acc); font-weight:700; }
+      header nav a.on { color:var(--acc); font-weight:var(--fw-bold); }
       .container { max-width:1200px; margin:0 auto; padding:18px 16px 60px; }
-      .card { background:var(--card); border:1px solid var(--bd); border-radius:14px; padding:16px; }
-      button { background:var(--acc); color:var(--on-accent); border:0; border-radius:8px; padding:9px 14px; font:inherit; font-weight:600; cursor:pointer; }
+      .card { background:var(--card); border:1px solid var(--bd); border-radius:var(--radius); padding:16px; }
+      button { background:var(--acc); color:var(--on-accent); border:0; border-radius:var(--radius-sm); padding:9px 14px; font:inherit; font-weight:var(--fw-semibold); cursor:pointer; }
       button:hover { background:var(--accd); }
       button.sec { background:var(--accent-soft); color:var(--accent-text); }
       button.ghost { background:transparent; color:var(--mut); border:1px solid var(--bd); }
       .muted { color:var(--mut); font-size:13px; }
       .gallery { display:grid; grid-template-columns: repeat(auto-fill, minmax(240px,1fr)); gap:14px; }
-      .g-card { background:var(--card); border:1px solid var(--bd); border-radius:14px; overflow:hidden; text-decoration:none; color:inherit; transition:transform .12s, box-shadow .12s; display:flex; flex-direction:column; }
+      .g-card { background:var(--card); border:1px solid var(--bd); border-radius:var(--radius); overflow:hidden; text-decoration:none; color:inherit; transition:transform .12s, box-shadow .12s; display:flex; flex-direction:column; }
       .g-card:hover { transform:translateY(-3px); box-shadow:0 10px 24px #1c233314; }
       .g-thumb { height:150px; border-bottom:1px solid var(--bd); background:var(--surface-2); overflow:hidden; position:relative; }
       .g-thumb iframe { border:0; width:200%; height:300px; transform:scale(.5); transform-origin:top left; pointer-events:none; background:#fff; }
       .g-meta { padding:10px 12px; }
-      .g-meta .t { font-weight:700; font-size:14px; margin-bottom:3px; }
+      .g-meta .t { font-weight:var(--fw-bold); font-size:14px; margin-bottom:3px; }
       .g-meta .b { color:var(--mut); font-size:12px; }
       .secthead { display:flex; align-items:center; gap:10px; margin:22px 0 12px; }
       .secthead h2 { font-size:16px; margin:0; }
       .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-      .notice { background:var(--accent-soft); border:1px solid var(--accent-border); color:var(--accent-text); border-radius:10px; padding:12px 14px; font-size:13.5px; margin-bottom:20px; }
+      .notice { background:var(--accent-soft); border:1px solid var(--accent-border); color:var(--accent-text); border-radius:var(--radius-sm); padding:12px 14px; font-size:14px; margin-bottom:20px; }
       .create-intro { margin:6px 0 18px; }
       .create-intro h1 { margin:0 0 6px; font-size:28px; letter-spacing:-0.02em; }
       .create-intro p { margin:0; color:var(--mut); font-size:14px; line-height:1.6; }
-      .empty { border:1px dashed var(--bd); border-radius:14px; padding:18px 16px; background:var(--surface-2); color:var(--mut); font-size:14px; }
+      .empty { border:1px dashed var(--bd); border-radius:var(--radius); padding:18px 16px; background:var(--surface-2); color:var(--mut); font-size:14px; }
       .empty strong { display:block; color:var(--ink); margin-bottom:4px; }
       .gallery > .empty { grid-column:1 / -1; }
       .myrow { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
-      .myrow button { padding:8px 11px; min-height:44px; font-size:12px; font-weight:500; }
-      .item { border:1px solid var(--bd); border-radius:8px; padding:8px 10px; font-size:13px; margin-top:8px; background:var(--card); }
+      .myrow button { padding:8px 11px; min-height:44px; font-size:12px; font-weight:var(--fw-medium); }
+      .item { border:1px solid var(--bd); border-radius:var(--radius-sm); padding:8px 10px; font-size:13px; margin-top:8px; background:var(--card); }
       .pill { display:inline-block; font-size:11px; padding:1px 7px; border-radius:99px; background:var(--accent-soft); color:var(--accent-text); }
       .pill.priv { background:var(--danger-soft); color:var(--danger); }
       /* 스튜디오 런처 히어로 */
@@ -60,9 +60,9 @@
       .launch .lt { flex:1; min-width:220px; }
       .launch h1 { margin:0 0 4px; font-size:22px; }
       .launch p { margin:0; opacity:.92; font-size:14px; line-height:1.5; }
-      .launch .go { background:#fff; color:var(--accd); font-weight:800; font-size:15px; padding:12px 20px; border-radius:10px; text-decoration:none; white-space:nowrap; }
+      .launch .go { background:#fff; color:var(--accd); font-weight:var(--fw-heavy); font-size:15px; padding:12px 20px; border-radius:var(--radius-sm); text-decoration:none; white-space:nowrap; }
       .launch .go:hover { background:#eef1ff; }
-      select { padding:8px 10px; border:1px solid var(--bd); border-radius:8px; font:inherit; }
+      select { padding:8px 10px; border:1px solid var(--bd); border-radius:var(--radius-sm); font:inherit; }
     </style>
   </head>
   <body>
@@ -123,7 +123,7 @@
         <input type="hidden" id="cmtSlug" />
         <div id="cmtList" style="flex:1;overflow:auto;margin:10px 0;min-height:120px;max-height:46vh"></div>
         <div class="row" style="gap:8px">
-          <input id="cmtText" placeholder="댓글을 입력하세요 (로그인 필요)" aria-label="댓글 입력" maxlength="1000" style="flex:1;padding:8px 10px;border:1px solid var(--bd);border-radius:8px;font:inherit" />
+          <input id="cmtText" placeholder="댓글을 입력하세요 (로그인 필요)" aria-label="댓글 입력" maxlength="1000" style="flex:1;padding:8px 10px;border:1px solid var(--bd);border-radius:var(--radius-sm);font:inherit" />
           <button id="cmtSend">등록</button>
         </div>
       </div>
@@ -219,7 +219,7 @@
           const cs=j.comments||[];
           $("cmtList").innerHTML = cs.length ? cs.map((c)=>`
             <div style="padding:8px 0;border-bottom:1px solid var(--bd)">
-              <div style="font-weight:600;font-size:13px">${esc(c.author||"익명")} <span class="muted" style="font-weight:400">· ${esc((c.at||"").slice(0,10))}</span></div>
+              <div style="font-weight:var(--fw-semibold);font-size:13px">${esc(c.author||"익명")} <span class="muted" style="font-weight:var(--fw-regular)">· ${esc((c.at||"").slice(0,10))}</span></div>
               <div style="white-space:pre-wrap;font-size:14px;margin-top:2px">${esc(c.text||"")}</div>
             </div>`).join("") : '<span class="muted">첫 댓글을 남겨보세요.</span>';
           $("cmtList").scrollTop=$("cmtList").scrollHeight;

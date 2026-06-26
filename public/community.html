@@ -21,62 +21,62 @@
     <style>
       .cmwrap { max-width: 860px; margin: 0 auto; padding: 18px 16px 80px; }
       .cmhead { display: flex; align-items: center; gap: 12px; margin: 8px 0 18px; }
-      .cmhead a.logo { display: flex; align-items: center; gap: 8px; text-decoration: none; color: inherit; font-weight: 800; font-size: 19px; }
-      .cmhead .qmark { width: 30px; height: 30px; border-radius: 8px; background: var(--accent); color: var(--on-accent); display: grid; place-items: center; font-weight: 800; }
+      .cmhead a.logo { display: flex; align-items: center; gap: 8px; text-decoration: none; color: inherit; font-weight: var(--fw-heavy); font-size: 19px; }
+      .cmhead .qmark { width: 30px; height: 30px; border-radius: var(--radius-sm); background: var(--accent); color: var(--on-accent); display: grid; place-items: center; font-weight: var(--fw-heavy); }
       .cmtabs { display: flex; gap: 6px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
-      .cmtabs button { background: none; border: 0; padding: 10px 14px; min-height: 44px; font-size: 15px; font-weight: 600; color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; }
+      .cmtabs button { background: none; border: 0; padding: 10px 14px; min-height: 44px; font-size: 15px; font-weight: var(--fw-semibold); color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; }
       .cmtabs button.active { color: var(--accent-text); border-bottom-color: var(--accent); }
-      .cmcard { border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; background: var(--surface); }
-      .cmpost-title { font-weight: 700; font-size: 16px; margin: 0 0 4px; }
-      .cmpost-body { white-space: pre-wrap; word-break: break-word; color: var(--text); font-size: 14.5px; line-height: 1.6; }
-      .cmmeta { font-size: 12.5px; color: var(--text-faint); margin-top: 8px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-      .cmbadge { display: inline-block; font-size: 11.5px; padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
+      .cmcard { border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 12px; background: var(--surface); }
+      .cmpost-title { font-weight: var(--fw-bold); font-size: 16px; margin: 0 0 4px; }
+      .cmpost-body { white-space: pre-wrap; word-break: break-word; color: var(--text); font-size: 14px; line-height: 1.6; }
+      .cmmeta { font-size: 12px; color: var(--text-faint); margin-top: 8px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+      .cmbadge { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-text); font-weight: var(--fw-semibold); }
       .cmbadge.suggestion { background: var(--warning-soft); color: var(--warning); }
       .vote { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border-strong); border-radius: 999px; padding: 3px 11px; min-height: 36px; background: none; cursor: pointer; font-size: 13px; color: var(--text-muted); }
       .vote.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
       .linkbtn { background: none; border: 0; color: var(--accent-text); cursor: pointer; font-size: 13px; padding: 6px 4px; min-height: 44px; display: inline-flex; align-items: center; }
-      .cmtextarea, .cminput { width: 100%; box-sizing: border-box; border: 1px solid var(--border-strong); border-radius: 8px; padding: 9px 11px; font: inherit; font-size: 14px; }
+      .cmtextarea, .cminput { width: 100%; box-sizing: border-box; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 9px 11px; font: inherit; font-size: 14px; }
       .cmtextarea { min-height: 90px; resize: vertical; }
       .cmrow { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
       .comments { margin-top: 12px; border-top: 1px dashed var(--border); padding-top: 10px; }
-      .comment { font-size: 13.5px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+      .comment { font-size: 14px; padding: 6px 0; border-bottom: 1px solid var(--border); }
       .comment .who { color: var(--text-muted); font-size: 12px; }
       .muted { color: var(--text-faint); font-size: 13px; }
       .err { color: var(--danger); font-size: 13px; margin: 6px 0; }
       .cmintro { margin: 8px 0 18px; padding: 12px 0 4px; }
       .cmintro h1 { margin: 0 0 6px; font-size: 28px; letter-spacing: -0.02em; }
       .cmintro p { margin: 0; color: var(--text-muted); font-size: 14px; line-height: 1.6; }
-      .cmempty { border: 1px dashed var(--border-strong); border-radius: 12px; padding: 18px 16px; background: var(--surface-2); color: var(--text-muted); font-size: 14px; }
+      .cmempty { border: 1px dashed var(--border-strong); border-radius: var(--radius); padding: 18px 16px; background: var(--surface-2); color: var(--text-muted); font-size: 14px; }
       .cmempty strong { display: block; color: var(--text); font-size: 15px; margin-bottom: 4px; }
       .pill-filter { display: flex; gap: 6px; margin-bottom: 12px; }
       .pill-filter button { border: 1px solid var(--border-strong); background: none; border-radius: 999px; padding: 4px 12px; min-height: 36px; font-size: 13px; cursor: pointer; color: var(--text-muted); }
       .pill-filter button.active { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
-      .labbody { white-space: pre-wrap; word-break: break-word; line-height: 1.7; font-size: 14.5px; color: var(--text); }
-      .labtag { font-size: 11.5px; color: var(--accent-text); font-weight: 700; letter-spacing: .02em; }
+      .labbody { white-space: pre-wrap; word-break: break-word; line-height: 1.7; font-size: 14px; color: var(--text); }
+      .labtag { font-size: 12px; color: var(--accent-text); font-weight: var(--fw-bold); letter-spacing: .02em; }
       /* 랩(기술 공개) 아코디언 + 마크다운 + 코드 */
-      .labitem { border:1px solid var(--border); border-radius:12px; margin-bottom:10px; overflow:hidden; background:var(--surface); }
+      .labitem { border:1px solid var(--border); border-radius:var(--radius); margin-bottom:10px; overflow:hidden; background:var(--surface); }
       .labhead { width:100%; text-align:left; background:none; border:0; padding:13px 15px; cursor:pointer; display:flex; align-items:center; gap:10px; flex-wrap:wrap; font:inherit; }
       .labhead:hover { background:var(--surface-2); }
-      .labhead .labtag { font-size:11px; color:var(--accent-text); font-weight:700; background:var(--accent-soft); border-radius:999px; padding:2px 9px; white-space:nowrap; }
-      .labhead .labtitle { font-weight:700; font-size:15.5px; color:var(--text); }
-      .labhead .labsummary { color:var(--text-faint); font-size:12.5px; flex-basis:100%; margin-left:2px; }
+      .labhead .labtag { font-size:11px; color:var(--accent-text); font-weight:var(--fw-bold); background:var(--accent-soft); border-radius:999px; padding:2px 9px; white-space:nowrap; }
+      .labhead .labtitle { font-weight:var(--fw-bold); font-size:16px; color:var(--text); }
+      .labhead .labsummary { color:var(--text-faint); font-size:12px; flex-basis:100%; margin-left:2px; }
       .labhead .labchevron { margin-left:auto; color:var(--text-faint); transition:transform .15s; }
       .labitem.open .labhead .labchevron { transform:rotate(90deg); }
       .labbodywrap { padding:4px 16px 16px; border-top:1px solid var(--border); }
-      .md-h { margin:16px 0 6px; font-weight:700; color:var(--text); }
-      h3.md-h { font-size:16px; } h4.md-h { font-size:14.5px; color:var(--text); }
+      .md-h { margin:16px 0 6px; font-weight:var(--fw-bold); color:var(--text); }
+      h3.md-h { font-size:16px; } h4.md-h { font-size:14px; color:var(--text); }
       .labbodywrap p { line-height:1.7; font-size:14px; color:var(--text); margin:7px 0; }
       .labbodywrap ul { margin:6px 0 10px 2px; padding-left:18px; }
       .labbodywrap li { line-height:1.6; font-size:14px; color:var(--text); margin:3px 0; }
-      .labbodywrap code { background:var(--surface-2); border-radius:5px; padding:1px 5px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12.5px; color:var(--danger); }
-      pre.md-code { background:var(--console-bg); color:var(--console-text); border-radius:10px; padding:12px 14px; overflow-x:auto; margin:10px 0; }
-      pre.md-code code { background:none; color:inherit; padding:0; font-size:12.5px; line-height:1.55; white-space:pre; }
+      .labbodywrap code { background:var(--surface-2); border-radius:5px; padding:1px 5px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px; color:var(--danger); }
+      pre.md-code { background:var(--console-bg); color:var(--console-text); border-radius:var(--radius-sm); padding:12px 14px; overflow-x:auto; margin:10px 0; }
+      pre.md-code code { background:none; color:inherit; padding:0; font-size:12px; line-height:1.55; white-space:pre; }
       .labfiles { margin-top:14px; border-top:1px dashed var(--border); padding-top:12px; }
-      .labfiles h4 { margin:0 0 8px; font-size:13.5px; color:var(--text-muted); }
+      .labfiles h4 { margin:0 0 8px; font-size:14px; color:var(--text-muted); }
       .labfile { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:6px 0; border-bottom:1px solid var(--border); }
-      .labfile .fpath { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12.5px; color:var(--text); }
+      .labfile .fpath { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px; color:var(--text); }
       .labfile .flabel { color:var(--text-faint); font-size:12px; }
-      .labfile .fsize { color:var(--text-faint); font-size:11.5px; }
+      .labfile .fsize { color:var(--text-faint); font-size:12px; }
       .labfile .fspring { flex:1; }
       .labfile a.dl, .labfile button.fview { font-size:12px; border:1px solid var(--border-strong); background:var(--surface); color:var(--accent-text); border-radius:7px; padding:4px 10px; cursor:pointer; text-decoration:none; }
       .labfile a.dl:hover, .labfile button.fview:hover { background:var(--accent-soft); }
@@ -427,7 +427,7 @@
         const box = document.createElement("div");
         box.className = "appeal-box";
         box.style.cssText =
-          "margin-top:10px;padding:11px 12px;border:1px dashed #e7a3c0;border-radius:9px;background:#fff7fb";
+          "margin-top:10px;padding:11px 12px;border:1px dashed #e7a3c0;border-radius:var(--radius-sm);background:#fff7fb";
         box.innerHTML =
           '<div class="muted" style="margin-bottom:6px">욕설이 아닌데 차단됐다면, 상황을 적어 <b>해명</b>을 보낼 수 있어요. 관리자가 검토 후 해제합니다.</div>' +
           '<textarea class="cmtextarea appeal-reason" maxlength="2000" placeholder="예: \'시발점\'이라는 단어였는데 욕설로 잘못 감지된 것 같습니다." style="min-height:60px"></textarea>' +

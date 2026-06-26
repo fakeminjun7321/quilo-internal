@@ -57,7 +57,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/keymap/sublime.min.js"></script>
     <style>
       /* ── VS Code 스타일 코드 에디터 ── */
-      #adminEditorSection .ide{display:flex;flex-direction:column;height:560px;border:1px solid #2b2b2b;border-radius:10px;overflow:hidden;background:#1e1e1e;color:#ccc;font-family:Menlo,Consolas,"Courier New",monospace}
+      #adminEditorSection .ide{display:flex;flex-direction:column;height:560px;border:1px solid #2b2b2b;border-radius:var(--radius-sm);overflow:hidden;background:#1e1e1e;color:#ccc;font-family:Menlo,Consolas,"Courier New",monospace}
       #adminEditorSection .ide-top{display:flex;flex:1;min-height:0}
       #adminEditorSection .ide-activity{width:48px;background:#333;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0;flex:0 0 auto}
       #adminEditorSection .ide-activity button{width:40px;height:40px;background:none;border:none;color:#858585;font-size:18px;cursor:pointer;border-left:2px solid transparent}
@@ -71,33 +71,33 @@
       #adminEditorSection .ide-file.on{background:#37373d}
       #adminEditorSection .ide-main{flex:1;display:flex;flex-direction:column;min-width:0}
       #adminEditorSection .ide-tabs{display:flex;background:#252526;height:36px;overflow-x:auto;flex:0 0 auto}
-      #adminEditorSection .ide-tab{display:flex;align-items:center;gap:6px;padding:0 10px;height:36px;background:#2d2d2d;color:#969696;border-right:1px solid #1a1a1a;cursor:pointer;white-space:nowrap;font-size:12.5px}
+      #adminEditorSection .ide-tab{display:flex;align-items:center;gap:6px;padding:0 10px;height:36px;background:#2d2d2d;color:#969696;border-right:1px solid #1a1a1a;cursor:pointer;white-space:nowrap;font-size:12px}
       #adminEditorSection .ide-tab.on{background:#1e1e1e;color:#fff;box-shadow:inset 0 2px 0 #007acc}
       #adminEditorSection .ide-tab-ic{font-size:10px}
       #adminEditorSection .ide-tab-x{opacity:.5;font-size:15px;width:16px;text-align:center;border-radius:4px}
       #adminEditorSection .ide-tab-x:hover{opacity:1;background:#ffffff22}
       #adminEditorSection .ide-editorhost{flex:1;min-height:0;overflow:hidden}
-      #adminEditorSection .ide .CodeMirror{height:100%;font-family:Menlo,Consolas,monospace;font-size:13.5px;line-height:1.5}
+      #adminEditorSection .ide .CodeMirror{height:100%;font-family:Menlo,Consolas,monospace;font-size:14px;line-height:1.5}
       #adminEditorSection .ide-panel{height:185px;flex:0 0 auto;display:flex;flex-direction:column;border-top:1px solid #2b2b2b;background:#1e1e1e}
       #adminEditorSection .ide-panel-tabs{display:flex;align-items:center;gap:2px;height:30px;background:#252526;padding:0 6px;flex:0 0 auto}
-      #adminEditorSection .ide-panel-tabs button{background:none;border:none;color:#969696;font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;padding:6px 10px;cursor:pointer;border-bottom:1px solid transparent}
+      #adminEditorSection .ide-panel-tabs button{background:none;border:none;color:#969696;font-size:12px;letter-spacing:.04em;text-transform:uppercase;padding:6px 10px;cursor:pointer;border-bottom:1px solid transparent}
       #adminEditorSection .ide-panel-tabs button.on{color:#fff;border-bottom-color:#007acc}
       #adminEditorSection .ide-panel-body{flex:1;min-height:0;position:relative}
       #adminEditorSection .ide-pane{display:none;position:absolute;inset:0;width:100%;height:100%;margin:0;overflow:auto;box-sizing:border-box}
       #adminEditorSection .ide-pane.on{display:block}
-      #adminEditorSection pre#ceOut{padding:10px 12px;color:#d4d4d4;font-family:Menlo,Consolas,monospace;font-size:12.5px;white-space:pre-wrap;word-break:break-word}
+      #adminEditorSection pre#ceOut{padding:10px 12px;color:#d4d4d4;font-family:Menlo,Consolas,monospace;font-size:12px;white-space:pre-wrap;word-break:break-word}
       #adminEditorSection iframe#ceFrame{border:none;background:#fff}
       #adminEditorSection #ceAi{padding:10px 12px}
       #adminEditorSection .ide-statusbar{height:24px;flex:0 0 auto;background:#007acc;color:#fff;display:flex;align-items:center;gap:14px;padding:0 12px;font-size:12px;font-family:-apple-system,system-ui,sans-serif}
-      #adminEditorSection .ide-statusbar #stRun{cursor:pointer;font-weight:600}
+      #adminEditorSection .ide-statusbar #stRun{cursor:pointer;font-weight:var(--fw-semibold)}
       #adminEditorSection .ide-statusbar #stMsg{color:#cfe9ff}
       #adminEditorSection .ide-statusbar select.ide-lang{background:transparent;color:#fff;border:none;font:inherit;font-size:12px;cursor:pointer}
       #adminEditorSection .ide-statusbar select.ide-lang option{color:#000}
       #adminEditorSection #ceAi select,#adminEditorSection #ceAi textarea{background:#3c3c3c;color:#e4e4e4;border:1px solid #555;border-radius:5px;font:inherit;font-size:13px;padding:6px 8px}
       #adminEditorSection #ceAi textarea{width:100%;box-sizing:border-box;resize:vertical}
       #adminEditorSection #ceAi .ide-ai-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
-      #adminEditorSection #ceAi button#caGo{background:#0e639c;color:#fff;border:none;border-radius:5px;padding:7px 14px;font-weight:600;cursor:pointer}
-      #adminEditorSection #ceAi #caText{background:#252526;border:1px solid #3c3c3c;border-radius:6px;padding:9px 11px;color:#d4d4d4;white-space:pre-wrap;word-break:break-word;max-height:200px;overflow:auto;font-size:12.5px;line-height:1.5}
+      #adminEditorSection #ceAi button#caGo{background:#0e639c;color:#fff;border:none;border-radius:5px;padding:7px 14px;font-weight:var(--fw-semibold);cursor:pointer}
+      #adminEditorSection #ceAi #caText{background:#252526;border:1px solid #3c3c3c;border-radius:6px;padding:9px 11px;color:#d4d4d4;white-space:pre-wrap;word-break:break-word;max-height:200px;overflow:auto;font-size:12px;line-height:1.5}
       #adminEditorSection #ceAi #caActions{margin-top:7px;display:flex;gap:6px;flex-wrap:wrap}
       #adminEditorSection #ceAi #caActions button{background:#3c3c3c;color:#e4e4e4;border:1px solid #555;border-radius:5px;padding:5px 10px;font-size:12px;cursor:pointer}
       #adminEditorSection #ceAi label{color:#bbb;font-size:12px;display:flex;align-items:center;gap:5px}
@@ -141,7 +141,7 @@
       #adminEditorSection .ide-side-actions button{font-size:15px}
       #adminEditorSection .ide-tab-name{pointer-events:none}
       #adminEditorSection .ide-folder-name{padding:5px 10px;font-size:11px;color:#bbb;cursor:pointer;border-bottom:1px solid #1a1a1a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-      #adminEditorSection input.ide-rename{background:#3c3c3c;color:#fff;border:1px solid #007acc;border-radius:3px;font:inherit;font-size:12.5px;width:120px;padding:1px 5px;outline:none}
+      #adminEditorSection input.ide-rename{background:#3c3c3c;color:#fff;border:1px solid #007acc;border-radius:3px;font:inherit;font-size:12px;width:120px;padding:1px 5px;outline:none}
       #adminEditorSection .ide-statusbar #stSave,#adminEditorSection .ide-statusbar #stDownload,#adminEditorSection .ide-statusbar #stMinimap,#adminEditorSection .ide-statusbar #stTheme{cursor:pointer}
       /* 라이트 테마 */
       #adminEditorSection .ide.light{background:#fff;color:#333;border-color:#ddd}
@@ -172,10 +172,10 @@
     </style>
     <style>
       #adminTabs { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 16px; }
-      #adminTabs button.atab { font: inherit; font-size: 13px; font-weight: 600; padding: 8px 14px; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); border-radius: 9px; cursor: pointer; }
+      #adminTabs button.atab { font: inherit; font-size: 13px; font-weight: var(--fw-semibold); padding: 8px 14px; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); border-radius: var(--radius-sm); cursor: pointer; }
       #adminTabs button.atab.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
       #adminTabs button.atab:hover { border-color: var(--accent); }
-      .CodeMirror { height: 360px; border: 1px solid #e6e8f0; border-radius: 10px; font-size: 13.5px; }
+      .CodeMirror { height: 360px; border: 1px solid #e6e8f0; border-radius: var(--radius-sm); font-size: 14px; }
     </style>
   </head>
   <body>
@@ -226,14 +226,14 @@
       <h2>🤖 AI 관리자 보조</h2>
       <p class="hint">로그인·사용 로그·통계·베타 현황을 묻고, 크레딧 충전·rate 해제·베타 토글·사용자 생성 등 작업을 <b>확인 후 실행</b>할 수 있습니다. (질문 데이터는 외부 AI로 전송 — 관리자 전용)</p>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 9px">
-        <span style="font-size:12.5px;color:var(--text-muted);font-weight:700">모델</span>
-        <select id="aaModel" title="개조(무료) / 똑똑한 모델(유료)" style="padding:6px 9px;border:1px solid var(--border);border-radius:8px;font:inherit;font-size:13px;max-width:300px"></select>
+        <span style="font-size:12px;color:var(--text-muted);font-weight:var(--fw-bold)">모델</span>
+        <select id="aaModel" title="개조(무료) / 똑똑한 모델(유료)" style="padding:6px 9px;border:1px solid var(--border);border-radius:var(--radius-sm);font:inherit;font-size:13px;max-width:300px"></select>
         <span class="hint" id="aaModelHint" style="font-size:12px;margin:0"></span>
       </div>
-      <div id="aaMsgs" style="border:1px solid var(--border);border-radius:10px;background:var(--surface-2);padding:12px;min-height:110px;max-height:340px;overflow-y:auto;display:flex;flex-direction:column"></div>
+      <div id="aaMsgs" style="border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-2);padding:12px;min-height:110px;max-height:340px;overflow-y:auto;display:flex;flex-direction:column"></div>
       <div id="aaChips" style="margin-top:10px"></div>
       <div style="display:flex;gap:8px;margin-top:8px">
-        <textarea id="aaInput" rows="1" placeholder="예: 최근 로그인 실패가 많은 IP 있어?" style="flex:1;resize:none;border:1px solid var(--border);border-radius:9px;padding:9px 11px;font:inherit;font-size:14px"></textarea>
+        <textarea id="aaInput" rows="1" placeholder="예: 최근 로그인 실패가 많은 IP 있어?" style="flex:1;resize:none;border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 11px;font:inherit;font-size:14px"></textarea>
         <button id="aaSend" class="secondary compact">전송</button>
       </div>
     </section>
@@ -247,7 +247,7 @@
         <label style="flex:1;min-width:150px">링크(선택)<br><input id="annLink" maxlength="500" placeholder="https://..." style="width:100%"></label>
         <button id="annAddBtn" class="secondary compact">추가</button>
       </div>
-      <span id="annStatus" style="font-size:12.5px;margin-left:2px"></span>
+      <span id="annStatus" style="font-size:12px;margin-left:2px"></span>
       <div id="annAdminList" style="margin-top:12px"></div>
     </section>
 
@@ -430,7 +430,7 @@
       <h2>🧩 코드 에디터</h2>
       <p class="hint">브라우저 안에서 동작하는 VS Code 스타일 편집기 — 여러 파일·탭, 자동완성(Ctrl/⌘+Space), 찾기(Ctrl/⌘+F), 주석 토글(Ctrl/⌘+/), 저장(Ctrl/⌘+S), 멀티커서. JS는 ▶ 실행, HTML은 미리보기.</p>
       <p style="margin:0 0 12px">
-        <a href="/editor.html" target="_blank" style="display:inline-flex;align-items:center;gap:7px;background:#0e639c;color:#fff;text-decoration:none;border-radius:8px;padding:9px 16px;font-weight:600">⛶ 전체 화면 Quilo Code 열기 (베타)</a>
+        <a href="/editor.html" target="_blank" style="display:inline-flex;align-items:center;gap:7px;background:#0e639c;color:#fff;text-decoration:none;border-radius:var(--radius-sm);padding:9px 16px;font-weight:var(--fw-semibold)">⛶ 전체 화면 Quilo Code 열기 (베타)</a>
         <span class="hint" style="margin-left:8px">— 더 큰 화면 · 오른쪽 Agent 패널 · 로컬 폴더 열기. 아래는 미니 임베드입니다.</span>
       </p>
       <div id="ide" class="ide">
@@ -629,7 +629,7 @@
             ? ""
             : u.approved
               ? `<button data-act="approve" data-id="${u.id}" data-approved="1" style="color: var(--warning)">승인취소</button>`
-              : `<button data-act="approve" data-id="${u.id}" data-approved="0" style="color: var(--accent-text);font-weight:600">승인</button>`;
+              : `<button data-act="approve" data-id="${u.id}" data-approved="0" style="color: var(--accent-text);font-weight:var(--fw-semibold)">승인</button>`;
           const uname = u.username && u.username !== u.name
             ? `<br><small style="color: var(--text-muted)">@${escape(u.username)}</small>`
             : "";
@@ -1006,7 +1006,7 @@
         list.innerHTML = features
           .map(
             (f) => `
-          <div class="beta-item" data-key="${escape(f.key)}" style="border:1px solid var(--border,#e2e8f0);border-radius:10px;padding:12px;margin-bottom:10px">
+          <div class="beta-item" data-key="${escape(f.key)}" style="border:1px solid var(--border,#e2e8f0);border-radius:var(--radius-sm);padding:12px;margin-bottom:10px">
             <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
               <b>${escape(f.label || f.key)}</b>
               <code style="font-size:12px;opacity:.6">${escape(f.key)}</code>
@@ -1197,7 +1197,7 @@
             "<div style='font-size:12px;color:var(--text-faint);margin-bottom:6px'>총 " + list.length + "개" + note + "</div>" +
             list.map((a) =>
               "<div style='display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px 0;border-bottom:1px solid var(--border)'>" +
-                "<span style='font-size:11px;font-weight:700;color:var(--accent);background:var(--accent-soft);border-radius:999px;padding:1px 8px'>" + escape(a.category || "공지") + "</span>" +
+                "<span style='font-size:11px;font-weight:var(--fw-bold);color:var(--accent);background:var(--accent-soft);border-radius:999px;padding:1px 8px'>" + escape(a.category || "공지") + "</span>" +
                 "<span style='flex:1;min-width:140px;" + (a.active ? "" : "opacity:.45;text-decoration:line-through") + "'>" + escape(a.title) + "</span>" +
                 (a.link ? "<a href='" + escape(a.link) + "' target='_blank' style='font-size:12px'>링크</a>" : "") +
                 "<button class='secondary compact ann-toggle' data-id='" + escape(String(a.id)) + "' data-active='" + (a.active ? "1" : "0") + "'>" + (a.active ? "비활성화" : "활성화") + "</button>" +
@@ -1304,7 +1304,7 @@
         function bubble(role, text) {
           var d = document.createElement("div");
           d.style.cssText =
-            "margin:5px 0;padding:8px 11px;border-radius:11px;white-space:pre-wrap;font-size:13.5px;line-height:1.6;max-width:92%;" +
+            "margin:5px 0;padding:8px 11px;border-radius:var(--radius-sm);white-space:pre-wrap;font-size:14px;line-height:1.6;max-width:92%;" +
             (role === "user"
               ? "background:var(--accent);color:var(--on-accent);align-self:flex-end;"
               : "background:var(--surface);border:1px solid var(--border);align-self:flex-start;");
@@ -1315,7 +1315,7 @@
         }
         function actBtn(b, bg) {
           b.style.cssText =
-            "border:none;border-radius:8px;padding:6px 13px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;color:#fff;background:" +
+            "border:none;border-radius:var(--radius-sm);padding:6px 13px;font:inherit;font-size:12px;font-weight:var(--fw-semibold);cursor:pointer;color:#fff;background:" +
             bg;
         }
         // AI가 제안한 쓰기 작업을 '확인 후 실행' 카드로 렌더링
@@ -1323,10 +1323,10 @@
           actions.forEach(function (a) {
             var card = document.createElement("div");
             card.style.cssText =
-              "align-self:flex-start;max-width:94%;margin:6px 0;padding:11px 13px;border:1px solid var(--warning-border);background:var(--warning-soft);border-radius:12px;font-size:13px;line-height:1.5;";
+              "align-self:flex-start;max-width:94%;margin:6px 0;padding:11px 13px;border:1px solid var(--warning-border);background:var(--warning-soft);border-radius:var(--radius);font-size:13px;line-height:1.5;";
             var title = document.createElement("div");
             title.style.cssText =
-              "font-weight:700;margin-bottom:8px;color:#7a4b00;";
+              "font-weight:var(--fw-bold);margin-bottom:8px;color:#7a4b00;";
             title.textContent = "⚙ 확인 필요 — " + (a.summary || a.action);
             card.appendChild(title);
             var pw = null;
@@ -1550,7 +1550,7 @@
             ap.forEach(function (a) {
               var card = document.createElement("div");
               card.style.cssText =
-                "border:1px solid var(--border);border-radius:9px;padding:11px 13px;margin-bottom:10px;background:" +
+                "border:1px solid var(--border);border-radius:var(--radius-sm);padding:11px 13px;margin-bottom:10px;background:" +
                 (a.status === "resolved" ? "var(--surface-2)" : "var(--surface)");
               var banned = a.banned_until
                 ? '<span style="color:#b45309">제재중 (~' +
@@ -1558,7 +1558,7 @@
                   ")</span>"
                 : '<span style="color:#16a34a">제재 없음</span>';
               card.innerHTML =
-                '<div style="font-size:12.5px;color:var(--text-muted)">' +
+                '<div style="font-size:12px;color:var(--text-muted)">' +
                 escA(a.author_name || "익명") +
                 " · " +
                 (a.kind === "comment" ? "댓글" : "글") +
@@ -1573,7 +1573,7 @@
                 escA(a.reason) +
                 "</div>" +
                 (a.blocked_text
-                  ? '<details style="margin:4px 0"><summary style="cursor:pointer;color:var(--text-muted);font-size:12.5px">차단된 원문 보기</summary><div style="white-space:pre-wrap;font-size:13px;background:var(--surface-2);padding:8px;border-radius:6px;margin-top:4px">' +
+                  ? '<details style="margin:4px 0"><summary style="cursor:pointer;color:var(--text-muted);font-size:12px">차단된 원문 보기</summary><div style="white-space:pre-wrap;font-size:13px;background:var(--surface-2);padding:8px;border-radius:6px;margin-top:4px">' +
                     escA(a.blocked_text) +
                     "</div></details>"
                   : "") +
@@ -2593,7 +2593,7 @@
           listEl.innerHTML = grants
             .map(function (g) {
               var badge = g.active
-                ? '<span style="color:#16a34a;font-weight:600">활성</span>'
+                ? '<span style="color:#16a34a;font-weight:var(--fw-semibold)">활성</span>'
                 : '<span style="opacity:.6">만료/회수</span>';
               var revokeBtn = g.active
                 ? '<button data-act="revoke" data-id="' +
@@ -2601,7 +2601,7 @@
                   '" style="color:red;font-size:12px;margin-left:6px">회수</button>'
                 : "";
               return (
-                '<div style="border:1px solid var(--border,#e2e8f0);border-radius:10px;padding:12px;margin-bottom:10px">' +
+                '<div style="border:1px solid var(--border,#e2e8f0);border-radius:var(--radius-sm);padding:12px;margin-bottom:10px">' +
                 '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
                 "<b>" +
                 esc(g.userName || g.userId) +

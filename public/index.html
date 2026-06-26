@@ -47,41 +47,56 @@
         </a>
         <button type="button" class="topnav-burger" id="navBurger" aria-label="메뉴 열기">☰</button>
         <nav class="topnav-menu" id="navMenu" aria-label="주 메뉴">
+          <!-- ① 보고서 만들기 — AI가 만들어주는 문서·산출물 -->
           <div class="nav-dd" data-dd>
-            <button type="button" class="nav-dd-btn">보고서 작성 <span class="caret" aria-hidden="true">▾</span></button>
+            <button type="button" class="nav-dd-btn">보고서 만들기 <span class="caret" aria-hidden="true">▾</span></button>
             <div class="nav-dd-menu">
               <a href="#" data-report="chem-pre">화학 사전보고서</a>
               <a href="#" data-report="chem-result">화학 결과보고서</a>
               <a href="#" data-report="phys-result">물리 결과보고서</a>
               <a href="#" data-report="free">자유 보고서</a>
+              <a href="/?report=problem-set" id="navBetaProblemSet" hidden>문제집 메이커 <span class="beta-pill">베타</span></a>
+              <a href="/?report=form-maker" id="navBetaFormMaker" hidden>양식 메이커 <span class="beta-pill">베타</span></a>
             </div>
           </div>
+          <!-- ② 수행평가·학습 -->
           <div class="nav-dd" data-dd>
-            <button type="button" class="nav-dd-btn">도구 모음 <span class="caret" aria-hidden="true">▾</span></button>
+            <button type="button" class="nav-dd-btn">수행평가·학습 <span class="caret" aria-hidden="true">▾</span></button>
+            <div class="nav-dd-menu">
+              <a href="/exam-prep.html" id="navExamPrep" hidden>수행평가 도움 <span class="beta-pill">베타</span></a>
+              <a href="/study.html">공부 <span class="beta-pill">베타</span></a>
+            </div>
+          </div>
+          <!-- ③ 창작·코딩 -->
+          <div class="nav-dd" data-dd>
+            <button type="button" class="nav-dd-btn">창작·코딩 <span class="caret" aria-hidden="true">▾</span></button>
+            <div class="nav-dd-menu">
+              <a href="/create.html">창작 스튜디오 <span class="beta-pill">베타</span></a>
+              <a href="/editor.html" id="navBetaEditor" hidden>Quilo Code <span class="beta-pill">베타</span></a>
+              <a href="/filechat.html" id="navBetaFilechat" hidden>파일 챗봇 <span class="beta-pill">베타</span></a>
+            </div>
+          </div>
+          <!-- ④ 도구 — 소형 유틸리티 -->
+          <div class="nav-dd" data-dd>
+            <button type="button" class="nav-dd-btn">도구 <span class="caret" aria-hidden="true">▾</span></button>
             <div class="nav-dd-menu">
               <a href="/tools/word-count.html">글자수 세기</a>
               <a href="/tools/regression.html">선형회귀 · 추세선</a>
               <a href="/tools/graph.html">그래프 생성기</a>
               <a href="/tools/convert.html">파일 변환기 <span style="font-size:11px;opacity:.6">· 이미지·PDF·수식</span></a>
               <a href="/translate.html" id="navBetaTranslate" hidden>PDF 통번역 <span class="beta-pill">베타</span></a>
-              <a href="/editor.html" id="navBetaEditor" hidden>Quilo Code <span class="beta-pill">베타</span></a>
-              <a href="/filechat.html" id="navBetaFilechat" hidden>파일 챗봇 <span class="beta-pill">베타</span></a>
-              <a href="/?report=problem-set" id="navBetaProblemSet" hidden>문제집 메이커 <span class="beta-pill">베타</span></a>
-              <a href="/?report=form-maker" id="navBetaFormMaker" hidden>양식 메이커 <span class="beta-pill">베타</span></a>
             </div>
           </div>
+          <!-- ⑤ 둘러보기 -->
           <div class="nav-dd" data-dd>
-            <button type="button" class="nav-dd-btn">예시 · 가이드 <span class="caret" aria-hidden="true">▾</span></button>
+            <button type="button" class="nav-dd-btn">둘러보기 <span class="caret" aria-hidden="true">▾</span></button>
             <div class="nav-dd-menu">
               <a href="/examples.html">예시 모음</a>
               <a href="/guide.html">이용 가이드</a>
               <a href="/changelog.html">패치노트</a>
+              <a href="/community.html">커뮤니티</a>
             </div>
           </div>
-          <a class="nav-dd-btn" href="/exam-prep.html" id="navExamPrep" hidden style="text-decoration:none">수행평가 도움 <span class="beta-pill">베타</span></a>
-          <a class="nav-dd-btn" href="/community.html" style="text-decoration:none">커뮤니티</a>
-          <a class="nav-dd-btn" href="/create.html" style="text-decoration:none">창작 <span class="beta-pill">베타</span></a>
-          <a class="nav-dd-btn" href="/study.html" style="text-decoration:none">공부 <span class="beta-pill">베타</span></a>
           <!-- 로그아웃 상태: '로그인' 누르면 로그인 폼이 드롭다운으로 내려온다 -->
           <div class="nav-dd nav-dd-right" data-dd id="loginDd" hidden>
             <button type="button" class="nav-dd-btn nav-login-trigger">로그인 <span class="caret" aria-hidden="true">▾</span></button>
@@ -173,7 +188,7 @@
     <section
       id="verifyBanner"
       hidden
-      style="margin:0 auto 18px;max-width:980px;border:1px solid var(--border);background:var(--surface);border-radius:14px;padding:18px 20px"
+      style="margin:0 auto 18px;max-width:980px;border:1px solid var(--border);background:var(--surface);border-radius:var(--radius);padding:18px 20px"
     >
       <div style="display:flex;align-items:flex-start;gap:12px">
         <span aria-hidden="true" style="font-size:22px;line-height:1">🎓</span>
@@ -207,7 +222,7 @@
       <div id="balanceBox" class="balance-box" style="display: none">
         <strong>내 크레딧</strong>
         <span id="balCredits">...</span>
-        <small id="balConvert" style="display:block;font-weight:400;color:var(--text-muted);font-size:11.5px"></small>
+        <small id="balConvert" style="display:block;font-weight:400;color:var(--text-muted);font-size:12px"></small>
       </div>
 
       <div id="workspaceSummary" class="workspace-summary" hidden>
@@ -358,13 +373,13 @@
             <span class="field-label">AI 참고 메모 / 내 의견 (선택)</span>
             <textarea id="crUserNotes" name="userNotes" rows="4" maxlength="12000" placeholder="예: 2회차는 종말점을 지나쳐서 제외했어. 종말점 색이 옅어 판단이 어려웠던 점을 오차로 다뤄줘."></textarea>
           </label>
-          <span data-memo-guide="crUserNotes"></span><details class="memo-guide" style="margin-top:6px"><summary style="cursor:pointer;font-size:12.5px;color:var(--accent-text);user-select:none">📋 메모 작성 가이드 · 좋은 예시 + AI에게 줄 기본 프롬프트</summary><div style="font-size:12.5px;color:var(--text-muted);margin-top:6px;line-height:1.55"><b>좋은 AI 참고 메모 예시</b><div style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin:4px 0;white-space:pre-wrap">- 3회 측정 중 2회차는 종말점을 지나쳐 제외(평균에서 빼줘)
+          <span data-memo-guide="crUserNotes"></span><details class="memo-guide" style="margin-top:6px"><summary style="cursor:pointer;font-size:12px;color:var(--accent-text);user-select:none">📋 메모 작성 가이드 · 좋은 예시 + AI에게 줄 기본 프롬프트</summary><div style="font-size:12px;color:var(--text-muted);margin-top:6px;line-height:1.55"><b>좋은 AI 참고 메모 예시</b><div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;margin:4px 0;white-space:pre-wrap">- 3회 측정 중 2회차는 종말점을 지나쳐 제외(평균에서 빼줘)
 - 적정 종말점 색이 옅어 판단이 어려웠음 → 오차 원인으로
-- 결론에서 이론 당량점과 비교 그래프를 강조</div><b style="display:block;margin-top:6px">AI(ChatGPT·Claude 등)에게 물어볼 때 복사해 쓰는 기본 프롬프트</b><textarea readonly rows="6" style="width:100%;box-sizing:border-box;font-size:12px;background:var(--surface);border:1px solid var(--accent-border);border-radius:8px;padding:7px 9px;margin-top:4px">나는 Quilo로 화학 '결과보고서'를 만들려고 해. 사전보고서·측정 데이터·실험 사진을 올리면 AI가 표·그래프·계산·분석·결론을 써 줘. 'AI 참고 메모'는 데이터만 보고는 모를 맥락(제외한 시행과 이유, 관찰한 특이사항, 실제 겪은 오차 원인, 강조할 분석)을 알려주는 글이야. 내 상황을 듣고 부족하면 2~3개만 물어본 뒤 메모 초안을 불릿으로 만들어줘. 데이터에 없는 수치는 지어내지 마.
+- 결론에서 이론 당량점과 비교 그래프를 강조</div><b style="display:block;margin-top:6px">AI(ChatGPT·Claude 등)에게 물어볼 때 복사해 쓰는 기본 프롬프트</b><textarea readonly rows="6" style="width:100%;box-sizing:border-box;font-size:12px;background:var(--surface);border:1px solid var(--accent-border);border-radius:var(--radius-sm);padding:7px 9px;margin-top:4px">나는 Quilo로 화학 '결과보고서'를 만들려고 해. 사전보고서·측정 데이터·실험 사진을 올리면 AI가 표·그래프·계산·분석·결론을 써 줘. 'AI 참고 메모'는 데이터만 보고는 모를 맥락(제외한 시행과 이유, 관찰한 특이사항, 실제 겪은 오차 원인, 강조할 분석)을 알려주는 글이야. 내 상황을 듣고 부족하면 2~3개만 물어본 뒤 메모 초안을 불릿으로 만들어줘. 데이터에 없는 수치는 지어내지 마.
 
 [내 상황]: </textarea><button type="button" onclick="(function(b){var t=b.previousElementSibling;t.focus();t.select();try{navigator.clipboard.writeText(t.value);}catch(e){try{document.execCommand('copy');}catch(_){}}b.textContent='복사됨!';setTimeout(function(){b.textContent='📋 프롬프트 복사';},1200);})(this)" style="margin-top:4px;font-size:12px;color:var(--accent-text);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:7px;padding:4px 10px;cursor:pointer">📋 프롬프트 복사</button></div></details>
           <small>.md/.txt 파일로 길게 작성한 메모도 함께 첨부할 수 있습니다. <a href="/examples.html#notes" target="_blank" rel="noopener">작성 가이드·예시 보기 →</a></small>
-          <button type="button" class="qc-memo-btn" style="display:none;align-self:flex-start;margin:4px 0 2px;font-size:12.5px;color:var(--accent-text);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:8px;padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openMemo('crUserNotes')">✨ AI로 메모 작성 도움받기</button>
+          <button type="button" class="qc-memo-btn" style="display:none;align-self:flex-start;margin:4px 0 2px;font-size:12px;color:var(--accent-text);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:var(--radius-sm);padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openMemo('crUserNotes')">✨ AI로 메모 작성 도움받기</button>
           <input id="crUserNotesFile" name="userNotesFile" type="file" accept=".md,.txt,text/markdown,text/plain" aria-label="참고 메모 파일" />
         </div>
       </div>
@@ -415,7 +430,7 @@
             <label><span class="field-label">문체 메모 (선택)</span>
               <textarea id="crStyleNote" name="styleNote" rows="3" maxlength="1500" placeholder="예: 구어체로 직관 먼저 설명하고, 헷갈리는 지점을 짚으며 수식은 단계별로 유도하는 느낌"></textarea>
             </label>
-          <button type="button" class="qc-style-btn" style="display:none;align-self:flex-start;margin:6px 0 2px;font-size:12.5px;color:var(--accent-text);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:8px;padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openStyle('crStyleNote')">✨ AI로 내 문체 정리받기</button>
+          <button type="button" class="qc-style-btn" style="display:none;align-self:flex-start;margin:6px 0 2px;font-size:12px;color:var(--accent-text);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:var(--radius-sm);padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openStyle('crStyleNote')">✨ AI로 내 문체 정리받기</button>
             <small>샘플 없이 원하는 느낌만 글로 적어도 됩니다.</small>
           </div>
         </div>
@@ -538,13 +553,13 @@
             <span class="field-label">AI 참고 메모 / 내 의견 (선택)</span>
             <textarea id="prUserNotes" name="userNotes" rows="4" maxlength="12000" placeholder="예: 예비 1회는 포토게이트가 흔들려 제외. 트랙 이음새에서 카트가 살짝 튀는 현상이 있었음."></textarea>
           </label>
-          <span data-memo-guide="prUserNotes"></span><details class="memo-guide" style="margin-top:6px"><summary style="cursor:pointer;font-size:12.5px;color:var(--accent-text);user-select:none">📋 메모 작성 가이드 · 좋은 예시 + AI에게 줄 기본 프롬프트</summary><div style="font-size:12.5px;color:var(--text-muted);margin-top:6px;line-height:1.55"><b>좋은 AI 참고 메모 예시</b><div style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin:4px 0;white-space:pre-wrap">- 예비 시행 1회는 포토게이트 흔들림으로 제외
+          <span data-memo-guide="prUserNotes"></span><details class="memo-guide" style="margin-top:6px"><summary style="cursor:pointer;font-size:12px;color:var(--accent-text);user-select:none">📋 메모 작성 가이드 · 좋은 예시 + AI에게 줄 기본 프롬프트</summary><div style="font-size:12px;color:var(--text-muted);margin-top:6px;line-height:1.55"><b>좋은 AI 참고 메모 예시</b><div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;margin:4px 0;white-space:pre-wrap">- 예비 시행 1회는 포토게이트 흔들림으로 제외
 - 트랙 이음새를 지날 때 카트가 살짝 튀는 현상 관찰 → 오차로
-- Part II 운동량 보존 분석을 특히 자세히</div><b style="display:block;margin-top:6px">AI(ChatGPT·Claude 등)에게 물어볼 때 복사해 쓰는 기본 프롬프트</b><textarea readonly rows="6" style="width:100%;box-sizing:border-box;font-size:12px;background:var(--surface);border:1px solid var(--accent-border);border-radius:8px;padding:7px 9px;margin-top:4px">나는 Quilo로 물리 '결과보고서'를 만들려고 해. PASCO .cap/엑셀/사진을 올리면 AI가 Part별 표·그래프·분석·결론(오차분석 포함)을 써 줘. 'AI 참고 메모'는 데이터만 보고는 모를 맥락(제외한 시행과 이유, 장치 세팅 특이점, 실제 겪은 문제와 해결, 강조할 Part)을 알려주는 글이야. 내 상황을 듣고 부족하면 2~3개만 물어본 뒤 메모 초안을 불릿으로 만들어줘. 데이터에 없는 값은 지어내지 마.
+- Part II 운동량 보존 분석을 특히 자세히</div><b style="display:block;margin-top:6px">AI(ChatGPT·Claude 등)에게 물어볼 때 복사해 쓰는 기본 프롬프트</b><textarea readonly rows="6" style="width:100%;box-sizing:border-box;font-size:12px;background:var(--surface);border:1px solid var(--accent-border);border-radius:var(--radius-sm);padding:7px 9px;margin-top:4px">나는 Quilo로 물리 '결과보고서'를 만들려고 해. PASCO .cap/엑셀/사진을 올리면 AI가 Part별 표·그래프·분석·결론(오차분석 포함)을 써 줘. 'AI 참고 메모'는 데이터만 보고는 모를 맥락(제외한 시행과 이유, 장치 세팅 특이점, 실제 겪은 문제와 해결, 강조할 Part)을 알려주는 글이야. 내 상황을 듣고 부족하면 2~3개만 물어본 뒤 메모 초안을 불릿으로 만들어줘. 데이터에 없는 값은 지어내지 마.
 
 [내 상황]: </textarea><button type="button" onclick="(function(b){var t=b.previousElementSibling;t.focus();t.select();try{navigator.clipboard.writeText(t.value);}catch(e){try{document.execCommand('copy');}catch(_){}}b.textContent='복사됨!';setTimeout(function(){b.textContent='📋 프롬프트 복사';},1200);})(this)" style="margin-top:4px;font-size:12px;color:var(--accent-text);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:7px;padding:4px 10px;cursor:pointer">📋 프롬프트 복사</button></div></details>
           <small>.md/.txt 파일로 길게 작성한 메모도 함께 첨부할 수 있습니다. <a href="/examples.html#notes" target="_blank" rel="noopener">작성 가이드·예시 보기 →</a></small>
-          <button type="button" class="qc-memo-btn" style="display:none;align-self:flex-start;margin:4px 0 2px;font-size:12.5px;color:var(--accent-text);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:8px;padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openMemo('prUserNotes')">✨ AI로 메모 작성 도움받기</button>
+          <button type="button" class="qc-memo-btn" style="display:none;align-self:flex-start;margin:4px 0 2px;font-size:12px;color:var(--accent-text);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:var(--radius-sm);padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openMemo('prUserNotes')">✨ AI로 메모 작성 도움받기</button>
           <input id="prUserNotesFile" name="userNotesFile" type="file" accept=".md,.txt,text/markdown,text/plain" aria-label="참고 메모 파일" />
         </div>
       </div>
@@ -585,7 +600,7 @@
             <label><span class="field-label">문체 메모 (선택)</span>
               <textarea id="prStyleNote" name="styleNote" rows="3" maxlength="1500" placeholder="예: 구어체로 직관 먼저 설명하고, 헷갈리는 지점을 짚으며 수식은 단계별로 유도하는 느낌"></textarea>
             </label>
-          <button type="button" class="qc-style-btn" style="display:none;align-self:flex-start;margin:6px 0 2px;font-size:12.5px;color:var(--accent-text);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:8px;padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openStyle('prStyleNote')">✨ AI로 내 문체 정리받기</button>
+          <button type="button" class="qc-style-btn" style="display:none;align-self:flex-start;margin:6px 0 2px;font-size:12px;color:var(--accent-text);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:var(--radius-sm);padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openStyle('prStyleNote')">✨ AI로 내 문체 정리받기</button>
             <small>샘플 없이 원하는 느낌만 글로 적어도 됩니다.</small>
           </div>
         </div>
@@ -699,13 +714,13 @@
             <span class="field-label">AI 참고 메모 / 내 생각 (선택)</span>
             <textarea id="piUserNotes" name="userNotes" rows="4" maxlength="12000" placeholder="예: 처음엔 모든 역학을 F=ma로 풀 수 있다 생각했는데, 구속 조건에서 막혀 라그랑주 역학으로 넘어갔음. 노트의 이중진자 풀이 꼭 포함."></textarea>
           </label>
-          <span data-memo-guide="piUserNotes"></span><details class="memo-guide" style="margin-top:6px"><summary style="cursor:pointer;font-size:12.5px;color:var(--accent-text);user-select:none">📋 메모 작성 가이드 · 좋은 예시 + AI에게 줄 기본 프롬프트</summary><div style="font-size:12.5px;color:var(--text-muted);margin-top:6px;line-height:1.55"><b>좋은 AI 참고 메모 예시</b><div style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin:4px 0;white-space:pre-wrap">- 처음 생각(오개념): 모든 역학 문제는 힘 분해(F=ma)로 풀 수 있다
+          <span data-memo-guide="piUserNotes"></span><details class="memo-guide" style="margin-top:6px"><summary style="cursor:pointer;font-size:12px;color:var(--accent-text);user-select:none">📋 메모 작성 가이드 · 좋은 예시 + AI에게 줄 기본 프롬프트</summary><div style="font-size:12px;color:var(--text-muted);margin-top:6px;line-height:1.55"><b>좋은 AI 참고 메모 예시</b><div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;margin:4px 0;white-space:pre-wrap">- 처음 생각(오개념): 모든 역학 문제는 힘 분해(F=ma)로 풀 수 있다
 - 막힌 지점: 진자·구속 조건에서 힘 분해가 너무 복잡해짐
 - 해결: 라그랑지안(L=T−V)과 오일러-라그랑주 방정식으로 전환
-- 노트의 이중진자 풀이를 세부 분석에 꼭 넣어줘</div><b style="display:block;margin-top:6px">AI(ChatGPT·Claude 등)에게 물어볼 때 복사해 쓰는 기본 프롬프트</b><textarea readonly rows="6" style="width:100%;box-sizing:border-box;font-size:12px;background:var(--surface);border:1px solid var(--accent-border);border-radius:8px;padding:7px 9px;margin-top:4px">나는 Quilo로 '물리 수행평가(일반물리학 탐구 및 사고 과정 성찰 보고서)'를 만들려고 해. 주제와 필기노트를 올리면 AI가 '초기 오개념 → 오류 인식 → 정확한 개념으로 해결 → 성찰' 흐름으로 써 줘. 이 보고서는 처음에 무엇을 어떻게 잘못 생각했는지(오개념)가 핵심 평가 요소야. 'AI 참고 메모'에 그 오개념·깨달은 계기·노트에서 꼭 포함할 유도/문제를 알려주고 싶어. 내 상황을 듣고 특히 '처음에 어떻게 생각했었는지'를 물어본 뒤 메모 초안을 불릿으로 만들어줘. 없는 사실은 지어내지 마.
+- 노트의 이중진자 풀이를 세부 분석에 꼭 넣어줘</div><b style="display:block;margin-top:6px">AI(ChatGPT·Claude 등)에게 물어볼 때 복사해 쓰는 기본 프롬프트</b><textarea readonly rows="6" style="width:100%;box-sizing:border-box;font-size:12px;background:var(--surface);border:1px solid var(--accent-border);border-radius:var(--radius-sm);padding:7px 9px;margin-top:4px">나는 Quilo로 '물리 수행평가(일반물리학 탐구 및 사고 과정 성찰 보고서)'를 만들려고 해. 주제와 필기노트를 올리면 AI가 '초기 오개념 → 오류 인식 → 정확한 개념으로 해결 → 성찰' 흐름으로 써 줘. 이 보고서는 처음에 무엇을 어떻게 잘못 생각했는지(오개념)가 핵심 평가 요소야. 'AI 참고 메모'에 그 오개념·깨달은 계기·노트에서 꼭 포함할 유도/문제를 알려주고 싶어. 내 상황을 듣고 특히 '처음에 어떻게 생각했었는지'를 물어본 뒤 메모 초안을 불릿으로 만들어줘. 없는 사실은 지어내지 마.
 
 [내 상황]: </textarea><button type="button" onclick="(function(b){var t=b.previousElementSibling;t.focus();t.select();try{navigator.clipboard.writeText(t.value);}catch(e){try{document.execCommand('copy');}catch(_){}}b.textContent='복사됨!';setTimeout(function(){b.textContent='📋 프롬프트 복사';},1200);})(this)" style="margin-top:4px;font-size:12px;color:var(--accent-text);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:7px;padding:4px 10px;cursor:pointer">📋 프롬프트 복사</button></div></details>
-          <button type="button" class="qc-memo-btn" style="display:none;align-self:flex-start;margin:6px 0 2px;font-size:12.5px;color:var(--accent-text);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:8px;padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openMemo('piUserNotes')">✨ AI로 메모 작성 도움받기</button>
+          <button type="button" class="qc-memo-btn" style="display:none;align-self:flex-start;margin:6px 0 2px;font-size:12px;color:var(--accent-text);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:var(--radius-sm);padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openMemo('piUserNotes')">✨ AI로 메모 작성 도움받기</button>
           <small>.md/.txt 파일로 길게 작성한 메모도 함께 첨부할 수 있습니다.</small>
           <input id="piUserNotesFile" name="userNotesFile" type="file" accept=".md,.txt,text/markdown,text/plain" aria-label="참고 메모 파일" />
         </div>
@@ -734,7 +749,7 @@
             <label><span class="field-label">문체 메모 (선택, 한 줄)</span>
               <textarea id="piStyleNote" name="styleNote" rows="3" maxlength="1500" placeholder="예: 영어 소제목 + 구어체로 직관 먼저 설명하고, 사람들이 헷갈리는 지점을 짚으며 수식은 단계별로 유도하는 느낌"></textarea>
             </label>
-          <button type="button" class="qc-style-btn" style="display:none;align-self:flex-start;margin:6px 0 2px;font-size:12.5px;color:var(--accent-text);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:8px;padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openStyle('piStyleNote')">✨ AI로 내 문체 정리받기</button>
+          <button type="button" class="qc-style-btn" style="display:none;align-self:flex-start;margin:6px 0 2px;font-size:12px;color:var(--accent-text);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:var(--radius-sm);padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openStyle('piStyleNote')">✨ AI로 내 문체 정리받기</button>
             <small>샘플 없이 원하는 느낌만 글로 적어도 됩니다.</small>
           </div>
         </div>
@@ -752,7 +767,7 @@
           </div>
           <div class="field">
             <span class="field-label">표지에 출력될 이름 · 학번</span>
-            <div id="piWhoPreview" style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--accent-soft);color:var(--accent-text);font-size:13.5px;min-height:38px;display:flex;align-items:center">개인 설정에 저장된 값으로 출력됩니다.</div>
+            <div id="piWhoPreview" style="padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--accent-soft);color:var(--accent-text);font-size:14px;min-height:38px;display:flex;align-items:center">개인 설정에 저장된 값으로 출력됩니다.</div>
             <small>이름·학번은 <a href="#" data-tab="settings">개인 설정</a>에 저장한 값으로 자동 출력됩니다.</small>
           </div>
         </div>
@@ -834,13 +849,13 @@
             <span class="field-label">AI 참고 메모 / 내 생각 (선택)</span>
             <textarea id="miUserNotes" name="userNotes" rows="4" maxlength="12000" placeholder="예: 계산기가 sin을 어떻게 구하는지 궁금해서 골랐음. 테일러 전개 유도는 풀버전으로, x=1 부분합 오차 표와 수렴 그래프 꼭 넣어줘. e^x와 수렴 속도 비교처럼 창의적인 시도도 하나 들어가면 좋겠어."></textarea>
           </label>
-          <span data-memo-guide="miUserNotes"></span><details class="memo-guide" style="margin-top:6px"><summary style="cursor:pointer;font-size:12.5px;color:var(--accent-text);user-select:none">📋 메모 작성 가이드 · 좋은 예시 + AI에게 줄 기본 프롬프트</summary><div style="font-size:12.5px;color:var(--text-muted);margin-top:6px;line-height:1.55"><b>좋은 AI 참고 메모 예시</b><div style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin:4px 0;white-space:pre-wrap">- 동기: 계산기·AI가 초월함수를 어떻게 계산하는지 궁금했음
+          <span data-memo-guide="miUserNotes"></span><details class="memo-guide" style="margin-top:6px"><summary style="cursor:pointer;font-size:12px;color:var(--accent-text);user-select:none">📋 메모 작성 가이드 · 좋은 예시 + AI에게 줄 기본 프롬프트</summary><div style="font-size:12px;color:var(--text-muted);margin-top:6px;line-height:1.55"><b>좋은 AI 참고 메모 예시</b><div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;margin:4px 0;white-space:pre-wrap">- 동기: 계산기·AI가 초월함수를 어떻게 계산하는지 궁금했음
 - 테일러 급수 유도(라그랑주 나머지항 포함)를 Ⅲ.이론적 배경에 풀버전으로 넣어줘
 - Ⅳ에서 x=1의 sin 부분합 N=1~6을 계산해 오차 표랑 수렴 그래프로 보여줘
-- 창의적 시도: 같은 방법으로 e^x도 계산해서 두 급수의 수렴 속도를 비교</div><b style="display:block;margin-top:6px">AI(ChatGPT·Claude 등)에게 물어볼 때 복사해 쓰는 기본 프롬프트</b><textarea readonly rows="6" style="width:100%;box-sizing:border-box;font-size:12px;background:var(--surface);border:1px solid var(--accent-border);border-radius:8px;padding:7px 9px;margin-top:4px">나는 Quilo로 '수학 수행평가(수학Ⅲ 급수 탐구보고서)'를 만들려고 해. 급수 관련 주제 한 줄만 입력하면 AI가 Ⅰ.탐구 주제 / Ⅱ.탐구 목적 / Ⅲ.선행연구 분석 / Ⅳ.탐구 과정 및 탐구 내용 / Ⅴ.결과 정리 및 반성 양식으로 써 줘. 평가 기준이 '수학적 타당성·창의성 40점 / 논리성·자료(표·그래프) 활용 40점 / 발표 20점'이고 만점이 목표라, 메모가 방향을 정하는 유일한 수단이야. 'AI 참고 메모'에 탐구 동기, 꼭 다루고 싶은 개념/유도, 넣고 싶은 표·그래프, 창의적 연결 아이디어를 정리하고 싶어. 내 상황을 듣고 메모 초안을 불릿으로 만들어줘. 없는 수치는 지어내지 마.
+- 창의적 시도: 같은 방법으로 e^x도 계산해서 두 급수의 수렴 속도를 비교</div><b style="display:block;margin-top:6px">AI(ChatGPT·Claude 등)에게 물어볼 때 복사해 쓰는 기본 프롬프트</b><textarea readonly rows="6" style="width:100%;box-sizing:border-box;font-size:12px;background:var(--surface);border:1px solid var(--accent-border);border-radius:var(--radius-sm);padding:7px 9px;margin-top:4px">나는 Quilo로 '수학 수행평가(수학Ⅲ 급수 탐구보고서)'를 만들려고 해. 급수 관련 주제 한 줄만 입력하면 AI가 Ⅰ.탐구 주제 / Ⅱ.탐구 목적 / Ⅲ.선행연구 분석 / Ⅳ.탐구 과정 및 탐구 내용 / Ⅴ.결과 정리 및 반성 양식으로 써 줘. 평가 기준이 '수학적 타당성·창의성 40점 / 논리성·자료(표·그래프) 활용 40점 / 발표 20점'이고 만점이 목표라, 메모가 방향을 정하는 유일한 수단이야. 'AI 참고 메모'에 탐구 동기, 꼭 다루고 싶은 개념/유도, 넣고 싶은 표·그래프, 창의적 연결 아이디어를 정리하고 싶어. 내 상황을 듣고 메모 초안을 불릿으로 만들어줘. 없는 수치는 지어내지 마.
 
 [내 상황]: </textarea><button type="button" onclick="(function(b){var t=b.previousElementSibling;t.focus();t.select();try{navigator.clipboard.writeText(t.value);}catch(e){try{document.execCommand('copy');}catch(_){}}b.textContent='복사됨!';setTimeout(function(){b.textContent='📋 프롬프트 복사';},1200);})(this)" style="margin-top:4px;font-size:12px;color:var(--accent-text);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:7px;padding:4px 10px;cursor:pointer">📋 프롬프트 복사</button></div></details>
-          <button type="button" class="qc-memo-btn" style="display:none;align-self:flex-start;margin:6px 0 2px;font-size:12.5px;color:var(--accent-text);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:8px;padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openMemo('miUserNotes')">✨ AI로 메모 작성 도움받기</button>
+          <button type="button" class="qc-memo-btn" style="display:none;align-self:flex-start;margin:6px 0 2px;font-size:12px;color:var(--accent-text);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:var(--radius-sm);padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openMemo('miUserNotes')">✨ AI로 메모 작성 도움받기</button>
           <small>.md/.txt 파일로 길게 작성한 메모도 함께 첨부할 수 있습니다.</small>
           <input id="miUserNotesFile" name="userNotesFile" type="file" accept=".md,.txt,text/markdown,text/plain" aria-label="참고 메모 파일" />
         </div>
@@ -869,7 +884,7 @@
             <label><span class="field-label">문체 메모 (선택, 한 줄)</span>
               <textarea id="miStyleNote" name="styleNote" rows="3" maxlength="1500" placeholder="예: 정의를 먼저 쓰고 직관적 설명을 덧붙이는 차분한 문어체, 수식은 단계별 유도, 소제목은 Step 1처럼 번호로"></textarea>
             </label>
-          <button type="button" class="qc-style-btn" style="display:none;align-self:flex-start;margin:6px 0 2px;font-size:12.5px;color:var(--accent-text);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:8px;padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openStyle('miStyleNote')">✨ AI로 내 문체 정리받기</button>
+          <button type="button" class="qc-style-btn" style="display:none;align-self:flex-start;margin:6px 0 2px;font-size:12px;color:var(--accent-text);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:var(--radius-sm);padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openStyle('miStyleNote')">✨ AI로 내 문체 정리받기</button>
             <small>샘플 없이 원하는 느낌만 글로 적어도 됩니다.</small>
           </div>
         </div>
@@ -887,7 +902,7 @@
           </div>
           <div class="field">
             <span class="field-label">표지에 출력될 이름 · 학번</span>
-            <div id="miWhoPreview" style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--accent-soft);color:var(--accent-text);font-size:13.5px;min-height:38px;display:flex;align-items:center">개인 설정에 저장된 값으로 출력됩니다.</div>
+            <div id="miWhoPreview" style="padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--accent-soft);color:var(--accent-text);font-size:14px;min-height:38px;display:flex;align-items:center">개인 설정에 저장된 값으로 출력됩니다.</div>
             <small>이름·학번은 <a href="#" data-tab="settings">개인 설정</a>에 저장한 값으로 자동 출력됩니다.</small>
           </div>
         </div>
@@ -1002,11 +1017,11 @@
           </div>
           <div class="field">
             <span class="field-label">정확도 · 삽화 옵션</span>
-            <label class="ps-check" style="display:flex;align-items:flex-start;gap:8px;font-size:13.5px;margin:4px 0;cursor:pointer;user-select:none">
+            <label class="ps-check" style="display:flex;align-items:flex-start;gap:8px;font-size:14px;margin:4px 0;cursor:pointer;user-select:none">
               <input id="psCrossVerify" type="checkbox" style="width:auto;margin:2px 0 0" />
               <span><strong>병렬 교차검증 풀이</strong> — 문제를 3번 독립으로 풀어 교차검증(정답이 갈리면 '재확인 필요' 표시). 더 정확하지만 시간이 더 걸립니다.</span>
             </label>
-            <label class="ps-check" style="display:flex;align-items:flex-start;gap:8px;font-size:13.5px;margin:4px 0;cursor:pointer;user-select:none">
+            <label class="ps-check" style="display:flex;align-items:flex-start;gap:8px;font-size:14px;margin:4px 0;cursor:pointer;user-select:none">
               <input id="psAllowImageGen" type="checkbox" style="width:auto;margin:2px 0 0" />
               <span><strong>해설 삽화 생성</strong> — 풀이에 도움되는 개념 도식을 AI(gpt-image)로 그려 해설지에 넣습니다(개념도만, 실측 데이터 아님).</span>
             </label>
@@ -1456,7 +1471,7 @@
             <span class="field-label">AI 참고 메모 / 내 생각 (선택)</span>
             <textarea id="frUserNotes" name="userNotes" rows="3" maxlength="12000" placeholder="강조하고 싶은 관점·꼭 다룰 내용 등을 적으세요. 보조로만 반영됩니다."></textarea>
           </label>
-          <button type="button" class="qc-memo-btn" style="display:none;align-self:flex-start;margin:6px 0 2px;font-size:12.5px;color:var(--accent-text);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:8px;padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openMemo('frUserNotes')">✨ AI로 메모 작성 도움받기</button>
+          <button type="button" class="qc-memo-btn" style="display:none;align-self:flex-start;margin:6px 0 2px;font-size:12px;color:var(--accent-text);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:var(--radius-sm);padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openMemo('frUserNotes')">✨ AI로 메모 작성 도움받기</button>
           <small>.md/.txt 파일로 길게 작성한 메모도 함께 첨부할 수 있습니다.</small>
           <input id="frUserNotesFile" name="userNotesFile" type="file" accept=".md,.txt,text/markdown,text/plain" aria-label="참고 메모 파일" />
         </div>
@@ -1485,7 +1500,7 @@
             <label><span class="field-label">문체 메모 (선택, 한 줄)</span>
               <textarea id="frStyleNote" name="styleNote" rows="3" maxlength="1500" placeholder="예: 두괄식으로 결론을 먼저, 차분한 문어체, 소제목은 번호로"></textarea>
             </label>
-          <button type="button" class="qc-style-btn" style="display:none;align-self:flex-start;margin:6px 0 2px;font-size:12.5px;color:var(--accent-text);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:8px;padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openStyle('frStyleNote')">✨ AI로 내 문체 정리받기</button>
+          <button type="button" class="qc-style-btn" style="display:none;align-self:flex-start;margin:6px 0 2px;font-size:12px;color:var(--accent-text);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:var(--radius-sm);padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openStyle('frStyleNote')">✨ AI로 내 문체 정리받기</button>
             <small>샘플 없이 원하는 느낌만 글로 적어도 됩니다.</small>
           </div>
         </div>
@@ -1503,7 +1518,7 @@
           </div>
           <div class="field">
             <span class="field-label">표지에 출력될 이름 · 학번</span>
-            <div id="frWhoPreview" style="padding:9px 12px;border:1px solid var(--border);border-radius:8px;background:var(--accent-soft);color:var(--accent-text);font-size:13.5px;min-height:38px;display:flex;align-items:center">개인 설정에 저장된 값으로 출력됩니다.</div>
+            <div id="frWhoPreview" style="padding:9px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--accent-soft);color:var(--accent-text);font-size:14px;min-height:38px;display:flex;align-items:center">개인 설정에 저장된 값으로 출력됩니다.</div>
             <small>이름·학번은 <a href="#" data-tab="settings">개인 설정</a>에 저장한 값으로 자동 출력됩니다.</small>
           </div>
         </div>
@@ -1579,13 +1594,13 @@
             <span class="field-label">AI 참고 메모 / 내 의견 (선택)</span>
             <textarea id="preUserNotes" name="userNotes" rows="4" maxlength="12000" placeholder="예: 이론적 배경에 헨더슨-하셀바흐 식 유도를 꼭 넣어줘. 시약은 매뉴얼대로지만 NaOH 농도만 0.1M로 진행."></textarea>
           </label>
-          <span data-memo-guide="preUserNotes"></span><details class="memo-guide" style="margin-top:6px"><summary style="cursor:pointer;font-size:12.5px;color:var(--accent-text);user-select:none">📋 메모 작성 가이드 · 좋은 예시 + AI에게 줄 기본 프롬프트</summary><div style="font-size:12.5px;color:var(--text-muted);margin-top:6px;line-height:1.55"><b>좋은 AI 참고 메모 예시</b><div style="background:var(--surface-2);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin:4px 0;white-space:pre-wrap">- 이론적 배경에 완충용액의 헨더슨-하셀바흐 식 유도를 포함해줘
+          <span data-memo-guide="preUserNotes"></span><details class="memo-guide" style="margin-top:6px"><summary style="cursor:pointer;font-size:12px;color:var(--accent-text);user-select:none">📋 메모 작성 가이드 · 좋은 예시 + AI에게 줄 기본 프롬프트</summary><div style="font-size:12px;color:var(--text-muted);margin-top:6px;line-height:1.55"><b>좋은 AI 참고 메모 예시</b><div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;margin:4px 0;white-space:pre-wrap">- 이론적 배경에 완충용액의 헨더슨-하셀바흐 식 유도를 포함해줘
 - 매뉴얼 3단계 적정 중 우리는 2회 반복으로 진행
-- pH 미터 보정 과정을 실험 과정에 추가</div><b style="display:block;margin-top:6px">AI(ChatGPT·Claude 등)에게 물어볼 때 복사해 쓰는 기본 프롬프트</b><textarea readonly rows="6" style="width:100%;box-sizing:border-box;font-size:12px;background:var(--surface);border:1px solid var(--accent-border);border-radius:8px;padding:7px 9px;margin-top:4px">나는 Quilo(실험 보고서 생성 사이트)로 화학 '사전보고서'를 만들려고 해. 매뉴얼 PDF를 올리면 AI가 이론·기구·시약·실험과정을 써 줘. 거기에 함께 줄 'AI 참고 메모'를 쓰고 싶어 — 매뉴얼만 보고는 모를 맥락(꼭 넣을 이론 전개, 강조점, 절차 변경, 원하는 깊이)을 짧게 알려주는 글이야. 내 상황을 듣고 부족하면 2~3개만 물어본 뒤 'AI 참고 메모' 초안을 불릿으로 만들어줘. 없는 내용은 지어내지 마.
+- pH 미터 보정 과정을 실험 과정에 추가</div><b style="display:block;margin-top:6px">AI(ChatGPT·Claude 등)에게 물어볼 때 복사해 쓰는 기본 프롬프트</b><textarea readonly rows="6" style="width:100%;box-sizing:border-box;font-size:12px;background:var(--surface);border:1px solid var(--accent-border);border-radius:var(--radius-sm);padding:7px 9px;margin-top:4px">나는 Quilo(실험 보고서 생성 사이트)로 화학 '사전보고서'를 만들려고 해. 매뉴얼 PDF를 올리면 AI가 이론·기구·시약·실험과정을 써 줘. 거기에 함께 줄 'AI 참고 메모'를 쓰고 싶어 — 매뉴얼만 보고는 모를 맥락(꼭 넣을 이론 전개, 강조점, 절차 변경, 원하는 깊이)을 짧게 알려주는 글이야. 내 상황을 듣고 부족하면 2~3개만 물어본 뒤 'AI 참고 메모' 초안을 불릿으로 만들어줘. 없는 내용은 지어내지 마.
 
 [내 상황]: </textarea><button type="button" onclick="(function(b){var t=b.previousElementSibling;t.focus();t.select();try{navigator.clipboard.writeText(t.value);}catch(e){try{document.execCommand('copy');}catch(_){}}b.textContent='복사됨!';setTimeout(function(){b.textContent='📋 프롬프트 복사';},1200);})(this)" style="margin-top:4px;font-size:12px;color:var(--accent-text);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:7px;padding:4px 10px;cursor:pointer">📋 프롬프트 복사</button></div></details>
           <small>.md/.txt 파일로 길게 작성한 메모도 함께 첨부할 수 있습니다. <a href="/examples.html#notes" target="_blank" rel="noopener">작성 가이드·예시 보기 →</a></small>
-          <button type="button" class="qc-memo-btn" style="display:none;align-self:flex-start;margin:4px 0 2px;font-size:12.5px;color:var(--accent-text);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:8px;padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openMemo('preUserNotes')">✨ AI로 메모 작성 도움받기</button>
+          <button type="button" class="qc-memo-btn" style="display:none;align-self:flex-start;margin:4px 0 2px;font-size:12px;color:var(--accent-text);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:var(--radius-sm);padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openMemo('preUserNotes')">✨ AI로 메모 작성 도움받기</button>
           <input id="preUserNotesFile" name="userNotesFile" type="file" accept=".md,.txt,text/markdown,text/plain" aria-label="참고 메모 파일" />
         </div>
       </div>
@@ -1641,7 +1656,7 @@
             <label><span class="field-label">문체 메모 (선택)</span>
               <textarea id="cpStyleNote" name="styleNote" rows="3" maxlength="1500" placeholder="예: 구어체로 직관 먼저 설명하고, 헷갈리는 지점을 짚으며 수식은 단계별로 유도하는 느낌"></textarea>
             </label>
-          <button type="button" class="qc-style-btn" style="display:none;align-self:flex-start;margin:6px 0 2px;font-size:12.5px;color:var(--accent-text);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:8px;padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openStyle('cpStyleNote')">✨ AI로 내 문체 정리받기</button>
+          <button type="button" class="qc-style-btn" style="display:none;align-self:flex-start;margin:6px 0 2px;font-size:12px;color:var(--accent-text);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:var(--radius-sm);padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openStyle('cpStyleNote')">✨ AI로 내 문체 정리받기</button>
             <small>샘플 없이 원하는 느낌만 글로 적어도 됩니다.</small>
           </div>
         </div>
@@ -1931,7 +1946,7 @@
           </p>
           <p>
             <button type="button" id="styleSaveBtn">저장</button>
-            <button type="button" class="qc-style-btn" style="display:none;margin-left:8px;font-size:12.5px;color:var(--accent-text);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:8px;padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openStyle('settingsStyleNote')">✨ AI로 내 스타일 정리받기</button>
+            <button type="button" class="qc-style-btn" style="display:none;margin-left:8px;font-size:12px;color:var(--accent-text);background:var(--accent-soft);border:1px solid var(--accent-border);border-radius:var(--radius-sm);padding:6px 11px;cursor:pointer" onclick="window.Quilo&&window.Quilo.openStyle('settingsStyleNote')">✨ AI로 내 스타일 정리받기</button>
             <span id="styleSaveStatus" style="margin-left:10px"></span>
           </p>
         </div>

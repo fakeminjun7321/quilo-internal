@@ -25,7 +25,7 @@
       .tr-note { font-size: 13px; line-height: 1.6; }
       .tr-note ul { margin: 8px 0 0; padding-left: 18px; }
       .beta-badge {
-        display: inline-block; font-size: 11px; font-weight: 700;
+        display: inline-block; font-size: 11px; font-weight: var(--fw-bold);
         padding: 2px 8px; border-radius: var(--radius-full); vertical-align: middle;
         background: var(--accent); color: var(--on-accent); margin-left: 8px;
       }
@@ -480,7 +480,7 @@
               ? "이 PDF는 스캔본/이미지예요. 글자만 바꾸는 <b>빠른 번역</b>은 불가능하고, OCR로 새로 조판하는 <b>재조판</b>으로만 번역할 수 있습니다. (PDF를 새로 생성 · 시간·비용이 더 듭니다.)"
               : `이 문서는 수식이 많습니다(수식밀도 <b>${density}</b>).<br><b>빠른 번역</b>은 레이아웃·그림은 그대로지만 복잡한 수식·전하·구조식이 깨질 수 있어요.<br><b>재조판</b>은 PDF를 새로 만들어 수식을 정확히 복원합니다(시간·비용↑, 레이아웃은 달라짐).`;
             card.innerHTML =
-              `<div id="retypesetDlgTitle" style="font-weight:700;font-size:16px;margin-bottom:8px">${title}</div>` +
+              `<div id="retypesetDlgTitle" style="font-weight:var(--fw-bold);font-size:16px;margin-bottom:8px">${title}</div>` +
               `<div id="retypesetDlgBody" style="margin-bottom:16px">${body}</div>`;
             const row = document.createElement("div");
             row.style.cssText =

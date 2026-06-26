@@ -138,7 +138,7 @@
     <script>
       const $ = (id) => document.getElementById(id);
       const esc = (s) => String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-      let modelCredits = {}, lastResult = null;
+      let modelCredits = {}, lastResult = null, canCreate = false;
 
       async function api(path, opts) {
         const r = await fetch(path, { credentials: "same-origin", headers: { "Content-Type": "application/json" }, ...opts });
@@ -156,6 +156,8 @@
         modelCredits = (bal && bal.modelCredits) || {};
         if (bal && !bal.isAdmin && typeof bal.credits === "number") $("bal").textContent = "· 보유 크레딧 " + bal.credits;
         else if (bal && bal.isAdmin) $("bal").textContent = "· 관리자(무제한)";
+        // 창작 스튜디오 접근 권한(관리자 or 'create' 베타) — 있으면 "스튜디오에서 만들기" 버튼 노출
+        try { const b = await api("/api/me/beta"); canCreate = !!b.admin || (Array.isArray(b.features) && b.features.includes("create")); } catch {}
         // 모델 목록
         try {
           const cfg = await api("/api/vibe/config");
@@ -201,6 +203,7 @@
         const html = `
           <div class="card result">
             <div class="toolbar">
+              ${canCreate ? `<button class="btn" id="toStudio">🛠 스튜디오에서 만들기 →</button>` : ""}
               <button class="btn ghost" id="copyMd">📋 마크다운 복사</button>
               <button class="btn ghost" id="dlMd">⬇ 다운로드</button>
             </div>
@@ -225,6 +228,21 @@
         $("out").innerHTML = html;
         $("copyMd").onclick = () => { const md = toMarkdown(lastResult); navigator.clipboard.writeText(md).then(() => flash("copyMd", "✓ 복사됨"), () => {}); };
         $("dlMd").onclick = () => download((lastResult.title || "project") + ".md", toMarkdown(lastResult));
+        if ($("toStudio")) $("toStudio").onclick = () => {
+          try { sessionStorage.setItem("quilo_vibe_handoff", JSON.stringify({ prompt: studioPrompt(lastResult), title: lastResult.title || "" })); } catch {}
+          location.href = "/studio.html?from=vibe";
+        };
+      }
+
+      // 생성된 설계 → 스튜디오가 바로 만들 수 있는 빌드 지시문(단일 페이지 웹앱 기준).
+      function studioPrompt(r) {
+        const feats = (r.mvp || []).map((m) => `- ${m.feature}`).join("\n");
+        const screens = (r.screens || []).map((s) => s.name).filter(Boolean).join(", ");
+        const lines = [`"${r.title || "프로젝트"}" — ${r.tagline || ""}`, "", "아래 기능을 갖춘, 작동하는 단일 페이지 웹앱(HTML/CSS/JS 한 파일)으로 만들어줘:"];
+        if (feats) lines.push(feats);
+        if (screens) lines.push("", `주요 화면: ${screens}`);
+        lines.push("", "데이터는 localStorage에 저장하고, 깔끔하고 모바일에서도 보기 좋게 만들어줘.");
+        return lines.join("\n");
       }
       function flash(id, t) { const b = $(id); const o = b.textContent; b.textContent = t; setTimeout(() => (b.textContent = o), 1400); }
 

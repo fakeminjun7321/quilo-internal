@@ -812,7 +812,22 @@
       // ── 초기화 ──
       async function loadParamArtifact() {
         const q = new URLSearchParams(location.search);
-        const edit = q.get("edit"), remix = q.get("remix");
+        const edit = q.get("edit"), remix = q.get("remix"), from = q.get("from");
+        // 바이브 코딩 생성기에서 넘어온 설계 → 입력창에 빌드 지시문 프리필(자동 전송하지 않음).
+        if (from === "vibe") {
+          renderEmpty();
+          let h = null;
+          try { h = JSON.parse(sessionStorage.getItem("quilo_vibe_handoff") || "null"); } catch {}
+          try { sessionStorage.removeItem("quilo_vibe_handoff"); } catch {}
+          if (h && h.prompt) {
+            if (h.title) { defaultTitle = h.title; $("pTitle").value = h.title; }
+            $("prompt").value = h.prompt; autoGrow(); $("prompt").focus();
+            addMsg("ai", "✨ <b>바이브 코딩 생성기</b>에서 설계를 가져왔어요. 입력창 내용을 검토·수정한 뒤 <b>전송(Enter)</b>하면 바로 만들어 드릴게요.");
+          } else {
+            addMsg("ai", "✨ 바이브 코딩 생성기에서 넘어왔어요. 무엇을 만들지 입력해 주세요.");
+          }
+          return;
+        }
         try {
           if (edit) {
             const j = await api("/api/artifacts/" + encodeURIComponent(edit) + "/raw");

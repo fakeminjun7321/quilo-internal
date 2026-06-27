@@ -524,6 +524,49 @@ body[data-auth="out"] #acctDd {
   font-weight: var(--fw-semibold);
 }
 
+/* ── Wave2b: 필수 체크리스트 실시간 상태(✓ 충족 / 미충족 강조) ─────────── */
+.workspace-summary li .chk-ico {
+  display: inline-grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  margin-right: 5px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: var(--fw-heavy);
+  line-height: 1;
+  vertical-align: -1px;
+}
+.workspace-summary li.chk-done {
+  border-color: rgba(15, 157, 107, 0.4);
+  background: var(--success-soft);
+  color: var(--success);
+}
+.workspace-summary li.chk-done .chk-ico {
+  background: var(--success);
+  color: #fff;
+}
+.workspace-summary li.chk-todo {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+.workspace-summary li.chk-todo .chk-ico {
+  background: transparent;
+  color: var(--accent-text);
+}
+.workspace-summary li[role="button"] {
+  cursor: pointer;
+  transition: filter 120ms var(--tap, ease);
+}
+.workspace-summary li[role="button"]:hover {
+  filter: brightness(0.97);
+}
+.workspace-summary li[role="button"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .workspace-files {
   display: grid;
   align-content: start;
@@ -841,6 +884,33 @@ form label textarea {
 
 .report-flow[data-flow-step="generate"] > .optional-settings {
   display: none;
+}
+
+/* ── Wave2b: 모바일 단계 이동 버튼(다음/이전) — 데스크톱은 숨김 ─────────── */
+.mobile-step-nav {
+  display: none; /* 좁은 화면에서만 노출(아래 미디어쿼리). */
+  grid-column: 1 / -1;
+  gap: 10px;
+  margin-top: 4px;
+}
+.mobile-step-nav button {
+  flex: 1 1 0;
+  min-height: 48px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 15px;
+  font-weight: var(--fw-bold);
+  cursor: pointer;
+}
+.mobile-step-nav button.mob-step-next {
+  background: var(--accent);
+  color: var(--on-accent);
+  border: 1px solid var(--accent);
+}
+.mobile-step-nav button.mob-step-prev {
+  background: var(--surface);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
 }
 
 .optional-settings {
@@ -1351,6 +1421,105 @@ html[data-theme="dark"] .theme-toggle .theme-icon-light {
   font-weight: var(--fw-bold);
 }
 
+/* ── Wave2a: 경과 타이머 + ETA ──────────────────────────────────────── */
+.gen-timer {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  font-weight: var(--fw-bold);
+  color: var(--accent-text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Wave2a: 생성 오류 카드(행동중심 + 다시 생성) ────────────────────── */
+.retry-card {
+  margin: 10px 0 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--danger-border);
+  background: var(--danger-soft);
+  border-radius: var(--radius-sm);
+}
+.retry-card .retry-headline {
+  font-weight: var(--fw-heavy);
+  color: var(--danger);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.retry-card .retry-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+.retry-card .retry-actions button {
+  min-height: 38px;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-weight: var(--fw-bold);
+  cursor: pointer;
+  border: 1px solid var(--border-strong);
+}
+.retry-card .retry-actions button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent, #fff);
+}
+.retry-card .retry-actions button.primary:hover {
+  background: var(--accent-hover);
+}
+.retry-card .retry-actions button.secondary {
+  background: var(--surface);
+  color: var(--text);
+}
+.retry-card .retry-link {
+  font-size: 12.5px;
+  color: var(--accent-text);
+  text-decoration: underline;
+}
+.retry-card .retry-detail {
+  margin-top: 10px;
+}
+.retry-card .retry-detail summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+.retry-card .retry-detail-body {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ── Wave2a: 확인 모달 크레딧 부족 경고 ─────────────────────────────── */
+.confirm-credit-warn {
+  margin: 4px 0 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--danger-border);
+  background: var(--danger-soft);
+  border-radius: var(--radius-sm);
+}
+.confirm-credit-warn-msg {
+  font-weight: var(--fw-heavy);
+  color: var(--danger);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.confirm-credit-warn-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.confirm-credit-warn-link {
+  font-size: 12.5px;
+  color: var(--accent-text);
+  text-decoration: underline;
+}
+
 .spinner {
   display: inline-block;
   width: 18px;
@@ -1437,13 +1606,36 @@ html[data-theme="dark"] .theme-toggle .theme-icon-light {
     justify-content: flex-start;
   }
 
-  .form-flow-steps,
   .progress-steps {
     grid-template-columns: 1fr;
   }
 
+  /* 모바일에선 단계 탭을 2열로 압축(세로로 너무 길어지지 않게). */
+  .form-flow-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .progress-step b {
     white-space: normal;
+  }
+
+  /* Wave2b: 모바일 단계 이동 버튼 노출(데스크톱은 display:none 유지). */
+  .mobile-step-nav {
+    display: flex;
+  }
+
+  /* Wave2b: 생성 중 진행 헤더(제목 + 경과/ETA)를 상단에 고정. */
+  #progressArea .progress-sticky-head {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    padding: 10px 0 8px;
+    margin: -2px 0 0;
+    background: var(--surface);
+    box-shadow: 0 1px 0 var(--border);
+  }
+  #progressArea .progress-sticky-head .gen-timer {
+    margin-top: 4px;
   }
 }
 
@@ -2096,8 +2288,21 @@ th button {
     margin: 8px 0 0;
   }
 
+  /* Wave2b: 노치 단말에서 모달이 화면/홈인디케이터에 안 가리게 — 100dvh +
+     세이프에어리어. 내용이 길면 카드 내부 스크롤. */
+  .confirm-overlay {
+    place-items: end center; /* 하단 시트 느낌(엄지 도달 쉬움). */
+    padding: 14px;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    min-height: 100dvh;
+  }
+
   .confirm-card {
     padding: 20px;
+    width: 100%;
+    max-height: calc(100dvh - 28px - env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
 
   .confirm-list {
@@ -2115,6 +2320,7 @@ th button {
 
   .confirm-actions button {
     width: 100%;
+    min-height: 48px;
   }
 }
 
@@ -2933,6 +3139,25 @@ textarea.tool-input {
   border-radius: 999px;
   padding: 1px 7px;
   margin-left: auto;
+}
+/* 모델 라벨의 '추천' 배지 + 안내 한 줄 */
+.model-reco {
+  font-size: 10px;
+  font-weight: var(--fw-bold);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  border: 1px solid var(--accent-border);
+  border-radius: 999px;
+  padding: 1px 6px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+.model-help-line {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
 }
 /* 로그인 드롭다운(폼) */
 .nav-login-menu {

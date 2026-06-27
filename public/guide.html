@@ -9,7 +9,7 @@
     <meta name="theme-color" content="#2563eb" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>이용 가이드 — Quilo</title>
-    <meta name="description" content="화학 사전·화학 결과·물리 결과 보고서 생성과 부가 도구 사용법을 단계별로 안내합니다." />
+    <meta name="description" content="화학·물리 보고서, 자유 보고서, 수행평가 도움, 창작 스튜디오, PDF 통번역, 부가 도구까지 Quilo 기능별 사용법을 단계별로 안내합니다." />
     <script>
       (function () {
         try {
@@ -45,10 +45,16 @@
         </div>
 
         <nav class="quick-jump" aria-label="가이드 바로가기">
+          <a href="#overview">전체 기능</a>
           <a href="#start">시작하기</a>
           <a href="#chem-pre">화학 사전</a>
           <a href="#chem-result">화학 결과</a>
           <a href="#phys-result">물리 결과</a>
+          <a href="#free">자유 보고서</a>
+          <a href="#beta-makers">문제집·양식</a>
+          <a href="#exam-prep">수행평가 도움</a>
+          <a href="#create-studio">창작 스튜디오</a>
+          <a href="#translate">PDF 통번역</a>
           <a href="#format">출력 형식</a>
           <a href="#tools">도구</a>
           <a href="#faq">FAQ</a>
@@ -64,6 +70,76 @@
         </div>
 
         <div class="legal-page" style="padding:0;max-width:none">
+          <section id="overview">
+            <h2>전체 기능 · 진입 경로</h2>
+            <p>Quilo의 주요 기능과 어디서 시작하는지 한눈에 정리했습니다. 베타 표시는 일부 사용자에게만 열려 있을 수 있습니다.</p>
+            <div class="table-wrapper">
+            <table>
+              <caption style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0">기능별 진입 경로와 하는 일</caption>
+              <thead>
+                <tr>
+                  <th scope="col">기능</th>
+                  <th scope="col">어디서</th>
+                  <th scope="col">무엇을</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row">화학 사전·결과보고서</th>
+                  <td>메인 · 보고서 만들기</td>
+                  <td>매뉴얼·데이터로 학교 양식 사전/결과보고서 생성</td>
+                </tr>
+                <tr>
+                  <th scope="row">물리 결과보고서</th>
+                  <td>메인 · 보고서 만들기</td>
+                  <td><code>.cap</code>·데이터로 실험 파트별 표·그래프·분석 작성</td>
+                </tr>
+                <tr>
+                  <th scope="row">자유 보고서</th>
+                  <td>메인 · 보고서 만들기</td>
+                  <td>주제·지시·자료를 넣어 임의 주제 보고서 자유 형식으로 생성</td>
+                </tr>
+                <tr>
+                  <th scope="row">문제집 · 양식 메이커 <span class="beta-pill">베타</span></th>
+                  <td>메인 · 보고서 만들기</td>
+                  <td>문제 PDF로 문제지·해설지 제작 / 말·사진으로 한글 양식 생성</td>
+                </tr>
+                <tr>
+                  <th scope="row">수행평가 도움 <span class="beta-pill">베타</span></th>
+                  <td>공부 · <a href="/exam-prep.html">수행평가 도움</a></td>
+                  <td>코딩 테스트, 물리·수학 수행평가 보고서 도움</td>
+                </tr>
+                <tr>
+                  <th scope="row">공부 도구 <span class="beta-pill">베타</span></th>
+                  <td>공부 · <a href="/physics-studio.html">고급 물리 문제</a> / <a href="/study.html">공부</a></td>
+                  <td>고급 물리 문제 풀이, 학습 도식 등 학습 보조</td>
+                </tr>
+                <tr>
+                  <th scope="row">창작 스튜디오 <span class="beta-pill">베타</span></th>
+                  <td>창작·코딩 · <a href="/create.html">창작 스튜디오</a></td>
+                  <td>대화형으로 웹 결과물·아티팩트 제작</td>
+                </tr>
+                <tr>
+                  <th scope="row">바이브 코딩 생성기 <span class="beta-pill">베타</span></th>
+                  <td>창작·코딩 · <a href="/vibe-coding.html">바이브 코딩</a></td>
+                  <td>설문형 설계로 만들 것을 정리해 창작 스튜디오로 연결</td>
+                </tr>
+                <tr>
+                  <th scope="row">PDF 통번역 <span class="beta-pill">베타</span></th>
+                  <td>도구 · <a href="/translate.html">PDF 통번역</a></td>
+                  <td>그림은 그대로 두고 PDF 텍스트만 한국어로 번역</td>
+                </tr>
+                <tr>
+                  <th scope="row">부가 도구</th>
+                  <td>도구 · <a href="/tools/index.html">도구 모음</a></td>
+                  <td>글자수 세기, 선형회귀·그래프, 파일 변환, 수식 변환</td>
+                </tr>
+              </tbody>
+            </table>
+            </div>
+            <p class="hint">아래에서 보고서 종류별·기능별 사용법을 더 자세히 안내합니다.</p>
+          </section>
+
           <section id="start">
             <h2>0. 시작하기</h2>
             <ul>
@@ -107,8 +183,60 @@
             <p class="hint">팁: <code>.cap</code> 원자료와 직접 정리한 엑셀이 충돌하면 정리 파일을 우선합니다. AI 참고 메모에 실험자 의견을 적어두면 보조로 반영됩니다.</p>
           </section>
 
+          <section id="free">
+            <h2>4. 자유 보고서</h2>
+            <p><b>넣는 자료:</b> 작성 지시(주제·요구사항), 평가 기준, 참고 자료(파일·사진 등). 보고서 만들기 메뉴에서 고릅니다.</p>
+            <ol>
+              <li>보고서 종류에서 <b>자유 보고서</b>를 고릅니다.</li>
+              <li>어떤 보고서를 원하는지 작성 지시와 평가 기준을 적고, 참고 자료를 올립니다.</li>
+              <li>생성하면 정해진 학교 양식 대신 주제에 맞는 자유 형식으로 보고서가 작성됩니다. 표·수식·그래프·사진도 쓸 수 있습니다.</li>
+            </ol>
+            <p class="hint">팁: 평가 기준을 구체적으로 적을수록 원하는 방향에 맞게 나옵니다. 화학·물리 외 임의 주제에 쓰기 좋습니다.</p>
+          </section>
+
+          <section id="beta-makers">
+            <h2>5. 문제집 메이커 · 양식 메이커 <span class="beta-pill">베타</span></h2>
+            <p>보고서 만들기 메뉴에서 권한이 있는 경우 보입니다.</p>
+            <ul>
+              <li><b>문제집 메이커</b> — 교재 문제 PDF를 올리면 문제지와 해설지를 만들어 묶음으로 내려받습니다. 영어/한글 문제지에 활용할 수 있습니다.</li>
+              <li><b>양식 메이커</b> — 원하는 양식을 말로 설명하면 한글 양식을 만들고, 종이 양식을 사진으로 올리면 같은 구조의 문서로 복원합니다.</li>
+            </ul>
+            <p class="hint">베타 기능은 일부 사용자에게만 열려 있을 수 있습니다.</p>
+          </section>
+
+          <section id="exam-prep">
+            <h2>6. 수행평가 도움 <span class="beta-pill">베타</span></h2>
+            <p><a href="/exam-prep.html">수행평가 도움</a> 페이지(상단 <b>공부</b> 메뉴)에서 시작합니다.</p>
+            <ul>
+              <li><b>코딩 테스트</b> — 정보(Python) 문제를 브라우저 안에서 직접 풀고 채점까지 해 봅니다. 막히면 정답 코드를 바로 주지 않는 튜터의 힌트를 받을 수 있습니다.</li>
+              <li><b>물리 수행평가</b> — 주제와 필기 노트를 바탕으로 탐구·성찰 과정을 정리하는 보고서 작성을 돕습니다.</li>
+              <li><b>수학 수행평가</b> — 주제와 필기를 양식에 맞춰 표·차트·수식이 들어간 탐구보고서로 구성합니다.</li>
+            </ul>
+            <p class="hint">관련: 상단 <b>공부</b> 메뉴의 <a href="/physics-studio.html">고급 물리 문제</a>, <a href="/study.html">공부</a> 도구도 함께 참고하세요.</p>
+          </section>
+
+          <section id="create-studio">
+            <h2>7. 창작 스튜디오 · 바이브 코딩 <span class="beta-pill">베타</span></h2>
+            <p>상단 <b>창작·코딩</b> 메뉴에서 시작합니다.</p>
+            <ul>
+              <li><b><a href="/create.html">창작 스튜디오</a></b> — 대화하듯 요청하면 웹 결과물·아티팩트를 만들고, 미리보기와 코드로 다듬어 갑니다.</li>
+              <li><b><a href="/vibe-coding.html">바이브 코딩 생성기</a></b> — 설문형으로 만들고 싶은 것을 정리하면 설계안을 만들어 줍니다. 결과를 그대로 <b>창작 스튜디오</b>로 넘겨 이어서 제작할 수 있습니다.</li>
+            </ul>
+            <p class="hint">팁: 무엇을 만들지 막연하면 바이브 코딩으로 먼저 정리한 뒤 창작 스튜디오로 이어가세요.</p>
+          </section>
+
+          <section id="translate">
+            <h2>8. PDF 통번역 <span class="beta-pill">베타</span></h2>
+            <p><a href="/translate.html">PDF 통번역</a> 페이지(상단 <b>도구</b> 메뉴)에서 시작합니다.</p>
+            <ol>
+              <li>번역할 PDF를 올립니다.</li>
+              <li>그림·레이아웃은 그대로 두고 본문 텍스트만 한국어로 번역해 새 PDF로 내려받습니다.</li>
+            </ol>
+            <p class="hint">팁: 스캔본보다 텍스트가 살아 있는 PDF에서 결과가 좋습니다.</p>
+          </section>
+
           <section id="format">
-            <h2>4. 출력 형식과 글꼴</h2>
+            <h2>9. 출력 형식과 글꼴</h2>
             <ul>
               <li><b>.docx</b>: 워드/한글에서 열어 편집. <b>.hwpx</b>: 한글 전용, 표·차트·사진·수식 개체가 직접 들어갑니다.</li>
               <li>글꼴은 폼에서 선택합니다. 생성 후 학교 양식·여백을 한 번 더 확인하세요.</li>
@@ -116,7 +244,7 @@
           </section>
 
           <section id="equation">
-            <h2>5. LaTeX → 한글 수식 변환기</h2>
+            <h2>10. LaTeX → 한글 수식 변환기</h2>
             <ul>
               <li><b>텍스트 변환</b>: <a href="/equation/index.html">수식 변환기</a>에 LaTeX를 붙여넣으면 한글 수식 스크립트가 나옵니다. 복사해 한글의 <b>입력 → 개체 → 수식</b>(Ctrl+N, M)에 붙여넣으세요.</li>
               <li><b>파일 변환</b>: HWP·HWPX 파일을 올리면 문서 안의 <code>$…$</code> 형태 LaTeX만 한글 수식 개체로 바꿔 새 <code>.hwpx</code>로 내려받습니다. 모든 처리는 브라우저에서 이뤄집니다.</li>
@@ -124,7 +252,7 @@
           </section>
 
           <section id="tools">
-            <h2>6. 도구 모음</h2>
+            <h2>11. 도구 모음</h2>
             <p><a href="/tools/index.html">도구 모음</a>에서 보고서에 자주 필요한 작업을 빠르게 할 수 있습니다(모두 브라우저 전용):</p>
             <ul>
               <li><b>글자수 세기</b> — 분량 제한 맞추기.</li>

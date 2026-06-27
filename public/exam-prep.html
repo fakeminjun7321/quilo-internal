@@ -29,6 +29,9 @@
       .eptabs button { background: none; border: 0; padding: 10px 14px; font-size: 15px; font-weight: var(--fw-semibold); color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; display: inline-flex; align-items: center; gap: 6px; }
       .eptabs button.active { color: var(--accent-text); border-bottom-color: var(--accent); }
       .ep-beta { font-size: 10.5px; padding: 1px 6px; border-radius: 999px; background: var(--warning-soft); color: var(--warning); font-weight: var(--fw-bold); vertical-align: middle; }
+      .ep-tabbadge { font-size: 10px; padding: 1px 6px; border-radius: 999px; font-weight: var(--fw-bold); vertical-align: middle; line-height: 1.5; }
+      .ep-tabbadge.lock { background: var(--surface-2); color: var(--text-faint); }
+      .ep-tabbadge.beta { background: var(--warning-soft); color: var(--warning); }
       .muted { color: var(--text-faint); font-size: 13px; }
       .err { color: var(--danger); font-size: 13px; margin: 6px 0; }
       .locked { border: 1px dashed var(--border-strong); border-radius: var(--radius); padding: 28px 18px; text-align: center; color: var(--text-muted); background: var(--surface); }
@@ -130,9 +133,9 @@
       </div>
 
       <div class="eptabs" role="tablist" aria-label="수행평가 도움 탭">
-        <button id="tabCoding" class="active" role="tab" aria-selected="true" aria-controls="paneCoding" onclick="showTab('coding')">💻 코딩 테스트 <span class="muted" style="font-weight:var(--fw-medium)">(정보)</span></button>
-        <button id="tabPhys" role="tab" aria-selected="false" aria-controls="panePhys" onclick="showTab('phys')">🔭 물리 수행평가</button>
-        <button id="tabMath" role="tab" aria-selected="false" aria-controls="paneMath" onclick="showTab('math')">📐 수학 수행평가</button>
+        <button id="tabCoding" class="active" role="tab" aria-selected="true" aria-controls="paneCoding" onclick="showTab('coding')">💻 코딩 테스트 <span class="muted" style="font-weight:var(--fw-medium)">(정보)</span><span id="badgeCoding" class="ep-tabbadge" hidden></span></button>
+        <button id="tabPhys" role="tab" aria-selected="false" aria-controls="panePhys" onclick="showTab('phys')">🔭 물리 수행평가<span id="badgePhys" class="ep-tabbadge" hidden></span></button>
+        <button id="tabMath" role="tab" aria-selected="false" aria-controls="paneMath" onclick="showTab('math')">📐 수학 수행평가<span id="badgeMath" class="ep-tabbadge" hidden></span></button>
       </div>
 
       <!-- ── 코딩 테스트 ── -->
@@ -232,6 +235,33 @@
           '<p style="margin-top:10px"><a class="qbtn" href="/">메인으로</a></p>';
       }
       function hasBeta(key) { return beta.admin === true || (beta.features || []).indexOf(key) >= 0; }
+
+      // 각 탭이 어떤 베타 키로 열리는지 (클릭 전에 잠금/베타 상태를 배지로 노출).
+      var TAB_KEYS = { coding: "coding-test", phys: "phys-inquiry", math: "math-inquiry" };
+      var TAB_BADGE = { coding: "badgeCoding", phys: "badgePhys", math: "badgeMath" };
+      // 권한 있는 첫 탭(없으면 coding 유지). 해시 우선 분기는 init에서 처리.
+      function firstUnlockedTab() {
+        var order = ["coding", "phys", "math"];
+        for (var i = 0; i < order.length; i++) {
+          if (hasBeta(TAB_KEYS[order[i]])) return order[i];
+        }
+        return "coding";
+      }
+      // 잠긴 탭엔 🔒, 열렸지만 베타인 탭엔 '베타' 배지. (관리자는 배지 없음)
+      function decorateTabs() {
+        ["coding", "phys", "math"].forEach(function (t) {
+          var el = document.getElementById(TAB_BADGE[t]);
+          if (!el) return;
+          if (beta.admin === true) { el.hidden = true; el.className = "ep-tabbadge"; el.textContent = ""; el.removeAttribute("title"); return; }
+          if (!hasBeta(TAB_KEYS[t])) {
+            el.hidden = false; el.className = "ep-tabbadge lock"; el.textContent = "🔒";
+            el.setAttribute("title", me ? "베타 테스터에게 열립니다" : "로그인 후 베타에서 열립니다");
+          } else {
+            el.hidden = false; el.className = "ep-tabbadge beta"; el.textContent = "베타";
+            el.removeAttribute("title");
+          }
+        });
+      }
 
       // ── 안전한 마크다운 렌더(escape 먼저 → 정해진 태그만) ──
       function mdEsc(s) { return String(s == null ? "" : s).replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; }); }
@@ -436,6 +466,9 @@
           aInput.addEventListener("keydown", function (e) {
             if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); sendAssist(p); }
           });
+
+        // 문제를 열면 실행 환경을 미리 데워(첫 제출 지연·무반응 방지) '준비 중' 안내를 띄운다.
+        warmRuntime();
       }
 
       // ── AI 코딩 도우미: 정답을 주지 않고 옆에서 돕는 튜터(GPT-5.4 mini) ──
@@ -547,8 +580,18 @@
 
       // ── Pyodide(브라우저 CPython) — Quilo Code 와 동일 버전 ──
       var PYODIDE_VER = "0.26.4";
-      var pyReady = null, harnessInjected = false, harnessText = "";
+      var pyReady = null, harnessInjected = false, harnessText = "", pyWarmDone = false;
       function setStatus(msg) { var el = document.getElementById("ctStatus"); if (el) el.textContent = msg || ""; }
+      // 문제를 열 때 실행 환경(Pyodide)을 미리 데우고 '준비 중' 안내를 보여준다.
+      // 이미 준비됐거나(=재방문) 진행 중이면 중복 다운로드 없이 상태만 갱신한다.
+      function warmRuntime() {
+        if (pyWarmDone) { setStatus(""); return; }
+        if (typeof window.__qpy !== "undefined") { pyWarmDone = true; setStatus(""); return; }
+        setStatus("⏳ 실행 환경 준비 중… (최초 1회, 수십 초 — 끝나면 바로 제출 가능)");
+        loadPyodideOnce()
+          .then(function () { pyWarmDone = true; setStatus("✅ 실행 환경 준비 완료"); })
+          .catch(function () { setStatus(""); /* 실제 채점 시 다시 시도/오류 표시 */ });
+      }
       function loadPyodideOnce() {
         if (pyReady) return pyReady;
         setStatus("🐍 Python 런타임 로딩 중… (최초 1회, 수십 초)");
@@ -708,10 +751,12 @@
           .finally(function () {
             initPhys();
             initMath();
-            // 해시(#phys/#math)로 들어오면 해당 탭부터
+            decorateTabs(); // 클릭 전에 잠금/베타 상태를 탭에 표시
+            // 해시(#phys/#math)로 들어오면 해당 탭부터, 아니면 권한 있는 첫 탭
             if (location.hash === "#phys") showTab("phys");
             else if (location.hash === "#math") showTab("math");
-            else showTab("coding");
+            else if (location.hash === "#coding") showTab("coding");
+            else showTab(firstUnlockedTab());
           });
       })();
     </script>

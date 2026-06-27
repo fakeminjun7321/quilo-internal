@@ -62,6 +62,7 @@
       .launch p { margin:0; opacity:.92; font-size:14px; line-height:1.5; }
       .launch .go { background:#fff; color:var(--accd); font-weight:var(--fw-heavy); font-size:15px; padding:12px 20px; border-radius:var(--radius-sm); text-decoration:none; white-space:nowrap; }
       .launch .go:hover { background:#eef1ff; }
+      .launch-req { display:inline-block; margin-top:8px; font-size:12px; font-weight:var(--fw-semibold); color:#fff; background:#ffffff2e; border:1px solid #ffffff52; border-radius:99px; padding:2px 10px; }
       select { padding:8px 10px; border:1px solid var(--bd); border-radius:var(--radius-sm); font:inherit; }
     </style>
   </head>
@@ -90,6 +91,7 @@
         <div class="lt">
           <h1>✨ 바이브 코딩 생성기</h1>
           <p>만들고 싶은 걸 한 문장으로 적으면 AI가 프로젝트 설계·MVP·첫 작업·검증 루틴과 AI 코딩 도구용 작업 지시문까지 만들어 줘요.</p>
+          <span class="launch-req">🔑 로그인 · 크레딧 필요</span>
         </div>
         <span class="go" style="color:#c2410c">아이디어 정리하기 →</span>
       </a>
@@ -99,6 +101,7 @@
         <div class="lt">
           <h1>✨ 스튜디오</h1>
           <p>대화하듯 AI에게 말하면 웹앱·위젯·도구를 만들어 줘요. 미리보기를 보며 "더 예쁘게", "다크모드로" 처럼 고쳐 나가세요.</p>
+          <span class="launch-req">🔑 로그인 · 크레딧 필요</span>
         </div>
         <span class="go">스튜디오에서 만들기 →</span>
       </a>
@@ -199,7 +202,7 @@
         $("gallery").innerHTML = items.map((x)=>`
           <div class="g-card">
             <a href="/p/${encodeURIComponent(x.slug)}" target="_blank" style="text-decoration:none;color:inherit">
-              <div class="g-thumb"><iframe loading="lazy" sandbox="allow-scripts" title="${esc(x.title)} 미리보기" src="/p/${encodeURIComponent(x.slug)}"></iframe></div>
+              <div class="g-thumb"><iframe loading="lazy" sandbox="allow-scripts" title="${esc(x.title)} 미리보기" data-src="/p/${encodeURIComponent(x.slug)}"></iframe></div>
               <div class="g-meta"><div class="t">${esc(x.title)}${x.forked_from?' <span class="pill">리믹스</span>':''}</div><div class="b">${esc(x.owner||"")} · <span class="pill">${esc(x.category||"기타")}</span> · 👁 ${x.views||0}</div></div>
             </a>
             <div class="myrow" style="padding:0 12px 10px">
@@ -214,6 +217,27 @@
         $("gallery").querySelectorAll("[data-embed]").forEach((b)=>b.onclick=()=>embed(b.dataset.embed));
         $("gallery").querySelectorAll("[data-report]").forEach((b)=>b.onclick=()=>report(b.dataset.report));
         $("gallery").querySelectorAll("[data-cmt]").forEach((b)=>b.onclick=()=>openComments(b.dataset.cmt,b.dataset.title));
+        lazyThumbs();
+      }
+      // 썸네일 iframe 지연 로드: 뷰포트 진입 시에만 src 주입(모바일 발열/데이터 절약)
+      let thumbObserver = null;
+      function lazyThumbs(){
+        const frames = $("gallery").querySelectorAll("iframe[data-src]");
+        if(!("IntersectionObserver" in window)){
+          // 폴백: 관찰자 미지원 환경은 즉시 로드
+          frames.forEach((f)=>{ f.src=f.dataset.src; f.removeAttribute("data-src"); });
+          return;
+        }
+        if(thumbObserver) thumbObserver.disconnect();
+        thumbObserver = new IntersectionObserver((entries,obs)=>{
+          entries.forEach((en)=>{
+            if(!en.isIntersecting) return;
+            const f=en.target;
+            if(f.dataset.src){ f.src=f.dataset.src; f.removeAttribute("data-src"); }
+            obs.unobserve(f);
+          });
+        }, { rootMargin: "200px 0px" });
+        frames.forEach((f)=>thumbObserver.observe(f));
       }
       // ── 댓글 모달 ──
       async function openComments(slug,title){

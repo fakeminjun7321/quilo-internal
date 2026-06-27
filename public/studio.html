@@ -215,6 +215,7 @@
         { t: "🎨 그림판", p: "마우스로 그리는 간단한 그림판. 색·굵기 선택, 지우개, PNG로 저장 버튼." },
       ];
 
+      const MAX_ATTACH = 8;
       let me = null, canCreate = false, busy = false, mode = "auto";
       let currentHtml = "", project = { files: {}, entry: "index.html", active: "index.html" }, versions = [], curVer = -1, chatTurns = [], attached = [];
       let lastSlug = "", forkedFrom = null, defaultTitle = "";
@@ -276,8 +277,8 @@
           const info = (j.model || "") + (j.tier === "high" ? " · 고화질" : " · 표준") + (j.auto ? " · 자동" : "") + (j.fallback ? " · 폴백" : "");
           imagePostBubble(thinking, j.url, vi, "이미지를 만들었어요!", info);
         } catch (e) {
-          thinking.dataset.thinking = "";
-          thinking.innerHTML = "⚠ " + esc(e.status === 429 ? "오늘 사용 한도를 다 썼어요." : (e.message || "이미지 생성 실패"));
+          busy = false; updateSendUI();
+          showErrorBubble(thinking, e, "이미지 생성 실패", () => genImagePost(prompt, true));
         } finally { busy = false; updateSendUI(); }
       }
 
@@ -288,6 +289,37 @@
         return j;
       }
       function showGate(html) { $("gate").innerHTML = html; $("gate").style.display = "flex"; $("app").style.display = "none"; }
+
+      // ── 친절한 에러 메시지 + 다시 시도 동선 ──
+      // 상태코드/메시지를 한국어 안내로 매핑. 서버 응답 형식은 가정하지 않고 status·message 만 본다.
+      function friendlyError(e, fallback) {
+        const st = e && e.status;
+        const raw = (e && e.message) ? String(e.message) : "";
+        if (st === 429) return "요청이 많아요. 잠시 후 다시 시도해 주세요.";
+        if (st === 402) return "크레딧이 부족해요. 모델을 더 저렴한 것으로 바꾸거나 크레딧을 충전한 뒤 다시 시도해 주세요.";
+        if (st === 401 || st === 403) return "로그인이 만료됐거나 권한이 없어요. 새로고침 후 다시 로그인해 주세요.";
+        if (st === 413) return "첨부 파일이 너무 커요. 더 작은 파일로 다시 시도해 주세요.";
+        if (st === 400 && /파일|file|첨부|업로드|누락|required|missing/i.test(raw)) return "필요한 파일이 빠졌어요. 📎 로 파일을 올린 뒤 다시 시도해 주세요.";
+        if (st === 504 || st === 408 || /timeout|시간 초과/i.test(raw)) return "시간이 초과됐어요. 잠시 후 다시 시도해 주세요.";
+        if (st >= 500) return "서버에 문제가 생겼어요. 잠시 후 다시 시도해 주세요.";
+        return raw || fallback || "문제가 발생했어요. 다시 시도해 주세요.";
+      }
+      // 에러 말풍선에 메시지 + (선택) 다시 시도 버튼을 채운다. retry 가 함수면 버튼을 단다.
+      function showErrorBubble(bubble, e, fallback, retry) {
+        if (!bubble) return;
+        bubble.dataset.thinking = "";
+        bubble.innerHTML = "⚠ " + esc(friendlyError(e, fallback));
+        if (typeof retry === "function" && !busy) {
+          const bar = document.createElement("div");
+          bar.style.cssText = "margin-top:9px";
+          const btn = document.createElement("button");
+          btn.textContent = "↻ 다시 시도";
+          btn.style.cssText = "background:var(--acc);color:#fff;border:0;border-radius:8px;padding:5px 11px;font:inherit;font-size:12px;cursor:pointer";
+          btn.onclick = () => { if (busy) return; bubble.remove(); retry(); };
+          bar.appendChild(btn);
+          bubble.appendChild(bar);
+        }
+      }
 
       // ── 채팅 렌더 ──
       function renderEmpty() {
@@ -554,11 +586,11 @@
           const vi = pushVersion(j.summary, prompt);
           aiSuccess(thinking, j.summary, vi, j.model, j.auto);
           if (!defaultTitle) defaultTitle = prompt.slice(0, 30);
-          attached = []; renderThumbs();
+          attached = []; renderThumbs(); syncAttachStatus();
           $("msgs").scrollTop = $("msgs").scrollHeight;
         } catch (e) {
-          thinking.dataset.thinking = "";
-          thinking.innerHTML = "⚠ " + esc(e.status === 429 ? "오늘 사용 한도를 다 썼어요." : (e.message || "생성 실패"));
+          busy = false; updateSendUI();
+          showErrorBubble(thinking, e, "생성 실패", () => buildApp(prompt, true, designMode));
         } finally { busy = false; updateSendUI(); }
       }
 
@@ -615,7 +647,7 @@
           while (true) { const r = await reader.read(); if (r.done) break; acc += dec.decode(r.value, { stream: true }); bubble.textContent = acc; $("msgs").scrollTop = $("msgs").scrollHeight; }
           if (!acc) bubble.textContent = "(빈 응답)";
           chatTurns.push({ role: "user", content: prompt }, { role: "assistant", content: acc });
-          attached = []; renderThumbs();
+          attached = []; renderThumbs(); syncAttachStatus();
           // 안전망: 대화 응답에 완결된 HTML 이 통째로 들어왔으면(잘못 분류된 빌드 요청 등),
           // 코드 덤프로 끝내지 말고 '미리보기로 열기' 버튼을 띄워 실제 결과물로 변환.
           const foundHtml = extractHtmlFromText(acc);
@@ -639,8 +671,8 @@
             bubble.appendChild(bar);
           }
         } catch (e) {
-          bubble.dataset.thinking = "";
-          bubble.innerHTML = "⚠ " + esc(e.message || "대화 실패");
+          busy = false; updateSendUI();
+          showErrorBubble(bubble, e, "대화 실패", () => runChat(prompt));
         } finally { busy = false; updateSendUI(); }
       }
 
@@ -695,18 +727,19 @@
                 `<div style="margin-top:9px"><a class="btn" style="text-decoration:none;display:inline-block;padding:8px 14px" href="/api/jobs/${jobId}/download" download>⬇ ${esc(fn)} 다운로드</a></div>`;
               bubble.appendChild(log);
               chatTurns.push({ role: "user", content: prompt }, { role: "assistant", content: `(${fn} 생성 완료)` });
-              attached = []; renderThumbs(); $("msgs").scrollTop = $("msgs").scrollHeight; resolve();
+              attached = []; renderThumbs(); syncAttachStatus(); $("msgs").scrollTop = $("msgs").scrollHeight; resolve();
             });
             es.addEventListener("error", (e) => {
               if (done) return; done = true; es.close();
               let m = ""; try { m = JSON.parse(e.data); } catch (_) {}
-              bubble.innerHTML = "⚠ " + esc(m || "생성 중 오류가 발생했어요. 잠시 후 다시 시도해 주세요.");
+              busy = false; updateSendUI();
+              showErrorBubble(bubble, { message: m }, "생성 중 오류가 발생했어요. 잠시 후 다시 시도해 주세요.", () => runGenerate(route, prompt));
               bubble.appendChild(log); resolve();
             });
           });
         } catch (e) {
-          bubble.dataset.thinking = "";
-          bubble.innerHTML = "⚠ " + esc(e.message || "생성 실패");
+          busy = false; updateSendUI();
+          showErrorBubble(bubble, e, "생성 실패", () => runGenerate(route, prompt));
         } finally { busy = false; updateSendUI(); }
       }
 
@@ -767,17 +800,28 @@
         $("thumbs").querySelectorAll("[data-rm]").forEach((b) => b.onclick = () => {
           const a = attached[+b.dataset.rm];
           if (a && a.url && a.file) { try { URL.revokeObjectURL(a.url); } catch (_) {} }
-          attached.splice(+b.dataset.rm, 1); renderThumbs();
+          attached.splice(+b.dataset.rm, 1); renderThumbs(); syncAttachStatus();
         });
       }
+      // 첨부 카운터(N/8) 안내를 instatus 에 갱신. dropped 가 있으면 'N개 제외'도 덧붙인다.
+      function syncAttachStatus(dropped) {
+        if (attached.length) {
+          let s = `${attached.length}/${MAX_ATTACH}개 첨부됨 — 메시지와 함께 보내집니다.`;
+          if (dropped) s += ` (최대 ${MAX_ATTACH}개라 ${dropped}개 제외)`;
+          $("instatus").textContent = s;
+        } else {
+          $("instatus").textContent = dropped ? `최대 ${MAX_ATTACH}개까지 첨부할 수 있어요 (${dropped}개 제외).` : "";
+        }
+      }
       function addFiles(fileList) {
+        let dropped = 0;
         Array.from(fileList || []).forEach((f) => {
-          if (attached.length >= 8) return;
+          if (attached.length >= MAX_ATTACH) { dropped++; return; }
           const isImage = /^image\//.test(f.type) || /\.(png|jpe?g|gif|webp)$/i.test(f.name);
           attached.push({ file: f, name: f.name, isImage, url: isImage ? URL.createObjectURL(f) : null });
         });
         renderThumbs();
-        $("instatus").textContent = attached.length ? `${attached.length}개 첨부됨 — 메시지와 함께 보내집니다.` : "";
+        syncAttachStatus(dropped);
       }
 
       // ── 게시 ──

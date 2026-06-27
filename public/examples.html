@@ -64,6 +64,41 @@
         background: var(--surface);
       }
       .ex-note { font-size: 13px; }
+      .ex-empty {
+        margin: 14px 0 2px;
+        padding: 14px 16px;
+        border: 1px solid var(--accent-border);
+        border-radius: var(--radius-sm);
+        background: var(--accent-soft);
+      }
+      .ex-empty p { margin: 0; font-size: 14px; line-height: 1.65; }
+      .ex-subhead { margin: 26px 0 0; font-size: 15px; }
+      .ex-flow .ex-flow-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .ex-chip {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: var(--fw-semibold);
+        border: 1px solid var(--border-strong);
+      }
+      .ex-chip code { font-size: 11px; }
+      .ex-chip-in { background: var(--surface); color: var(--text-muted); }
+      .ex-chip-out {
+        background: var(--accent-soft);
+        border-color: var(--accent-border);
+        color: var(--accent-text);
+      }
+      .ex-arrow { color: var(--text-muted); font-weight: var(--fw-semibold); }
+      .ex-bullets { margin: 0; padding-left: 18px; }
+      .ex-bullets li { font-size: 13px; line-height: 1.55; margin-bottom: 4px; }
+      .ex-bullets li:last-child { margin-bottom: 0; }
     </style>
   </head>
   <body class="landing">
@@ -172,27 +207,80 @@
           <section id="samples">
             <h2>2. 보고서 생성 예시</h2>
             <p class="ex-note">
-              실제로 이 툴로 만든 보고서 예시입니다. 어떤 자료를 넣으면 어떤 결과가 나오는지 미리 확인하세요.
-              모든 예시는 개인정보가 없는 테스트 자료로 생성했습니다.
+              어떤 자료를 넣으면 어떤 결과가 나오는지 미리 확인하세요.
+              공개되는 예시는 모두 개인정보가 없는 테스트 자료로 생성합니다.
             </p>
+            <div class="ex-empty" role="note">
+              <p>
+                <b>아직 공개 샘플이 준비 중입니다.</b>
+                다운로드용 예시 파일은 순차적으로 추가되지만, 그동안에도
+                각 보고서가 <b>어떤 자료로 무엇을 만드는지</b>는 아래 카드와
+                <a href="/guide.html">이용 가이드</a>에서 확인할 수 있어요.
+              </p>
+            </div>
+            <h3 class="ex-subhead">이런 걸 만들 수 있어요</h3>
+            <p class="hint" style="margin-top:4px">자료를 넣으면 보고서가 이렇게 나옵니다. 다운로드 예시가 준비되기 전에도 결과물을 가늠해 보세요.</p>
+            <div class="ex-grid">
+              <div class="ex-card ex-flow">
+                <h3>화학 사전보고서</h3>
+                <div class="ex-flow-row">
+                  <span class="ex-chip ex-chip-in">실험 매뉴얼 PDF</span>
+                  <span class="ex-arrow" aria-hidden="true">→</span>
+                  <span class="ex-chip ex-chip-out">사전보고서 (DOCX·HWPX)</span>
+                </div>
+                <ul class="ex-bullets">
+                  <li>매뉴얼의 이론·원리 키워드를 펼쳐 쓴 이론적 배경</li>
+                  <li>시약 물성·실험 기구·실험 과정을 학교 양식으로 정리</li>
+                  <li>그림이 필요한 자리에 placeholder + 사진 설명</li>
+                </ul>
+              </div>
+              <div class="ex-card ex-flow">
+                <h3>화학 결과보고서</h3>
+                <div class="ex-flow-row">
+                  <span class="ex-chip ex-chip-in">데이터(엑셀·CSV) · 사진</span>
+                  <span class="ex-arrow" aria-hidden="true">→</span>
+                  <span class="ex-chip ex-chip-out">결과 분량 (DOCX·HWPX)</span>
+                </div>
+                <ul class="ex-bullets">
+                  <li>평균·표준편차·백분율 오차 자동 계산</li>
+                  <li>표·차트(그래프)와 실험 사진 삽입</li>
+                  <li>사전보고서 뒤에 이어지는 결과·분석·결론</li>
+                </ul>
+              </div>
+              <div class="ex-card ex-flow">
+                <h3>물리 결과보고서</h3>
+                <div class="ex-flow-row">
+                  <span class="ex-chip ex-chip-in"><code>.cap</code> · 엑셀·CSV · 사진</span>
+                  <span class="ex-arrow" aria-hidden="true">→</span>
+                  <span class="ex-chip ex-chip-out">결과보고서 (DOCX·HWPX)</span>
+                </div>
+                <ul class="ex-bullets">
+                  <li>실험 파트별 표·그래프·정량 분석</li>
+                  <li>이론값 비교와 경향성 해석</li>
+                  <li>결과 요약·오차 분석이 담긴 결론</li>
+                </ul>
+              </div>
+            </div>
+
+            <h3 class="ex-subhead" style="margin-top:28px">완성본 다운로드 예시</h3>
             <div class="ex-grid">
               <div class="ex-card">
                 <h3>화학 사전보고서</h3>
                 <div class="ex-in">입력: 실험 매뉴얼 PDF</div>
                 <p>매뉴얼의 이론·원리 키워드를 펼쳐 쓰고, 시약 물성·실험 기구·과정을 학교 양식으로 정리합니다.</p>
-                <div class="ex-foot"><span class="ex-badge" data-sample="chem-pre">예시 파일 준비 중</span></div>
+                <div class="ex-foot"><span class="ex-badge" data-sample="chem-pre">다운로드 예시 준비 중</span></div>
               </div>
               <div class="ex-card">
                 <h3>화학 결과보고서</h3>
                 <div class="ex-in">입력: 데이터(엑셀/CSV)·사진 (+ 사전보고서)</div>
                 <p>평균·표준편차·백분율 오차를 계산하고 표·차트를 그려 사전보고서 뒤 결과 분량을 채웁니다.</p>
-                <div class="ex-foot"><span class="ex-badge" data-sample="chem-result">예시 파일 준비 중</span></div>
+                <div class="ex-foot"><span class="ex-badge" data-sample="chem-result">다운로드 예시 준비 중</span></div>
               </div>
               <div class="ex-card">
                 <h3>물리 결과보고서</h3>
                 <div class="ex-in">입력: <code>.cap</code>·엑셀/CSV·사진 중 하나 이상</div>
                 <p>실험 파트별 표·그래프·분석과 결론·오차 분석을 양식 기반으로 구성합니다.</p>
-                <div class="ex-foot"><span class="ex-badge" data-sample="phys-result">예시 파일 준비 중</span></div>
+                <div class="ex-foot"><span class="ex-badge" data-sample="phys-result">다운로드 예시 준비 중</span></div>
               </div>
             </div>
             <p class="hint" style="margin-top:16px">

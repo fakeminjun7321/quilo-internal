@@ -12,6 +12,49 @@ let currentStudentId = "";
         document.getElementById("settingsStudentId").textContent =
           currentStudentId || "미설정";
         document.getElementById("settingsStudentIdInput").value = currentStudentId;
+        // 학번 변경 시 학번 안내 배너 갱신.
+        if (typeof updateStudentIdBanners === "function") updateStudentIdBanners();
+      }
+
+      // ── 학번 안내 배너 (학번 필수 폼) ────────────────────────────────────
+      // 물리 결과·물리/수학 수행평가는 표지에 학번이 들어간다. 저장된 학번이 없으면
+      // 폼 상단에 '설정에서 추가' 인라인 배너를 띄운다. (기존 alert 검증은 유지.)
+      const STUDENT_ID_FORMS = ["phys-result", "phys-inquiry", "math-inquiry"];
+      function ensureStudentIdBanner(formEl) {
+        if (!formEl) return null;
+        let banner = formEl.querySelector(":scope > .studentid-banner");
+        if (banner) return banner;
+        banner = document.createElement("div");
+        banner.className = "notice studentid-banner";
+        banner.hidden = true;
+        banner.style.cssText = "margin:0 0 14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap";
+        const txt = document.createElement("span");
+        txt.innerHTML = "🎓 표지에 들어갈 <b>학번</b>이 없어요. 저장하면 보고서 표지·파일명에 자동으로 들어갑니다.";
+        const link = document.createElement("button");
+        link.type = "button";
+        link.className = "link-button studentid-banner-link";
+        link.textContent = "설정에서 학번 추가 →";
+        link.style.cssText = "font-size:13px;color:var(--accent-text);background:none;border:none;cursor:pointer;text-decoration:underline;padding:0";
+        link.addEventListener("click", () => {
+          if (typeof showTab === "function") showTab("settings");
+          const input = document.getElementById("settingsStudentIdInput");
+          if (input) { try { input.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (_) {} input.focus(); }
+        });
+        banner.append(txt, link);
+        // flow-steps 다음(폼 최상단)에 삽입.
+        const flow = formEl.querySelector(":scope > .form-flow-steps");
+        if (flow && flow.nextSibling) formEl.insertBefore(banner, flow.nextSibling);
+        else formEl.insertBefore(banner, formEl.firstChild);
+        return banner;
+      }
+      function updateStudentIdBanners() {
+        const missing = !currentStudentId;
+        STUDENT_ID_FORMS.forEach((type) => {
+          const formEl = document.querySelector('[data-report-form="' + type + '"]');
+          if (!formEl) return;
+          const banner = ensureStudentIdBanner(formEl);
+          if (banner) banner.hidden = !missing;
+        });
       }
 
       function getLocalStudentId() {
@@ -20,6 +63,123 @@ let currentStudentId = "";
         } catch (_) {
           return "";
         }
+      }
+
+      // ── 비로그인 클릭 의도 보존 (pendingReportType) ──────────────────────
+      // 로그아웃 상태에서 보고서 종류를 누르면 sessionStorage 에 저장해 두고,
+      // 로그인/초기화 후 해당 종류를 자동 선택한 뒤 제거한다.
+      const PENDING_REPORT_KEY = "pendingReportType";
+      function setPendingReportType(type) {
+        try {
+          if (type) sessionStorage.setItem(PENDING_REPORT_KEY, String(type));
+        } catch (_) { /* private mode 등 */ }
+      }
+      // ── 마지막 선택 기억 (lastReportPrefs) ───────────────────────────────
+      // 마지막으로 '성공 생성'한 reportType·model·format·fontFace 를 이 브라우저에
+      // 저장하고, 페이지 로드 시 폼에 복원한다. 기존 prefModel/prefStyle(명시 기본값)이
+      // 있으면 그쪽이 우선이므로, 이 복원은 그 전에 적용한다.
+      const LAST_PREFS_KEY = "lastReportPrefs";
+      let _pendingGenPrefs = null; // submit 시점 캡처 → done 에서 저장
+      function readLastPrefs() {
+        try { return JSON.parse(localStorage.getItem(LAST_PREFS_KEY) || "{}") || {}; }
+        catch (_) { return {}; }
+      }
+      function saveLastPrefs(p) {
+        if (!p) return;
+        try {
+          const clean = {};
+          if (p.type) clean.type = String(p.type);
+          if (p.model) clean.model = String(p.model);
+          if (p.format) clean.format = String(p.format);
+          if (p.fontFace) clean.fontFace = String(p.fontFace);
+          localStorage.setItem(LAST_PREFS_KEY, JSON.stringify(clean));
+        } catch (_) { /* private mode 등 */ }
+      }
+      // submit 직전 FormData 에서 정규화된 값(type/model/format/fontFace)을 캡처.
+      function capturePendingGenPrefs(formData) {
+        try {
+          _pendingGenPrefs = {
+            type: formData.get("type") || "",
+            model: formData.get("model") || "",
+            format: formData.get("format") || "",
+            fontFace: formData.get("fontFace") || "",
+          };
+        } catch (_) { _pendingGenPrefs = null; }
+      }
+      // 생성 성공(done) 시 호출 — 캡처해 둔 값을 저장한다.
+      function commitLastGenPrefs() {
+        if (_pendingGenPrefs) saveLastPrefs(_pendingGenPrefs);
+      }
+      // 페이지 로드 시: 폼의 model/format/fontFace 를 마지막 값으로 복원.
+      // reportType 은 더 보수적으로 — 이미 선택된 것/딥링크/pending 이 없을 때만 복원한다.
+      function restoreLastPrefs() {
+        const p = readLastPrefs();
+        if (!p || !Object.keys(p).length) return;
+        try {
+          if (p.model) {
+            // 모델 라디오는 폼마다 기본값(Opus)이 이미 checked 라서, 마지막 모델이
+            // 그 폼의 선택지로 존재하면 그 라디오로 교체한다(기본값 덮어쓰기).
+            document
+              .querySelectorAll('input[type="radio"][name$="odel"], input[type="radio"][name="model"]')
+              .forEach((r) => {
+                const nm = r.name || "";
+                if (!/^model$|Model$/.test(nm)) return; // model, crModel, prModel ...
+                if (r.value !== p.model || r.disabled) return;
+                const lbl = r.closest("label");
+                if (lbl && (lbl.hidden || lbl.style.display === "none")) return; // 숨김/제한된 선택지 제외
+                r.checked = true;
+              });
+          }
+          if (p.format) {
+            document
+              .querySelectorAll('input[name="format"], input[name="crFormat"], input[name="prFormat"], input[name="frFormat"], input[name="piFormat"], input[name="miFormat"]')
+              .forEach((r) => { if (r.value === p.format && !r.disabled) r.checked = true; });
+          }
+          if (p.fontFace) {
+            ["fontFace", "crFontFace", "prFontFace", "frFontFace", "piFontFace", "miFontFace"].forEach((id) => {
+              const sel = document.getElementById(id);
+              if (sel && [...sel.options].some((o) => o.value === p.fontFace && !o.disabled && !o.hidden)) {
+                sel.value = p.fontFace;
+              }
+            });
+          }
+          if (typeof updateAllOptionalSummaries === "function") updateAllOptionalSummaries();
+        } catch (_) { /* 복원 실패는 무시 */ }
+      }
+
+      // 로그인한 재방문자에게 마지막으로 만든 보고서 종류를 자동 선택해 준다.
+      // 단, URL 딥링크(?report=)·pending·이미 선택된 종류가 있으면 양보한다.
+      function restoreLastReportType() {
+        if (document.body.dataset.auth === "out") return;
+        try {
+          if (new URLSearchParams(location.search).get("report")) return;
+          if (sessionStorage.getItem(PENDING_REPORT_KEY)) return;
+        } catch (_) { /* 무시 */ }
+        if (document.querySelector('input[name="reportType"]:checked')) return;
+        const p = readLastPrefs();
+        if (!p || !p.type) return;
+        const radio = document.querySelector('input[name="reportType"][value="' + p.type + '"]');
+        if (!radio || radio.disabled) return;
+        const label = radio.closest("label");
+        if (label && label.style.display === "none") return; // 차단된 종류면 무시
+        radio.checked = true;
+        if (typeof updateReportTypeView === "function") updateReportTypeView();
+      }
+
+      function consumePendingReportType() {
+        let type = "";
+        try { type = sessionStorage.getItem(PENDING_REPORT_KEY) || ""; } catch (_) { return; }
+        if (!type) return;
+        // 로그인 상태에서만, 해당 라디오가 존재하고 선택 가능할 때 자동 선택.
+        if (document.body.dataset.auth === "out") return;
+        const radio = document.querySelector('input[name="reportType"][value="' + type + '"]');
+        try { sessionStorage.removeItem(PENDING_REPORT_KEY); } catch (_) {}
+        if (!radio || radio.disabled) return;
+        const label = radio.closest("label");
+        if (label && label.style.display === "none") return; // 차단된 종류면 무시
+        radio.checked = true;
+        if (typeof showTab === "function") showTab("reports");
+        if (typeof updateReportTypeView === "function") updateReportTypeView({ scroll: true });
       }
 
       function getLocalStyleNote() {
@@ -102,6 +262,10 @@ let currentStudentId = "";
           loadFiles();
           loadCloudStatus();
           applyVerificationState(d);
+          // 비로그인 상태에서 누른 보고서 종류가 있으면 로그인 후 자동 선택.
+          if (typeof consumePendingReportType === "function") consumePendingReportType();
+          // pending/딥링크가 없으면 마지막으로 만든 종류를 자동 선택(재방문 편의).
+          if (typeof restoreLastReportType === "function") restoreLastReportType();
         } else {
           applyReportTypeAccess([]);
           applyVerificationState(null);
@@ -405,12 +569,55 @@ let currentStudentId = "";
         }
       });
 
+      // 모델별 차감 크레딧 (index.html 모델 라벨과 동일한 매핑). 확인 모달에서 사용.
+      // mini=무료(0), GPT-5.4=1, Sonnet=2, Opus/GPT-5.5=4, Fable=9.
+      const MODEL_CREDITS = {
+        "claude-fable-5": 9,
+        "claude-opus-4-8": 4,
+        "claude-opus-4-7": 4,
+        "claude-sonnet-4-6": 2,
+        "gpt-5.5": 4,
+        "gpt-5.4": 1,
+        "gpt-5.4-mini": 0,
+      };
+      function getModelCredits(modelId) {
+        return MODEL_CREDITS[modelId] != null ? MODEL_CREDITS[modelId] : 4;
+      }
+
+      // ── Wave2a: 크레딧 부족 시 더 싼/무료 모델로 회복 ─────────────────────
+      // 폼 안의 model 라디오 중 '선택 가능(숨김/disabled 아님)' 한 것들을 모아
+      // 크레딧 오름차순으로 정렬한다. label 의 display:none / hidden 은 제외.
+      function listSelectableModelOptions(formEl, radioName) {
+        if (!formEl || !radioName) return [];
+        const out = [];
+        formEl.querySelectorAll('input[name="' + radioName + '"]').forEach((r) => {
+          if (r.disabled) return;
+          const lbl = r.closest("label");
+          // 숨김/제한된 선택지(예: 베타테스터 모델제한, Fable 비노출)는 제외.
+          if (lbl && (lbl.hidden || lbl.style.display === "none")) return;
+          out.push({ value: r.value, credits: getModelCredits(r.value), input: r });
+        });
+        out.sort((a, b) => a.credits - b.credits);
+        return out;
+      }
+      // 잔액으로 감당 가능한 가장 싼(무료 우선) 선택지. 없으면 null.
+      function findAffordableModelOption(formEl, radioName, balance) {
+        const opts = listSelectableModelOptions(formEl, radioName);
+        for (const o of opts) {
+          if (o.credits <= balance) return o; // 오름차순이라 첫 감당 가능 = 가장 싼.
+        }
+        return null;
+      }
+
+      // 현재 잔액 스냅샷 (loadBalance 가 갱신). 확인 모달의 크레딧 행에서만 참조한다.
+      let _balanceState = { known: false, credits: 0, unlimited: false, isAdmin: false };
+
       async function loadBalance() {
         try {
           const r = await fetch("/api/me/balance");
           if (!r.ok) return;
           const b = await r.json();
-          if (b.isAdmin) return; // admin은 잔액 X
+          if (b.isAdmin) { _balanceState = { known: true, credits: 0, unlimited: true, isAdmin: true }; return; } // admin은 잔액 X
           // 모델 제한 계정(예: 베타테스터): 허용 모델만 남기고 나머지 라디오 숨김
           if (b.restrictedModel) {
             document
@@ -428,6 +635,7 @@ let currentStudentId = "";
               });
           }
           const credits = Math.max(0, Math.trunc(Number(b.credits) || 0));
+          _balanceState = { known: true, credits, unlimited: !!b.unlimited, isAdmin: false };
           document.getElementById("balCredits").textContent = b.unlimited
             ? "무제한 (베타)"
             : `${credits} 크레딧`;
@@ -541,6 +749,82 @@ let currentStudentId = "";
         }
       }
 
+      // '내 작업' — 백그라운드 작업의 진행/중단(완료본은 아래 파일 목록에 나타남).
+      function bgEsc(s) {
+        return String(s == null ? "" : s)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+      const BG_TYPE_LABELS = {
+        "chem-pre": "화학 사전보고서",
+        "chem-result": "화학 결과보고서",
+        "phys-result": "물리 결과보고서",
+        "phys-inquiry": "물리 수행평가",
+        "math-inquiry": "수학 수행평가",
+        free: "자유 보고서",
+        "problem-set": "문제집 메이커",
+        "form-maker": "양식 메이커",
+      };
+      async function renderBgJobs() {
+        const list = document.getElementById("filesList");
+        if (!list || !list.parentNode) return;
+        let data = { jobs: [] };
+        try {
+          const r = await fetch("/api/me/jobs");
+          if (r.ok) data = await r.json();
+        } catch (_) {
+          return;
+        }
+        const jobs = (data.jobs || []).filter(
+          (j) =>
+            j.status === "running" ||
+            j.status === "interrupted" ||
+            j.status === "error",
+        );
+        let block = document.getElementById("bgJobsBlock");
+        if (!block) {
+          block = document.createElement("div");
+          block.id = "bgJobsBlock";
+          block.style.cssText = "margin:0 0 14px";
+          list.parentNode.insertBefore(block, list);
+        }
+        if (!jobs.length) {
+          block.innerHTML = "";
+          return;
+        }
+        const STAT = {
+          running: "⏳ 진행 중",
+          interrupted: "⚠ 중단됨",
+          error: "❌ 실패",
+        };
+        const rows = jobs
+          .map((j) => {
+            const label = STAT[j.status] || j.status;
+            const typeLabel = BG_TYPE_LABELS[j.reportType] || j.reportType || "보고서";
+            const when = formatDateTime(j.createdAt);
+            const right =
+              j.status === "running"
+                ? `<a href="#" data-bgreopen="${bgEsc(j.id)}" style="margin-left:auto;font-size:13px;white-space:nowrap">진행 보기</a>`
+                : `<span style="margin-left:auto;font-size:12px;opacity:.7">${bgEsc(j.error || "")}</span>`;
+            return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;border:1px solid var(--border,#e2e8f0);border-radius:8px;padding:10px 12px;margin-bottom:8px"><b style="font-size:13px">${label}</b><span style="font-size:12px;opacity:.75">${bgEsc(typeLabel)} · ${bgEsc(when)}</span>${right}</div>`;
+          })
+          .join("");
+        block.innerHTML = `<div style="font-weight:700;font-size:13px;margin:0 0 8px">🌙 백그라운드 작업</div>${rows}`;
+        block.querySelectorAll("[data-bgreopen]").forEach((a) => {
+          a.addEventListener("click", (e) => {
+            e.preventDefault();
+            try {
+              const id = a.getAttribute("data-bgreopen");
+              currentJobId = id;
+              streamJob(id);
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            } catch (_) {}
+          });
+        });
+      }
+
       async function loadFiles() {
         const status = document.getElementById("filesStatus");
         const list = document.getElementById("filesList");
@@ -548,6 +832,7 @@ let currentStudentId = "";
         const filter = document.getElementById("filesFilter");
         const filterEmpty = document.getElementById("filesFilterEmpty");
         if (!status || !list) return;
+        renderBgJobs(); // '내 작업'(진행중/중단) — 완료본은 아래 파일 목록에 나타남
         status.textContent = "불러오는 중...";
         if (workspaceFilesSummary) workspaceFilesSummary.textContent = "최근 파일 확인 중...";
         list.innerHTML = "";
@@ -841,6 +1126,8 @@ let currentStudentId = "";
             closeAll();
             // 로그아웃 상태면 폼 대신 로그인 드롭다운을 연다.
             if (document.body.dataset.auth === "out") {
+              // 클릭 의도 보존: 로그인 후 이 종류를 자동 선택한다.
+              setPendingReportType(a.dataset.report);
               if (typeof openLoginDropdown === "function") openLoginDropdown();
               return;
             }
@@ -1082,7 +1369,13 @@ let currentStudentId = "";
           const optional = document.createElement("details");
           optional.className = "optional-settings";
           const summary = document.createElement("summary");
-          summary.textContent = "선택 설정";
+          // 기본 라벨 + 현재 선택값 요약 span (구조 유지, 텍스트만 동적 갱신).
+          const summaryLabel = document.createElement("span");
+          summaryLabel.textContent = "선택 설정";
+          const summaryNote = document.createElement("span");
+          summaryNote.className = "optional-settings-summary-note";
+          summaryNote.style.cssText = "margin-left:8px;font-weight:400;color:var(--text-muted);font-size:0.92em";
+          summary.append(summaryLabel, summaryNote);
           const body = document.createElement("div");
           body.className = "optional-settings-body";
           optional.append(summary, body);
@@ -1115,6 +1408,9 @@ let currentStudentId = "";
           if (body.childElementCount) {
             const anchor = formEl.querySelector(":scope > .policy-check") || formEl.querySelector(":scope > .form-actions");
             formEl.insertBefore(optional, anchor || null);
+            // '선택 설정' 요약: 접혀 있어도 현재 형식·모델을 한눈에. 변경 시 갱신.
+            updateOptionalSummary(formEl);
+            optional.addEventListener("change", () => updateOptionalSummary(formEl));
           }
           formEl.addEventListener(
             "invalid",
@@ -1130,6 +1426,32 @@ let currentStudentId = "";
           });
           setFlowStep(formEl, "upload");
         });
+      }
+
+      // 모든 보고서 폼의 '선택 설정' 요약을 한 번에 갱신.
+      function updateAllOptionalSummaries() {
+        document.querySelectorAll("[data-report-form]").forEach((f) => updateOptionalSummary(f));
+      }
+      window.updateAllOptionalSummaries = updateAllOptionalSummaries;
+
+      // '선택 설정' details 의 summary 에 현재 형식·모델 요약을 표시한다(구조 유지).
+      function updateOptionalSummary(formEl) {
+        if (!formEl) return;
+        const optional = formEl.querySelector(":scope > .optional-settings");
+        const note = optional && optional.querySelector(".optional-settings-summary-note");
+        if (!note) return;
+        const parts = [];
+        // 출력 형식: name 이 format/crFormat/prFormat... 인 라디오 중 선택값.
+        const fmt = Array.from(
+          optional.querySelectorAll('input[type="radio"]:checked'),
+        ).find((r) => /format$/i.test(r.name || ""));
+        if (fmt) parts.push(fmt.value === "hwpx" ? ".hwpx" : "." + fmt.value);
+        // 모델: name 이 model/crModel/prModel... 인 라디오 중 선택값.
+        const mdl = Array.from(
+          optional.querySelectorAll('input[type="radio"]:checked'),
+        ).find((r) => /model$/i.test(r.name || ""));
+        if (mdl) parts.push(getModelLabel(mdl.value));
+        note.textContent = parts.length ? "· " + parts.join(" · ") : "";
       }
 
       enhanceReportForms();
@@ -1190,6 +1512,8 @@ let currentStudentId = "";
         r.addEventListener("change", () => {
           // 로그아웃 상태면 선택을 취소하고 로그인 드롭다운을 연다.
           if (document.body.dataset.auth === "out") {
+            // 클릭 의도 보존: 로그인 후 이 종류를 자동 선택한다.
+            setPendingReportType(r.value);
             r.checked = false;
             if (typeof openLoginDropdown === "function") openLoginDropdown();
             return;
@@ -1288,6 +1612,39 @@ let currentStudentId = "";
       let currentJobId = null;
       let currentEs = null;
       let activeFormEl = null; // 어떤 폼이 락 상태인지
+
+      // ── Wave2a: 마지막 제출 보관(원클릭 재시도용) ────────────────────────
+      // submitReport 가 받은 그대로(formEl/buttonEl/formData/busyText)를 보관한다.
+      // 생성 실패 시 모달 없이 같은 입력으로 재전송한다. FormData 는 같은 객체를
+      // 재사용해도 안전하다(브라우저가 File 핸들을 유지). estimate 도 같이 보관해
+      // 진행 화면 ETA 에 쓴다.
+      let _lastSubmission = null;
+      let _retryCount = 0;
+      function rememberSubmission(args) {
+        try {
+          _lastSubmission = {
+            formEl: args.formEl || null,
+            buttonEl: args.buttonEl || null,
+            formData: args.formData || null,
+            busyText: args.busyText || "생성 중...",
+            estimate: args.estimate || null,
+          };
+        } catch (_) { _lastSubmission = null; }
+      }
+      // 마지막 입력으로 재전송. 진행/에러 영역의 '다시 생성' 버튼이 호출한다.
+      function retryLastSubmission() {
+        if (!_lastSubmission || !_lastSubmission.formData) return;
+        if (currentJobId) return; // 이미 진행 중이면 무시
+        _retryCount += 1;
+        const s = _lastSubmission;
+        submitReport({
+          formEl: s.formEl,
+          buttonEl: s.buttonEl,
+          formData: s.formData,
+          busyText: s.busyText,
+          estimate: s.estimate,
+        });
+      }
 
       function lockForm(targetForm) {
         activeFormEl = targetForm;
@@ -1402,6 +1759,10 @@ let currentStudentId = "";
           }
         });
       })();
+
+      // 마지막 성공 생성의 선택값을 폼에 먼저 복원한다.
+      // (명시적 기본값 prefModel/prefStyle 이 있으면 바로 아래 applyPrefsToForm 이 덮어쓴다.)
+      restoreLastPrefs();
 
       // ── 개인 설정: 기본 모델 · 양식 선호 (이 브라우저에 저장) ──────────────
       (function () {
@@ -1873,6 +2234,62 @@ let currentStudentId = "";
         return `약 ${f(sec.lo)} ~ ${f(sec.hi)}`;
       }
 
+      // ── Wave2a: 진행 화면 경과 타이머 + ETA ──────────────────────────────
+      // beginProgress 가 estimate(=estimateGenSeconds 결과 {lo,hi}) 를 받아 1초마다
+      // '예상 약 X분 · 경과 0:23' 을 갱신한다. 단계 무변화/예상 초과 시 안내 문구를
+      // 바꾼다. done/error 시 stopGenTimer 로 정지·정리한다(메모리 누수 방지).
+      let _genTimer = null;       // setInterval 핸들
+      let _genStartTs = 0;        // 시작 시각(ms)
+      let _genEstimate = null;    // {lo,hi} 초
+      let _genLastChangeTs = 0;   // 마지막 진행 줄 변경 시각(ms)
+      function _fmtClock(totalSec) {
+        const s = Math.max(0, Math.floor(totalSec));
+        const m = Math.floor(s / 60);
+        const r = s % 60;
+        return `${m}:${String(r).padStart(2, "0")}`;
+      }
+      function _etaPhrase(estimate) {
+        if (!estimate) return "";
+        const f = (v) => (v < 90 ? `${Math.round(v)}초` : `${Math.round(v / 60)}분`);
+        // lo~hi 가 비슷하면 한 값만, 다르면 범위로.
+        if (Math.abs((estimate.hi || 0) - (estimate.lo || 0)) < 8) return `예상 ${f(estimate.hi || estimate.lo)}`;
+        return `예상 ${f(estimate.lo)}~${f(estimate.hi)}`;
+      }
+      // 진행 줄이 바뀔 때 호출(appendLine) — '계속 처리 중…' 타이머를 리셋한다.
+      function noteGenProgressTick() {
+        _genLastChangeTs = Date.now();
+      }
+      function _renderGenTimer() {
+        const el = document.getElementById("genTimer");
+        if (!el) return;
+        const elapsed = (Date.now() - _genStartTs) / 1000;
+        const eta = _etaPhrase(_genEstimate);
+        let tail = "";
+        const hi = _genEstimate && _genEstimate.hi ? _genEstimate.hi : 0;
+        const stalledFor = (Date.now() - (_genLastChangeTs || _genStartTs)) / 1000;
+        if (hi && elapsed > hi + 8) {
+          tail = " · 거의 다 됐어요";
+        } else if (stalledFor > 18) {
+          tail = " · 계속 처리 중…";
+        }
+        el.textContent = `${eta ? eta + " · " : ""}경과 ${_fmtClock(elapsed)}${tail}`;
+      }
+      function startGenTimer(estimate) {
+        stopGenTimer();
+        _genStartTs = Date.now();
+        _genLastChangeTs = _genStartTs;
+        _genEstimate = estimate && (estimate.lo != null || estimate.hi != null) ? estimate : null;
+        const el = document.getElementById("genTimer");
+        if (el) el.hidden = false;
+        _renderGenTimer();
+        _genTimer = setInterval(_renderGenTimer, 1000);
+      }
+      function stopGenTimer(opts) {
+        if (_genTimer) { clearInterval(_genTimer); _genTimer = null; }
+        const el = document.getElementById("genTimer");
+        if (el && (!opts || opts.hide !== false)) el.hidden = true;
+      }
+
       function getUserNotesValue(id) {
         return (document.getElementById(id)?.value || "").trim();
       }
@@ -1902,7 +2319,67 @@ let currentStudentId = "";
         return parts.length ? parts.join(", ") : "없음";
       }
 
-      function showConfirmDialog({ title, rows, note, okLabel = "생성" }) {
+      // 확인 모달에 넣을 '차감 크레딧 · 잔액 N → N' 행을 만든다.
+      // credits 가 숫자이고 잔액을 알며 무제한/관리자가 아닐 때만 보여준다(베타 무료는 생략).
+      function buildCreditDeductRow(credits) {
+        if (typeof credits !== "number" || !isFinite(credits)) return null;
+        if (!_balanceState.known || _balanceState.unlimited || _balanceState.isAdmin) return null;
+        const bal = _balanceState.credits;
+        const after = bal - credits;
+        if (credits <= 0) {
+          return { label: "차감 크레딧", value: `무료 · 잔액 ${bal} 유지`, warn: false };
+        }
+        const insufficient = after < 0;
+        return {
+          label: "차감 크레딧",
+          value: `${credits} 크레딧 · 잔액 ${bal} → ${after}${insufficient ? " (부족)" : ""}`,
+          warn: insufficient,
+        };
+      }
+
+      // ── 백그라운드 실행(구독자 전용) ─────────────────────────────────────────
+      // _bgEligible: 토글을 확인 다이얼로그에 노출할지(관리자 또는 활성 구독).
+      // _bgChoice/_bgNotifyChoice: 이번 생성에서 선택한 값(submitReport 가 FormData 에 baking).
+      let _bgEligible = false;
+      let _bgChoice = false;
+      let _bgNotifyChoice = false;
+      (async () => {
+        try {
+          const r = await fetch("/api/subscriptions/me");
+          if (r.ok) {
+            const d = await r.json();
+            _bgEligible = !!d.active;
+          }
+        } catch (_) {
+          /* 권한 조회 실패 시 토글 미노출(서버가 어차피 강제) */
+        }
+      })();
+
+      function showBackgroundToast() {
+        try {
+          let t = document.getElementById("bgToast");
+          if (!t) {
+            t = document.createElement("div");
+            t.id = "bgToast";
+            t.style.cssText =
+              "position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:9999;background:#1e293b;color:#fff;padding:12px 18px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.25);font-size:14px;max-width:90vw;text-align:center;line-height:1.5";
+            document.body.appendChild(t);
+          }
+          t.textContent =
+            "🌙 백그라운드로 실행 중 — 이 창을 닫아도 됩니다. 완료되면 '내 파일'과 이메일로 받을 수 있어요.";
+          t.style.display = "block";
+          clearTimeout(window.__bgToastTimer);
+          window.__bgToastTimer = setTimeout(() => {
+            t.style.display = "none";
+          }, 9000);
+        } catch (_) {}
+      }
+
+      function showConfirmDialog({ title, rows, note, okLabel = "생성", credits, recovery = null, background = false }) {
+        // 매 다이얼로그마다 백그라운드 선택 초기화(토글 안 켜면 기본 일반 실행).
+        // background:true 인 '생성' 다이얼로그에서만 토글을 노출한다(삭제·중지 등엔 미노출).
+        _bgChoice = false;
+        _bgNotifyChoice = false;
         return new Promise((resolve) => {
           const overlay = document.createElement("div");
           overlay.className = "confirm-overlay";
@@ -1919,17 +2396,46 @@ let currentStudentId = "";
 
           const list = document.createElement("dl");
           list.className = "confirm-list";
+          // creditDd 를 보관해 모델 변경 시 '차감 크레딧' 행을 즉시 갱신한다.
+          let creditDd = null;
+          // 크레딧 투명성: '차감 크레딧 · 잔액 N → N' 을 1순위로 강조 표시.
+          let creditRow = buildCreditDeductRow(credits);
+          if (creditRow) {
+            const dt = document.createElement("dt");
+            dt.textContent = creditRow.label;
+            dt.style.fontWeight = "700";
+            const dd = document.createElement("dd");
+            dd.textContent = creditRow.value;
+            dd.style.fontWeight = "700";
+            if (creditRow.warn) dd.style.color = "var(--danger, #d23)";
+            list.append(dt, dd);
+            creditDd = dd;
+          }
           for (const [label, value] of rows) {
             const dt = document.createElement("dt");
             dt.textContent = label;
             const dd = document.createElement("dd");
             dd.textContent = value;
+            // 크레딧 행을 1순위로 강조했으므로, 달러/원 추정치는 보조(작게)로 낮춘다.
+            if (creditRow && label === "예상 비용") {
+              dt.style.opacity = "0.65";
+              dd.style.opacity = "0.65";
+              dd.style.fontSize = "0.85em";
+            }
             list.append(dt, dd);
           }
 
           const noteEl = document.createElement("p");
           noteEl.className = "confirm-note";
           noteEl.textContent = note || "생성하시겠습니까?";
+
+          // ── 크레딧 사전 점검(부족 시 인라인 경고 + 회복 동선) ─────────────
+          // 관리자/무제한/잔액미상이면 graceful 생략. 잔액 < 선택 모델 크레딧이면
+          // 빨간 경고 + 생성 버튼 비활성('크레딧 부족') + '더 저렴/무료 모델로 바꾸기'.
+          const warnBox = document.createElement("div");
+          warnBox.className = "confirm-credit-warn";
+          warnBox.hidden = true;
+          let _selectedCredits = typeof credits === "number" ? credits : null;
 
           const actions = document.createElement("div");
           actions.className = "confirm-actions";
@@ -1943,7 +2449,118 @@ let currentStudentId = "";
           okBtn.textContent = okLabel;
           actions.append(cancelBtn, okBtn);
 
-          dialog.append(heading, list, noteEl, actions);
+          // 크레딧 게이트 평가 — 부족하면 OK 비활성 + 경고/회복 노출.
+          function evaluateCreditGate() {
+            // graceful 생략 조건.
+            if (
+              _selectedCredits == null ||
+              !_balanceState.known ||
+              _balanceState.unlimited ||
+              _balanceState.isAdmin ||
+              _selectedCredits <= 0
+            ) {
+              warnBox.hidden = true;
+              okBtn.disabled = false;
+              okBtn.textContent = okLabel;
+              return;
+            }
+            const bal = _balanceState.credits;
+            if (_selectedCredits <= bal) {
+              warnBox.hidden = true;
+              okBtn.disabled = false;
+              okBtn.textContent = okLabel;
+              return;
+            }
+            // 부족.
+            warnBox.hidden = false;
+            warnBox.replaceChildren();
+            okBtn.disabled = true;
+            okBtn.textContent = "크레딧 부족";
+
+            const msg = document.createElement("div");
+            msg.className = "confirm-credit-warn-msg";
+            msg.textContent = `잔액이 부족합니다 — 필요 ${_selectedCredits} · 보유 ${bal} 크레딧`;
+            warnBox.appendChild(msg);
+
+            const wActions = document.createElement("div");
+            wActions.className = "confirm-credit-warn-actions";
+            // 회복: 잔액으로 감당 가능한 가장 싼(무료 우선) 모델로 1클릭 전환.
+            if (recovery && recovery.formEl && recovery.radioName) {
+              const aff = findAffordableModelOption(recovery.formEl, recovery.radioName, bal);
+              if (aff) {
+                const swapBtn = document.createElement("button");
+                swapBtn.type = "button";
+                swapBtn.className = "secondary compact";
+                const free = aff.credits <= 0;
+                swapBtn.textContent = free
+                  ? "무료 모델로 바꾸기"
+                  : `더 저렴한 모델로 바꾸기 (${aff.credits}크레딧)`;
+                swapBtn.addEventListener("click", () => {
+                  try { aff.input.checked = true; } catch (_) {}
+                  // 라디오 change 리스너(글꼴 옵션 등)도 깨운다.
+                  try { aff.input.dispatchEvent(new Event("change", { bubbles: true })); } catch (_) {}
+                  _selectedCredits = aff.credits;
+                  // '차감 크레딧' 행과 게이트를 즉시 갱신.
+                  const newRow = buildCreditDeductRow(aff.credits);
+                  if (creditDd && newRow) {
+                    creditDd.textContent = newRow.value;
+                    creditDd.style.color = newRow.warn ? "var(--danger, #d23)" : "";
+                  }
+                  evaluateCreditGate();
+                });
+                wActions.appendChild(swapBtn);
+              }
+            }
+            // 문의/충전 링크(커뮤니티 게시판) — 있으면 연결.
+            const link = document.createElement("a");
+            link.className = "confirm-credit-warn-link";
+            link.href = "/community.html";
+            link.textContent = "크레딧 문의 →";
+            wActions.appendChild(link);
+            warnBox.appendChild(wActions);
+          }
+          evaluateCreditGate();
+
+          // ── 백그라운드 실행 토글(구독자/관리자 + 생성 다이얼로그에서만 노출) ──────
+          const bgBox = document.createElement("div");
+          if (_bgEligible && background) {
+            bgBox.style.cssText =
+              "margin:10px 0 0;padding:10px 12px;border:1px solid var(--border,#e2e8f0);border-radius:8px;background:var(--surface-2,#f8fafc)";
+            const row = document.createElement("label");
+            row.style.cssText =
+              "display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:700";
+            const cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.checked = _bgChoice;
+            const t = document.createElement("span");
+            t.textContent = "🌙 백그라운드로 실행 (탭/창 닫아도 됨)";
+            row.append(cb, t);
+            const sub = document.createElement("div");
+            sub.style.cssText =
+              "margin:6px 0 0 24px;font-size:12px;color:var(--text-muted,#64748b)";
+            sub.textContent =
+              "제출 후 창을 닫아도 서버가 끝까지 만들고, '내 파일'에서 받을 수 있어요.";
+            const mailRow = document.createElement("label");
+            mailRow.style.cssText =
+              "display:none;align-items:center;gap:6px;margin:8px 0 0 24px;font-size:13px;cursor:pointer";
+            const mcb = document.createElement("input");
+            mcb.type = "checkbox";
+            mcb.checked = true;
+            const mt = document.createElement("span");
+            mt.textContent = "완료되면 이메일로 알림";
+            mailRow.append(mcb, mt);
+            cb.addEventListener("change", () => {
+              _bgChoice = cb.checked;
+              mailRow.style.display = cb.checked ? "flex" : "none";
+              _bgNotifyChoice = cb.checked && mcb.checked;
+            });
+            mcb.addEventListener("change", () => {
+              _bgNotifyChoice = cb.checked && mcb.checked;
+            });
+            bgBox.append(row, sub, mailRow);
+          }
+
+          dialog.append(heading, list, noteEl, bgBox, warnBox, actions);
           overlay.appendChild(dialog);
           document.body.appendChild(overlay);
           document.body.classList.add("modal-open");
@@ -1962,23 +2579,64 @@ let currentStudentId = "";
             if (event.target === overlay) close(false);
           });
           cancelBtn.addEventListener("click", () => close(false));
-          okBtn.addEventListener("click", () => close(true));
-          okBtn.focus();
+          okBtn.addEventListener("click", () => { if (!okBtn.disabled) close(true); });
+          // OK 가 비활성(크레딧 부족)이면 취소에 포커스를 둔다.
+          (okBtn.disabled ? cancelBtn : okBtn).focus();
         });
       }
 
-      async function submitReport({ formEl, buttonEl, formData, busyText = "생성 중..." }) {
+      async function submitReport({ formEl, buttonEl, formData, busyText = "생성 중...", estimate = null }) {
         lockForm(formEl);
         if (buttonEl) buttonEl.textContent = busyText;
-        beginProgress("생성 중...");
+        // 백그라운드 실행 선택을 FormData 에 1회 baking(재시도 시 동일 모드 유지).
+        try {
+          if (
+            formData &&
+            typeof formData.has === "function" &&
+            !formData.has("backgroundMode") &&
+            _bgChoice
+          ) {
+            formData.set("backgroundMode", "true");
+            if (_bgNotifyChoice) formData.set("notifyEmail", "true");
+          }
+        } catch (_) {}
+        capturePendingGenPrefs(formData); // 성공 시 마지막 선택으로 저장하기 위해 캡처
+        // 마지막 제출 보관 — 실패 시 모달 없이 같은 입력으로 재전송한다.
+        rememberSubmission({ formEl, buttonEl, formData, busyText, estimate });
+        clearRetryCard(); // 재시도/이전 에러 카드 정리
+        beginProgress("생성 중...", estimate);
         try {
           const res = await fetch("/api/generate", { method: "POST", body: formData });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error || "요청 실패");
+          let data = {};
+          try { data = await res.json(); } catch (_) { data = {}; }
+          if (!res.ok) {
+            const e = new Error(data.error || `요청 실패 (HTTP ${res.status})`);
+            e.httpStatus = res.status;
+            throw e;
+          }
           currentJobId = data.jobId;
           streamJob(data.jobId);
+          // 백그라운드 모드면 "닫아도 됩니다" 안내 토스트.
+          try {
+            if (formData && formData.get && formData.get("backgroundMode") === "true") {
+              showBackgroundToast();
+            }
+          } catch (_) {}
         } catch (err) {
-          appendLine("오류: " + err.message);
+          // 제출 단계 실패(입력 오류/크레딧 부족/네트워크). 행동중심 에러 카드로.
+          const status = err && err.httpStatus;
+          const isInput = status === 400;
+          const isCredit = status === 402 || /크레딧|credit|잔액|충전/i.test(err && err.message || "");
+          showGenErrorCard({
+            message: err && err.message,
+            detail: err && err.message,
+            phase: "submit",
+            httpStatus: status || 0,
+            // 입력 오류는 같은 입력으로 재시도해도 또 막히므로 재시도 버튼을 숨긴다.
+            allowRetry: !isInput && !isCredit,
+            scrollToForm: isInput ? formEl : null,
+          });
+          stopGenTimer();
           resetForm();
         }
       }
@@ -2004,8 +2662,12 @@ let currentStudentId = "";
         if (allowImageGen) est.hi += 0.08; // AI 개념도 최대 2장 × ~$0.04
         const krwLo = Math.round(est.lo * 1400);
         const krwHi = Math.round(est.hi * 1400);
+        const genEst = estimateGenSeconds("chem-pre", model);
         const ok = await showConfirmDialog({
           title: "사전보고서 생성",
+          background: true,
+          credits: getModelCredits(model),
+          recovery: { formEl: form, radioName: "model" },
           rows: [
             ["모델", modelLabel],
             ["글꼴", getFontLabel(fontFace)],
@@ -2013,11 +2675,13 @@ let currentStudentId = "";
             ["AI 이미지", allowImageGen ? "개념도 최대 2장 (장당 +1크레딧)" : "사용 안 함"],
             ["PDF", `${est.sizeKB}KB`],
             ["예상 비용", costRangeText(est, krwLo, krwHi)],
-            ["예상 시간", formatDuration(estimateGenSeconds("chem-pre", model))],
+            ["예상 시간", formatDuration(genEst)],
           ],
           note: `실제 비용은 완료 후 표시됩니다. ${USE_POLICY_NOTE}`,
         });
         if (!ok) return;
+        // 모델 변경(회복) 가능성 — 확인 후 현재 선택값을 다시 읽어 FormData·estimate 에 반영.
+        const finalModel = getSelectedModel();
 
         const fd = new FormData();
         fd.append("type", "chem-pre");
@@ -2027,7 +2691,7 @@ let currentStudentId = "";
         const dateStr = document.getElementById("date").value;
         const [y, m, d] = dateStr.split("-");
         fd.append("date", `${y}/ ${m} / ${d}`);
-        fd.append("model", model);
+        fd.append("model", finalModel);
         fd.append("format", formatValue);
         fd.append("allowImageGen", allowImageGen ? "true" : "false");
         // 스타일 모드 (default | minimal). docx/hwpx 모두 지원한다.
@@ -2058,7 +2722,7 @@ let currentStudentId = "";
           );
         } catch (_) { /* private mode etc. */ }
 
-        await submitReport({ formEl: form, buttonEl: btn, formData: fd });
+        await submitReport({ formEl: form, buttonEl: btn, formData: fd, estimate: estimateGenSeconds("chem-pre", finalModel) });
       });
 
       // ── 화학 결과보고서 submit (Phase 2-2: 백엔드 골격 동작) ──────────────
@@ -2100,8 +2764,12 @@ let currentStudentId = "";
         });
         const krwLo = Math.round(est.lo * 1400);
         const krwHi = Math.round(est.hi * 1400);
+        const crPhotoTokens = photos.length * 1500;
         const ok = await showConfirmDialog({
           title: "화학 결과보고서 생성",
+          background: true,
+          credits: getModelCredits(crModel),
+          recovery: { formEl: crForm, radioName: "crModel" },
           rows: [
             ["모델", modelLabel],
             ["스타일", crStyleLabel],
@@ -2112,11 +2780,14 @@ let currentStudentId = "";
             ["첨부", `사전보고서${dataFile ? ", 데이터" : ", 데이터 없음"}${(crUserNotes || crUserNotesFile) && !dataFile ? " (메모 활용)" : ""}, 사진 ${photos.length}장${manual ? ", 매뉴얼" : ""}`],
             ["총 크기", `${est.totalKB}KB`],
             ["예상 비용", costRangeText(est, krwLo, krwHi)],
-            ["예상 시간", formatDuration(estimateGenSeconds("chem-result", crModel, photos.length * 1500))],
+            ["예상 시간", formatDuration(estimateGenSeconds("chem-result", crModel, crPhotoTokens))],
           ],
           note: `실제 비용은 완료 후 표시됩니다. ${USE_POLICY_NOTE}`,
         });
         if (!ok) return;
+        // 회복으로 모델이 바뀌었을 수 있어 현재 선택값을 다시 읽는다.
+        const crFinalModel =
+          document.querySelector('input[name="crModel"]:checked')?.value || crModel;
 
         const fd = new FormData();
         fd.append("type", "chem-result");
@@ -2132,7 +2803,7 @@ let currentStudentId = "";
         fd.append("temperature", document.getElementById("crTemp").value || "");
         fd.append("pressure", document.getElementById("crPressure").value || "");
         fd.append("studentId", currentStudentId);
-        fd.append("model", crModel);
+        fd.append("model", crFinalModel);
         fd.append("style", crStyle);
         fd.append("format", crFormat);
         fd.append("fontFace", crFontFace);
@@ -2140,7 +2811,7 @@ let currentStudentId = "";
         if (crUserNotesFile) fd.append("userNotesFile", crUserNotesFile);
         appendPolicyAcknowledgements(fd);
 
-        await submitReport({ formEl: crForm, buttonEl: crBtn, formData: fd });
+        await submitReport({ formEl: crForm, buttonEl: crBtn, formData: fd, estimate: estimateGenSeconds("chem-result", crFinalModel, crPhotoTokens) });
       });
 
       // ── 물리 결과보고서 submit ───────────────────────────────────────────
@@ -2199,8 +2870,12 @@ let currentStudentId = "";
             ? `엑셀/CSV/텍스트 ${dataFiles.length}개 (${Math.round(dataFileBytes / 1024)}KB)`
             : "") +
           (!cap && dataFiles.length === 0 && photos.length ? "이미지 자료만" : "");
+        const prPhotoTokens = photos.length * 1500;
         const ok = await showConfirmDialog({
           title: "물리 결과보고서 생성",
+          background: true,
+          credits: getModelCredits(prModel),
+          recovery: { formEl: prForm, radioName: "prModel" },
           rows: [
             ["모델", modelLabel],
             ["양식", "기본 양식"],
@@ -2210,11 +2885,14 @@ let currentStudentId = "";
             ["입력", `${inputLabel}${photos.length > 0 ? `, 사진 ${photos.length}장` : ""}${manual ? ", 매뉴얼" : ""}`],
             ["총 크기", `${est.totalKB}KB`],
             ["예상 비용", costRangeText(est, krwLo, krwHi)],
-            ["예상 시간", formatDuration(estimateGenSeconds("phys-result", prModel, photos.length * 1500))],
+            ["예상 시간", formatDuration(estimateGenSeconds("phys-result", prModel, prPhotoTokens))],
           ],
           note: `기본 평가 기준을 적용합니다. ${USE_POLICY_NOTE}`,
         });
         if (!ok) return;
+        // 회복으로 모델이 바뀌었을 수 있어 현재 선택값을 다시 읽는다.
+        const prFinalModel =
+          document.querySelector('input[name="prModel"]:checked')?.value || prModel;
 
         const fd = new FormData();
         fd.append("type", "phys-result");
@@ -2228,14 +2906,14 @@ let currentStudentId = "";
         const [y, m, d] = prDateStr.split("-");
         fd.append("date", `${y}/ ${m} / ${d}`);
         fd.append("studentId", currentStudentId);
-        fd.append("model", prModel);
+        fd.append("model", prFinalModel);
         fd.append("format", prFormat);
         fd.append("fontFace", prFontFace);
         fd.append("userNotes", prUserNotes);
         if (prUserNotesFile) fd.append("userNotesFile", prUserNotesFile);
         appendPolicyAcknowledgements(fd);
 
-        await submitReport({ formEl: prForm, buttonEl: prBtn, formData: fd });
+        await submitReport({ formEl: prForm, buttonEl: prBtn, formData: fd, estimate: estimateGenSeconds("phys-result", prFinalModel, prPhotoTokens) });
       });
 
       // ── 물리 수행평가(베타) submit ───────────────────────────────────────
@@ -2279,6 +2957,7 @@ let currentStudentId = "";
 
           const ok = await showConfirmDialog({
             title: "물리 수행평가 초안 생성 (베타)",
+            background: true,
             rows: [
               ["모델", modelLabel],
               ["형식", piFormat === "hwpx" ? ".hwpx (한글)" : ".docx (MS Word)"],
@@ -2315,7 +2994,7 @@ let currentStudentId = "";
           if (piUserNotesFile) fd.append("userNotesFile", piUserNotesFile);
           appendPolicyAcknowledgements(fd);
 
-          await submitReport({ formEl: piForm, buttonEl: piBtn, formData: fd });
+          await submitReport({ formEl: piForm, buttonEl: piBtn, formData: fd, estimate: estimateGenSeconds("phys-inquiry", piModel) });
         });
       }
 
@@ -2348,6 +3027,7 @@ let currentStudentId = "";
 
           const ok = await showConfirmDialog({
             title: "수학 수행평가 초안 생성 (베타)",
+            background: true,
             rows: [
               ["모델", modelLabel],
               ["형식", miFormat === "hwpx" ? ".hwpx (한글)" : ".docx (MS Word)"],
@@ -2380,7 +3060,7 @@ let currentStudentId = "";
           if (miUserNotesFile) fd.append("userNotesFile", miUserNotesFile);
           appendPolicyAcknowledgements(fd);
 
-          await submitReport({ formEl: miForm, buttonEl: miBtn, formData: fd });
+          await submitReport({ formEl: miForm, buttonEl: miBtn, formData: fd, estimate: estimateGenSeconds("math-inquiry", miModel) });
         });
       }
 
@@ -2409,6 +3089,7 @@ let currentStudentId = "";
 
           const ok = await showConfirmDialog({
             title: "문제집 메이커 (베타)",
+            background: true,
             rows: [
               ["모델", modelLabel],
               ["문제 파일", `${source.length}개`],
@@ -2486,8 +3167,12 @@ let currentStudentId = "";
           });
           const krwLo = Math.round(est.lo * 1400);
           const krwHi = Math.round(est.hi * 1400);
+          const frPhotoTokens = photos.length * 1500;
           const ok = await showConfirmDialog({
             title: "자유 보고서 생성",
+            background: true,
+            credits: getModelCredits(frModel),
+            recovery: { formEl: frForm, radioName: "frModel" },
             rows: [
               ["모델", modelLabel],
               ["형식", frFormat === "hwpx" ? ".hwpx (한글)" : ".docx (MS Word)"],
@@ -2497,11 +3182,14 @@ let currentStudentId = "";
               ["내 문체", styleRefs.length || styleNote ? `반영${styleRefs.length ? ` (샘플 ${styleRefs.length}개)` : ""}` : "기본"],
               ["총 크기", `${est.totalKB}KB`],
               ["예상 비용", costRangeText(est, krwLo, krwHi)],
-              ["예상 시간", formatDuration(estimateGenSeconds("free", frModel, photos.length * 1500))],
+              ["예상 시간", formatDuration(estimateGenSeconds("free", frModel, frPhotoTokens))],
             ],
             note: `작성 지시·평가 기준에 맞춰 자유 형식으로 작성합니다. 실제 비용은 완료 후 표시됩니다. ${USE_POLICY_NOTE}`,
           });
           if (!ok) return;
+          // 회복으로 모델이 바뀌었을 수 있어 현재 선택값을 다시 읽는다.
+          const frFinalModel =
+            document.querySelector('input[name="frModel"]:checked')?.value || frModel;
 
           const fd = new FormData();
           fd.append("type", "free");
@@ -2519,14 +3207,14 @@ let currentStudentId = "";
             fd.append("date", `${y}/ ${m} / ${d}`);
           }
           if (currentStudentId) fd.append("studentId", currentStudentId);
-          fd.append("model", frModel);
+          fd.append("model", frFinalModel);
           fd.append("format", frFormat);
           fd.append("fontFace", frFontFace);
           fd.append("userNotes", frUserNotes);
           if (frUserNotesFile) fd.append("userNotesFile", frUserNotesFile);
           appendPolicyAcknowledgements(fd);
 
-          await submitReport({ formEl: frForm, buttonEl: frBtn, formData: fd });
+          await submitReport({ formEl: frForm, buttonEl: frBtn, formData: fd, estimate: estimateGenSeconds("free", frFinalModel, frPhotoTokens) });
         });
       }
 
@@ -2602,6 +3290,7 @@ let currentStudentId = "";
 
           const ok = await showConfirmDialog({
             title: "양식 메이커",
+            background: true,
             rows: [
               ["작업", modeLabel],
               ["모델", getModelLabel(fmModel)],
@@ -2643,7 +3332,7 @@ let currentStudentId = "";
           fd.append("userNotes", fmUserNotes);
           appendPolicyAcknowledgements(fd);
 
-          await submitReport({ formEl: fmForm, buttonEl: fmBtn, formData: fd });
+          await submitReport({ formEl: fmForm, buttonEl: fmBtn, formData: fd, estimate: estimateGenSeconds("free", fmModel, photos.length * 1500) });
         });
       }
 
@@ -2793,25 +3482,41 @@ let currentStudentId = "";
         return null;
       }
 
-      function beginProgress(title) {
+      function beginProgress(title, estimate) {
         progressArea.style.display = "block";
         progressEl.replaceChildren();
         resultArea.replaceChildren();
+        clearRetryCard(); // 이전 에러 카드 정리
         statusTitle.textContent = title || "생성 중...";
+        // 진행 영역 최근 1줄 상시 표시 초기화 (상세 로그를 펴지 않아도 보이게).
+        const latest = document.getElementById("progressLatest");
+        if (latest) latest.textContent = "생성을 시작합니다…";
         resetProgressSteps();
         setProgressStep("upload");
+        // 경과 타이머 + ETA 시작 (estimate = estimateGenSeconds 결과 {lo,hi} 초).
+        try { startGenTimer(estimate); } catch (_) { /* 타이머 실패는 무시 */ }
+        // 생성 시작 즉시 진행 영역으로 스크롤해 사용자가 진행 상황을 바로 본다.
+        try {
+          progressArea.scrollIntoView({ behavior: "smooth", block: "start" });
+        } catch (_) { /* 구형 브라우저: 무시 */ }
       }
 
       function appendLine(text) {
         const line = typeof text === "string" ? text : JSON.stringify(text);
         progressEl.appendChild(document.createTextNode(line + "\n"));
         progressEl.scrollTop = progressEl.scrollHeight;
+        // 상세 로그를 펴지 않아도 최근 1줄은 진행 영역에 상시 표시한다.
+        const latest = document.getElementById("progressLatest");
+        if (latest && line.trim()) latest.textContent = line.trim();
+        // 진행 줄이 바뀌면 '계속 처리 중…' 무변화 타이머를 리셋한다.
+        if (line.trim()) { try { noteGenProgressTick(); } catch (_) {} }
         const next = inferProgressStep(line);
         if (next) setProgressStep(next.step, next.state);
       }
 
       function resetForm() {
         unlockForm();
+        try { stopGenTimer(); } catch (_) {} // 종료/에러/리셋 시 타이머 정지(누수 방지)
         btn.textContent = "사전보고서 생성";
         if (crBtn) crBtn.textContent = "결과보고서 생성";
         if (prBtn) prBtn.textContent = "물리 결과보고서 생성";
@@ -2823,6 +3528,97 @@ let currentStudentId = "";
         stopBtn.textContent = "중지";
         const genSpinner = document.getElementById("genSpinner");
         if (genSpinner) genSpinner.style.display = "none";
+      }
+
+      // ── Wave2a: 생성 오류 카드(행동중심 + 원클릭 다시 생성) ───────────────
+      // 에러를 한 줄 행동중심 메시지 + 접힌 상세로 압축하고, 가능하면 '다시 생성'
+      // 버튼을 단다. 입력 오류(400)는 해당 폼으로 스크롤한다.
+      function clearRetryCard() {
+        const card = document.getElementById("retryCard");
+        if (card) { card.hidden = true; card.replaceChildren(); }
+      }
+      function showGenErrorCard(opts) {
+        const o = opts || {};
+        const card = document.getElementById("retryCard");
+        if (!card) {
+          // 폴백: 카드 컨테이너가 없으면 기존 방식(로그 한 줄)으로.
+          appendLine("오류: " + (o.message || "생성이 중단되었습니다."));
+          return;
+        }
+        card.replaceChildren();
+        card.hidden = false;
+
+        // 한 줄 요약: 입력/크레딧 오류는 원인을, 그 외(스트림 끊김·5xx·타임아웃)는
+        // '중단됐어요 · 크레딧 미차감 · 입력 보존' 행동중심으로 압축.
+        const isInput = o.httpStatus === 400;
+        const isCredit = o.httpStatus === 402 || /크레딧|credit|잔액|충전/i.test(o.message || "");
+        let headline;
+        if (isInput) headline = "⚠ 입력을 확인해 주세요 · 아래 폼에서 빠진 항목을 채운 뒤 다시 시도하세요";
+        else if (isCredit) headline = "⚠ 크레딧이 부족합니다 · 더 저렴한/무료 모델로 바꾸거나 충전 후 다시 시도하세요";
+        else headline = "⚠ 생성이 중단됐어요 · 크레딧은 차감되지 않았습니다 · 입력은 그대로예요";
+
+        const head = document.createElement("div");
+        head.className = "retry-headline";
+        head.textContent = headline;
+        card.appendChild(head);
+
+        // 행동 버튼들
+        const actions = document.createElement("div");
+        actions.className = "retry-actions";
+        const allowRetry = o.allowRetry !== false && _lastSubmission && _lastSubmission.formData;
+        if (allowRetry) {
+          const retryBtn = document.createElement("button");
+          retryBtn.type = "button";
+          retryBtn.className = "primary";
+          retryBtn.textContent = "다시 생성";
+          retryBtn.addEventListener("click", () => {
+            clearRetryCard();
+            retryLastSubmission();
+          });
+          actions.appendChild(retryBtn);
+        }
+        if (isCredit || isInput) {
+          // 크레딧/입력 오류는 폼으로 돌아가 고치게 안내.
+          const back = document.createElement("button");
+          back.type = "button";
+          back.className = "secondary";
+          back.textContent = isCredit ? "모델 바꾸기" : "폼으로 이동";
+          back.addEventListener("click", () => {
+            const target = o.scrollToForm || (_lastSubmission && _lastSubmission.formEl) || null;
+            if (target) { try { target.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (_) {} }
+            else { try { document.getElementById("reportTypeFieldset")?.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (_) {} }
+          });
+          actions.appendChild(back);
+        }
+        if (isCredit) {
+          const link = document.createElement("a");
+          link.className = "retry-link";
+          link.href = "/community.html";
+          link.textContent = "크레딧 문의 →";
+          actions.appendChild(link);
+        }
+        if (actions.childNodes.length) card.appendChild(actions);
+
+        // 상세 원인은 접기.
+        const detailText = (o.detail || o.message || "").toString().trim();
+        if (detailText) {
+          const det = document.createElement("details");
+          det.className = "retry-detail";
+          const sm = document.createElement("summary");
+          sm.textContent = "자세한 원인 보기";
+          const pre = document.createElement("div");
+          pre.className = "retry-detail-body";
+          pre.textContent = detailText;
+          det.append(sm, pre);
+          card.appendChild(det);
+        }
+
+        // 입력 오류면 해당 폼 섹션으로 스크롤.
+        if (isInput && o.scrollToForm) {
+          try { o.scrollToForm.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (_) {}
+        } else {
+          try { card.scrollIntoView({ behavior: "smooth", block: "nearest" }); } catch (_) {}
+        }
       }
 
       function streamJob(jobId) {
@@ -2840,6 +3636,9 @@ let currentStudentId = "";
           appendLine("완료");
           statusTitle.textContent = "완료";
           setProgressStep("ready");
+          stopGenTimer(); // 경과 타이머 정지·정리
+          clearRetryCard(); // 성공했으므로 이전 에러 카드 제거
+          _retryCount = 0;
           if (genSpinner) genSpinner.style.display = "none";
 
           const link = document.createElement("a");
@@ -2966,19 +3765,583 @@ let currentStudentId = "";
 
           es.close();
           resetForm();
+          // 마지막 성공 생성의 선택값(종류·모델·형식·글꼴)을 기억한다.
+          if (typeof commitLastGenPrefs === "function") commitLastGenPrefs();
           // 작업 후 잔액 자동 새로고침
           if (typeof loadBalance === "function") loadBalance();
           if (typeof loadFiles === "function") loadFiles();
         });
 
         es.addEventListener("error", (e) => {
-          const msg = e.data
-            ? JSON.parse(e.data)
-            : "서버 연결이 끊겼습니다. 보통 (1) 서버 재배포로 컨테이너가 재시작되었거나 (2) 무료 플랜 일시 sleep 진입 시 발생합니다. 이 경우 크레딧(쿠폰)은 차감되지 않습니다. 1~2분 기다린 뒤 보고서 생성을 다시 시도하세요. (이전 작업은 복구 불가 — 새로 만들어집니다)";
-          appendLine("오류: " + msg);
+          let msg;
+          try { msg = e.data ? JSON.parse(e.data) : null; } catch (_) { msg = e.data || null; }
+          const detail = msg ||
+            "서버 연결이 끊겼습니다. 보통 (1) 서버 재배포로 컨테이너가 재시작되었거나 (2) 무료 플랜 일시 sleep 진입 시 발생합니다. 이 경우 크레딧(쿠폰)은 차감되지 않습니다. 1~2분 기다린 뒤 보고서 생성을 다시 시도하세요. (이전 작업은 복구 불가 — 새로 만들어집니다)";
+          appendLine("오류: " + detail);
           statusTitle.textContent = "오류";
+          setProgressStep("document", "error");
+          stopGenTimer(); // 경과 타이머 정지·정리
           if (genSpinner) genSpinner.style.display = "none";
           es.close();
           resetForm();
+          // 스트림 끊김/5xx/타임아웃 — 같은 입력으로 원클릭 재시도 제공.
+          showGenErrorCard({
+            message: String(detail),
+            detail: String(detail),
+            phase: "stream",
+            httpStatus: 0,
+            allowRetry: true,
+          });
         });
       }
+
+      // ════════════════════════════════════════════════════════════════════
+      // Wave2b — 입력 보존(draft 자동 저장·이탈 경고) + 필수 체크리스트 실시간
+      //          + 모바일 단계 버튼·진행 고정. 전부 추가(additive)·방어적(try/catch).
+      // ════════════════════════════════════════════════════════════════════
+      (function () {
+        "use strict";
+
+        // ── 1) 긴 textarea 자동 저장(draft) + 이탈 경고 ─────────────────────
+        // 폼별로 보존 가치가 있는 텍스트 입력(긴 메모·지시·주제·문체)을 디바운스해
+        // localStorage 에 저장한다. 재방문 시 저장본이 있으면 인라인 배너로 안내하고,
+        // 채워진 폼에서 새로고침/이탈 시 beforeunload 경고를 띄운다. 생성 성공 시 삭제.
+        const DRAFT_PREFIX = "quiloDraft:v1:";
+        // data-report-form → 보존할 입력 id 목록.
+        const DRAFT_FIELDS = {
+          "chem-pre": ["preUserNotes", "cpStyleNote"],
+          "chem-result": ["crUserNotes", "crStyleNote"],
+          "phys-result": ["prUserNotes", "prStyleNote"],
+          free: ["frInstructions", "frGrading", "frTitle", "frRefLinks", "frUserNotes", "frStyleNote"],
+          "phys-inquiry": ["piTopic", "piRefLinks", "piUserNotes", "piStyleNote"],
+          "math-inquiry": ["miTopic", "miUserNotes", "miStyleNote"],
+          "problem-set": ["psUserNotes"],
+          "form-maker": ["fmInstructions", "fmUserNotes"],
+          "eng-exam-prep": ["engUserNotes"],
+          "korean-lit-exam": ["klUserNotes"],
+          "phys-mock-exam": ["pmUserNotes"],
+        };
+
+        function draftKey(type) {
+          return DRAFT_PREFIX + type;
+        }
+        function readDraft(type) {
+          try {
+            const raw = localStorage.getItem(draftKey(type));
+            if (!raw) return null;
+            const obj = JSON.parse(raw);
+            return obj && typeof obj === "object" ? obj : null;
+          } catch (_) {
+            return null;
+          }
+        }
+        function writeDraft(type, data) {
+          try {
+            const keys = Object.keys(data || {});
+            if (!keys.length) {
+              localStorage.removeItem(draftKey(type));
+              return;
+            }
+            localStorage.setItem(
+              draftKey(type),
+              JSON.stringify({ at: Date.now(), fields: data }),
+            );
+          } catch (_) { /* private mode 등 무시 */ }
+        }
+        function clearDraft(type) {
+          try { localStorage.removeItem(draftKey(type)); } catch (_) {}
+        }
+        // 현재 폼에서 비어있지 않은 draft 필드만 모은다.
+        function collectDraftValues(type) {
+          const ids = DRAFT_FIELDS[type];
+          if (!ids) return {};
+          const out = {};
+          ids.forEach((id) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            const v = (el.value || "").trim();
+            if (v) out[id] = el.value; // 원본(트림 전) 보존, 존재 판정만 trim
+          });
+          return out;
+        }
+        function hasAnyDraftInput(type) {
+          return Object.keys(collectDraftValues(type)).length > 0;
+        }
+
+        let _draftDirty = false;       // 한 번이라도 사용자가 채웠는가(이탈 경고용)
+        let _suppressUnload = false;   // 생성 직후엔 경고를 끈다
+
+        const _debounceTimers = {};
+        function scheduleDraftSave(type) {
+          if (!type || !DRAFT_FIELDS[type]) return;
+          clearTimeout(_debounceTimers[type]);
+          _debounceTimers[type] = setTimeout(() => {
+            try {
+              const vals = collectDraftValues(type);
+              writeDraft(type, vals);
+              _draftDirty = Object.keys(vals).length > 0;
+            } catch (_) {}
+          }, 600);
+        }
+
+        function currentReportType() {
+          const r = document.querySelector('input[name="reportType"]:checked');
+          return r ? r.value : null;
+        }
+
+        // 폼별 draft 입력에 디바운스 자동저장 리스너를 단다(중복 방지).
+        function bindDraftAutosave() {
+          Object.keys(DRAFT_FIELDS).forEach((type) => {
+            DRAFT_FIELDS[type].forEach((id) => {
+              const el = document.getElementById(id);
+              if (!el || el.dataset.draftBound) return;
+              el.dataset.draftBound = "1";
+              el.addEventListener("input", () => scheduleDraftSave(type));
+            });
+          });
+        }
+
+        // 폼 상단에 '이전에 작성하던 내용이 있어요 · [불러오기] [지우기]' 인라인 배너.
+        function ensureDraftBanner(type) {
+          const formEl = document.querySelector('[data-report-form="' + type + '"]');
+          if (!formEl) return;
+          const saved = readDraft(type);
+          // 이미 폼에 내용이 있으면(복원했거나 직접 입력 중) 배너 불필요.
+          if (!saved || !saved.fields || !Object.keys(saved.fields).length || hasAnyDraftInput(type)) {
+            const existing = formEl.querySelector(":scope > .draft-banner");
+            if (existing) existing.remove();
+            return;
+          }
+          let banner = formEl.querySelector(":scope > .draft-banner");
+          if (banner) return; // 이미 떠 있음
+          banner = document.createElement("div");
+          banner.className = "notice draft-banner";
+          banner.style.cssText =
+            "margin:0 0 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap";
+          const txt = document.createElement("span");
+          const whenAgo = saved.at ? draftAgoText(saved.at) : "";
+          txt.innerHTML =
+            "📝 이전에 작성하던 내용이 있어요" + (whenAgo ? ` <span style="color:var(--text-faint)">(${whenAgo})</span>` : "");
+          const loadBtn = document.createElement("button");
+          loadBtn.type = "button";
+          loadBtn.className = "link-button";
+          loadBtn.textContent = "불러오기";
+          loadBtn.style.cssText =
+            "font-size:13px;color:var(--accent-text);background:none;border:none;cursor:pointer;text-decoration:underline;padding:0";
+          loadBtn.addEventListener("click", () => {
+            restoreDraft(type);
+            banner.remove();
+          });
+          const dropBtn = document.createElement("button");
+          dropBtn.type = "button";
+          dropBtn.className = "link-button";
+          dropBtn.textContent = "지우기";
+          dropBtn.style.cssText =
+            "font-size:13px;color:var(--text-muted);background:none;border:none;cursor:pointer;text-decoration:underline;padding:0";
+          dropBtn.addEventListener("click", () => {
+            clearDraft(type);
+            banner.remove();
+          });
+          banner.append(txt, loadBtn, dropBtn);
+          // flow-steps 다음(폼 최상단)에 삽입 — studentid-banner 와 같은 위치 정책.
+          const flow = formEl.querySelector(":scope > .form-flow-steps");
+          const sidBanner = formEl.querySelector(":scope > .studentid-banner");
+          const anchor = sidBanner || flow;
+          if (anchor && anchor.nextSibling) formEl.insertBefore(banner, anchor.nextSibling);
+          else if (anchor) formEl.appendChild(banner);
+          else formEl.insertBefore(banner, formEl.firstChild);
+        }
+
+        function draftAgoText(ts) {
+          try {
+            const diff = Date.now() - ts;
+            const min = Math.round(diff / 60000);
+            if (min < 1) return "방금 전";
+            if (min < 60) return min + "분 전";
+            const hr = Math.round(min / 60);
+            if (hr < 24) return hr + "시간 전";
+            return Math.round(hr / 24) + "일 전";
+          } catch (_) { return ""; }
+        }
+
+        function restoreDraft(type) {
+          const saved = readDraft(type);
+          if (!saved || !saved.fields) return;
+          try {
+            Object.keys(saved.fields).forEach((id) => {
+              const el = document.getElementById(id);
+              if (el && !el.value) {
+                el.value = saved.fields[id];
+                // change/input 리스너(요약·체크리스트)도 깨운다.
+                try { el.dispatchEvent(new Event("input", { bubbles: true })); } catch (_) {}
+              }
+            });
+            _draftDirty = true;
+          } catch (_) {}
+        }
+
+        // 생성 성공 시 현재 종류의 draft 삭제 + 이탈 경고 해제.
+        function clearActiveDraftOnSuccess() {
+          try {
+            const type = (_pendingGenPrefs && _pendingGenPrefs.type) || currentReportType();
+            if (type) clearDraft(type);
+            _draftDirty = false;
+            _suppressUnload = true;
+            setTimeout(() => { _suppressUnload = false; }, 1500);
+          } catch (_) {}
+        }
+
+        // 채워진 폼에서 새로고침/이탈 시 경고(빈 폼/생성 직후엔 안 함).
+        window.addEventListener("beforeunload", (e) => {
+          try {
+            if (_suppressUnload) return;
+            if (currentJobId) return; // 생성 진행 중은 SSE 가 관리 — 별도 경고 안 함
+            const type = currentReportType();
+            if (!type) return;
+            if (!hasAnyDraftInput(type)) return;
+            e.preventDefault();
+            e.returnValue = "";
+            return "";
+          } catch (_) {}
+        });
+
+        // ── 2) 필수 입력 체크리스트 실시간 연동 ─────────────────────────────
+        // 정적 항목(reportChecklistItems)은 유지하되, 각 항목을 실제 폼 상태에
+        // 바인딩해 충족 시 ✓·미충족 강조하고, 클릭하면 해당 섹션으로 스크롤한다.
+        // 항목 텍스트/구조는 그대로 두고 상태 표시(클래스/아이콘)만 추가한다.
+
+        // 항목 라벨 → {done(), jump} 판정기. 보고서 종류별로 둔다.
+        // done: 충족 여부, jump: 클릭 시 이동할 폼 섹션 키(setFlowStep 의 step 또는 element id).
+        function fileCount(id) {
+          const el = document.getElementById(id);
+          return el && el.files ? el.files.length : 0;
+        }
+        function textFilled(id) {
+          const el = document.getElementById(id);
+          return !!(el && (el.value || "").trim());
+        }
+        function radioChosen(name) {
+          return !!document.querySelector('input[name="' + name + '"]:checked');
+        }
+        const STUDENT_ID_REPORTS = ["phys-result", "phys-inquiry", "math-inquiry"];
+
+        // 보고서 종류별 항목 판정. 키는 reportChecklistItems[type].items 의 문자열과 동일.
+        // done()==true 면 충족, ''/false 면 미충족, null 이면 상태표시 없음(안내용).
+        function checklistStatus(type, itemText) {
+          const t = String(itemText || "");
+          try {
+            switch (type) {
+              case "chem-pre":
+                if (/실험 매뉴얼/.test(t)) return { done: fileCount("manual") > 0, jump: "upload" };
+                if (/보고서 날짜/.test(t)) return { done: textFilled("date"), jump: "info" };
+                if (/생성 버튼/.test(t)) return { done: null };
+                break;
+              case "chem-result":
+                if (/사전보고서/.test(t)) return { done: fileCount("crPreReport") > 0, jump: "upload" };
+                if (/데이터 또는 사진/.test(t))
+                  return { done: fileCount("crData") > 0 || fileCount("crPhotos") > 0 || textFilled("crUserNotes"), jump: "upload" };
+                if (/보고서 날짜/.test(t)) return { done: textFilled("crDate"), jump: "info" };
+                if (/생성 버튼/.test(t)) return { done: null };
+                break;
+              case "phys-result":
+                // OR 필수: .cap·데이터·사진 중 하나라도 있으면 충족.
+                if (/\.cap|엑셀|CSV|텍스트/.test(t))
+                  return { done: fileCount("prCap") > 0 || fileCount("prData") > 0 || fileCount("prPhotos") > 0, jump: "upload" };
+                if (/사진|그래프|스크린샷/.test(t)) return { done: fileCount("prPhotos") > 0, jump: "upload", optional: true };
+                if (/학번/.test(t)) return { done: !!currentStudentId, jump: "studentId" };
+                if (/보고서 날짜/.test(t)) return { done: textFilled("prDate"), jump: "info" };
+                break;
+              case "free":
+                if (/작성 지시/.test(t)) return { done: textFilled("frInstructions"), jump: "upload" };
+                if (/필요 자료/.test(t))
+                  return { done: fileCount("frFiles") > 0 || fileCount("frPhotos") > 0 || textFilled("frRefLinks"), jump: "upload", optional: true };
+                if (/출력 형식/.test(t)) return { done: null };
+                if (/생성 버튼/.test(t)) return { done: null };
+                break;
+              case "phys-inquiry":
+                if (/탐구 주제/.test(t)) return { done: textFilled("piTopic"), jump: "upload" };
+                if (/필기노트|참고자료/.test(t))
+                  return { done: fileCount("piNotes") > 0 || fileCount("piRefs") > 0 || textFilled("piRefLinks"), jump: "upload" };
+                if (/학번/.test(t)) return { done: !!currentStudentId, jump: "studentId" };
+                if (/생성 버튼/.test(t)) return { done: null };
+                break;
+              case "math-inquiry":
+                if (/탐구 주제/.test(t)) return { done: textFilled("miTopic"), jump: "upload" };
+                if (/분석 방향/.test(t)) return { done: textFilled("miUserNotes"), jump: "upload", optional: true };
+                if (/학번/.test(t)) return { done: !!currentStudentId, jump: "studentId" };
+                if (/생성 버튼/.test(t)) return { done: null };
+                break;
+              case "problem-set":
+                if (/문제 PDF|사진/.test(t)) return { done: fileCount("psSource") > 0, jump: "upload" };
+                if (/페이지당/.test(t)) return { done: null };
+                if (/교차검증/.test(t)) return { done: null };
+                if (/만들기 버튼/.test(t)) return { done: null };
+                break;
+              case "form-maker":
+                if (/양식 설명|문서 사진/.test(t))
+                  return { done: textFilled("fmInstructions") || fileCount("fmPhotos") > 0, jump: "upload" };
+                if (/출력 형식|글꼴/.test(t)) return { done: null };
+                if (/만들기 버튼/.test(t)) return { done: null };
+                break;
+              default:
+                return { done: null };
+            }
+          } catch (_) {}
+          return { done: null };
+        }
+
+        // 체크리스트 li 에 상태(클래스/아이콘) + 클릭 점프를 입힌다.
+        // updateReportChecklist 가 li 를 새로 그리므로, 그 직후에 호출한다.
+        function decorateChecklist(type) {
+          const ul = document.getElementById("reportChecklist");
+          if (!ul || !type) return;
+          const formEl = document.querySelector('[data-report-form="' + type + '"]');
+          ul.querySelectorAll("li").forEach((li) => {
+            // 이미 입혀진 상태 아이콘 제거 후 재계산(텍스트는 보존).
+            const baseText = li.dataset.baseText || li.textContent;
+            li.dataset.baseText = baseText;
+            const st = checklistStatus(type, baseText);
+            li.classList.remove("chk-done", "chk-todo", "chk-info");
+            // 아이콘 prefix 노드를 별도 span 으로 관리.
+            let icon = li.querySelector(".chk-ico");
+            if (!icon) {
+              icon = document.createElement("span");
+              icon.className = "chk-ico";
+              icon.setAttribute("aria-hidden", "true");
+              li.insertBefore(icon, li.firstChild);
+            }
+            if (st.done === true) {
+              li.classList.add("chk-done");
+              icon.textContent = "✓";
+            } else if (st.done === false) {
+              li.classList.add("chk-todo");
+              icon.textContent = st.optional ? "○" : "•";
+            } else {
+              li.classList.add("chk-info");
+              icon.textContent = "·";
+            }
+            // 클릭 점프(폼이 보일 때만 의미). 한 번만 바인딩.
+            if (st.jump && !li.dataset.chkJumpBound) {
+              li.dataset.chkJumpBound = "1";
+              li.style.cursor = "pointer";
+              li.setAttribute("role", "button");
+              li.setAttribute("tabindex", "0");
+              const go = () => jumpToChecklistTarget(type, formEl, st.jump);
+              li.addEventListener("click", go);
+              li.addEventListener("keydown", (e) => {
+                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); }
+              });
+            }
+            li.dataset.chkJump = st.jump || "";
+          });
+        }
+
+        function jumpToChecklistTarget(type, formEl, jump) {
+          try {
+            if (jump === "studentId") {
+              if (typeof showTab === "function") showTab("settings");
+              const input = document.getElementById("settingsStudentIdInput");
+              if (input) { try { input.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (_) {} input.focus(); }
+              return;
+            }
+            // 위저드(report-flow) 폼이면 해당 단계로 이동, 아니면(단일페이지 폼) 그냥 스크롤.
+            if (formEl && formEl.classList.contains("report-flow") && typeof setFlowStep === "function") {
+              setFlowStep(formEl, jump, { scroll: true });
+            } else if (formEl) {
+              try { formEl.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (_) {}
+            }
+          } catch (_) {}
+        }
+
+        // 원본 updateReportChecklist 는 내부에서 직접 호출되어(렉시컬 바인딩) 래핑이
+        // 통하지 않는다. 대신 #reportChecklist 의 자식 변경을 관찰해, 원본이 li 를
+        // 다시 그릴 때마다 현재 종류 기준으로 상태(✓/강조/점프)를 다시 입힌다.
+        let _chkObserver = null;
+        function observeChecklistRebuild() {
+          const ul = document.getElementById("reportChecklist");
+          if (!ul || _chkObserver) return;
+          _chkObserver = new MutationObserver(() => {
+            // 관찰 콜백이 decorate 의 DOM 변경으로 재귀하지 않도록 가드.
+            if (ul.dataset.chkDecorating === "1") return;
+            const type = currentReportType();
+            if (!type) return;
+            ul.dataset.chkDecorating = "1";
+            try { decorateChecklist(type); } catch (_) {}
+            ul.dataset.chkDecorating = "0";
+          });
+          try { _chkObserver.observe(ul, { childList: true }); } catch (_) {}
+        }
+
+        // 입력/업로드/학번 변화 시 현재 종류의 체크리스트 상태를 다시 칠한다.
+        function refreshChecklistState() {
+          const type = currentReportType();
+          if (type) { try { decorateChecklist(type); } catch (_) {} }
+        }
+
+        // 모든 폼의 입력·파일·라디오 변화에 체크리스트 갱신을 건다(중복 방지).
+        function bindChecklistLiveUpdates() {
+          document.querySelectorAll("[data-report-form]").forEach((formEl) => {
+            if (formEl.dataset.chkLive) return;
+            formEl.dataset.chkLive = "1";
+            ["input", "change"].forEach((ev) =>
+              formEl.addEventListener(ev, () => refreshChecklistState()),
+            );
+          });
+        }
+
+        // ── 3) 모바일 단계 버튼 + 진행 고정 ─────────────────────────────────
+        // 좁은 화면에서 각 플로우 섹션 하단에 full-width '다음 →'(2번째부터 '← 이전')
+        // 버튼을 넣어 기존 setFlowStep 으로 스텝 이동한다. 데스크톱은 CSS 로 숨겨 불변.
+        const FLOW_ORDER = ["upload", "info", "settings", "generate"];
+
+        function buildMobileStepNav(formEl) {
+          if (!formEl || formEl.dataset.mobNavInit) return;
+          if (!formEl.classList.contains("report-flow")) return; // enhance 안 된 폼 제외
+          formEl.dataset.mobNavInit = "1";
+
+          const nav = document.createElement("div");
+          nav.className = "mobile-step-nav";
+          const prev = document.createElement("button");
+          prev.type = "button";
+          prev.className = "mob-step-prev secondary";
+          prev.textContent = "← 이전";
+          const next = document.createElement("button");
+          next.type = "button";
+          next.className = "mob-step-next primary";
+          next.textContent = "다음 →";
+          nav.append(prev, next);
+
+          prev.addEventListener("click", () => {
+            const cur = formEl.dataset.flowStep || "upload";
+            const i = FLOW_ORDER.indexOf(cur);
+            if (i > 0) setFlowStep(formEl, FLOW_ORDER[i - 1], { scroll: true });
+          });
+          next.addEventListener("click", () => {
+            const cur = formEl.dataset.flowStep || "upload";
+            const i = FLOW_ORDER.indexOf(cur);
+            if (i >= 0 && i < FLOW_ORDER.length - 1) setFlowStep(formEl, FLOW_ORDER[i + 1], { scroll: true });
+          });
+
+          // 폼 끝(form-actions 앞)에 둔다 — 데스크톱에선 CSS display:none.
+          const anchor = formEl.querySelector(":scope > .form-actions");
+          if (anchor) formEl.insertBefore(nav, anchor);
+          else formEl.appendChild(nav);
+          syncMobileStepNav(formEl);
+        }
+
+        // 현재 스텝에 맞춰 이전/다음 버튼 라벨·표시를 갱신.
+        function syncMobileStepNav(formEl) {
+          const nav = formEl.querySelector(":scope > .mobile-step-nav");
+          if (!nav) return;
+          const cur = formEl.dataset.flowStep || "upload";
+          const i = FLOW_ORDER.indexOf(cur);
+          const prev = nav.querySelector(".mob-step-prev");
+          const next = nav.querySelector(".mob-step-next");
+          if (prev) prev.style.display = i > 0 ? "" : "none";
+          if (next) {
+            // 마지막 단계(generate)에선 '다음' 숨김(아래에 실제 생성 버튼이 있음).
+            next.style.display = i >= 0 && i < FLOW_ORDER.length - 1 ? "" : "none";
+            next.textContent = i === FLOW_ORDER.length - 2 ? "생성 단계로 →" : "다음 →";
+          }
+        }
+
+        // 원본 setFlowStep 은 내부 렉시컬 호출이라 래핑 불가. 대신 각 폼의
+        // data-flow-step 속성 변경을 관찰해 모바일 네비를 동기화한다(스텝 탭/검증
+        // 이동/제출 등 모든 경로에서 setFlowStep 이 이 속성을 바꾸므로 안전).
+        function observeFlowStep(formEl) {
+          if (!formEl || formEl.dataset.flowObs) return;
+          formEl.dataset.flowObs = "1";
+          try {
+            const obs = new MutationObserver(() => {
+              try { syncMobileStepNav(formEl); } catch (_) {}
+            });
+            obs.observe(formEl, { attributes: true, attributeFilter: ["data-flow-step"] });
+          } catch (_) {}
+        }
+
+        function buildAllMobileStepNavs() {
+          document.querySelectorAll("[data-report-form].report-flow").forEach((f) => {
+            buildMobileStepNav(f);
+            observeFlowStep(f);
+          });
+        }
+
+        // 생성 중 진행 헤더(status-head: 제목 + 타이머)를 sticky 로 고정 — CSS 로 처리.
+        // 여기선 progressArea 가 보일 때 body 에 표식만 단다(추가 필요 시 사용).
+
+        // 학번 변경 신호: setStudentIdUi 가 #settingsStudentId 텍스트를 갱신하므로
+        // (applyAuth·프로필 저장 등 모든 경로) 그 노드를 관찰해 체크리스트를 갱신한다.
+        function observeStudentId() {
+          const el = document.getElementById("settingsStudentId");
+          if (!el || el.dataset.chkObs) return;
+          el.dataset.chkObs = "1";
+          try {
+            const obs = new MutationObserver(() => {
+              try { refreshChecklistState(); } catch (_) {}
+            });
+            obs.observe(el, { childList: true, characterData: true, subtree: true });
+          } catch (_) {}
+          // 입력칸에 직접 타이핑하는 경우(저장 전 미리보기)도 반영.
+          const input = document.getElementById("settingsStudentIdInput");
+          if (input && !input.dataset.chkObs) {
+            input.dataset.chkObs = "1";
+            input.addEventListener("input", () => { try { refreshChecklistState(); } catch (_) {} });
+          }
+        }
+
+        // 생성 성공 신호: done 핸들러가 #statusTitle 을 '완료'로 바꾼다. 그 노드를
+        // 관찰해 현재 종류의 draft 를 삭제하고 이탈 경고를 끈다(commitLastGenPrefs
+        // 가 렉시컬 호출이라 래핑 불가하므로 DOM 신호를 쓴다).
+        function observeGenSuccess() {
+          const el = document.getElementById("statusTitle");
+          if (!el || el.dataset.succObs) return;
+          el.dataset.succObs = "1";
+          try {
+            const obs = new MutationObserver(() => {
+              if ((el.textContent || "").trim() === "완료") {
+                try { clearActiveDraftOnSuccess(); } catch (_) {}
+              }
+            });
+            obs.observe(el, { childList: true, characterData: true, subtree: true });
+          } catch (_) {}
+        }
+
+        // ── 초기화 + 종류 변경 훅 ───────────────────────────────────────────
+        function initWave2b() {
+          try { bindDraftAutosave(); } catch (_) {}
+          try { observeChecklistRebuild(); } catch (_) {}
+          try { bindChecklistLiveUpdates(); } catch (_) {}
+          try { buildAllMobileStepNavs(); } catch (_) {}
+          try { observeStudentId(); } catch (_) {}
+          try { observeGenSuccess(); } catch (_) {}
+          // 보고서 종류가 바뀌면 그 종류의 draft 배너·체크리스트 상태를 갱신.
+          // (내부 updateReportTypeView→updateReportChecklist 가 먼저 동기 실행되고,
+          //  setTimeout(0) 으로 그 뒤에 안전하게 덧입힌다.)
+          try {
+            document.querySelectorAll('input[name="reportType"]').forEach((r) => {
+              r.addEventListener("change", () => {
+                setTimeout(() => {
+                  const type = currentReportType();
+                  if (!type) return;
+                  ensureDraftBanner(type);
+                  refreshChecklistState();
+                  const formEl = document.querySelector('[data-report-form="' + type + '"]');
+                  if (formEl) { buildMobileStepNav(formEl); observeFlowStep(formEl); syncMobileStepNav(formEl); }
+                }, 0);
+              });
+            });
+          } catch (_) {}
+          // 현재 선택된 종류가 있으면(딥링크·복원) 즉시 한 번 적용.
+          try {
+            const type = currentReportType();
+            if (type) { ensureDraftBanner(type); refreshChecklistState(); }
+          } catch (_) {}
+        }
+
+        // DOM 이 이미 파싱된 시점(app.js 는 body 끝에서 로드)이라 바로 초기화한다.
+        if (document.readyState === "loading") {
+          document.addEventListener("DOMContentLoaded", initWave2b);
+        } else {
+          initWave2b();
+        }
+      })();

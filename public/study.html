@@ -143,6 +143,47 @@
       .study-range input[type="range"] {
         width: 100%;
       }
+      .study-chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+      }
+      .study-chip-label {
+        margin-right: 2px;
+        color: var(--text-muted);
+        font-size: 12px;
+        font-weight: var(--fw-bold);
+      }
+      .study-chip {
+        min-height: 30px;
+        padding: 5px 11px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: var(--surface);
+        color: var(--text);
+        font: inherit;
+        font-size: 12px;
+        font-weight: var(--fw-bold);
+        line-height: 1.2;
+        cursor: pointer;
+        font-variant-numeric: tabular-nums;
+      }
+      .study-chip:hover {
+        border-color: var(--accent-border);
+        background: var(--accent-soft);
+        color: var(--accent-text);
+      }
+      .study-chip:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 3px var(--ring);
+      }
+      .study-example-hint {
+        margin: 0;
+        color: var(--text-muted);
+        font-size: 12px;
+        line-height: 1.4;
+      }
       .study-actions {
         display: flex;
         gap: 8px;
@@ -430,6 +471,13 @@
               <label class="tool-label">상황 설명
                 <textarea id="description" class="tool-input" placeholder="예: 우주선 S'가 지구계 S에 대해 v=0.6c로 움직인다. 원점에서 빛 신호를 보내고 x=3 광초 지점의 사건 A를 함께 표시해줘."></textarea>
               </label>
+              <div class="study-chip-row" aria-label="예시로 채우기">
+                <span class="study-chip-label">예시로 채우기</span>
+                <button type="button" class="study-chip" data-example="boost">길이 수축</button>
+                <button type="button" class="study-chip" data-example="twin">쌍둥이 역설</button>
+                <button type="button" class="study-chip" data-example="signal">동시성·빛 신호</button>
+              </div>
+              <p class="study-example-hint">처음이라면 예시를 눌러 입력을 채운 뒤 바로 「AI로 분석」을 눌러 보세요.</p>
             </div>
 
             <div class="study-control-group">
@@ -459,6 +507,14 @@
                 <input id="etaRange" type="range" min="-2.50" max="2.50" value="0.55" step="0.01" />
                 <output id="etaOut">0.55</output>
               </label>
+              <div class="study-chip-row" aria-label="β 자주 쓰는 값">
+                <span class="study-chip-label">β 프리셋</span>
+                <button type="button" class="study-chip" data-beta="0.5">0.5</button>
+                <button type="button" class="study-chip" data-beta="0.6">0.6</button>
+                <button type="button" class="study-chip" data-beta="0.8">0.8</button>
+                <button type="button" class="study-chip" data-beta="0.9">0.9</button>
+                <button type="button" class="study-chip" data-beta="-0.6">−0.6</button>
+              </div>
             </div>
 
             <div class="study-control-group">
@@ -1252,6 +1308,49 @@
             gate.innerHTML = "<strong>로그인 후 사용할 수 있습니다.</strong><p>AI 분석 기능은 로그인한 베타 사용자에게만 제공됩니다.</p><p><a class=\"study-gate-btn\" href=\"/login.html\">로그인</a></p>";
           }
         }
+
+        // 예시로 채우기: 대표 시나리오 텍스트 + 어울리는 렌더링 모드를 입력에 채운다(생성/캔버스 로직은 그대로).
+        var STUDY_EXAMPLES = {
+          boost: {
+            mode: "boost",
+            text: "정지계 S에서 길이 L₀=4 광초인 막대가 정지해 있다. 이 막대를 β=0.6으로 움직이는 관찰자 S'가 보면 길이가 어떻게 수축하는지, 원본 막대와 로런츠 변환된 막대를 함께 비교해 그려줘."
+          },
+          twin: {
+            mode: "skew",
+            text: "쌍둥이 역설: 지구에 남은 쌍둥이 A와 β=0.8로 떠났다가 되돌아오는 쌍둥이 B의 세계선을 민코프스키 평면에 그려줘. 출발·반환·재회 사건을 표시하고 두 사람이 겪는 고유시간 차이를 보여줘."
+          },
+          signal: {
+            mode: "skew",
+            text: "우주선 S'가 지구계 S에 대해 β=0.6으로 움직인다. 원점에서 빛 신호를 보내고 x=3 광초 지점의 사건 A를 함께 표시해줘. S와 S'에서 동시성이 어떻게 달라지는지 기울어진 좌표축으로 보여줘."
+          }
+        };
+        function selectRenderMode(mode) {
+          var radio = document.querySelector('input[name="renderMode"][value="' + mode + '"]');
+          if (!radio || radio.checked) return;
+          radio.checked = true;
+          renderMode = mode;
+          render();
+        }
+        function applyExample(key) {
+          var ex = STUDY_EXAMPLES[key];
+          if (!ex) return;
+          var descEl = document.getElementById("description");
+          descEl.value = ex.text;
+          if (ex.mode) selectRenderMode(ex.mode);
+          setMessage("예시를 채웠습니다. 「AI로 분석」을 누르면 도식을 만들어 줍니다.");
+        }
+        document.querySelectorAll(".study-chip[data-example]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            applyExample(btn.getAttribute("data-example"));
+          });
+        });
+        // β 프리셋: 슬라이더 값만 바꾸고 기존 syncFromBeta로 η·도식을 함께 맞춘다.
+        document.querySelectorAll(".study-chip[data-beta]").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            betaRange.value = fmt(clamp(Number(btn.getAttribute("data-beta")), -0.95, 0.95));
+            syncFromBeta();
+          });
+        });
 
         betaRange.addEventListener("input", syncFromBeta);
         etaRange.addEventListener("input", syncFromEta);

@@ -80,6 +80,9 @@
       .labfile .fspring { flex:1; }
       .labfile a.dl, .labfile button.fview { font-size:12px; border:1px solid var(--border-strong); background:var(--surface); color:var(--accent-text); border-radius:7px; padding:4px 10px; cursor:pointer; text-decoration:none; }
       .labfile a.dl:hover, .labfile button.fview:hover { background:var(--accent-soft); }
+      /* 비로그인 사용자에게 보여줄 통일된 로그인 안내 */
+      .cm-login-note { color: var(--text-muted); font-size: 13px; line-height: 1.6; }
+      .cm-login-note a { color: var(--accent-text); font-weight: var(--fw-semibold); }
     </style>
   </head>
   <body>
@@ -121,9 +124,7 @@
             <span id="postErr" class="err"></span>
           </div>
         </div>
-        <div id="loginHint" class="cmcard muted" style="display:none">
-          글을 쓰려면 <a href="/">로그인</a>이 필요합니다. (읽기는 누구나 가능)
-        </div>
+        <div id="loginHint" class="cmcard" style="display:none"></div>
 
         <div id="postList" aria-live="polite" aria-busy="true"><div class="cmempty"><strong>게시글을 불러오는 중입니다.</strong>잠시만 기다려 주세요.</div></div>
       </section>
@@ -147,6 +148,22 @@
       }
       function fmtDate(s) {
         try { return new Date(s).toLocaleString("ko-KR", { dateStyle: "short", timeStyle: "short" }); } catch (e) { return ""; }
+      }
+
+      // ── 비로그인 안내 통일: 로그인 후 이 페이지로 돌아오도록 returnTo를 붙인다 ──
+      function loginUrl() {
+        try { return "/?returnTo=" + encodeURIComponent(location.pathname + location.search); } catch (e) { return "/"; }
+      }
+      // 인라인 안내(글쓰기/댓글 영역). action 예: "글을 쓰려면", "댓글을 쓰려면"
+      function loginNoteHtml(action) {
+        return '<span class="cm-login-note">' + esc(action) +
+          ' <a href="' + loginUrl() + '">로그인</a>이 필요합니다. <span class="muted">(읽기는 누구나 가능)</span></span>';
+      }
+      // 즉시 동작(공감 등)에서 클릭했을 때: 안내 후 원하면 로그인 페이지로 이동
+      function promptLogin(action) {
+        if (confirm((action || "이 기능을 사용하려면") + " 로그인이 필요합니다.\n로그인 페이지로 이동할까요?")) {
+          location.href = loginUrl();
+        }
       }
       function showTab(t) {
         document.getElementById("paneSuggest").style.display = t === "suggest" ? "" : "none";
@@ -307,7 +324,9 @@
           if (r.ok) { const d = await r.json(); me = { id: d.id, isAdmin: !!d.isAdmin, name: d.user }; }
         } catch (e) {}
         document.getElementById("writeBox").style.display = me ? "" : "none";
-        document.getElementById("loginHint").style.display = me ? "none" : "";
+        const hint = document.getElementById("loginHint");
+        hint.style.display = me ? "none" : "";
+        if (!me) hint.innerHTML = loginNoteHtml("글을 쓰려면");
       }
 
       async function loadPosts() {
@@ -354,7 +373,7 @@
       }
 
       async function votePost(id, card) {
-        if (!me) { alert("로그인이 필요합니다."); return; }
+        if (!me) { promptLogin("공감하려면"); return; }
         try {
           const r = await fetch(`/api/community/posts/${id}/vote`, { method: "POST" });
           const d = await r.json();
@@ -390,7 +409,7 @@
             }).join("") +
             (me
               ? `<div class="cmrow"><input class="cminput cm-input" maxlength="2000" placeholder="댓글 달기" aria-label="댓글 달기" style="flex:1" /><button class="btn cm-send">등록</button></div><span class="err cm-err"></span>`
-              : `<p class="muted" style="margin:6px 0 0">댓글을 쓰려면 <a href="/">로그인</a>하세요.</p>`);
+              : `<p style="margin:6px 0 0">${loginNoteHtml("댓글을 쓰려면")}</p>`);
           box.querySelectorAll(".del-cm").forEach((b) =>
             b.addEventListener("click", async () => {
               if (!confirm("댓글을 삭제할까요?")) return;

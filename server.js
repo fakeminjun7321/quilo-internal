@@ -889,26 +889,6 @@ function getSessionUser(req) {
   return req.session && req.session.userInfo ? req.session.userInfo : null;
 }
 
-// 학교 이메일 1회 인증 면제 목록 — 이 이메일들은 인증 링크 없이 '인증됨'으로 통과 처리한다.
-// env VERIFY_EXEMPT_EMAILS(쉼표구분)로 추가/대체 가능.
-// ⚠ 개인 이메일(PII)이 들어 있으니 공개 저장소로 내보낼 때 스크럽할 것.
-const VERIFY_EXEMPT_EMAILS = new Set(
-  (process.env.VERIFY_EXEMPT_EMAILS || "ts250002@ts.hs.kr")
-    .split(",")
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean),
-);
-function isVerifyExemptEmail(email) {
-  return !!email && VERIFY_EXEMPT_EMAILS.has(String(email).trim().toLowerCase());
-}
-// 유저 row(확정 email 또는 대기 중 email_verify_email)가 면제 대상인지.
-function userIsVerifyExempt(row) {
-  return (
-    !!row &&
-    (isVerifyExemptEmail(row.email) || isVerifyExemptEmail(row.email_verify_email))
-  );
-}
-
 async function refreshSessionUser(req, { failClosed = false } = {}) {
   const u = getSessionUser(req);
   if (!u || !u.id || !supa.isEnabled()) return u;
@@ -926,7 +906,7 @@ async function refreshSessionUser(req, { failClosed = false } = {}) {
       isAdmin: !!fresh.is_admin,
       unlimited: !!fresh.unlimited,
       restrictedModel: fresh.restricted_model || null,
-      emailVerified: !!fresh.email_verified || userIsVerifyExempt(fresh),
+      emailVerified: !!fresh.email_verified,
       approved: !!fresh.approved,
     };
     return req.session.userInfo;
@@ -1271,7 +1251,7 @@ app.post("/api/login", async (req, res) => {
       isAdmin: !!user.is_admin,
       unlimited: !!user.unlimited,
       restrictedModel: user.restricted_model || null,
-      emailVerified: !!user.email_verified || userIsVerifyExempt(user),
+      emailVerified: !!user.email_verified,
       approved: !!user.approved,
     };
     // 로그인 유지: 체크 시 30일 지속 쿠키, 아니면 브라우저/앱 세션 한정.
@@ -1376,9 +1356,7 @@ app.post("/api/signup", async (req, res) => {
         error: "이 이메일은 이미 인증된 계정이 있습니다.",
       });
     }
-    // 면제 이메일(예: 운영자 본인 학교 이메일)은 1회 인증 없이 즉시 '인증됨' 처리.
-    const exemptSignup = isVerifyExemptEmail(emailCheck.email);
-    // 신규 계정: 크레딧 0, 미승인. (면제 이메일이면 이메일 인증은 통과, 관리자 승인은 별도.)
+    // 신규 계정: 크레딧 0, 미인증·미승인. 보고서 생성은 이메일 인증 + 관리자 승인 후 가능.
     const user = await supa.createUser({
       name,
       username: uname,
@@ -1387,7 +1365,7 @@ app.post("/api/signup", async (req, res) => {
       resultCreditsUsd: 0,
       isAdmin: false,
       approved: false,
-      emailVerified: exemptSignup,
+      emailVerified: false,
       studentId: String(studentId || "").trim().slice(0, 30),
     });
     req.session.userInfo = {
@@ -1398,35 +1376,30 @@ app.post("/api/signup", async (req, res) => {
       isAdmin: false,
       unlimited: false,
       restrictedModel: null,
-      emailVerified: exemptSignup,
+      emailVerified: false,
       approved: false,
     };
 
-    // 1단계: 인증 메일 발송. 면제 이메일은 인증 없이 통과하므로 발송을 건너뛴다.
+    // 1단계: 인증 메일 발송.
     let emailSent = false;
     let emailReason = "";
-    if (exemptSignup) {
-      emailReason = "exempt";
-    } else {
-      try {
-        const { result } = await issueVerificationEmail(req, user, emailCheck.email);
-        emailSent = !!result.sent;
-        if (!result.sent) emailReason = result.reason || "";
-      } catch (e) {
-        console.warn("[signup] verification email failed:", e.message);
-        emailReason = "send_error";
-      }
+    try {
+      const { result } = await issueVerificationEmail(req, user, emailCheck.email);
+      emailSent = !!result.sent;
+      if (!result.sent) emailReason = result.reason || "";
+    } catch (e) {
+      console.warn("[signup] verification email failed:", e.message);
+      emailReason = "send_error";
     }
     console.log(
-      `[signup] ${user.username} (${user.name}) email=${emailCheck.email} sent=${emailSent} exempt=${exemptSignup}`,
+      `[signup] ${user.username} (${user.name}) email=${emailCheck.email} sent=${emailSent}`,
     );
     return res.json({
       ok: true,
       user: user.name,
       username: user.username,
       isAdmin: false,
-      emailVerified: exemptSignup,
-      pendingEmail: exemptSignup ? "" : emailCheck.email,
+      pendingEmail: emailCheck.email,
       emailSent,
       emailReason: process.env.NODE_ENV === "production" ? "" : emailReason,
     });
@@ -1462,11 +1435,6 @@ app.post("/api/verify-email/request", requireAuth, async (req, res) => {
   const emailCheck = normalizeSchoolEmail(req.body && req.body.email);
   if (!emailCheck.ok) {
     return res.status(400).json({ error: emailCheck.reason });
-  }
-  // 면제 이메일은 인증 링크 없이 통과 — 세션을 인증됨으로 표시하고 바로 응답.
-  if (isVerifyExemptEmail(emailCheck.email)) {
-    if (req.session && req.session.userInfo) req.session.userInfo.emailVerified = true;
-    return res.json({ ok: true, alreadyVerified: true, exempt: true, email: emailCheck.email });
   }
   try {
     const fresh = await supa.findUserById(u.id);
@@ -1556,7 +1524,7 @@ app.get("/api/me", async (req, res) => {
         username = freshUser.username || freshUser.name || username;
         email = String(freshUser.email || "");
         pendingEmail = String(freshUser.email_verify_email || "");
-        emailVerified = !!freshUser.email_verified || userIsVerifyExempt(freshUser);
+        emailVerified = !!freshUser.email_verified;
         approved = !!freshUser.approved;
         // 세션에도 최신 인증 상태 반영(이후 게이트 판단의 stale 방지).
         req.session.userInfo.emailVerified = emailVerified;
@@ -3176,9 +3144,9 @@ app.post(
     // 권한 판단은 fresh row 기준(없으면 세션값). Supabase 미설정 시엔 게이트를 적용하지
     // 않는다(로컬/오프라인 점검 — 그 경우 generate 자체가 크레딧 검증에서 막힘).
     if (!effectiveIsAdmin && supa.isEnabled()) {
-      const evVerified =
-        (freshUser ? !!freshUser.email_verified : !!userInfo.emailVerified) ||
-        userIsVerifyExempt(freshUser);
+      const evVerified = freshUser
+        ? !!freshUser.email_verified
+        : !!userInfo.emailVerified;
       const evApproved = freshUser ? !!freshUser.approved : !!userInfo.approved;
       if (!(evVerified && evApproved)) {
         return res.status(403).json({

@@ -27,7 +27,10 @@
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js" id="MathJax-script" async></script>
     <style>
       * { box-sizing: border-box; }
-      body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Apple SD Gothic Neo", "맑은 고딕", sans-serif; background: var(--bg); color: var(--text); }
+      /* style.css 는 body 를 가운데 1180px 컬럼으로 잡지만, 이 페이지는 전체폭 헤더 +
+         .wrap 가운데 정렬 구조라 body 폭/패딩을 초기화한다(안 그러면 좌측 쏠림). */
+      html, body { width: 100%; max-width: 100%; }
+      body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Apple SD Gothic Neo", "맑은 고딕", sans-serif; background: var(--bg); color: var(--text); }
       header { display: flex; align-items: center; gap: 14px; padding: 14px 20px; background: var(--surface); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 5; }
       header .brand { font-weight: var(--fw-heavy); font-size: 17px; text-decoration: none; color: var(--text); display: flex; align-items: center; gap: 8px; }
       header .brand .qmark { width: 26px; height: 26px; border-radius: var(--radius-sm); background: var(--accent); color: var(--on-accent); display: grid; place-items: center; font-weight: var(--fw-heavy); }

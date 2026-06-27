@@ -761,11 +761,11 @@ function isFableModel(model) {
 // PDF 통번역은 페이지 수에 비례해 오래 걸릴 수 있어(다묶음 번역+레이아웃 삽입)
 // 별도의 넉넉한 타임아웃을 둔다. 비동기 job+SSE라 HTTP 요청 길이 제한과 무관.
 const PDF_TRANSLATE_TIMEOUT_MS = parseInt(
-  process.env.PDF_TRANSLATE_TIMEOUT_MS || String(20 * 60 * 1000),
+  process.env.PDF_TRANSLATE_TIMEOUT_MS || String(45 * 60 * 1000),
   10,
 );
 const PDF_TRANSLATE_FABLE_TIMEOUT_MS = parseInt(
-  process.env.PDF_TRANSLATE_FABLE_TIMEOUT_MS || String(35 * 60 * 1000),
+  process.env.PDF_TRANSLATE_FABLE_TIMEOUT_MS || String(60 * 60 * 1000),
   10,
 );
 
@@ -3691,7 +3691,7 @@ function estimatePdfTranslation(meta, mode, modelId) {
   const charTok = chars / 3.5;
   const ocrMax = parseInt(process.env.PDF_OCR_MAX_PAGES || "30", 10);
   // 텍스트 PDF 상한. 이 이내면 빠른 번역은 50쪽씩 구간 분할·병렬 처리한다(초과만 거부).
-  const maxPages = parseInt(process.env.PDF_TRANSLATE_MAX_PAGES || "300", 10);
+  const maxPages = parseInt(process.env.PDF_TRANSLATE_MAX_PAGES || "700", 10);
   const chunkPages = Math.max(
     1,
     parseInt(process.env.PDF_TRANSLATE_CHUNK_PAGES || "50", 10),
@@ -4082,7 +4082,7 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) 
     });
     // 상한 이내면 in-place 경로가 자동으로 50쪽씩 구간 분할·병렬 번역 후 합친다
     // (translate.js translatePdf). 상한을 넘는 초대형 문서만 거부한다.
-    const maxTextPages = parseInt(process.env.PDF_TRANSLATE_MAX_PAGES || "300", 10);
+    const maxTextPages = parseInt(process.env.PDF_TRANSLATE_MAX_PAGES || "700", 10);
     if (!routing.scanned && routing.pageCount > maxTextPages) {
       throw new Error(
         `페이지가 너무 많습니다 (${routing.pageCount}쪽 > 상한 ${maxTextPages}쪽). 파일을 나눠서 시도하세요.`,

@@ -311,7 +311,7 @@
           const isOpus = /opus/i.test(modelId || ""); // Opus 만 느린 티어(GPT·Sonnet 은 빠름)
           const charTok = chars / 3.5;
           const ocrMax = 30;
-          const maxPages = 300;
+          const maxPages = 700;
           const chunkPages = 50;
           const tooManyPages = !scanned && pages > maxPages;
           let inTok = 0,

@@ -2220,6 +2220,26 @@ def cmd_figures(pdf_path, out_dir, zoom=3.0, max_figures=80):
     doc.close()
 
 
+def cmd_merge(out_path, *parts):
+    """여러 sub-PDF 를 인자 순서대로 이어붙여 하나의 PDF 로 저장한다.
+    대용량 PDF 를 페이지 구간으로 나눠 병렬 번역한 뒤 결과를 원래 순서로 합치는 용도.
+    insert_pdf 는 텍스트·글꼴·이미지·벡터 그래픽을 그대로 가져오므로 번역본 레이아웃이 보존된다."""
+    if not parts:
+        raise ValueError("merge: 합칠 PDF 경로가 없습니다.")
+    dst = fitz.open()
+    total = 0
+    try:
+        for p in parts:
+            src = fitz.open(p)
+            dst.insert_pdf(src)
+            total += len(src)
+            src.close()
+        dst.save(out_path, garbage=3, deflate=True)
+    finally:
+        dst.close()
+    write_json_response({"ok": True, "page_count": total, "parts": len(parts)})
+
+
 def main():
     if len(sys.argv) < 2:
         sys.stderr.write("usage: translate_pdf.py extract|render ...\n")
@@ -2241,6 +2261,9 @@ def main():
         elif mode == "figures":
             # figures <pdf> <out_dir> [zoom] [max_figures] — 재조판 그림 복원용 크롭 추출
             cmd_figures(*sys.argv[2:6])
+        elif mode == "merge":
+            # merge <out_pdf> <part1> <part2> ... — 병렬 번역한 구간들을 순서대로 합치기
+            cmd_merge(sys.argv[2], *sys.argv[3:])
         else:
             sys.stderr.write(f"unknown mode: {mode}\n")
             sys.exit(2)

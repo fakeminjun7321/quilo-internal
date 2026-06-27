@@ -3690,9 +3690,16 @@ function estimatePdfTranslation(meta, mode, modelId) {
   const isOpus = /opus/i.test(modelId || ""); // Opus 만 느린 티어(GPT·Sonnet 은 빠름)
   const charTok = chars / 3.5;
   const ocrMax = parseInt(process.env.PDF_OCR_MAX_PAGES || "30", 10);
-  // 텍스트 PDF(in-place·재조판)는 페이지 상한이 있어 초과 시 거부된다.
-  const maxPages = parseInt(process.env.PDF_TRANSLATE_MAX_PAGES || "80", 10);
+  // 텍스트 PDF 상한. 이 이내면 빠른 번역은 50쪽씩 구간 분할·병렬 처리한다(초과만 거부).
+  const maxPages = parseInt(process.env.PDF_TRANSLATE_MAX_PAGES || "300", 10);
+  const chunkPages = Math.max(
+    1,
+    parseInt(process.env.PDF_TRANSLATE_CHUNK_PAGES || "50", 10),
+  );
   const tooManyPages = !scanned && pages > maxPages;
+  // 빠른 번역(in-place) 경로에서 분할 처리되는지(미리 안내용).
+  const chunked = !scanned && resolvedMode === "inplace" && pages > chunkPages;
+  const chunks = chunked ? Math.ceil(pages / chunkPages) : 1;
 
   let inTok = 0;
   let outTok = 0;
@@ -3740,6 +3747,9 @@ function estimatePdfTranslation(meta, mode, modelId) {
     truncated,
     tooManyPages,
     maxPages,
+    chunked,
+    chunks,
+    chunkPages,
     costUsd: { lo: usd * 0.7, hi: usd * 1.45 },
     seconds: { lo: Math.round(seconds * 0.8), hi: Math.round(seconds * 1.55) },
   };
@@ -4070,7 +4080,9 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) 
       signal: ac.signal,
       onProgress,
     });
-    const maxTextPages = parseInt(process.env.PDF_TRANSLATE_MAX_PAGES || "80", 10);
+    // 상한 이내면 in-place 경로가 자동으로 50쪽씩 구간 분할·병렬 번역 후 합친다
+    // (translate.js translatePdf). 상한을 넘는 초대형 문서만 거부한다.
+    const maxTextPages = parseInt(process.env.PDF_TRANSLATE_MAX_PAGES || "300", 10);
     if (!routing.scanned && routing.pageCount > maxTextPages) {
       throw new Error(
         `페이지가 너무 많습니다 (${routing.pageCount}쪽 > 상한 ${maxTextPages}쪽). 파일을 나눠서 시도하세요.`,
@@ -4191,6 +4203,7 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) 
         result = await translatePdf({
           pdfBuffer,
           model,
+          pageCount: routing.pageCount, // 재분석 생략 — 큰 문서면 내부에서 구간 분할·병합
           signal: ac.signal,
           onProgress,
         });
@@ -4199,6 +4212,7 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) 
       result = await translatePdf({
         pdfBuffer,
         model,
+        pageCount: routing.pageCount, // 재분석 생략 — 큰 문서면 내부에서 구간 분할·병합
         signal: ac.signal,
         onProgress,
       });

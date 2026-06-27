@@ -200,6 +200,7 @@
           const m = e.mode === "retypeset" ? (e.scanned ? "스캔 OCR 재조판" : "재조판") : "빠른 번역";
           let s = `<b>${e.pages}쪽</b> · 처리방식 <b>${m}</b> · 예상 ${Math.round(e.seconds.lo)}~${Math.round(e.seconds.hi)}초`;
           if (e.tooManyPages) s += ` <span class="warn">· ${e.maxPages}쪽 초과 — 텍스트 PDF 상한</span>`;
+          if (e.chunked) s += ` <span style="opacity:.7">· ${e.chunkPages}쪽씩 ${e.chunks}구간 병렬</span>`;
           if (e.truncated) s += ` <span class="warn">· 분량 많아 앞부분 위주</span>`;
           $("est").innerHTML = s;
         } catch { $("est").textContent = ""; }

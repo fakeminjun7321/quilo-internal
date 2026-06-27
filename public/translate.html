@@ -311,7 +311,8 @@
           const isOpus = /opus/i.test(modelId || ""); // Opus 만 느린 티어(GPT·Sonnet 은 빠름)
           const charTok = chars / 3.5;
           const ocrMax = 30;
-          const maxPages = 80;
+          const maxPages = 300;
+          const chunkPages = 50;
           const tooManyPages = !scanned && pages > maxPages;
           let inTok = 0,
             outTok = 0,
@@ -344,6 +345,7 @@
             (inTok / 1e6) * p.input +
             (outTok / 1e6) * p.output +
             (cacheRead / 1e6) * p.cacheRead;
+          const chunked = !scanned && rmode === "inplace" && pages > chunkPages;
           return {
             mode: rmode,
             scanned,
@@ -352,6 +354,9 @@
             truncated,
             tooManyPages,
             maxPages,
+            chunked,
+            chunks: chunked ? Math.ceil(pages / chunkPages) : 1,
+            chunkPages,
             costUsd: { lo: usd * 0.7, hi: usd * 1.45 },
             seconds: {
               lo: Math.round(seconds * 0.8),
@@ -378,6 +383,9 @@
             `📄 <b>${e.pages}쪽</b> · 변환 방식 <b>${modeLabel}</b>` +
             (e.truncated
               ? ` <span style="color:var(--warning)">(앞 30쪽만 처리)</span>`
+              : ``) +
+            (e.chunked
+              ? ` <span style="opacity:.7">· ${e.chunkPages}쪽씩 ${e.chunks}개 구간 병렬 번역 후 합침</span>`
               : ``) +
             `<br>⏱ 예상 시간 <b>약 ${fmtDur(e.seconds.lo)} ~ ${fmtDur(e.seconds.hi)}</b>` +
             ` · 💰 예상 비용 <b>약 ₩${krwLo.toLocaleString()} ~ ₩${krwHi.toLocaleString()}</b>` +

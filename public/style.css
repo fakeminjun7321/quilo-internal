@@ -456,6 +456,17 @@ body[data-auth="out"] #acctDd {
   background: var(--accent-soft);
 }
 
+/* 잔액 부족(기본 모델 1건도 못 만듦) — 경고색으로 강조 */
+.balance-box.is-low {
+  border-color: var(--warning);
+  background: var(--warning-soft);
+}
+
+.balance-box.is-low span {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
 .balance-box strong {
   margin-right: 4px;
   color: var(--text);
@@ -1059,6 +1070,37 @@ form label textarea {
   margin-top: 8px;
 }
 
+/* 메모 도움말 묶음 토글(가이드·프롬프트복사·메모파일 첨부) */
+.memo-help {
+  margin-top: 8px;
+}
+
+.memo-help > .memo-help-summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--accent-text);
+  user-select: none;
+  list-style: none;
+}
+
+.memo-help > .memo-help-summary::-webkit-details-marker {
+  display: none;
+}
+
+.memo-help > .memo-help-summary::before {
+  content: "▸ ";
+  display: inline-block;
+}
+
+.memo-help[open] > .memo-help-summary::before {
+  content: "▾ ";
+}
+
+/* 묶음 내부 가이드 details는 한 번 더 접지 않고 바로 펼쳐 보이게 */
+.memo-help > .memo-guide {
+  margin-top: 8px;
+}
+
 /* policy check */
 .policy-check {
   padding: 14px 16px;
@@ -1176,6 +1218,39 @@ form label textarea {
 }
 
 .dropzone.is-filled .dropzone-sub {
+  display: none;
+}
+
+.dropzone-max {
+  white-space: nowrap;
+}
+
+/* 합계 용량 초과 인라인 경고(드롭존 아래) */
+.dropzone-warn {
+  margin-top: 6px;
+  padding: 7px 11px;
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-sm);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.dropzone-warn[hidden] {
+  display: none;
+}
+
+/* .docx에서 한글 전용 글꼴 선택 시 자동 변경 안내 */
+.font-fallback-note {
+  display: block;
+  margin-top: 5px;
+  color: var(--warning);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.font-fallback-note[hidden] {
   display: none;
 }
 
@@ -1582,6 +1657,38 @@ html[data-theme="dark"] .theme-toggle .theme-icon-light {
   text-decoration: none;
 }
 
+/* 다운로드 아래 보관 안내 + 이어서 만들기 CTA — 위 #resultArea a 규칙과 무관 */
+.result-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 10px;
+}
+
+.result-keep {
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+
+.result-next-cta {
+  min-height: 36px;
+  padding: 7px 14px;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--accent-text);
+  font-size: 13px;
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+}
+
+.result-next-cta:hover {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+}
+
 @media (max-width: 760px) {
   .workspace-summary,
   .report-toolbar.has-balance {
@@ -1836,6 +1943,49 @@ html[data-theme="dark"] .theme-toggle .theme-icon-light {
   margin: 0;
   border-left-color: var(--accent);
   background: var(--accent-soft);
+}
+
+/* 빈 상태 안내(보고서 종류 미선택) — 경고색 대신 안내(accent) 톤 */
+.choose-prompt {
+  border-left-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.choose-prompt-quick {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+
+.choose-prompt-label {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.choose-prompt-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.choose-prompt-link {
+  min-height: 34px;
+  padding: 6px 13px;
+  border: 1px solid var(--accent-border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--accent-text);
+  font-size: 13px;
+  font-weight: var(--fw-semibold);
+  cursor: pointer;
+}
+
+.choose-prompt-link:hover {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
 }
 
 /* ============================================================ tables (admin) */

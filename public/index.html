@@ -317,6 +317,18 @@
       </div>
     </div>
 
+    <div id="choosePrompt" class="notice choose-prompt">
+      <strong>위에서 보고서 종류를 고르면</strong> 작성 폼과 필요 파일 체크리스트가 나타납니다.
+      <div class="choose-prompt-quick">
+        <span class="choose-prompt-label">자주 쓰는 3종 바로가기</span>
+        <div class="choose-prompt-links">
+          <button type="button" class="choose-prompt-link" data-choose-type="chem-pre">화학 사전보고서</button>
+          <button type="button" class="choose-prompt-link" data-choose-type="chem-result">화학 결과보고서</button>
+          <button type="button" class="choose-prompt-link" data-choose-type="phys-result">물리 결과보고서</button>
+        </div>
+      </div>
+    </div>
+
     <div id="comingSoon" class="notice" hidden>
       이 보고서 종류는 아직 준비 중입니다.<br>
       <small>곧 사용 가능해질 예정입니다.</small>
@@ -398,12 +410,12 @@
           </div>
           <div class="field">
             <label><span class="field-label">실험 온도 (°C)</span>
-              <input id="crTemp" name="temperature" type="number" step="0.1" placeholder="예: 22.5" />
+              <input id="crTemp" name="temperature" type="number" step="0.1" inputmode="decimal" placeholder="예: 22.5" />
             </label>
           </div>
           <div class="field">
             <label><span class="field-label">기압 (hPa)</span>
-              <input id="crPressure" name="pressure" type="number" step="0.1" placeholder="예: 1013.2" />
+              <input id="crPressure" name="pressure" type="number" step="0.1" inputmode="decimal" placeholder="예: 1013.2" />
             </label>
           </div>
         </div>
@@ -1627,12 +1639,12 @@
           </div>
           <div class="field">
             <label><span class="field-label">실험 온도 (°C, 선택)</span>
-              <input id="temperature" name="temperature" type="text" placeholder="22.5" />
+              <input id="temperature" name="temperature" type="text" inputmode="decimal" placeholder="22.5" />
             </label>
           </div>
           <div class="field">
             <label><span class="field-label">기압 (hPa, 선택)</span>
-              <input id="pressure" name="pressure" type="text" placeholder="1013.2" />
+              <input id="pressure" name="pressure" type="text" inputmode="decimal" placeholder="1013.2" />
             </label>
           </div>
         </div>
@@ -1939,7 +1951,7 @@
         <form id="profileForm" class="compact-form">
           <p>
             <label>학번:<br>
-              <input id="settingsStudentIdInput" type="text" maxlength="20" placeholder="예: 2402" autocomplete="off" />
+              <input id="settingsStudentIdInput" type="text" inputmode="numeric" maxlength="20" placeholder="예: 2402" autocomplete="off" />
             </label>
           </p>
           <p>

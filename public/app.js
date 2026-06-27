@@ -193,7 +193,8 @@ let currentStudentId = "";
         if (note) saveLocalStyleNote(note);
         var s = document.getElementById("settingsStyleNote");
         if (s && !s.value) s.value = note;
-        ["cpStyleNote", "crStyleNote", "prStyleNote", "piStyleNote"].forEach(function (id) {
+        // 모든 보고서 폼의 문체 메모 칸에 저장된 스타일 노트를 채운다(비어 있을 때만).
+        ["cpStyleNote", "crStyleNote", "prStyleNote", "piStyleNote", "miStyleNote", "frStyleNote"].forEach(function (id) {
           var el = document.getElementById(id);
           if (el && !el.value) el.value = note;
         });
@@ -636,18 +637,27 @@ let currentStudentId = "";
           }
           const credits = Math.max(0, Math.trunc(Number(b.credits) || 0));
           _balanceState = { known: true, credits, unlimited: !!b.unlimited, isAdmin: false };
-          document.getElementById("balCredits").textContent = b.unlimited
+          const balCreditsEl = document.getElementById("balCredits");
+          if (balCreditsEl) balCreditsEl.textContent = b.unlimited
             ? "무제한 (베타)"
             : `${credits} 크레딧`;
+          const balanceBoxEl = document.getElementById("balanceBox");
           // 모델별 환산: 잔액이 보고서 몇 건인지 직관적으로 (개편: Sonnet 2 / Opus·GPT-5.5 4 / GPT-5.4 1 / mini 무료)
           if (!b.unlimited) {
-            document.getElementById("balCredits").title =
-              `≈ Sonnet ${Math.floor(credits / 2)}건 · Opus/GPT-5.5 ${Math.floor(credits / 4)}건 · GPT-5.4 ${credits}건 · mini 무료`;
+            // 기본 모델(Opus) 1건당 크레딧으로 평이하게 환산. 무료 모델(mini)은 무제한.
+            const opusCost = getModelCredits("claude-opus-4-8") || 4;
+            const opusRuns = Math.floor(credits / opusCost);
+            if (balCreditsEl) balCreditsEl.title =
+              `≈ Sonnet ${Math.floor(credits / 2)}건 · Opus/GPT-5.5 ${opusRuns}건 · GPT-5.4 ${credits}건 · mini 무료`;
             const convEl = document.getElementById("balConvert");
             if (convEl) convEl.textContent =
-              `≈ Sonnet ${Math.floor(credits / 2)}건 · Opus ${Math.floor(credits / 4)}건 · GPT-5.4 ${credits}건`;
+              `기본(Opus)으로 약 ${opusRuns}건 · 무료 모델(GPT-5.4 mini)은 무제한`;
+            // 기본 모델 1건도 못 만들 잔액이면 경고색으로 표시(부족 인지).
+            if (balanceBoxEl) balanceBoxEl.classList.toggle("is-low", opusRuns < 1);
+          } else if (balanceBoxEl) {
+            balanceBoxEl.classList.remove("is-low");
           }
-          document.getElementById("balanceBox").style.display = "flex";
+          if (balanceBoxEl) balanceBoxEl.style.display = "flex";
           document.querySelector(".report-toolbar")?.classList.add("has-balance");
         } catch (_) {
           /* graceful: 잔액 박스 숨김 */
@@ -808,7 +818,7 @@ let currentStudentId = "";
               j.status === "running"
                 ? `<a href="#" data-bgreopen="${bgEsc(j.id)}" style="margin-left:auto;font-size:13px;white-space:nowrap">진행 보기</a>`
                 : `<span style="margin-left:auto;font-size:12px;opacity:.7">${bgEsc(j.error || "")}</span>`;
-            return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;border:1px solid var(--border,#e2e8f0);border-radius:8px;padding:10px 12px;margin-bottom:8px"><b style="font-size:13px">${label}</b><span style="font-size:12px;opacity:.75">${bgEsc(typeLabel)} · ${bgEsc(when)}</span>${right}</div>`;
+            return `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;border:1px solid var(--border,#e2e8f0);border-radius:8px;padding:10px 12px;margin-bottom:8px"><b style="font-size:13px">${bgEsc(label)}</b><span style="font-size:12px;opacity:.75">${bgEsc(typeLabel)} · ${bgEsc(when)}</span>${right}</div>`;
           })
           .join("");
         block.innerHTML = `<div style="font-weight:700;font-size:13px;margin:0 0 8px">🌙 백그라운드 작업</div>${rows}`;
@@ -1256,6 +1266,16 @@ let currentStudentId = "";
       // Default to today
       document.getElementById("date").value = new Date().toISOString().slice(0, 10);
 
+      // 모든 보고서 폼의 날짜 칸(type=date) 중 비어 있는 것을 오늘로 채운다.
+      // (free/phys-inquiry/math-inquiry 등 — 위 #date 및 종류 선택 시 보정과 별개로
+      //  로드 시점에 한 번 더 안전망. 이미 값이 있으면 그대로 둔다.)
+      try {
+        const _today = new Date().toISOString().slice(0, 10);
+        document.querySelectorAll('input[type="date"]').forEach((el) => {
+          if (el && !el.value) el.value = _today;
+        });
+      } catch (_) { /* 구형 브라우저 등: 무시 */ }
+
       // chem-pre 폼: 이름은 마지막 입력값을 localStorage에서 복원
       try {
         const cached = JSON.parse(localStorage.getItem("chemPreUserDefaults") || "{}");
@@ -1521,6 +1541,21 @@ let currentStudentId = "";
           updateReportTypeView({ scroll: true });
         }),
       );
+
+      // 빈 상태(#choosePrompt) '자주 쓰는 3종 바로가기' — 해당 종류 라디오를 클릭한다.
+      // 실제 라디오를 .click() 하므로 로그인 게이트·폼 전환 등 기존 동선을 그대로 탄다.
+      document.querySelectorAll("#choosePrompt [data-choose-type]").forEach((b) => {
+        b.addEventListener("click", () => {
+          const want = b.dataset.chooseType;
+          const radio =
+            want &&
+            document.querySelector('input[name="reportType"][value="' + want + '"]');
+          if (radio && !radio.disabled) {
+            try { radio.click(); } catch (_) { radio.checked = true; radio.dispatchEvent(new Event("change", { bubbles: true })); }
+          }
+        });
+      });
+
       updateReportTypeView();
 
       const form = document.getElementById("form");
@@ -1574,7 +1609,11 @@ let currentStudentId = "";
         .forEach((el) => el.addEventListener("change", updateFormMakerFontOptions));
       updateFormMakerFontOptions();
 
-      // 파일 입력 → 드롭존: 파일명 표시 + 드래그 상태.
+      // 업로드 한도(클라이언트 안내용). 서버 기본값(MAX_UPLOAD_MB, 기본 64MB)과 맞춘
+      // 보수적 상수 — 환경변수로 바뀔 수 있으니 '대략' 안내로만 쓴다(실검증은 서버).
+      const UPLOAD_MAX_FILE_MB = 64;
+
+      // 파일 입력 → 드롭존: 파일명 표시 + 드래그 상태 + 합계 용량 안내.
       // 네이티브 <input type=file>가 영역을 덮고 있어 클릭/드롭을 그대로 처리한다.
       function initDropzones() {
         document.querySelectorAll(".dropzone").forEach((dz) => {
@@ -1582,6 +1621,55 @@ let currentStudentId = "";
           if (!input || dz.dataset.dzInit) return;
           dz.dataset.dzInit = "1";
           const fileEl = dz.querySelector("[data-dz-file]");
+
+          // 허용 형식(.dropzone-sub) 옆에 '· 파일당 최대 NMB' 안내를 한 번만 덧붙인다.
+          try {
+            const subEl = dz.querySelector(".dropzone-sub");
+            if (subEl && !subEl.dataset.maxNote) {
+              subEl.dataset.maxNote = "1";
+              const cap = document.createElement("span");
+              cap.className = "dropzone-max";
+              cap.textContent = ` · 파일당 최대 ${UPLOAD_MAX_FILE_MB}MB`;
+              subEl.appendChild(cap);
+            }
+          } catch (_) { /* 안내 실패는 무시 */ }
+
+          // 합계 용량 초과 시 인라인 경고를 띄울 노드(드롭존 바깥 아래).
+          let warnEl = null;
+          const ensureWarn = () => {
+            if (warnEl) return warnEl;
+            warnEl = document.createElement("div");
+            warnEl.className = "dropzone-warn";
+            warnEl.hidden = true;
+            // file input이 드롭존 영역을 덮으므로 경고는 드롭존 '다음'에 삽입한다.
+            if (dz.parentNode) dz.parentNode.insertBefore(warnEl, dz.nextSibling);
+            return warnEl;
+          };
+          const renderSize = () => {
+            try {
+              const files = input.files;
+              let total = 0,
+                over = false;
+              const capBytes = UPLOAD_MAX_FILE_MB * 1024 * 1024;
+              if (files && files.length) {
+                for (let i = 0; i < files.length; i++) {
+                  total += files[i].size || 0;
+                  if ((files[i].size || 0) > capBytes) over = true;
+                }
+              }
+              // 단일 파일이 한도를 넘거나, 합계가 한도를 넘으면 안내.
+              const tooBig = over || total > capBytes;
+              if (tooBig) {
+                const w = ensureWarn();
+                w.textContent =
+                  `선택한 파일이 큽니다(합계 약 ${formatBytes(total)}). 파일당 ${UPLOAD_MAX_FILE_MB}MB를 넘으면 업로드가 거부됩니다 — 사진을 줄이거나 나눠 올리세요.`;
+                w.hidden = false;
+              } else if (warnEl) {
+                warnEl.hidden = true;
+              }
+            } catch (_) { /* 용량 계산 실패는 무시 */ }
+          };
+
           const render = () => {
             const files = input.files;
             if (files && files.length) {
@@ -1595,6 +1683,7 @@ let currentStudentId = "";
               dz.classList.remove("is-filled");
               if (fileEl) fileEl.textContent = "";
             }
+            renderSize();
           };
           input.addEventListener("change", render);
           ["dragenter", "dragover"].forEach((ev) =>
@@ -1607,6 +1696,63 @@ let currentStudentId = "";
         });
       }
       initDropzones();
+
+      // ── 메모/AI참고 섹션 경량화 ────────────────────────────────────────
+      // (1) 라벨에 '(선택 · 안 써도 됩니다)' 명시. (2) 가이드·프롬프트복사·메모파일
+      //     첨부를 한 개 '도움말' 토글로 묶어 평소엔 접어 둔다(기존 기능·name 유지).
+      // 모두 같은 form 안에서 옮기므로 제출 동작은 그대로다. 실패는 무시(방어적).
+      function slimMemoSections() {
+        document.querySelectorAll(".field.user-notes-field").forEach((field) => {
+          try {
+            if (field.dataset.memoSlim) return;
+            field.dataset.memoSlim = "1";
+
+            // (1) 라벨 문구를 친절하게.
+            const labelSpan = field.querySelector(".field-label");
+            if (labelSpan && /\(선택\)\s*$/.test(labelSpan.textContent)) {
+              labelSpan.textContent = labelSpan.textContent.replace(
+                /\(선택\)\s*$/,
+                "(선택 · 안 써도 됩니다)",
+              );
+            }
+
+            // (2) 도움말로 묶을 보조 요소 수집: 가이드 details + 메모파일 input
+            //     (+ '.md/.txt 첨부' 안내 small). 단순 블록(가이드·파일 없음)은 건너뛴다.
+            const guide = field.querySelector(":scope > .memo-guide");
+            const fileInput = field.querySelector(
+              ':scope > input[type="file"][name="userNotesFile"]',
+            );
+            if (!guide && !fileInput) return; // 가벼운 블록은 그대로 둔다.
+
+            const helpers = [];
+            if (guide) helpers.push(guide);
+            // 파일 첨부 안내 small(.md/.txt 언급)도 함께 접는다.
+            field.querySelectorAll(":scope > small").forEach((sm) => {
+              if (/\.md|\.txt|첨부/.test(sm.textContent || "")) helpers.push(sm);
+            });
+            if (fileInput) helpers.push(fileInput);
+            if (!helpers.length) return;
+
+            const details = document.createElement("details");
+            details.className = "memo-help";
+            const summary = document.createElement("summary");
+            summary.className = "memo-help-summary";
+            // 가이드 유무에 따라 문구를 맞춘다(없으면 첨부만 안내).
+            summary.textContent = guide
+              ? "도움말 · 작성 가이드 · 메모 파일 첨부"
+              : "도움말 · 메모 파일 첨부";
+            details.appendChild(summary);
+
+            // 첫 helper 위치에 details를 삽입한 뒤 helper들을 안으로 이동.
+            const anchor = helpers[0];
+            if (anchor && anchor.parentNode === field) {
+              field.insertBefore(details, anchor);
+              helpers.forEach((h) => details.appendChild(h));
+            }
+          } catch (_) { /* 한 블록 실패가 전체를 막지 않게 */ }
+        });
+      }
+      slimMemoSections();
 
       // 진행 중인 작업 추적용 (중지·재시도 방지)
       let currentJobId = null;
@@ -1790,12 +1936,14 @@ let currentStudentId = "";
           const pm = getPref(PM),
             ps = getPref(PS);
           if (pm) {
+            // 모든 보고서 폼의 모델 라디오(Claude/GPT 공통)에 기본 모델을 반영한다.
+            // 해당 모델 옵션이 그 폼에 없으면(예: GPT 전용/비활성) 자연히 건너뛴다.
             document
               .querySelectorAll(
-                'input[name="model"],input[name="crModel"],input[name="prModel"]',
+                'input[name="model"],input[name="crModel"],input[name="prModel"],input[name="frModel"],input[name="piModel"],input[name="miModel"]',
               )
               .forEach((r) => {
-                if (r.value === pm && !r.checked) {
+                if (r.value === pm && !r.checked && !r.disabled) {
                   r.checked = true;
                   r.dispatchEvent(new Event("change", { bubbles: true }));
                 }
@@ -2099,15 +2247,40 @@ let currentStudentId = "";
           .forEach((option) => {
             option.hidden = !allowHwpxOnly;
             option.disabled = !allowHwpxOnly;
+            // docx 모드에서 비활성 항목엔 '(한글 전용)' 꼬리표를 단다(원래 라벨 보존).
+            try {
+              if (!option.dataset.baseLabel) option.dataset.baseLabel = option.textContent;
+              option.textContent = allowHwpxOnly
+                ? option.dataset.baseLabel
+                : option.dataset.baseLabel + " (한글 전용)";
+            } catch (_) { /* 라벨 변경 실패는 무시 */ }
           });
         const selectedOption = fontSelect.options[fontSelect.selectedIndex];
+        let autoSwitched = false;
         if (
           !allowHwpxOnly &&
           selectedOption &&
           selectedOption.dataset.hwpxOnly === "true"
         ) {
           fontSelect.value = "malgun-gothic";
+          autoSwitched = true;
         }
+        // .docx인데 한글 전용 글꼴이 선택돼 있던 경우, 자동 변경 안내를 한 줄 띄운다.
+        try {
+          let note = fontSelect.parentNode &&
+            fontSelect.parentNode.querySelector(":scope > .font-fallback-note");
+          if (autoSwitched) {
+            if (!note) {
+              note = document.createElement("small");
+              note.className = "font-fallback-note";
+              if (fontSelect.parentNode) fontSelect.parentNode.appendChild(note);
+            }
+            note.textContent = "선택한 글꼴은 한글(.hwpx) 전용이라 .docx에서는 맑은 고딕으로 표시됩니다.";
+            note.hidden = false;
+          } else if (note) {
+            note.hidden = true;
+          }
+        } catch (_) { /* 안내 실패는 무시 */ }
       }
 
       function updateChemPreFontOptions() {
@@ -3646,6 +3819,41 @@ let currentStudentId = "";
           link.textContent = `${data.filename} 다운로드`;
           link.download = data.filename;
           resultArea.appendChild(link);
+
+          // 보관 안내 + (사전→결과) 이어서 만들기 CTA.
+          try {
+            // 마지막 제출 시 캡처한 종류(없으면 빈 문자열).
+            const genType =
+              (typeof _pendingGenPrefs === "object" && _pendingGenPrefs && _pendingGenPrefs.type) || "";
+            const meta = document.createElement("div");
+            meta.className = "result-meta";
+
+            const keep = document.createElement("small");
+            keep.className = "result-keep";
+            keep.textContent = "내 파일함에 24시간 보관됩니다 — 위 버튼으로 다시 받을 수 있어요.";
+            meta.appendChild(keep);
+
+            // 화학 사전보고서 → 화학 결과보고서로 자연스럽게 이어가는 동선.
+            if (genType === "chem-pre") {
+              const next = document.createElement("button");
+              next.type = "button";
+              next.className = "result-next-cta";
+              next.textContent = "이 사전보고서로 결과보고서 이어서 만들기 →";
+              next.addEventListener("click", () => {
+                const radio = document.querySelector(
+                  'input[name="reportType"][value="chem-result"]',
+                );
+                if (radio && !radio.disabled) {
+                  try { radio.click(); } catch (_) { radio.checked = true; radio.dispatchEvent(new Event("change", { bubbles: true })); }
+                  try {
+                    document.getElementById("reportTypeFieldset")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                  } catch (_) {}
+                }
+              });
+              meta.appendChild(next);
+            }
+            resultArea.appendChild(meta);
+          } catch (_) { /* CTA 실패는 무시 — 다운로드는 정상 */ }
 
           // 데이터·메모 이상 점검 결과(참고 사항) — 결과 아래에 표시
           if (Array.isArray(data.warnings) && data.warnings.length) {

@@ -29,6 +29,14 @@
       .top select { background:var(--panel2); color:var(--ink); border:1px solid var(--bd); border-radius:8px; font:inherit; font-size:12.5px; padding:6px 8px; max-width:180px; }
       .top a.nav { color:var(--mut); text-decoration:none; font-size:13px; }
       .top a.nav:hover { color:var(--ink); }
+      .balchip { font-size:11.5px; color:#9db1ff; background:#1a2238; border:1px solid #2a345a; border-radius:99px; padding:3px 10px; white-space:nowrap; }
+
+      /* ── 작업 복구 배너 (studio 자체) ── */
+      .restorebar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:8px 14px; background:#16213a; border-bottom:1px solid #2a345a; color:#cdd8f5; font-size:12.5px; flex:0 0 auto; }
+      .restorebar .rb-main { flex:1; min-width:160px; }
+      .restorebar button { background:var(--acc); color:#fff; border:0; border-radius:8px; padding:5px 12px; font:inherit; font-size:12px; cursor:pointer; }
+      .restorebar button.rb-dismiss { background:transparent; color:var(--mut); border:1px solid var(--bd); }
+      .restorebar button:focus-visible { outline:2px solid var(--acc); outline-offset:2px; }
 
       .body { flex:1; display:flex; min-height:0; }
       /* ── 채팅(왼쪽) ── */
@@ -125,9 +133,16 @@
         <a class="brand" href="/"><span class="q">Q</span> Studio <span class="beta">베타</span></a>
         <button class="tbtn" id="toStage" style="display:none">미리보기 ▸</button>
         <span class="sp"></span>
+        <span id="balChip" class="balchip" title="보유 크레딧" style="display:none"></span>
         <select id="model" title="AI 모델"></select>
         <button class="btn" id="openPublish" disabled>게시</button>
         <a class="nav" href="/create.html">갤러리</a>
+      </div>
+
+      <div id="restoreBar" class="restorebar" style="display:none" role="region" aria-label="이전 작업 복구">
+        <span class="rb-main">💾 저장된 작업이 있어요. <b id="restoreMeta"></b> 이어서 작업할까요?</span>
+        <button id="restoreYes">이어서 작업</button>
+        <button id="restoreNo" class="rb-dismiss">새로 시작</button>
       </div>
 
       <div class="body">
@@ -235,6 +250,26 @@
         $("model").innerHTML = list.map((x) => `<option value="${x}"${x === src.default ? " selected" : ""}>${modelLabel(x, forImage)}</option>`).join("");
       }
 
+      // ── 크레딧/보유 잔액 칩(자매 도구와 통일: /api/me/balance) ──
+      // 관리자=무제한, 일반=보유 크레딧 표시. 잔액 API 없거나 실패하면 칩을 조용히 숨긴다(보류).
+      function renderBalChip(bal) {
+        const chip = $("balChip"); if (!chip) return;
+        try {
+          if (bal && bal.isAdmin) { chip.textContent = "관리자 · 무제한"; chip.style.display = ""; return; }
+          if (bal && typeof bal.credits === "number") {
+            chip.textContent = (bal.unlimited ? "무제한" : "보유 크레딧 " + bal.credits);
+            chip.style.display = "";
+            return;
+          }
+        } catch (_) {}
+        chip.style.display = "none";
+      }
+      // 빌드 응답에 newBalance 가 있으면 그것으로(추가 호출 없이) 갱신, 없으면 잔액 API 재조회.
+      async function refreshBalance(newBalance) {
+        if (typeof newBalance === "number") { renderBalChip({ credits: newBalance }); return; }
+        try { renderBalChip(await api("/api/me/balance")); } catch (_) {}
+      }
+
       // 생성/업로드한 이미지를 그대로 게시할 수 있도록 한 장짜리 HTML 로 감싼다.
       function imageWrapper(url, title) {
         const t = esc(title || "이미지");
@@ -276,6 +311,7 @@
           if (!defaultTitle) defaultTitle = prompt.slice(0, 30);
           const info = (j.model || "") + (j.tier === "high" ? " · 고화질" : " · 표준") + (j.auto ? " · 자동" : "") + (j.fallback ? " · 폴백" : "");
           imagePostBubble(thinking, j.url, vi, "이미지를 만들었어요!", info);
+          refreshBalance(j.newBalance);
         } catch (e) {
           busy = false; updateSendUI();
           showErrorBubble(thinking, e, "이미지 생성 실패", () => genImagePost(prompt, true));
@@ -477,15 +513,100 @@
       // ── 버전(체크포인트) ──
       function pushVersion(summary, prompt) {
         versions.push({ project: clone(project), summary, prompt }); if (versions.length > 40) versions.shift();
-        curVer = versions.length - 1; updateUndo(); return curVer;
+        curVer = versions.length - 1; updateUndo(); ssMark(); return curVer;
       }
       function gotoVersion(i) {
         if (i < 0 || i >= versions.length) return;
         curVer = i; const snap = versions[i].project;
         project.files = clone(snap.files); project.entry = snap.entry; project.active = snap.active || snap.entry;
-        renderProjectUI(); markCurrentCheckpoint(); updateUndo();
+        renderProjectUI(); markCurrentCheckpoint(); updateUndo(); ssMark();
       }
       function updateUndo() { $("undoBtn").disabled = curVer <= 0; }
+
+      // ── 작업 상태 자동 저장 / 복구 (studio 자체, localStorage) ──
+      // 게시 흐름·생성 흐름은 건드리지 않고, 화면을 떠났다 와도 작업을 이어가게 한다.
+      const SS_KEY = "quilo_studio_session_v1";
+      const SS_VERSION_CAP = 12; // 저장 용량 보호: 마지막 버전만 보관
+      let ssDirty = false;        // 마지막 게시 이후 미저장(미게시) 변경 여부
+      let ssRestoring = false;    // 복구 적용 중에는 저장/표시 갱신 억제
+      let ssSaveT = null;
+      let ssDisabled = false;     // 로드 시 끊긴 작업 복구 배너를 띄울 때, 즉시 덮어쓰기 방지
+
+      function ssSnapshot() {
+        const vers = Array.isArray(versions) ? versions.slice(-SS_VERSION_CAP) : [];
+        const drop = Math.max(0, (versions ? versions.length : 0) - vers.length);
+        return {
+          ts: Date.now(),
+          title: defaultTitle || "",
+          mode,
+          project: { files: project.files || {}, entry: project.entry, active: project.active },
+          versions: vers,
+          curVer: Math.max(-1, curVer - drop),
+          chatTurns: Array.isArray(chatTurns) ? chatTurns.slice(-16) : [],
+          defaultTitle, lastSlug, forkedFrom,
+          dirty: ssDirty,
+        };
+      }
+      function ssWrite() {
+        if (ssRestoring || ssDisabled) return;
+        // 빈 작업(파일·대화 모두 없음)은 저장하지 않는다 — 떠날 때 빈 스냅샷이
+        // 아직 복구 안 한 기존 저장본을 덮어쓰는 사고를 막는다.
+        if (!projectHasFiles() && !(chatTurns && chatTurns.length)) return;
+        try { localStorage.setItem(SS_KEY, JSON.stringify(ssSnapshot())); } catch (_) { /* 용량 초과 등 무시 */ }
+      }
+      // 디바운스 저장: 빈번한 편집/대화 중에도 과도한 쓰기를 막는다.
+      function ssSave() { clearTimeout(ssSaveT); ssSaveT = setTimeout(ssWrite, 800); }
+      function ssClear() { try { localStorage.removeItem(SS_KEY); } catch (_) {} }
+      function ssRead() { try { return JSON.parse(localStorage.getItem(SS_KEY) || "null"); } catch (_) { return null; } }
+      function ssHasWork(s) { return !!(s && ((s.project && s.project.files && Object.keys(s.project.files).length) || (s.chatTurns && s.chatTurns.length))); }
+      // 변경 발생 표시(미게시 dirty + 디바운스 저장). 생성·편집·복구 등 상태가 바뀔 때 호출.
+      function ssMark() { if (ssRestoring) return; if (projectHasFiles()) ssDirty = true; ssSave(); }
+
+      function ssApply(s) {
+        ssRestoring = true;
+        try {
+          project.files = normFiles(s.project && s.project.files);
+          const names = Object.keys(project.files);
+          project.entry = (s.project && s.project.entry && project.files[s.project.entry] != null) ? s.project.entry : (names.find((n) => /\.html$/i.test(n)) || names[0] || "index.html");
+          project.active = (s.project && project.files[s.project.active] != null) ? s.project.active : project.entry;
+          versions = Array.isArray(s.versions) ? s.versions : [];
+          curVer = (typeof s.curVer === "number" && s.curVer < versions.length) ? s.curVer : versions.length - 1;
+          chatTurns = Array.isArray(s.chatTurns) ? s.chatTurns : [];
+          defaultTitle = s.defaultTitle || s.title || "";
+          lastSlug = s.lastSlug || ""; forkedFrom = s.forkedFrom || null;
+          ssDirty = !!s.dirty;
+          if (defaultTitle) { try { $("pTitle").value = defaultTitle; } catch (_) {} }
+          if (lastSlug) { try { $("pSlug").value = lastSlug; } catch (_) {} }
+          if (s.mode && s.mode !== mode) setMode(s.mode);
+          renderProjectUI(); updateUndo();
+          // 대화 내역 복원(요약 말풍선만 — 원문 그대로 다시 그릴 필요는 없다).
+          renderRestoredChat();
+        } finally { ssRestoring = false; }
+      }
+      // 복구된 대화를 가볍게 다시 렌더(체크포인트는 현재 버전만 표시).
+      function renderRestoredChat() {
+        const m = $("msgs"); if (!m) return;
+        m.innerHTML = "";
+        chatTurns.forEach((t) => {
+          if (t.role === "user") addMsg("user", esc(t.content || ""));
+          else addMsg("ai", esc(t.content || ""));
+        });
+        if (projectHasFiles() && curVer >= 0) {
+          addMsg("ai", `↩ 이전 작업을 복구했어요. <span class="ck cur" data-ver="${curVer}">✓ 버전 ${curVer + 1}</span> 이어서 수정하거나 게시하세요.`);
+          bindCheckpoints(); markCurrentCheckpoint();
+        }
+      }
+      function showRestoreBar(s) {
+        const meta = $("restoreMeta"); const bar = $("restoreBar");
+        if (!bar) return;
+        const when = s && s.ts ? new Date(s.ts) : null;
+        const nFiles = s && s.project && s.project.files ? Object.keys(s.project.files).length : 0;
+        const label = (s.title ? `"${s.title}" · ` : "") + (nFiles ? `파일 ${nFiles}개` : "대화 기록") + (when ? ` · ${when.getMonth() + 1}/${when.getDate()} ${String(when.getHours()).padStart(2, "0")}:${String(when.getMinutes()).padStart(2, "0")}` : "");
+        if (meta) meta.textContent = label;
+        bar.style.display = "flex";
+        $("restoreYes").onclick = () => { bar.style.display = "none"; ssDisabled = false; ssApply(s); };
+        $("restoreNo").onclick = () => { bar.style.display = "none"; ssDisabled = false; ssClear(); ssDirty = false; };
+      }
 
       // ── 파일 트리 + ZIP ──
       function langForFile(path) {
@@ -530,7 +651,13 @@
       // ── 빌드(채팅 전송) ──
       function updateSendUI() {
         $("sendBtn").disabled = busy; $("imgBtn").disabled = busy;
-        $("chips").querySelectorAll("button").forEach((b) => b.disabled = busy || !currentHtml);
+        // 빠른수정 칩: 비활성일 때 왜 못 쓰는지 title 힌트로 안내(먼저 결과물이 있어야 함).
+        $("chips").querySelectorAll("button").forEach((b) => {
+          const off = busy || !currentHtml;
+          b.disabled = off;
+          if (off) b.title = busy ? "작업이 끝나면 사용할 수 있어요." : "먼저 무언가 만들면, 이 칩으로 한 번에 수정할 수 있어요.";
+          else b.title = (b.textContent || "").trim() + " — 현재 결과물에 적용";
+        });
       }
       function addUserMsg(prompt) {
         const files = attached.length
@@ -585,6 +712,7 @@
           else if (j.html) setHtml(j.html);
           const vi = pushVersion(j.summary, prompt);
           aiSuccess(thinking, j.summary, vi, j.model, j.auto);
+          refreshBalance(j.newBalance);
           if (!defaultTitle) defaultTitle = prompt.slice(0, 30);
           attached = []; renderThumbs(); syncAttachStatus();
           $("msgs").scrollTop = $("msgs").scrollHeight;
@@ -647,6 +775,7 @@
           while (true) { const r = await reader.read(); if (r.done) break; acc += dec.decode(r.value, { stream: true }); bubble.textContent = acc; $("msgs").scrollTop = $("msgs").scrollHeight; }
           if (!acc) bubble.textContent = "(빈 응답)";
           chatTurns.push({ role: "user", content: prompt }, { role: "assistant", content: acc });
+          ssSave();
           attached = []; renderThumbs(); syncAttachStatus();
           // 안전망: 대화 응답에 완결된 HTML 이 통째로 들어왔으면(잘못 분류된 빌드 요청 등),
           // 코드 덤프로 끝내지 말고 '미리보기로 열기' 버튼을 띄워 실제 결과물로 변환.
@@ -776,6 +905,7 @@
               project.files[project.active] = editor.getValue();
               currentHtml = bundleProject(); renderPreview();
               $("openPublish").disabled = !projectHasFiles();
+              ssMark();
             }, 500); });
           } catch (e) { $("monacoHost").innerHTML = '<div class="placeholder">에디터 로드 실패: ' + esc(e.message || e) + "</div>"; }
         } else if (editor.getValue() !== code) {
@@ -843,6 +973,7 @@
             category: $("pCat").value, forkedFrom, overwrite: slug && slug === lastSlug,
           }) });
           lastSlug = j.slug; forkedFrom = null;
+          ssDirty = false; ssSave(); // 게시 성공 = 이 상태는 더 이상 미게시 변경 아님
           const full = location.origin + j.url;
           $("pSlug").value = j.slug;
           $("pubStatus").innerHTML = `✅ 게시됨 → <a href="${j.url}" target="_blank">${esc(full)}</a>` + (j.persistent ? "" : " <span style='color:#9aa1b4'>(임시저장)</span>");
@@ -858,7 +989,9 @@
         const q = new URLSearchParams(location.search);
         const edit = q.get("edit"), remix = q.get("remix"), from = q.get("from");
         // 바이브 코딩 생성기에서 넘어온 설계 → 입력창에 빌드 지시문 프리필(자동 전송하지 않음).
+        // 명시적 진입(vibe/edit/remix)은 새 작업 의도이므로 끊긴 세션 자동복구와 충돌하지 않게 정리.
         if (from === "vibe") {
+          ssClear();
           renderEmpty();
           let h = null;
           try { h = JSON.parse(sessionStorage.getItem("quilo_vibe_handoff") || "null"); } catch {}
@@ -872,6 +1005,7 @@
           }
           return;
         }
+        if (edit || remix) ssClear();
         try {
           if (edit) {
             const j = await api("/api/artifacts/" + encodeURIComponent(edit) + "/raw");
@@ -885,7 +1019,12 @@
             setHtml(j.html); pushVersion("리믹스 원본", "(리믹스)");
             addMsg("ai", `🔀 <b>${esc(j.title || remix)}</b> 를 리믹스로 불러왔어요. 마음대로 바꿔서 새 작품으로 게시하세요.`);
             bindCheckpoints(); markCurrentCheckpoint();
-          } else { renderEmpty(); return; }
+          } else {
+            // 파라미터 없는 일반 진입: 저장된 작업이 있으면 자동 적용 대신 복구 배너로 물어본다.
+            const saved = ssRead();
+            if (ssHasWork(saved)) { ssDisabled = true; renderEmpty(); showRestoreBar(saved); return; }
+            renderEmpty(); return;
+          }
         } catch (e) { renderEmpty(); addMsg("ai", "⚠ 불러오기 실패: " + esc(e.message)); }
       }
 
@@ -906,6 +1045,7 @@
         try { appModels = await api("/api/artifacts/models"); } catch {}
         try { const im = await api("/api/artifacts/image-models"); if (im && im.models && im.models.length) imageModels = im; } catch {}
         populateModels(false);
+        refreshBalance();
         // 칩
         $("chips").innerHTML = CHIPS.map((c) => `<button disabled>${esc(c)}</button>`).join("");
         $("chips").querySelectorAll("button").forEach((b) => b.onclick = () => { if (!currentHtml || busy) return; send(b.textContent.replace(/^\S+\s/, "")); });
@@ -942,6 +1082,14 @@
       $("pDo").onclick = doPublish;
       $("pubModal").onclick = (e) => { if (e.target === $("pubModal")) $("pubModal").classList.remove("on"); };
       document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("pubModal").classList.contains("on")) $("pubModal").classList.remove("on"); });
+
+      // 미게시 변경이 있으면 떠나기 전 경고(브라우저 표준 확인 창). 생성·게시 흐름은 그대로.
+      window.addEventListener("beforeunload", (e) => {
+        try { ssWrite(); } catch (_) {}
+        if (ssDirty && projectHasFiles()) { e.preventDefault(); e.returnValue = ""; return ""; }
+      });
+      // 안전망: 탭 숨김 시점에도 즉시 저장(디바운스 대기 중 손실 방지).
+      document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") { try { ssWrite(); } catch (_) {} } });
 
       init();
     </script>

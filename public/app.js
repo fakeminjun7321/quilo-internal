@@ -842,6 +842,7 @@ let currentStudentId = "";
         const filter = document.getElementById("filesFilter");
         const filterEmpty = document.getElementById("filesFilterEmpty");
         if (!status || !list) return;
+        renderPremiumBadge(); // ✨ 프리미엄 배지(활성 시)
         renderBgJobs(); // '내 작업'(진행중/중단) — 완료본은 아래 파일 목록에 나타남
         status.textContent = "불러오는 중...";
         if (workspaceFilesSummary) workspaceFilesSummary.textContent = "최근 파일 확인 중...";
@@ -1214,7 +1215,8 @@ let currentStudentId = "";
             b.admin === true ||
             feats.includes("coding-test") ||
             feats.includes("phys-inquiry") ||
-            feats.includes("math-inquiry")
+            feats.includes("math-inquiry") ||
+            feats.includes("reading-log")
           ) {
             const navEp = document.getElementById("navExamPrep");
             if (navEp) navEp.hidden = false;
@@ -1248,6 +1250,13 @@ let currentStudentId = "";
               (b.admin === true || feats.includes("form-maker"))
             ) {
               const tab = document.getElementById("rtFormMaker");
+              if (tab) tab.hidden = false;
+            }
+            if (
+              want === "reading-log" &&
+              (b.admin === true || feats.includes("reading-log"))
+            ) {
+              const tab = document.getElementById("rtReadingLog");
               if (tab) tab.hidden = false;
             }
             const radio = want && document.querySelector(
@@ -1322,6 +1331,10 @@ let currentStudentId = "";
         "form-maker": {
           title: "양식 메이커",
           items: ["양식 설명 또는 문서 사진", "출력 형식·글꼴", "만들기 버튼"],
+        },
+        "reading-log": {
+          title: "독서록",
+          items: ["도서명", "영역·기록 구분 선택", "감상 메모(선택)", "생성 버튼"],
         },
       };
 
@@ -1579,6 +1592,8 @@ let currentStudentId = "";
       const psBtn = document.getElementById("psBtn");
       const fmForm = document.getElementById("formMakerForm");
       const fmBtn = document.getElementById("fmBtn");
+      const rlForm = document.getElementById("readingLogForm");
+      const rlBtn = document.getElementById("rlBtn");
 
       document
         .querySelectorAll('#form input[name="format"]')
@@ -1608,6 +1623,16 @@ let currentStudentId = "";
         .querySelectorAll('#formMakerForm input[name="fmFormat"]')
         .forEach((el) => el.addEventListener("change", updateFormMakerFontOptions));
       updateFormMakerFontOptions();
+      updateReadingLogFontOptions(); // 독서록은 .hwpx 고정 → 글꼴 옵션만 보정
+      // 독서록: '과목별 독서기록' 일 때만 교과명 입력칸을 보여 준다.
+      (function () {
+        const ra = document.getElementById("rlRecordArea");
+        const subjField = document.getElementById("rlSubjectField");
+        if (!ra || !subjField) return;
+        const sync = () => { subjField.hidden = ra.value !== "subject"; };
+        ra.addEventListener("change", sync);
+        sync();
+      })();
 
       // 업로드 한도(클라이언트 안내용). 서버 기본값(MAX_UPLOAD_MB, 기본 64MB)과 맞춘
       // 보수적 상수 — 환경변수로 바뀔 수 있으니 '대략' 안내로만 쓴다(실검증은 서버).
@@ -2317,6 +2342,11 @@ let currentStudentId = "";
         updateHwpxOnlyFontOptions("miFontFace", getMathInquiryFormat());
       }
 
+      // 독서록은 학교 양식(.hwpx) 전용 — 형식 고정. 글꼴 옵션만 hwpx 기준으로 보정.
+      function updateReadingLogFontOptions() {
+        updateHwpxOnlyFontOptions("rlFontFace", "hwpx");
+      }
+
       function getFreeFormat() {
         const formatEl = document.querySelector(
           '#freeForm input[name="frFormat"]:checked, #freeForm input[name="frFormat"][type="hidden"]'
@@ -2375,6 +2405,7 @@ let currentStudentId = "";
         "phys-inquiry": [6000, 11000],
         "math-inquiry": [6000, 11000],
         "free": [6000, 12000],
+        "reading-log": [1500, 3500],
       };
       function estimateGenSeconds(type, modelId, extraInputTokens = 0) {
         const isGpt = /^gpt/i.test(modelId || "");
@@ -2514,6 +2545,7 @@ let currentStudentId = "";
       // _bgEligible: 토글을 확인 다이얼로그에 노출할지(관리자 또는 활성 구독).
       // _bgChoice/_bgNotifyChoice: 이번 생성에서 선택한 값(submitReport 가 FormData 에 baking).
       let _bgEligible = false;
+      let _bgInfo = null; // { active, admin, expiresAt }
       let _bgChoice = false;
       let _bgNotifyChoice = false;
       (async () => {
@@ -2521,12 +2553,47 @@ let currentStudentId = "";
           const r = await fetch("/api/subscriptions/me");
           if (r.ok) {
             const d = await r.json();
+            _bgInfo = d;
             _bgEligible = !!d.active;
+            renderPremiumBadge();
           }
         } catch (_) {
           /* 권한 조회 실패 시 토글 미노출(서버가 어차피 강제) */
         }
       })();
+
+      // 프리미엄(백그라운드 실행 가능) 배지 — '내 파일' 패널 상단에 표시.
+      function renderPremiumBadge() {
+        try {
+          const list = document.getElementById("filesList");
+          if (!list || !list.parentNode || !_bgInfo) return;
+          let badge = document.getElementById("premiumBadge");
+          if (!_bgInfo.active) {
+            if (badge) badge.remove();
+            return;
+          }
+          if (!badge) {
+            badge = document.createElement("div");
+            badge.id = "premiumBadge";
+            badge.style.cssText =
+              "margin:0 0 12px;padding:10px 12px;border:1px solid #c7a008;border-radius:8px;background:linear-gradient(90deg,#fffbeb,#fef9c3);color:#713f12;font-size:13px;font-weight:600";
+            list.parentNode.insertBefore(badge, list);
+          }
+          let detail = "백그라운드 실행을 사용할 수 있어요.";
+          if (_bgInfo.admin) {
+            detail = "관리자 — 백그라운드 실행을 사용할 수 있어요.";
+          } else if (_bgInfo.expiresAt) {
+            try {
+              const exp = new Date(_bgInfo.expiresAt);
+              // 100년 뒤(무기한) 이면 만료일을 숨긴다.
+              if (exp.getFullYear() < new Date().getFullYear() + 50) {
+                detail = `백그라운드 실행 가능 · ${formatDateTime(_bgInfo.expiresAt)}까지`;
+              }
+            } catch (_) {}
+          }
+          badge.textContent = `✨ 프리미엄 — ${detail}`;
+        } catch (_) {}
+      }
 
       function showBackgroundToast() {
         try {
@@ -3234,6 +3301,78 @@ let currentStudentId = "";
           appendPolicyAcknowledgements(fd);
 
           await submitReport({ formEl: miForm, buttonEl: miBtn, formData: fd, estimate: estimateGenSeconds("math-inquiry", miModel) });
+        });
+      }
+
+      // ── 독서록(베타) submit — 도서 정보 → 독서활동 기록지(.hwpx) ──────────
+      if (rlForm) {
+        rlForm.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          if (currentJobId) return;
+
+          const title = document.getElementById("rlTitle").value.trim();
+          if (!title) {
+            alert("도서명을 입력하세요.");
+            document.getElementById("rlTitle").focus();
+            return;
+          }
+
+          const author = document.getElementById("rlAuthor").value.trim();
+          const publisher = document.getElementById("rlPublisher").value.trim();
+          const recordArea = document.getElementById("rlRecordArea").value;
+          const subject = document.getElementById("rlSubject").value.trim();
+          const domain = document.getElementById("rlDomain").value;
+          const domainLabel =
+            document.querySelector('#rlDomain option[value="' + domain + '"]')?.textContent.trim() || "";
+          const borrowed = document.getElementById("rlBorrowed").value;
+          const startDate = document.getElementById("rlStartDate").value;
+          const endDate = document.getElementById("rlEndDate").value;
+          const userNotes = document.getElementById("rlUserNotes").value.trim();
+
+          const rlModel =
+            document.querySelector('input[name="rlModel"]:checked')?.value ||
+            "claude-opus-4-8";
+          const modelLabel = getModelLabel(rlModel);
+          updateReadingLogFontOptions();
+          const rlFontFace = document.getElementById("rlFontFace").value;
+
+          const ok = await showConfirmDialog({
+            title: "독서록 초안 생성 (베타)",
+            background: true,
+            rows: [
+              ["모델", modelLabel],
+              ["형식", ".hwpx (한글 — 학교 양식)"],
+              ["글꼴", getFontLabel(rlFontFace)],
+              ["도서명", title.length > 40 ? title.slice(0, 40) + "…" : title],
+              ["저자", author || "AI 추정"],
+              ["영역", domainLabel || "미선택"],
+              ["감상 메모", userNotes ? "반영" : "없음"],
+              ["예상 비용", "무료 (베타)"],
+              ["예상 시간", formatDuration(estimateGenSeconds("reading-log", rlModel))],
+            ],
+            note: `도서 정보로 AI가 선택 계기·내용 요약·느낀 점을 써서 학교 '독서활동 기록지' 양식(.hwpx)에 채웁니다. ${USE_POLICY_NOTE}`,
+          });
+          if (!ok) return;
+
+          const fd = new FormData();
+          fd.append("type", "reading-log");
+          fd.append("title", title);
+          if (author) fd.append("author", author);
+          if (publisher) fd.append("publisher", publisher);
+          if (recordArea) fd.append("recordArea", recordArea);
+          if (recordArea === "subject" && subject) fd.append("subject", subject);
+          if (domain) fd.append("domain", domain);
+          if (borrowed) fd.append("borrowed", borrowed);
+          if (startDate) fd.append("startDate", startDate);
+          if (endDate) fd.append("endDate", endDate);
+          if (userNotes) fd.append("userNotes", userNotes);
+          if (currentStudentId) fd.append("studentId", currentStudentId);
+          fd.append("model", rlModel);
+          fd.append("format", "hwpx");
+          fd.append("fontFace", rlFontFace);
+          appendPolicyAcknowledgements(fd);
+
+          await submitReport({ formEl: rlForm, buttonEl: rlBtn, formData: fd, estimate: estimateGenSeconds("reading-log", rlModel) });
         });
       }
 

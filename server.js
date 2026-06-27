@@ -307,6 +307,64 @@ const PIPELINES = {
     generateDocx: require("./lib/pipelines/math-inquiry/docx-gen").generateDocx,
     generateHwpx: require("./lib/pipelines/math-inquiry/hwpx-gen").generateHwpx,
   },
+  // 독서록 — 학교 '독서활동 기록지' 양식(.hwpx)을 채워 준다 (베타·무료, 테스터/관리자 한정).
+  // 입력: 도서명(필수) + (선택) 저자/출판사/영역/교과/대출/날짜/메모. 파일 업로드 없음.
+  // 출력: 템플릿 양식에 도서 정보·인적사항·세 서술 항목을 채운 .hwpx 만 지원(.docx 없음).
+  "reading-log": {
+    label: "독서록",
+    filenamePrefix: "독서활동기록지",
+    creditField: "result",
+    prepareInput(filesByField, body) {
+      const bookTitle = String(body.title || "").trim();
+      if (!bookTitle) {
+        throw new Error("도서명을 입력하세요.");
+      }
+      const recordArea = ["subject", "common"].includes(String(body.recordArea || ""))
+        ? String(body.recordArea)
+        : "";
+      const VALID_DOMAINS = new Set([
+        "major-math", "major-physics", "major-chemistry", "major-biology",
+        "major-earth", "major-cs", "general-philosophy", "general-social",
+        "general-science-art", "general-literature", "general-history", "general-classics",
+      ]);
+      const domain = VALID_DOMAINS.has(String(body.domain || "")) ? String(body.domain) : "";
+      const borrowed = ["yes", "no"].includes(String(body.borrowed || ""))
+        ? String(body.borrowed)
+        : "";
+      return {
+        bookTitle: bookTitle.slice(0, 200),
+        author: String(body.author || "").trim().slice(0, 200),
+        publisher: String(body.publisher || "").trim().slice(0, 200),
+        recordArea,
+        subject: String(body.subject || "").trim().slice(0, 100),
+        domain,
+        borrowed,
+        startDate: String(body.startDate || "").trim().slice(0, 20),
+        endDate: String(body.endDate || "").trim().slice(0, 20),
+        studentId: String(body.studentId || "").trim().slice(0, 20),
+        fontFace: normalizeFontFace(body.fontFace),
+        userNotes: collectUserNotes(body.userNotes, filesByField),
+        style: "default",
+      };
+    },
+    buildFilename(content, ctx) {
+      const id = sanitizeForFilename(ctx.studentId || "");
+      const name = sanitizeForFilename(ctx.userName || "");
+      const title = sanitizeForFilename(content.title || content.book_title || "독서록");
+      const prefix = `${id}${name ? "_" + name : ""}`;
+      // 확장자는 .docx 로 두면 runGeneration 이 실제 형식(.hwpx)으로 치환한다.
+      return prefix
+        ? `${prefix}_독서활동기록지_${title}.docx`
+        : `독서활동기록지_${title}.docx`;
+    },
+    generateContent: require("./lib/pipelines/reading-log/generate")
+      .generateReportContent,
+    // 독서록은 학교 양식 템플릿 기반 .hwpx 만 지원한다. docx 요청은 친절히 거부.
+    generateDocx() {
+      throw new Error("독서활동 기록지는 한글(.hwpx) 형식으로만 생성됩니다.");
+    },
+    generateHwpx: require("./lib/pipelines/reading-log/hwpx-gen").generateHwpx,
+  },
   // 자유 보고서 — 임의 주제. 작성 지시 + (선택) 평가 기준 + 자료 파일/사진을 주면
   // 기존 보고서처럼 표·수식·그래프·사진을 갖춘 .docx/.hwpx 초안을 만든다.
   // 공개 + 크레딧 차감(일반 보고서와 동일). Claude/GPT 모두 허용.
@@ -535,6 +593,7 @@ const FREE_BETA_TYPES = new Set([
   "korean-lit-exam",
   "cap-translate",
   "phys-mock-exam",
+  "reading-log",
 ]);
 const pricing = require("./lib/pricing");
 const {
@@ -553,6 +612,7 @@ const {
 } = require("./lib/feedback-mailer");
 const {
   sendVerificationEmail,
+  sendEmail,
   allowedEmailDomains,
   normalizeSchoolEmail,
 } = require("./lib/mailer");
@@ -829,6 +889,26 @@ function getSessionUser(req) {
   return req.session && req.session.userInfo ? req.session.userInfo : null;
 }
 
+// 학교 이메일 1회 인증 면제 목록 — 이 이메일들은 인증 링크 없이 '인증됨'으로 통과 처리한다.
+// env VERIFY_EXEMPT_EMAILS(쉼표구분)로 추가/대체 가능.
+// ⚠ 개인 이메일(PII)이 들어 있으니 공개 저장소로 내보낼 때 스크럽할 것.
+const VERIFY_EXEMPT_EMAILS = new Set(
+  (process.env.VERIFY_EXEMPT_EMAILS || "ts250002@ts.hs.kr")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean),
+);
+function isVerifyExemptEmail(email) {
+  return !!email && VERIFY_EXEMPT_EMAILS.has(String(email).trim().toLowerCase());
+}
+// 유저 row(확정 email 또는 대기 중 email_verify_email)가 면제 대상인지.
+function userIsVerifyExempt(row) {
+  return (
+    !!row &&
+    (isVerifyExemptEmail(row.email) || isVerifyExemptEmail(row.email_verify_email))
+  );
+}
+
 async function refreshSessionUser(req, { failClosed = false } = {}) {
   const u = getSessionUser(req);
   if (!u || !u.id || !supa.isEnabled()) return u;
@@ -846,7 +926,7 @@ async function refreshSessionUser(req, { failClosed = false } = {}) {
       isAdmin: !!fresh.is_admin,
       unlimited: !!fresh.unlimited,
       restrictedModel: fresh.restricted_model || null,
-      emailVerified: !!fresh.email_verified,
+      emailVerified: !!fresh.email_verified || userIsVerifyExempt(fresh),
       approved: !!fresh.approved,
     };
     return req.session.userInfo;
@@ -1191,7 +1271,7 @@ app.post("/api/login", async (req, res) => {
       isAdmin: !!user.is_admin,
       unlimited: !!user.unlimited,
       restrictedModel: user.restricted_model || null,
-      emailVerified: !!user.email_verified,
+      emailVerified: !!user.email_verified || userIsVerifyExempt(user),
       approved: !!user.approved,
     };
     // 로그인 유지: 체크 시 30일 지속 쿠키, 아니면 브라우저/앱 세션 한정.
@@ -1296,7 +1376,9 @@ app.post("/api/signup", async (req, res) => {
         error: "이 이메일은 이미 인증된 계정이 있습니다.",
       });
     }
-    // 신규 계정: 크레딧 0, 미인증·미승인. 보고서 생성은 이메일 인증 + 관리자 승인 후 가능.
+    // 면제 이메일(예: 운영자 본인 학교 이메일)은 1회 인증 없이 즉시 '인증됨' 처리.
+    const exemptSignup = isVerifyExemptEmail(emailCheck.email);
+    // 신규 계정: 크레딧 0, 미승인. (면제 이메일이면 이메일 인증은 통과, 관리자 승인은 별도.)
     const user = await supa.createUser({
       name,
       username: uname,
@@ -1305,7 +1387,7 @@ app.post("/api/signup", async (req, res) => {
       resultCreditsUsd: 0,
       isAdmin: false,
       approved: false,
-      emailVerified: false,
+      emailVerified: exemptSignup,
       studentId: String(studentId || "").trim().slice(0, 30),
     });
     req.session.userInfo = {
@@ -1316,30 +1398,35 @@ app.post("/api/signup", async (req, res) => {
       isAdmin: false,
       unlimited: false,
       restrictedModel: null,
-      emailVerified: false,
+      emailVerified: exemptSignup,
       approved: false,
     };
 
-    // 1단계: 인증 메일 발송.
+    // 1단계: 인증 메일 발송. 면제 이메일은 인증 없이 통과하므로 발송을 건너뛴다.
     let emailSent = false;
     let emailReason = "";
-    try {
-      const { result } = await issueVerificationEmail(req, user, emailCheck.email);
-      emailSent = !!result.sent;
-      if (!result.sent) emailReason = result.reason || "";
-    } catch (e) {
-      console.warn("[signup] verification email failed:", e.message);
-      emailReason = "send_error";
+    if (exemptSignup) {
+      emailReason = "exempt";
+    } else {
+      try {
+        const { result } = await issueVerificationEmail(req, user, emailCheck.email);
+        emailSent = !!result.sent;
+        if (!result.sent) emailReason = result.reason || "";
+      } catch (e) {
+        console.warn("[signup] verification email failed:", e.message);
+        emailReason = "send_error";
+      }
     }
     console.log(
-      `[signup] ${user.username} (${user.name}) email=${emailCheck.email} sent=${emailSent}`,
+      `[signup] ${user.username} (${user.name}) email=${emailCheck.email} sent=${emailSent} exempt=${exemptSignup}`,
     );
     return res.json({
       ok: true,
       user: user.name,
       username: user.username,
       isAdmin: false,
-      pendingEmail: emailCheck.email,
+      emailVerified: exemptSignup,
+      pendingEmail: exemptSignup ? "" : emailCheck.email,
       emailSent,
       emailReason: process.env.NODE_ENV === "production" ? "" : emailReason,
     });
@@ -1375,6 +1462,11 @@ app.post("/api/verify-email/request", requireAuth, async (req, res) => {
   const emailCheck = normalizeSchoolEmail(req.body && req.body.email);
   if (!emailCheck.ok) {
     return res.status(400).json({ error: emailCheck.reason });
+  }
+  // 면제 이메일은 인증 링크 없이 통과 — 세션을 인증됨으로 표시하고 바로 응답.
+  if (isVerifyExemptEmail(emailCheck.email)) {
+    if (req.session && req.session.userInfo) req.session.userInfo.emailVerified = true;
+    return res.json({ ok: true, alreadyVerified: true, exempt: true, email: emailCheck.email });
   }
   try {
     const fresh = await supa.findUserById(u.id);
@@ -1464,7 +1556,7 @@ app.get("/api/me", async (req, res) => {
         username = freshUser.username || freshUser.name || username;
         email = String(freshUser.email || "");
         pendingEmail = String(freshUser.email_verify_email || "");
-        emailVerified = !!freshUser.email_verified;
+        emailVerified = !!freshUser.email_verified || userIsVerifyExempt(freshUser);
         approved = !!freshUser.approved;
         // 세션에도 최신 인증 상태 반영(이후 게이트 판단의 stale 방지).
         req.session.userInfo.emailVerified = emailVerified;
@@ -3084,9 +3176,9 @@ app.post(
     // 권한 판단은 fresh row 기준(없으면 세션값). Supabase 미설정 시엔 게이트를 적용하지
     // 않는다(로컬/오프라인 점검 — 그 경우 generate 자체가 크레딧 검증에서 막힘).
     if (!effectiveIsAdmin && supa.isEnabled()) {
-      const evVerified = freshUser
-        ? !!freshUser.email_verified
-        : !!userInfo.emailVerified;
+      const evVerified =
+        (freshUser ? !!freshUser.email_verified : !!userInfo.emailVerified) ||
+        userIsVerifyExempt(freshUser);
       const evApproved = freshUser ? !!freshUser.approved : !!userInfo.approved;
       if (!(evVerified && evApproved)) {
         return res.status(403).json({
@@ -3108,6 +3200,31 @@ app.post(
       } catch (_) {
         hasGrant = false;
       }
+    }
+
+    // ── 백그라운드 실행 모드(구독자 전용) ──────────────────────────────────────
+    // 켜면 제출 후 탭/창을 닫아도 서버가 끝까지 생성하고, '내 작업'+완료 이메일로 받는다.
+    // 관리자 또는 활성 백그라운드 구독 보유자만 사용 가능(서버에서 강제 — UI 숨김은 보안 아님).
+    let backgroundMode = false;
+    let backgroundNotifyEmail = false;
+    if (String(req.body.backgroundMode) === "true") {
+      let hasBackground = effectiveIsAdmin;
+      if (!hasBackground && supa.isEnabled() && userInfo.id) {
+        try {
+          hasBackground = !!(await supa.getActiveBackgroundSub(userInfo.id));
+        } catch (_) {
+          hasBackground = false;
+        }
+      }
+      if (!hasBackground) {
+        return res.status(403).json({
+          error:
+            "백그라운드 실행은 구독자 전용입니다. 관리자에게 사용 권한을 문의하세요.",
+          needsBackgroundSub: true,
+        });
+      }
+      backgroundMode = true;
+      backgroundNotifyEmail = String(req.body.notifyEmail) === "true";
     }
     pipelineInput.studentId =
       normalizeStudentId(pipelineInput.studentId) || postedStudentId || savedStudentId;
@@ -3303,9 +3420,14 @@ app.post(
     job.creditCost = creditCost;
     // 활성 위임 사용자는 과금 면제(아래 이미지 추가과금·크레딧 차감 단계에서 건너뜀).
     job.billingExempt = hasGrant;
+    // 백그라운드 실행 플래그 — runGeneration/완료 단계에서 영속화·이메일에 사용.
+    job.background = backgroundMode;
+    job.notifyEmail = backgroundNotifyEmail;
     if (userInfo.id) {
       activeJobByUser.set(userInfo.id, job.id);
     }
+    // 백그라운드 작업은 즉시 report_jobs 에 'running' 으로 기록(탭 닫아도 추적).
+    if (backgroundMode) persistBgJob(job);
 
     res.json({ jobId: job.id });
 
@@ -3320,6 +3442,7 @@ app.post(
         job.status = "error";
         job.error = err.message || String(err);
         pushProgress(job, `❌ 오류: ${job.error}`);
+        if (job.background) persistBgJob(job);
         job.listeners.forEach((r) => {
           sendSse(r, "error", job.error);
           r.end();
@@ -4270,6 +4393,85 @@ function normalizeWarnings(raw) {
   return out;
 }
 
+// ── 백그라운드 작업: Supabase 영속화 + 완료 이메일 ────────────────────────────
+// 백그라운드 모드 작업만 report_jobs 에 저장한다(일반 작업은 탭을 유지하므로 불필요).
+// 재배포/재시작에도 '내 작업'에서 추적 가능하게 하고, 부팅 시 ghost 작업을 정리한다.
+async function persistBgJob(job) {
+  if (!job || !job.background || !job.userInfo?.id || !supa.isEnabled()) return;
+  try {
+    await supa.upsertReportJob({
+      id: job.id,
+      userId: job.userInfo.id,
+      reportType: job.reportType || "",
+      model: job.model || "",
+      status: job.status,
+      filename: job.filename || null,
+      fileId: job.fileId || null,
+      error: job.error || null,
+      progress: job.progress || [],
+      background: true,
+      notifyEmail: !!job.notifyEmail,
+      notified: !!job.notified,
+    });
+  } catch (e) {
+    console.warn(`[bgjob] persist failed job=${job.id}: ${e.message}`);
+  }
+}
+
+// 백그라운드 작업 완료 이메일(Resend). 옵트인 + 이메일 보유 시에만 1회.
+async function notifyBgJobDone(job) {
+  if (
+    !job ||
+    !job.background ||
+    !job.notifyEmail ||
+    !job.userInfo?.id ||
+    !supa.isEnabled()
+  )
+    return;
+  // 영구 파일 참조(파일함 fileId 또는 클라우드 저장)가 없으면 결과가 in-memory 에만 있어
+  // 재시작 시 사라진다 → '파일함에서 받으세요' 메일은 오해를 주므로 보내지 않는다.
+  if (!job.fileId && !job.cloudProvider) {
+    pushProgress(
+      job,
+      "⚠ 영구 저장에 실패해 완료 이메일을 건너뜁니다 — 지금 화면에서 바로 다운로드하세요.",
+    );
+    return;
+  }
+  let email = null;
+  try {
+    const u = await supa.findUserById(job.userInfo.id);
+    email = u && u.email ? u.email : null;
+  } catch (_) {}
+  if (!email) return;
+  const esc = (s) =>
+    String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const base = (
+    process.env.PUBLIC_BASE_URL ||
+    process.env.APP_BASE_URL ||
+    "https://quilolab.com"
+  ).replace(/\/+$/, "");
+  const link = `${base}/#files`;
+  const fname = job.filename || "보고서";
+  const html = `<!doctype html><html lang="ko"><body style="font-family:-apple-system,BlinkMacSystemFont,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;color:#1f2937;line-height:1.6"><div style="max-width:520px;margin:0 auto;padding:24px"><h2 style="margin:0 0 12px">백그라운드 보고서가 완성됐어요</h2><p style="margin:0 0 16px"><b>${esc(fname)}</b> 생성이 끝났습니다. 아래 버튼을 눌러 파일함에서 받으세요. (생성 파일은 24시간 보관)</p><p style="margin:0 0 24px"><a href="${esc(link)}" style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600">파일함에서 받기</a></p><p style="margin:0;font-size:12px;color:#94a3b8">Quilo · 백그라운드 실행</p></div></body></html>`;
+  const text = `백그라운드 보고서 '${fname}' 생성이 끝났습니다.\n파일함에서 받으세요(24시간 보관): ${link}\n\nQuilo`;
+  try {
+    const r = await sendEmail({
+      to: email,
+      subject: `[Quilo] 백그라운드 보고서 완료 — ${fname}`,
+      html,
+      text,
+    });
+    if (r && r.sent) {
+      job.notified = true;
+      await persistBgJob(job);
+    } else if (r && r.reason && r.reason !== "not_configured") {
+      console.warn(`[bgjob] notify email not sent job=${job.id}: ${r.reason}`);
+    }
+  } catch (e) {
+    console.warn(`[bgjob] notify email failed job=${job.id}: ${e.message}`);
+  }
+}
+
 async function runGeneration(job, pipeline, pipelineInput, meta) {
   const {
     date,
@@ -4544,6 +4746,15 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
       job,
       `🎉 전체 완료! 총 ${totalSec}초 소요. 다운로드 가능합니다.`,
     );
+
+    // 백그라운드 작업: 완료 상태를 영속화(파일함 fileId 포함)하고, 옵트인 시 완료 이메일 발송.
+    if (job.background) {
+      await persistBgJob(job);
+      if (job.notifyEmail) {
+        pushProgress(job, "📧 완료 알림 이메일을 보냅니다...");
+        await notifyBgJobDone(job);
+      }
+    }
 
     if (content.__imageCost) {
       const imgLine = formatImageCostLine(content.__imageCost);
@@ -4832,6 +5043,18 @@ app.use("/api/announcements", require("./lib/announcement-routes")({ requireAdmi
 app.use(
   "/api/grants",
   require("./lib/grant-routes")({ requireAuth, requireAdmin, getSessionUser }),
+);
+
+// 백그라운드 실행 구독: 관리자가 지정 사용자에게 기간 한정 "백그라운드 실행" 권한 부여(월 구독 대상).
+//   - 사용자: GET /api/subscriptions/me (본인 상태 — 토글 노출용)
+//   - 관리자: GET/POST /api/subscriptions, POST /api/subscriptions/:id/revoke
+app.use(
+  "/api/subscriptions",
+  require("./lib/subscription-routes")({
+    requireAuth,
+    requireAdmin,
+    getSessionUser,
+  }),
 );
 
 // ── 파일 챗봇(베타/위임): 파일을 올리고 Claude와 대화 ───────────────────────────
@@ -5274,6 +5497,19 @@ app.get("/api/me/files", requireAuth, async (req, res) => {
   } catch (e) {
     console.error("[files] list error:", e);
     res.status(500).json({ error: "파일 목록을 불러오지 못했습니다." });
+  }
+});
+
+// '내 작업' — 백그라운드 작업의 진행/완료/중단 목록(완료본은 /api/me/files 에도 나타남).
+app.get("/api/me/jobs", requireAuth, async (req, res) => {
+  const u = getSessionUser(req);
+  if (!supa.isEnabled() || !u || !u.id) return res.json({ jobs: [] });
+  try {
+    const list = await supa.listReportJobs(u.id, { limit: 20 });
+    res.json({ jobs: list });
+  } catch (e) {
+    console.error("[me/jobs]", e.message);
+    res.json({ jobs: [] });
   }
 });
 
@@ -5875,6 +6111,14 @@ app.listen(PORT, async () => {
       } catch (e) {
         console.warn(`  ⚠ 베타 기능 등록 실패(${k}): ${e.message}`);
       }
+    }
+    // 백그라운드 작업: 이전 프로세스에서 'running' 으로 남은 ghost 작업을 'interrupted' 로 정리.
+    // (재시작으로 in-memory job 이 사라졌으므로 더는 진행되지 않는다 → '내 작업'에서 중단으로 표시.)
+    try {
+      const n = await supa.reconcileRunningJobs();
+      if (n) console.log(`  ✓ 중단된 백그라운드 작업 ${n}건 정리(interrupted)`);
+    } catch (e) {
+      console.warn(`  ⚠ 백그라운드 작업 정리 실패: ${e.message}`);
     }
     // 문제집 메이커 최대 문제 수(관리자 설정값)를 app_settings 에서 로드(있으면).
     try {

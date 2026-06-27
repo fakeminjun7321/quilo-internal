@@ -278,6 +278,12 @@
           <span class="rt-title">수학 수행평가 <span class="beta-pill">베타</span></span>
           <span class="rt-tag">주제 한 줄 → 급수 탐구보고서</span>
         </label>
+        <label id="rtReadingLog" hidden>
+          <input type="radio" name="reportType" value="reading-log" />
+          <span class="rt-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0-2 2z"/><path d="M4 20a2 2 0 0 1 2-2h13"/></svg></span>
+          <span class="rt-title">독서록 <span class="beta-pill">베타</span></span>
+          <span class="rt-tag">도서 정보 → 독서활동 기록지 .hwpx</span>
+        </label>
         <label id="rtProblemSet" hidden>
           <input type="radio" name="reportType" value="problem-set" />
           <span class="rt-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h11l5 5v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><path d="M14 4v5h5"/><path d="M8 13h7M8 17h4"/></svg></span>
@@ -971,6 +977,154 @@
       <div class="form-actions">
         <span class="hint">베타 기능입니다. 크레딧이 차감되지 않습니다. 생성에는 보통 1~3분 걸립니다.</span>
         <button type="submit" id="miBtn">수학 수행평가 초안 생성</button>
+      </div>
+    </form>
+
+    <!-- ── 독서록 폼 (베타) — 학교 '독서활동 기록지' 양식(.hwpx) 채우기 ──────── -->
+    <form id="readingLogForm" class="report-form" data-report-form="reading-log" hidden>
+      <input type="hidden" name="rlFormat" value="hwpx" />
+      <div class="notice">
+        <strong>독서록 「독서활동 기록지」 초안 (베타·무료).</strong>
+        읽은 책의 정보를 입력하면, AI가 <strong>선택 계기·내용 요약·느낀 점</strong>을 써서 학교 양식(.hwpx)에 채워 줍니다.
+        인적사항(이름)은 개인 설정 값으로 자동 출력됩니다. <strong>그대로 제출하지 말고 본인 글로 다듬어 쓰세요.</strong>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head">
+          <span class="form-section-title">도서 정보</span>
+        </div>
+        <div class="field">
+          <label><span class="field-label">도서명 <span class="req">*</span></span>
+            <input id="rlTitle" name="title" type="text" maxlength="200" required
+              placeholder="예: 코스모스 / 페르마의 마지막 정리 / 사피엔스" />
+          </label>
+          <small>읽은 책의 제목을 정확히 적어 주세요.</small>
+        </div>
+        <div class="field-grid">
+          <div class="field">
+            <label><span class="field-label">저자 (선택)</span>
+              <input id="rlAuthor" name="author" type="text" maxlength="200" placeholder="비우면 AI가 채웁니다" />
+            </label>
+          </div>
+          <div class="field">
+            <label><span class="field-label">출판사 (선택)</span>
+              <input id="rlPublisher" name="publisher" type="text" maxlength="200" placeholder="판본이 다를 수 있어 직접 적기를 권장" />
+            </label>
+          </div>
+        </div>
+        <div class="field-grid">
+          <div class="field">
+            <label><span class="field-label">학생부 기록 영역</span>
+              <select id="rlRecordArea" name="recordArea">
+                <option value="" selected>선택 안 함</option>
+                <option value="subject">과목별 독서기록</option>
+                <option value="common">공통 독서기록</option>
+              </select>
+            </label>
+          </div>
+          <div class="field" id="rlSubjectField" hidden>
+            <label><span class="field-label">교과명</span>
+              <input id="rlSubject" name="subject" type="text" maxlength="100" placeholder="예: 물리, 수학, 국어" />
+            </label>
+          </div>
+        </div>
+        <div class="field-grid">
+          <div class="field">
+            <label><span class="field-label">영역</span>
+              <select id="rlDomain" name="domain">
+                <option value="" selected>선택 안 함</option>
+                <optgroup label="전공도서">
+                  <option value="major-math">수학</option>
+                  <option value="major-physics">물리</option>
+                  <option value="major-chemistry">화학</option>
+                  <option value="major-biology">생명과학</option>
+                  <option value="major-earth">지구과학</option>
+                  <option value="major-cs">정보과학</option>
+                </optgroup>
+                <optgroup label="일반도서">
+                  <option value="general-philosophy">교양·철학·종교</option>
+                  <option value="general-social">사회과학</option>
+                  <option value="general-science-art">과학·예술·언어</option>
+                  <option value="general-literature">문학</option>
+                  <option value="general-history">역사</option>
+                  <option value="general-classics">고전</option>
+                </optgroup>
+              </select>
+            </label>
+          </div>
+          <div class="field">
+            <label><span class="field-label">학교 도서관 대출 여부</span>
+              <select id="rlBorrowed" name="borrowed">
+                <option value="" selected>선택 안 함</option>
+                <option value="yes">○ (도서관에서 대출)</option>
+                <option value="no">× (개인 소장 등)</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div class="field-grid">
+          <div class="field">
+            <label><span class="field-label">읽기 시작일 (선택)</span>
+              <input id="rlStartDate" name="startDate" type="date" />
+            </label>
+          </div>
+          <div class="field">
+            <label><span class="field-label">읽기 종료일 (선택)</span>
+              <input id="rlEndDate" name="endDate" type="date" />
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head">
+          <span class="form-section-title">AI 참고 메모</span>
+        </div>
+        <div class="field user-notes-field">
+          <label>
+            <span class="field-label">내 감상·강조하고 싶은 점 (선택)</span>
+            <textarea id="rlUserNotes" name="userNotes" rows="4" maxlength="12000" placeholder="예: 3장 '우주 달력' 부분이 제일 인상 깊었음. 천체관측 동아리 활동과 연결해서 느낀 점을 써 줘. 진로(천문학)와 엮어 주면 좋겠음."></textarea>
+          </label>
+          <small>메모를 주면 그 관점·감상을 최우선으로 반영합니다. 비워 두어도 됩니다.</small>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head">
+          <span class="form-section-title">출력 설정</span>
+        </div>
+        <div class="seg-group" style="margin-bottom: 12px">
+          <span class="field-label">AI 모델 (베타 기간 무료)</span>
+          <div class="segmented">
+            <label class="fable-model" hidden><input type="radio" name="rlModel" value="claude-fable-5" /> Fable 5 · 9크레딧 (관리자)</label>
+            <label><input type="radio" name="rlModel" value="claude-opus-4-8" checked /> Opus 4.8 · 무료(베타)</label>
+            <label><input type="radio" name="rlModel" value="claude-sonnet-4-6" /> Sonnet 4.6 · 무료(베타)</label>
+          </div>
+        </div>
+        <div class="field">
+          <label><span class="field-label">글꼴</span>
+            <select id="rlFontFace" name="fontFace">
+              <option value="malgun-gothic" selected>맑은 고딕</option>
+              <option value="nanum-gothic">나눔고딕</option>
+              <option value="nanum-myeongjo">나눔명조</option>
+              <option value="hamchorom-batang" data-hwpx-only="true" hidden disabled>함초롬바탕</option>
+            </select>
+          </label>
+          <small>학교 '독서활동 기록지' 양식 그대로 한글(.hwpx)로만 생성됩니다.</small>
+        </div>
+      </div>
+
+      <div class="policy-check">
+        <label>
+          <input type="checkbox" required />
+          본인이 실제로 읽은 책만 기록하며, 학교·교사·평가기준의 AI 사용 규정을 확인했고,
+          생성물은 학습 보조 초안으로만 사용합니다. 그대로 제출하지 않습니다.
+        </label>
+      </div>
+
+      <div class="form-actions">
+        <span class="hint">베타 기능입니다. 크레딧이 차감되지 않습니다. 생성에는 보통 30초~1분 걸립니다.</span>
+        <button type="submit" id="rlBtn">독서록 생성</button>
       </div>
     </form>
 

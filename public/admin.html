@@ -216,6 +216,7 @@
       <button class="atab" data-go="users" role="tab" aria-selected="false">👤 사용자</button>
       <button class="atab" data-go="beta" role="tab" aria-selected="false">🧪 베타</button>
       <button class="atab" data-go="grants" role="tab" aria-selected="false">🔑 키 위임</button>
+      <button class="atab" data-go="subs" role="tab" aria-selected="false">🌙 백그라운드</button>
       <button class="atab" data-go="logs" role="tab" aria-selected="false">📊 로그</button>
       <button class="atab" data-go="announce" role="tab" aria-selected="false">📢 공지</button>
       <button class="atab" data-go="appeals" role="tab" aria-selected="false">🛡 소명·제재</button>
@@ -341,6 +342,55 @@
       </form>
       <div id="grantList"></div>
       <p id="grantStatus" class="hint"></p>
+    </section>
+
+    <section class="settings-card" id="bgSubsSection">
+      <div class="card-head">
+        <h2>🌙 백그라운드 구독</h2>
+        <button id="refreshSubs" class="secondary compact">새로고침</button>
+      </div>
+      <p class="hint">
+        지정한 사용자에게 일정 기간 <b>백그라운드 실행</b> 권한을 줍니다.
+        켜진 사용자는 보고서를 제출하고 <b>탭/창을 닫아도</b> 서버가 끝까지 생성하며,
+        '내 파일'과 <b>완료 이메일</b>로 받을 수 있습니다.
+        (월 구독 결제 대상 기능 · DB: <code>background_subscriptions</code> — 마이그레이션 필요)
+      </p>
+      <form id="subAddForm" class="compact-form" style="margin-bottom: 14px">
+        <div class="field">
+          <label>
+            <span class="field-label">대상 사용자 이름</span>
+            <input id="subName" maxlength="60" placeholder="사용자 이름" autocomplete="off" />
+          </label>
+        </div>
+        <div class="field">
+          <label>
+            <span class="field-label">기간(일)</span>
+            <input id="subDays" type="number" min="0" max="366" value="30" style="width: 84px" />
+          </label>
+        </div>
+        <div class="field">
+          <label>
+            <span class="field-label">+시간(선택)</span>
+            <input id="subHours" type="number" min="0" max="240" value="0" style="width: 84px" />
+          </label>
+        </div>
+        <div class="field">
+          <label>
+            <span class="field-label">메모(선택)</span>
+            <input id="subNote" maxlength="200" placeholder="예: 6월 구독 / 프리미엄" />
+          </label>
+        </div>
+        <div class="field">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input id="subPermanent" type="checkbox" />
+            <span class="field-label" style="margin:0">무기한(만료 없음)</span>
+          </label>
+        </div>
+        <button type="submit">구독 부여</button>
+        <span id="subAddStatus" class="inline-status"></span>
+      </form>
+      <div id="subList"></div>
+      <p id="subStatus" class="hint"></p>
     </section>
 
     <section class="settings-card" id="betaSection">
@@ -1482,6 +1532,7 @@
           "사용자 목록": "users",
           "베타 기능": "beta",
           "API 키 위임": "grants",
+          "백그라운드 구독": "subs",
           "보고서 생성 로그": "logs",
           "커뮤니티 소명": "appeals",
           "코드 에디터": "editor",
@@ -2699,6 +2750,166 @@
         );
         tabBtn && tabBtn.addEventListener("click", loadGrants);
         loadGrants();
+      })();
+    </script>
+    <script>
+      // ── 백그라운드 구독(background_subscriptions) 패널 ──
+      (function () {
+        function esc(s) {
+          return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+            return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+          });
+        }
+        var listEl = document.getElementById("subList");
+        var statusEl = document.getElementById("subStatus");
+        if (!listEl) return;
+        function fmt(ts) {
+          try {
+            return new Date(ts).toLocaleString("ko-KR", {
+              dateStyle: "short",
+              timeStyle: "short",
+            });
+          } catch (e) {
+            return ts;
+          }
+        }
+        function loadSubs() {
+          statusEl.textContent = "불러오는 중...";
+          fetch("/api/subscriptions")
+            .then(function (r) {
+              return r.json();
+            })
+            .then(function (d) {
+              if (d.error) {
+                statusEl.textContent = "오류: " + d.error;
+                listEl.innerHTML = "";
+                return;
+              }
+              renderSubs(d.subs || []);
+              statusEl.textContent = "";
+            })
+            .catch(function () {
+              statusEl.textContent = "목록을 불러오지 못했습니다.";
+            });
+        }
+        window.loadSubs = loadSubs;
+        function renderSubs(subs) {
+          if (!subs.length) {
+            listEl.innerHTML = '<p class="hint">아직 백그라운드 구독이 없습니다.</p>';
+            return;
+          }
+          listEl.innerHTML = subs
+            .map(function (g) {
+              var badge = g.active
+                ? '<span style="color:#16a34a;font-weight:var(--fw-semibold)">활성</span>'
+                : '<span style="opacity:.6">만료/회수</span>';
+              var revokeBtn = g.active
+                ? '<button data-act="revoke" data-id="' +
+                  esc(g.id) +
+                  '" style="color:red;font-size:12px;margin-left:6px">회수</button>'
+                : "";
+              return (
+                '<div style="border:1px solid var(--border,#e2e8f0);border-radius:var(--radius-sm);padding:12px;margin-bottom:10px">' +
+                '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+                "<b>" +
+                esc(g.userName || g.userId) +
+                "</b> " +
+                badge +
+                '<span style="margin-left:auto;font-size:12px;opacity:.7">만료: ' +
+                esc(fmt(g.expiresAt)) +
+                "</span>" +
+                revokeBtn +
+                "</div>" +
+                (g.note
+                  ? '<div style="margin-top:6px;font-size:13px">메모: ' +
+                    esc(g.note) +
+                    "</div>"
+                  : "") +
+                '<div style="margin-top:4px;font-size:11px;opacity:.5">부여: ' +
+                esc(g.grantedByName || "관리자") +
+                " · " +
+                esc(fmt(g.createdAt)) +
+                "</div>" +
+                "</div>"
+              );
+            })
+            .join("");
+        }
+        listEl.addEventListener("click", function (e) {
+          var btn = e.target.closest("[data-act='revoke']");
+          if (!btn) return;
+          if (!confirm("이 구독을 회수할까요? 즉시 백그라운드 실행이 중단됩니다.")) return;
+          fetch(
+            "/api/subscriptions/" +
+              encodeURIComponent(btn.getAttribute("data-id")) +
+              "/revoke",
+            { method: "POST" }
+          )
+            .then(function (r) {
+              return r.json();
+            })
+            .then(function (d) {
+              if (d.error) alert(d.error);
+              loadSubs();
+            })
+            .catch(function () {
+              alert("회수 실패");
+            });
+        });
+        var form = document.getElementById("subAddForm");
+        form &&
+          form.addEventListener("submit", function (e) {
+            e.preventDefault();
+            var st = document.getElementById("subAddStatus");
+            var name = document.getElementById("subName").value.trim();
+            if (!name) {
+              st.textContent = "사용자 이름을 입력하세요.";
+              return;
+            }
+            var permanent = !!(
+              document.getElementById("subPermanent") &&
+              document.getElementById("subPermanent").checked
+            );
+            var days = parseInt(document.getElementById("subDays").value, 10) || 0;
+            var hours = parseInt(document.getElementById("subHours").value, 10) || 0;
+            if (!permanent && days <= 0 && hours <= 0) {
+              st.textContent = "기간을 1 이상으로 지정하거나 '무기한'을 선택하세요.";
+              return;
+            }
+            st.textContent = "부여 중...";
+            fetch("/api/subscriptions", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                name: name,
+                days: days,
+                hours: hours,
+                permanent: permanent,
+                note: document.getElementById("subNote").value.trim(),
+              }),
+            })
+              .then(function (r) {
+                return r.json();
+              })
+              .then(function (d) {
+                if (d.error) {
+                  st.textContent = "오류: " + d.error;
+                  return;
+                }
+                st.textContent = "완료";
+                document.getElementById("subName").value = "";
+                document.getElementById("subNote").value = "";
+                loadSubs();
+              })
+              .catch(function () {
+                st.textContent = "부여 실패";
+              });
+          });
+        var refreshBtn = document.getElementById("refreshSubs");
+        refreshBtn && refreshBtn.addEventListener("click", loadSubs);
+        var tabBtn = document.querySelector('#adminTabs .atab[data-go="subs"]');
+        tabBtn && tabBtn.addEventListener("click", loadSubs);
+        loadSubs();
       })();
     </script>
   </body>

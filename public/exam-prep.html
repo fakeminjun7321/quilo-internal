@@ -133,15 +133,16 @@
       </div>
 
       <div class="eptabs" role="tablist" aria-label="수행평가 도움 탭">
-        <!-- 코딩 테스트 탭 — 비활성화(숨김). 관련 코드(JS·#paneCoding)는 보존하되 노출하지 않는다. -->
-        <button id="tabCoding" role="tab" aria-selected="false" aria-controls="paneCoding" onclick="showTab('coding')" hidden>💻 코딩 테스트 <span class="muted" style="font-weight:var(--fw-medium)">(정보)</span><span id="badgeCoding" class="ep-tabbadge" hidden></span></button>
+        <!-- 코딩 테스트 탭 — 비활성화(노출 제거). JS·#paneCoding 코드는 보존하되 화면에 나오지 않는다.
+             .eptabs button 규칙(display:inline-flex)이 [hidden]을 덮으므로 인라인 display:none 으로 확실히 숨긴다. -->
+        <button id="tabCoding" role="tab" aria-selected="false" aria-controls="paneCoding" onclick="showTab('coding')" hidden style="display:none !important">💻 코딩 테스트 <span class="muted" style="font-weight:var(--fw-medium)">(정보)</span><span id="badgeCoding" class="ep-tabbadge" hidden></span></button>
         <button id="tabPhys" class="active" role="tab" aria-selected="true" aria-controls="panePhys" onclick="showTab('phys')">🔭 물리 수행평가<span id="badgePhys" class="ep-tabbadge" hidden></span></button>
         <button id="tabMath" role="tab" aria-selected="false" aria-controls="paneMath" onclick="showTab('math')">📐 수학 수행평가<span id="badgeMath" class="ep-tabbadge" hidden></span></button>
         <button id="tabReading" role="tab" aria-selected="false" aria-controls="paneReading" onclick="showTab('reading')">📖 독서록<span id="badgeReading" class="ep-tabbadge" hidden></span></button>
       </div>
 
-      <!-- ── 코딩 테스트 ── -->
-      <section id="paneCoding" role="tabpanel" aria-labelledby="tabCoding">
+      <!-- ── 코딩 테스트 (노출 제거 — 코드 보존, 화면에는 안 나옴) ── -->
+      <section id="paneCoding" role="tabpanel" aria-labelledby="tabCoding" style="display:none">
         <div id="codingGate" class="locked" style="display:none"></div>
         <div id="codingMain" style="display:none">
           <p class="muted" style="margin-top:0">

@@ -1350,7 +1350,10 @@ app.post("/api/signup", async (req, res) => {
         .json({ error: "이미 사용 중인 아이디입니다. 다른 아이디를 입력하세요." });
     }
     // 이미 인증된 같은 학교 이메일이 있으면 중복 가입 방지.
-    const emailOwner = await supa.findUserByEmail(emailCheck.email).catch(() => null);
+    // 단, 다회 인증 허용 이메일은 같은 주소로 여러 계정 가입이 가능하므로 이 검사를 건너뛴다.
+    const emailOwner = supa.isMultiVerifyEmail(emailCheck.email)
+      ? null
+      : await supa.findUserByEmail(emailCheck.email).catch(() => null);
     if (emailOwner) {
       return res.status(409).json({
         error: "이 이메일은 이미 인증된 계정이 있습니다.",
@@ -1442,8 +1445,10 @@ app.post("/api/verify-email/request", requireAuth, async (req, res) => {
     if (fresh.email_verified && fresh.email === emailCheck.email) {
       return res.json({ ok: true, alreadyVerified: true, email: emailCheck.email });
     }
-    // 다른 계정이 이미 인증한 이메일이면 거부.
-    const owner = await supa.findUserByEmail(emailCheck.email).catch(() => null);
+    // 다른 계정이 이미 인증한 이메일이면 거부. 단, 다회 인증 허용 이메일은 건너뛴다.
+    const owner = supa.isMultiVerifyEmail(emailCheck.email)
+      ? null
+      : await supa.findUserByEmail(emailCheck.email).catch(() => null);
     if (owner && owner.id !== u.id) {
       return res
         .status(409)

@@ -389,6 +389,16 @@
         <button type="submit">구독 부여</button>
         <span id="subAddStatus" class="inline-status"></span>
       </form>
+      <div style="display:flex;align-items:center;gap:8px;margin:6px 0 8px">
+        <b style="font-size:14px">💰 입금 신청 대기</b>
+        <button id="refreshSubReqs" class="secondary compact">새로고침</button>
+      </div>
+      <p class="hint" style="margin-top:0">
+        사용자가 입금 후 '프리미엄 신청'을 하면 여기에 뜹니다. 입금 확인 후 <b>승인</b>하면
+        즉시 프리미엄(백그라운드 실행)이 활성화됩니다. (기본 30일 · 활성이면 만료일에서 연장)
+      </p>
+      <div id="subReqList"></div>
+      <hr style="border:none;border-top:1px solid var(--border,#e2e8f0);margin:14px 0" />
       <div id="subList"></div>
       <p id="subStatus" class="hint"></p>
     </section>
@@ -2907,9 +2917,100 @@
           });
         var refreshBtn = document.getElementById("refreshSubs");
         refreshBtn && refreshBtn.addEventListener("click", loadSubs);
+
+        // ── 입금 신청 대기 큐 ──
+        var reqListEl = document.getElementById("subReqList");
+        function loadSubReqs() {
+          if (!reqListEl) return;
+          reqListEl.innerHTML = '<p class="hint">불러오는 중...</p>';
+          fetch("/api/subscriptions/requests")
+            .then(function (r) {
+              return r.json();
+            })
+            .then(function (d) {
+              if (d.error) {
+                reqListEl.innerHTML =
+                  '<p class="hint">오류: ' + esc(d.error) + "</p>";
+                return;
+              }
+              renderSubReqs(d.requests || []);
+            })
+            .catch(function () {
+              reqListEl.innerHTML = '<p class="hint">목록을 불러오지 못했습니다.</p>';
+            });
+        }
+        window.loadSubReqs = loadSubReqs;
+        function renderSubReqs(reqs) {
+          if (!reqs.length) {
+            reqListEl.innerHTML = '<p class="hint">대기 중인 입금 신청이 없습니다.</p>';
+            return;
+          }
+          reqListEl.innerHTML = reqs
+            .map(function (q) {
+              return (
+                '<div style="border:1px solid var(--border,#e2e8f0);border-radius:var(--radius-sm);padding:12px;margin-bottom:10px">' +
+                '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+                "<b>" +
+                esc(q.userName || q.userId) +
+                "</b>" +
+                '<span style="font-size:12px;opacity:.7">입금자명: ' +
+                esc(q.depositorName || "(미입력)") +
+                "</span>" +
+                '<span style="margin-left:auto;font-size:12px;opacity:.7">' +
+                esc(fmt(q.createdAt)) +
+                "</span>" +
+                '<button data-act="approve" data-id="' +
+                esc(q.id) +
+                '" style="color:#16a34a;font-weight:var(--fw-semibold);font-size:12px;margin-left:6px">승인</button>' +
+                '<button data-act="reject" data-id="' +
+                esc(q.id) +
+                '" style="color:red;font-size:12px;margin-left:4px">거절</button>' +
+                "</div>" +
+                '<div style="margin-top:4px;font-size:11px;opacity:.6">승인 시 ' +
+                esc(String(q.periodDays || 30)) +
+                "일 부여(활성이면 연장)</div>" +
+                "</div>"
+              );
+            })
+            .join("");
+        }
+        reqListEl &&
+          reqListEl.addEventListener("click", function (e) {
+            var btn = e.target.closest("[data-act]");
+            if (!btn) return;
+            var act = btn.getAttribute("data-act");
+            var id = btn.getAttribute("data-id");
+            if (act === "reject" && !confirm("이 신청을 거절할까요?")) return;
+            if (act === "approve" && !confirm("입금을 확인했나요? 승인하면 즉시 프리미엄이 활성화됩니다.")) return;
+            btn.disabled = true;
+            fetch("/api/subscriptions/requests/" + encodeURIComponent(id) + "/" + act, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: "{}",
+            })
+              .then(function (r) {
+                return r.json();
+              })
+              .then(function (d) {
+                if (d.error) alert(d.error);
+                loadSubReqs();
+                loadSubs();
+              })
+              .catch(function () {
+                alert("처리 실패");
+                btn.disabled = false;
+              });
+          });
+        var refreshReqBtn = document.getElementById("refreshSubReqs");
+        refreshReqBtn && refreshReqBtn.addEventListener("click", loadSubReqs);
+
+        function loadSubsTab() {
+          loadSubs();
+          loadSubReqs();
+        }
         var tabBtn = document.querySelector('#adminTabs .atab[data-go="subs"]');
-        tabBtn && tabBtn.addEventListener("click", loadSubs);
-        loadSubs();
+        tabBtn && tabBtn.addEventListener("click", loadSubsTab);
+        loadSubsTab();
       })();
     </script>
   </body>

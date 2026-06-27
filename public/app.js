@@ -2568,31 +2568,149 @@ let currentStudentId = "";
           const list = document.getElementById("filesList");
           if (!list || !list.parentNode || !_bgInfo) return;
           let badge = document.getElementById("premiumBadge");
-          if (!_bgInfo.active) {
-            if (badge) badge.remove();
-            return;
-          }
           if (!badge) {
             badge = document.createElement("div");
             badge.id = "premiumBadge";
-            badge.style.cssText =
-              "margin:0 0 12px;padding:10px 12px;border:1px solid #c7a008;border-radius:8px;background:linear-gradient(90deg,#fffbeb,#fef9c3);color:#713f12;font-size:13px;font-weight:600";
             list.parentNode.insertBefore(badge, list);
           }
-          let detail = "백그라운드 실행을 사용할 수 있어요.";
-          if (_bgInfo.admin) {
-            detail = "관리자 — 백그라운드 실행을 사용할 수 있어요.";
-          } else if (_bgInfo.expiresAt) {
-            try {
-              const exp = new Date(_bgInfo.expiresAt);
-              // 100년 뒤(무기한) 이면 만료일을 숨긴다.
-              if (exp.getFullYear() < new Date().getFullYear() + 50) {
-                detail = `백그라운드 실행 가능 · ${formatDateTime(_bgInfo.expiresAt)}까지`;
-              }
-            } catch (_) {}
+          if (_bgInfo.active) {
+            // 활성 프리미엄 — 안내 배지.
+            badge.style.cssText =
+              "margin:0 0 12px;padding:10px 12px;border:1px solid #c7a008;border-radius:8px;background:linear-gradient(90deg,#fffbeb,#fef9c3);color:#713f12;font-size:13px;font-weight:600";
+            let detail = "백그라운드 실행을 사용할 수 있어요.";
+            if (_bgInfo.admin) {
+              detail = "관리자 — 백그라운드 실행을 사용할 수 있어요.";
+            } else if (_bgInfo.expiresAt) {
+              try {
+                const exp = new Date(_bgInfo.expiresAt);
+                if (exp.getFullYear() < new Date().getFullYear() + 50) {
+                  detail = `백그라운드 실행 가능 · ${formatDateTime(_bgInfo.expiresAt)}까지`;
+                }
+              } catch (_) {}
+            }
+            badge.textContent = `✨ 프리미엄 — ${detail}`;
+            return;
           }
-          badge.textContent = `✨ 프리미엄 — ${detail}`;
+          // 비활성 — 프리미엄 신청 CTA.
+          badge.style.cssText =
+            "margin:0 0 12px;padding:12px 14px;border:1px dashed #c7a008;border-radius:8px;background:#fffdf5;color:#713f12;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap";
+          const txt = document.createElement("span");
+          txt.style.fontWeight = "600";
+          txt.textContent =
+            "✨ 프리미엄으로 백그라운드 실행하기 — 제출 후 탭을 닫아도 보고서가 완성돼요.";
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "primary compact";
+          btn.style.marginLeft = "auto";
+          btn.textContent = "프리미엄 신청";
+          btn.addEventListener("click", openPremiumRequestModal);
+          badge.replaceChildren(txt, btn);
         } catch (_) {}
+      }
+
+      function openPremiumRequestModal() {
+        const plan = (_bgInfo && _bgInfo.plan) || {};
+        const overlay = document.createElement("div");
+        overlay.className = "confirm-overlay";
+        const card = document.createElement("section");
+        card.className = "confirm-card";
+        card.setAttribute("role", "dialog");
+        card.setAttribute("aria-modal", "true");
+
+        const h = document.createElement("h2");
+        h.textContent = "✨ 프리미엄 신청 (백그라운드 실행)";
+
+        const guide = document.createElement("div");
+        guide.style.cssText =
+          "font-size:13px;line-height:1.6;margin:8px 0 12px;padding:10px 12px;border:1px solid var(--border,#e2e8f0);border-radius:8px;background:var(--surface-2,#f8fafc)";
+        const lines = [];
+        if (plan.priceKrw) lines.push(`금액: ${Number(plan.priceKrw).toLocaleString()}원 / ${plan.periodDays || 30}일`);
+        if (plan.bank || plan.account)
+          lines.push(`입금: ${plan.bank || ""} ${plan.account || ""}${plan.holder ? ` (예금주 ${plan.holder})` : ""}`);
+        if (lines.length) {
+          guide.textContent = lines.join("\n");
+          guide.style.whiteSpace = "pre-line";
+        } else {
+          guide.textContent =
+            "입금 계좌 안내가 아직 설정되지 않았어요. 관리자에게 입금 방법을 문의한 뒤 신청하세요.";
+        }
+
+        const note = document.createElement("p");
+        note.className = "confirm-note";
+        note.style.margin = "0 0 6px";
+        note.textContent =
+          "입금하신 뒤 아래에 입금자명을 적고 신청하면, 관리자가 확인 후 바로 활성화해 드려요.";
+
+        const label = document.createElement("label");
+        label.style.cssText = "display:block;font-size:13px;margin:0 0 12px";
+        label.textContent = "입금자명";
+        const input = document.createElement("input");
+        input.type = "text";
+        input.maxLength = 40;
+        input.placeholder = "예: 홍길동";
+        input.style.cssText =
+          "width:100%;box-sizing:border-box;margin-top:4px;padding:8px 10px;border:1px solid var(--border,#cbd5e1);border-radius:6px;font:inherit";
+        label.appendChild(input);
+
+        const status = document.createElement("p");
+        status.className = "confirm-note";
+        status.style.cssText = "margin:0 0 8px;min-height:18px;color:var(--accent,#2563eb)";
+
+        const actions = document.createElement("div");
+        actions.className = "confirm-actions";
+        const cancel = document.createElement("button");
+        cancel.type = "button";
+        cancel.className = "secondary";
+        cancel.textContent = "닫기";
+        const ok = document.createElement("button");
+        ok.type = "button";
+        ok.className = "primary";
+        ok.textContent = "입금했어요 · 신청";
+        actions.append(cancel, ok);
+
+        const close = () => {
+          document.body.classList.remove("modal-open");
+          overlay.remove();
+        };
+        cancel.addEventListener("click", close);
+        overlay.addEventListener("click", (e) => {
+          if (e.target === overlay) close();
+        });
+        ok.addEventListener("click", async () => {
+          ok.disabled = true;
+          status.style.color = "var(--accent,#2563eb)";
+          status.textContent = "신청 중...";
+          try {
+            const r = await fetch("/api/subscriptions/request", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ depositorName: input.value.trim() }),
+            });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok) {
+              status.style.color = "var(--danger,#d23)";
+              status.textContent = d.error || "신청에 실패했어요.";
+              ok.disabled = false;
+              return;
+            }
+            status.style.color = "#16a34a";
+            status.textContent = d.duplicate
+              ? "이미 신청이 접수돼 있어요. 입금 확인 후 활성화됩니다."
+              : "신청 완료! 입금 확인 후 곧 활성화됩니다.";
+            ok.textContent = "신청됨";
+            setTimeout(close, 1800);
+          } catch (_) {
+            status.style.color = "var(--danger,#d23)";
+            status.textContent = "신청 중 오류가 났어요.";
+            ok.disabled = false;
+          }
+        });
+
+        card.append(h, guide, note, label, status, actions);
+        overlay.appendChild(card);
+        document.body.appendChild(overlay);
+        document.body.classList.add("modal-open");
+        input.focus();
       }
 
       function showBackgroundToast() {

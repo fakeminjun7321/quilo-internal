@@ -3424,35 +3424,109 @@ let currentStudentId = "";
 
       // ── 독서록(베타) submit — 도서 정보 → 독서활동 기록지(.hwpx) ──────────
       if (rlForm) {
+        // 생성 방식(한 권씩 / 엑셀 대량) 토글 — 관련 섹션 표시·필수속성·버튼 라벨 전환.
+        const rlIsBulk = () =>
+          document.querySelector('input[name="rlMode"]:checked')?.value === "bulk";
+        // 일부 .form-section/.field 에 [hidden] 을 무시하는 !important display 규칙이
+        // 있어, 인라인 display !important 로 강제 토글한다.
+        const rlToggle = (el, hide) => {
+          if (!el) return;
+          el.hidden = hide;
+          if (hide) el.style.setProperty("display", "none", "important");
+          else el.style.removeProperty("display");
+        };
+        const rlSetMode = () => {
+          const bulk = rlIsBulk();
+          rlToggle(document.getElementById("rlBulkSection"), !bulk);
+          rlForm
+            .querySelectorAll("[data-rl-single]")
+            .forEach((el) => rlToggle(el, bulk));
+          const titleEl = document.getElementById("rlTitle");
+          if (titleEl) titleEl.required = !bulk;
+          if (rlBtn) rlBtn.textContent = bulk ? "독서록 대량 생성 (ZIP)" : "독서록 생성";
+        };
+        rlForm
+          .querySelectorAll('input[name="rlMode"]')
+          .forEach((r) => r.addEventListener("change", rlSetMode));
+        rlSetMode();
+
         rlForm.addEventListener("submit", async (e) => {
           e.preventDefault();
           if (currentJobId) return;
 
-          const title = document.getElementById("rlTitle").value.trim();
-          if (!title) {
-            alert("도서명을 입력하세요.");
-            document.getElementById("rlTitle").focus();
-            return;
-          }
-
-          const author = document.getElementById("rlAuthor").value.trim();
-          const publisher = document.getElementById("rlPublisher").value.trim();
+          const bulk = rlIsBulk();
           const recordArea = document.getElementById("rlRecordArea").value;
           const subject = document.getElementById("rlSubject").value.trim();
           const domain = document.getElementById("rlDomain").value;
           const domainLabel =
             document.querySelector('#rlDomain option[value="' + domain + '"]')?.textContent.trim() || "";
           const borrowed = document.getElementById("rlBorrowed").value;
-          const startDate = document.getElementById("rlStartDate").value;
-          const endDate = document.getElementById("rlEndDate").value;
-          const userNotes = document.getElementById("rlUserNotes").value.trim();
-
           const rlModel =
             document.querySelector('input[name="rlModel"]:checked')?.value ||
-            "claude-opus-4-8";
+            "gpt-5.4-mini";
           const modelLabel = getModelLabel(rlModel);
           updateReadingLogFontOptions();
           const rlFontFace = document.getElementById("rlFontFace").value;
+
+          if (bulk) {
+            // ── 대량(엑셀) — 책마다 독서활동 기록지(.hwpx) → ZIP ──────────────
+            const excelEl = document.getElementById("rlExcel");
+            const excelFile = excelEl?.files?.[0];
+            if (!excelFile) {
+              alert("책 목록 엑셀(.xlsx/.csv)을 올리세요. (책이름·출판사·작가 순)");
+              excelEl?.focus?.();
+              return;
+            }
+            const periodStart = document.getElementById("rlPeriodStart").value;
+            const periodEnd = document.getElementById("rlPeriodEnd").value;
+
+            const ok = await showConfirmDialog({
+              title: "독서록 대량 생성 (베타)",
+              background: true,
+              rows: [
+                ["모델", modelLabel],
+                ["책 목록", excelFile.name],
+                ["영역", domainLabel || "미선택"],
+                ["대출 여부", borrowed === "no" ? "× (기본)" : borrowed === "yes" ? "○" : "미선택"],
+                ["읽기 기간", `${periodStart || "?"} ~ ${periodEnd || "?"} (책 수만큼 분배)`],
+                ["출력", "책마다 .hwpx → ZIP 묶음"],
+                ["예상 비용", "무료 (베타)"],
+              ],
+              note: `엑셀의 책마다 AI가 선택 계기·내용·느낀 점을 써서 학교 '독서활동 기록지'(.hwpx)를 만들어 ZIP으로 묶습니다. 책이 많으면 몇 분 걸릴 수 있어요. ${USE_POLICY_NOTE}`,
+            });
+            if (!ok) return;
+
+            const fd = new FormData();
+            fd.append("type", "reading-log-bulk");
+            fd.append("excel", excelFile);
+            if (recordArea) fd.append("recordArea", recordArea);
+            if (recordArea === "subject" && subject) fd.append("subject", subject);
+            if (domain) fd.append("domain", domain);
+            fd.append("borrowed", borrowed || "no");
+            if (periodStart) fd.append("periodStart", periodStart);
+            if (periodEnd) fd.append("periodEnd", periodEnd);
+            if (currentStudentId) fd.append("studentId", currentStudentId);
+            fd.append("model", rlModel);
+            fd.append("format", "hwpx");
+            fd.append("fontFace", rlFontFace);
+            appendPolicyAcknowledgements(fd);
+
+            await submitReport({ formEl: rlForm, buttonEl: rlBtn, formData: fd, estimate: estimateGenSeconds("reading-log", rlModel) });
+            return;
+          }
+
+          // ── 단일(한 권) ────────────────────────────────────────────────
+          const title = document.getElementById("rlTitle").value.trim();
+          if (!title) {
+            alert("도서명을 입력하세요.");
+            document.getElementById("rlTitle").focus();
+            return;
+          }
+          const author = document.getElementById("rlAuthor").value.trim();
+          const publisher = document.getElementById("rlPublisher").value.trim();
+          const startDate = document.getElementById("rlStartDate").value;
+          const endDate = document.getElementById("rlEndDate").value;
+          const userNotes = document.getElementById("rlUserNotes").value.trim();
 
           const ok = await showConfirmDialog({
             title: "독서록 초안 생성 (베타)",

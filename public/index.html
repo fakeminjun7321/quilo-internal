@@ -981,7 +981,7 @@
     </form>
 
     <!-- ── 독서록 폼 (베타) — 학교 '독서활동 기록지' 양식(.hwpx) 채우기 ──────── -->
-    <form id="readingLogForm" class="report-form" data-report-form="reading-log" hidden>
+    <form id="readingLogForm" class="report-form" data-report-form="reading-log" data-flow-init="1" hidden>
       <input type="hidden" name="rlFormat" value="hwpx" />
       <div class="notice">
         <strong>독서록 「독서활동 기록지」 초안 (베타·무료).</strong>
@@ -989,18 +989,53 @@
         인적사항(이름)은 개인 설정 값으로 자동 출력됩니다. <strong>그대로 제출하지 말고 본인 글로 다듬어 쓰세요.</strong>
       </div>
 
+      <!-- 생성 방식: 한 권씩 / 엑셀로 여러 권 -->
+      <div class="seg-group" style="margin: 0 0 6px">
+        <span class="field-label">생성 방식</span>
+        <div class="segmented" id="rlModeSeg">
+          <label><input type="radio" name="rlMode" value="single" checked /> 한 권씩</label>
+          <label><input type="radio" name="rlMode" value="bulk" /> 엑셀로 여러 권 한꺼번에 (ZIP)</label>
+        </div>
+      </div>
+
+      <!-- 대량(엑셀) 입력 — bulk 모드에서만 표시 -->
+      <div class="form-section" id="rlBulkSection" hidden>
+        <div class="form-section-head">
+          <span class="form-section-title">책 목록 (엑셀)</span>
+        </div>
+        <div class="field">
+          <label><span class="field-label">책 목록 파일 (.xlsx / .csv)</span>
+            <input id="rlExcel" name="excel" type="file" accept=".xlsx,.xls,.csv" />
+          </label>
+          <small>열 순서 <strong>책이름 · 출판사 · 작가</strong> (첫 행에 머리글이 있어도 됩니다). 책마다 독서활동 기록지 한 장씩 만들어 <strong>ZIP</strong>으로 묶어 드립니다. 아래 <strong>영역·과목·대출 여부·기간</strong>은 모든 책에 함께 적용됩니다.</small>
+        </div>
+        <div class="field-grid">
+          <div class="field">
+            <label><span class="field-label">읽기 기간 시작</span>
+              <input id="rlPeriodStart" name="periodStart" type="date" value="2025-03-03" />
+            </label>
+          </div>
+          <div class="field">
+            <label><span class="field-label">읽기 기간 끝</span>
+              <input id="rlPeriodEnd" name="periodEnd" type="date" value="2025-07-02" />
+            </label>
+          </div>
+        </div>
+        <small>위 기간을 책 수만큼 자동으로 나눠 각 권의 '독서활동 일시'로 적습니다.</small>
+      </div>
+
       <div class="form-section">
         <div class="form-section-head">
           <span class="form-section-title">도서 정보</span>
         </div>
-        <div class="field">
+        <div class="field" data-rl-single>
           <label><span class="field-label">도서명 <span class="req">*</span></span>
             <input id="rlTitle" name="title" type="text" maxlength="200" required
               placeholder="예: 코스모스 / 페르마의 마지막 정리 / 사피엔스" />
           </label>
           <small>읽은 책의 제목을 정확히 적어 주세요.</small>
         </div>
-        <div class="field-grid">
+        <div class="field-grid" data-rl-single>
           <div class="field">
             <label><span class="field-label">저자 (선택)</span>
               <input id="rlAuthor" name="author" type="text" maxlength="200" placeholder="비우면 AI가 채웁니다" />
@@ -1055,14 +1090,14 @@
           <div class="field">
             <label><span class="field-label">학교 도서관 대출 여부</span>
               <select id="rlBorrowed" name="borrowed">
-                <option value="" selected>선택 안 함</option>
+                <option value="">선택 안 함</option>
                 <option value="yes">○ (도서관에서 대출)</option>
-                <option value="no">× (개인 소장 등)</option>
+                <option value="no" selected>× (개인 소장 등)</option>
               </select>
             </label>
           </div>
         </div>
-        <div class="field-grid">
+        <div class="field-grid" data-rl-single>
           <div class="field">
             <label><span class="field-label">읽기 시작일 (선택)</span>
               <input id="rlStartDate" name="startDate" type="date" />
@@ -1076,7 +1111,7 @@
         </div>
       </div>
 
-      <div class="form-section">
+      <div class="form-section" data-rl-single>
         <div class="form-section-head">
           <span class="form-section-title">AI 참고 메모</span>
         </div>
@@ -1096,8 +1131,8 @@
         <div class="seg-group" style="margin-bottom: 12px">
           <span class="field-label">AI 모델 (베타 기간 무료)</span>
           <div class="segmented">
-            <label class="fable-model" hidden><input type="radio" name="rlModel" value="claude-fable-5" /> Fable 5 · 9크레딧 (관리자)</label>
-            <label><input type="radio" name="rlModel" value="claude-opus-4-8" checked /> Opus 4.8 · 무료(베타)</label>
+            <label><input type="radio" name="rlModel" value="gpt-5.4-mini" checked /> GPT-5.4 mini · 빠름 · 무료(베타)</label>
+            <label><input type="radio" name="rlModel" value="gpt-5.4" /> GPT-5.4 · 무료(베타)</label>
             <label><input type="radio" name="rlModel" value="claude-sonnet-4-6" /> Sonnet 4.6 · 무료(베타)</label>
           </div>
         </div>

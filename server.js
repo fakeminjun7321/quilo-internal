@@ -365,6 +365,64 @@ const PIPELINES = {
     },
     generateHwpx: require("./lib/pipelines/reading-log/hwpx-gen").generateHwpx,
   },
+  // 독서록 대량 — 엑셀(책이름·출판사·작가) 한 번에 → 책마다 독서활동 기록지(.hwpx) → ZIP.
+  // 영역·과목·대출여부·기간은 일괄 지정. 기간은 책 수만큼 순차 분배. (베타·무료)
+  "reading-log-bulk": {
+    label: "독서록 대량",
+    filenamePrefix: "독서활동기록지",
+    creditField: "result",
+    outputKind: "zip",
+    prepareInput(filesByField, body) {
+      const excel = (filesByField.excel || filesByField.data || [])[0];
+      if (!excel) {
+        throw new Error("책 목록 엑셀(.xlsx) 또는 .csv 파일을 올리세요.");
+      }
+      const ext = (excel.originalname.split(".").pop() || "").toLowerCase();
+      if (!["xlsx", "xls", "csv"].includes(ext)) {
+        throw new Error("책 목록은 .xlsx / .xls / .csv 파일만 가능합니다.");
+      }
+      const books = require("./lib/pipelines/reading-log/bulk").parseBooks(
+        excel.buffer,
+        ext,
+      );
+      const recordArea = ["subject", "common"].includes(String(body.recordArea || ""))
+        ? String(body.recordArea)
+        : "";
+      const VALID_DOMAINS = new Set([
+        "major-math", "major-physics", "major-chemistry", "major-biology",
+        "major-earth", "major-cs", "general-philosophy", "general-social",
+        "general-science-art", "general-literature", "general-history", "general-classics",
+      ]);
+      const domain = VALID_DOMAINS.has(String(body.domain || "")) ? String(body.domain) : "";
+      // 대출 여부 기본 'no'(X). 값이 명시되면 그 값을 쓴다.
+      const borrowed = ["yes", "no"].includes(String(body.borrowed || ""))
+        ? String(body.borrowed)
+        : "no";
+      return {
+        books,
+        domain,
+        recordArea,
+        subject: String(body.subject || "").trim().slice(0, 100),
+        borrowed,
+        periodStart: String(body.periodStart || "").trim().slice(0, 20),
+        periodEnd: String(body.periodEnd || "").trim().slice(0, 20),
+        fontFace: normalizeFontFace(body.fontFace),
+        style: "default",
+      };
+    },
+    buildFilename(content, ctx) {
+      const id = sanitizeForFilename(ctx.studentId || "");
+      const name = sanitizeForFilename(ctx.userName || "");
+      const prefix = `${id}${name ? "_" + name : ""}`;
+      // outputKind:"zip" 이라 generateBundle.filename 이 우선. 안전망 확장자 .zip.
+      return prefix
+        ? `${prefix}_독서활동기록지_묶음.zip`
+        : `독서활동기록지_묶음.zip`;
+    },
+    generateContent: require("./lib/pipelines/reading-log/bulk")
+      .generateReadingLogBulk,
+    generateBundle: require("./lib/pipelines/reading-log/bulk").generateBundle,
+  },
   // 자유 보고서 — 임의 주제. 작성 지시 + (선택) 평가 기준 + 자료 파일/사진을 주면
   // 기존 보고서처럼 표·수식·그래프·사진을 갖춘 .docx/.hwpx 초안을 만든다.
   // 공개 + 크레딧 차감(일반 보고서와 동일). Claude/GPT 모두 허용.
@@ -594,6 +652,7 @@ const FREE_BETA_TYPES = new Set([
   "cap-translate",
   "phys-mock-exam",
   "reading-log",
+  "reading-log-bulk",
 ]);
 const pricing = require("./lib/pricing");
 const {
@@ -3073,7 +3132,9 @@ app.post(
             userInfo.id &&
             ((await supa.userHasBeta(userInfo.id, reportType)) ||
               (STUDIO_SKILL_TYPES.has(reportType) &&
-                (await supa.userHasBeta(userInfo.id, "create"))));
+                (await supa.userHasBeta(userInfo.id, "create"))) ||
+              (reportType === "reading-log-bulk" &&
+                (await supa.userHasBeta(userInfo.id, "reading-log"))));
         } catch {
           hasBeta = false;
         }
@@ -3255,6 +3316,8 @@ app.post(
       "korean-lit-exam",
       "cap-translate",
       "phys-mock-exam",
+      "reading-log",
+      "reading-log-bulk",
     ]);
     const allowedModels = GPT_OK_TYPES.has(reportType)
       ? [...ALLOWED_MODELS, ...GPT_REPORT_MODELS]

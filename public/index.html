@@ -1051,17 +1051,27 @@
           <div class="field">
             <label><span class="field-label">학생부 기록 영역</span>
               <select id="rlRecordArea" name="recordArea">
-                <option value="" selected>선택 안 함</option>
-                <option value="subject">과목별 독서기록</option>
-                <option value="common">공통 독서기록</option>
+                <option value="auto" selected>자동 (영역·수강 과목 기준)</option>
+                <option value="subject">과목별 독서기록 (직접)</option>
+                <option value="common">공통 독서기록 (직접)</option>
+                <option value="">표시 안 함</option>
               </select>
             </label>
+            <small>자동: 전공도서 중 수강 과목 관련 책은 '과목별'(교과명 기입), 그 외(수학·지구과학·정보 등 미수강)와 일반도서는 '공통'으로 분류합니다.</small>
           </div>
           <div class="field" id="rlSubjectField" hidden>
             <label><span class="field-label">교과명</span>
-              <input id="rlSubject" name="subject" type="text" maxlength="100" placeholder="예: 물리, 수학, 국어" />
+              <input id="rlSubject" name="subject" type="text" maxlength="100" placeholder="예: 일반물리학1" />
             </label>
           </div>
+        </div>
+        <div class="field" id="rlEnrolledField">
+          <label><span class="field-label">이번 학기 수강 과목 <span class="field-hint">(자동 분류용)</span></span>
+            <input id="rlEnrolled" name="enrolledSubjects" type="text" maxlength="400"
+              value="일반물리학1, 일반화학1, 일반생명과학1, 유기화학, 분자생물학"
+              placeholder="쉼표로 구분 — 예: 일반물리학1, 일반화학1, 일반생명과학1, 유기화학, 분자생물학" />
+          </label>
+          <small>전공도서가 이 과목들과 관련되면 '과목별 독서기록(교과명)'으로, 아니면 '공통'으로 자동 분류합니다. 화학·생명처럼 후보가 둘이면 책 내용에 맞는 과목을 AI가 고릅니다.</small>
         </div>
         <div class="field-grid">
           <div class="field">

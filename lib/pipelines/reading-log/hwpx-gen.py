@@ -88,10 +88,66 @@ def fill_multi(doc, table, rc, paras, *, align="LEFT", line_spacing=160):
             p.add_run(plain, char_pr_id_ref=cp)
 
 
+def fill_domain_bold(doc, table, rc, label):
+    """영역 목록 칸(예: '수학 / 물리 / 화학 / ...')에서 해당 영역만 굵게,
+    나머지는 보통으로 다시 채운다. 전체 목록은 그대로 두고 굵기로만 표시한다."""
+    cell = cell_at(table, rc)
+    if cell is None or not label:
+        return
+    text = (cell.text or "").strip()
+    if not text:
+        return
+    pre.set_cell_margins(cell)
+    clear_cell(cell)
+    para_pr = pre.make_para_pr(doc, align="CENTER", line_spacing=160)
+    p = cell.add_paragraph("", para_pr_id_ref=para_pr)
+    target = label.strip()
+    # "/" 구분자는 살리고, 라벨과 일치하는 토큰만 굵게.
+    for seg in re.split(r"(/)", text):
+        if seg == "":
+            continue
+        is_match = seg.strip() == target
+        cp = pre.make_char_pr(doc, size=pre.SIZE_BODY, bold=is_match)
+        p.add_run(seg, char_pr_id_ref=cp)
+
+
+def fill_confirm_date(doc, table, end_date_iso):
+    """맨 아래 '위와 같이 …확인함.' 칸의 'YYYY.   .   .' 날짜를 읽기 종료일로 채운다.
+    같은 칸의 다른 문단(확인 문구·교장 직인 줄)은 그대로 둔다."""
+    m = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})$", str(end_date_iso or "").strip())
+    if not m:
+        return
+    y, mo, d = m.group(1), str(int(m.group(2))), str(int(m.group(3)))
+    cell = cell_at(table, (10, 0))
+    if cell is None:
+        return
+    for p in cell.paragraphs:
+        txt = (p.text or "").strip()
+        # 날짜 문단: 4자리 연도로 시작하고 월/일이 비어 있는 'YYYY.    .    .' 형태.
+        if re.match(r"^\d{4}\s*\.\s*\.\s*\.\s*$", txt):
+            ref = None
+            for r in p.runs:
+                if (r.text or "").strip():
+                    ref = r.char_pr_id_ref
+                    break
+            p.clear_text()
+            new_text = f"{y}.    {mo}.    {d}."
+            if ref is not None:
+                p.add_run(new_text, char_pr_id_ref=ref)
+            else:
+                p.add_run(new_text)
+            return
+
+
 # ── 학번 파싱 ───────────────────────────────────────────────────────────────
 def parse_student_id(sid):
-    """학년/반/번호를 '명확히' 분리할 수 있을 때만 (학년, 반, 번호) 반환.
-    구분자가 없는 숫자열은 형식을 단정할 수 없어 (None,None,None)로 둔다(날조 방지)."""
+    """학년/반/번호를 분리해 (학년, 반, 번호) 반환. 못 하면 (None,None,None).
+
+    지원 형식:
+      - 구분자 형: '2-3-12', '2.3.5', '2 4 2', '2학년 3반 5번'
+      - 4자리 붙임 형: '2402' → 2학년 4반 2번, '2305' → 2학년 3반 5번
+        (학년 1자리 + 반 1자리 + 번호 2자리)
+    """
     sid = str(sid or "").strip()
     if not sid:
         return (None, None, None)
@@ -99,6 +155,10 @@ def parse_student_id(sid):
         r"^\s*([1-3])\s*(?:학년)?\s*[-./\s]\s*(\d{1,2})\s*(?:반)?\s*[-./\s]\s*(\d{1,2})\s*(?:번)?\s*$",
         sid,
     )
+    if m:
+        return (m.group(1), str(int(m.group(2))), str(int(m.group(3))))
+    # 구분자 없는 4자리: 학년(1) + 반(1) + 번호(2)
+    m = re.match(r"^([1-3])(\d)(\d{2})$", sid)
     if m:
         return (m.group(1), str(int(m.group(2))), str(int(m.group(3))))
     return (None, None, None)
@@ -158,19 +218,20 @@ def generate_hwpx(content):
     elif borrowed == "no":
         fill_single(doc, table, (4, 10), "×")
 
-    # 영역 — 선택한 분류 칸에 '해당 항목만' 남기고, 다른 분류 칸은 비운다.
+    # 영역 — 전체 목록은 그대로 두고 '해당하는 영역만 굵게' 표시한다.
     dg, dl = g("domain_group"), g("domain_label")
     if dg == "전공도서" and dl:
-        fill_single(doc, table, (5, 3), dl)
-        fill_multi(doc, table, (6, 3), [])
+        fill_domain_bold(doc, table, (5, 3), dl)
     elif dg == "일반도서" and dl:
-        fill_single(doc, table, (6, 3), dl)
-        fill_multi(doc, table, (5, 3), [])
+        fill_domain_bold(doc, table, (6, 3), dl)
 
     # 세 서술 항목
     fill_multi(doc, table, (7, 1), content.get("selection_reason"))
     fill_multi(doc, table, (8, 1), content.get("content_summary"))
     fill_multi(doc, table, (9, 1), content.get("reflection"))
+
+    # 맨 아래 확인 날짜 = 읽기 종료일
+    fill_confirm_date(doc, table, content.get("end_date"))
 
     return doc
 

@@ -1624,12 +1624,16 @@ let currentStudentId = "";
         .forEach((el) => el.addEventListener("change", updateFormMakerFontOptions));
       updateFormMakerFontOptions();
       updateReadingLogFontOptions(); // 독서록은 .hwpx 고정 → 글꼴 옵션만 보정
-      // 독서록: '과목별 독서기록' 일 때만 교과명 입력칸을 보여 준다.
+      // 독서록 학생부 기록영역: '과목별(직접)'이면 교과명 칸을, '자동'이면 수강 과목 칸을 보여 준다.
       (function () {
         const ra = document.getElementById("rlRecordArea");
         const subjField = document.getElementById("rlSubjectField");
-        if (!ra || !subjField) return;
-        const sync = () => { subjField.hidden = ra.value !== "subject"; };
+        const enrolledField = document.getElementById("rlEnrolledField");
+        if (!ra) return;
+        const sync = () => {
+          if (subjField) subjField.hidden = ra.value !== "subject";
+          if (enrolledField) enrolledField.hidden = ra.value !== "auto";
+        };
         ra.addEventListener("change", sync);
         sync();
       })();
@@ -3457,6 +3461,8 @@ let currentStudentId = "";
           const bulk = rlIsBulk();
           const recordArea = document.getElementById("rlRecordArea").value;
           const subject = document.getElementById("rlSubject").value.trim();
+          const enrolledSubjects =
+            document.getElementById("rlEnrolled")?.value.trim() || "";
           const domain = document.getElementById("rlDomain").value;
           const domainLabel =
             document.querySelector('#rlDomain option[value="' + domain + '"]')?.textContent.trim() || "";
@@ -3501,6 +3507,8 @@ let currentStudentId = "";
             fd.append("excel", excelFile);
             if (recordArea) fd.append("recordArea", recordArea);
             if (recordArea === "subject" && subject) fd.append("subject", subject);
+            if (recordArea === "auto" && enrolledSubjects)
+              fd.append("enrolledSubjects", enrolledSubjects);
             if (domain) fd.append("domain", domain);
             fd.append("borrowed", borrowed || "no");
             if (periodStart) fd.append("periodStart", periodStart);
@@ -3553,6 +3561,8 @@ let currentStudentId = "";
           if (publisher) fd.append("publisher", publisher);
           if (recordArea) fd.append("recordArea", recordArea);
           if (recordArea === "subject" && subject) fd.append("subject", subject);
+          if (recordArea === "auto" && enrolledSubjects)
+            fd.append("enrolledSubjects", enrolledSubjects);
           if (domain) fd.append("domain", domain);
           if (borrowed) fd.append("borrowed", borrowed);
           if (startDate) fd.append("startDate", startDate);

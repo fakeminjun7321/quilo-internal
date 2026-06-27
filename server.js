@@ -319,7 +319,10 @@ const PIPELINES = {
       if (!bookTitle) {
         throw new Error("도서명을 입력하세요.");
       }
-      const recordArea = ["subject", "common"].includes(String(body.recordArea || ""))
+      // "auto"(영역·수강과목 기준 자동) / "subject" / "common" / ""(표시 안 함).
+      const recordArea = ["auto", "subject", "common"].includes(
+        String(body.recordArea || ""),
+      )
         ? String(body.recordArea)
         : "";
       const VALID_DOMAINS = new Set([
@@ -337,6 +340,7 @@ const PIPELINES = {
         publisher: String(body.publisher || "").trim().slice(0, 200),
         recordArea,
         subject: String(body.subject || "").trim().slice(0, 100),
+        enrolledSubjects: String(body.enrolledSubjects || "").trim().slice(0, 400),
         domain,
         borrowed,
         startDate: String(body.startDate || "").trim().slice(0, 20),
@@ -351,11 +355,10 @@ const PIPELINES = {
       const id = sanitizeForFilename(ctx.studentId || "");
       const name = sanitizeForFilename(ctx.userName || "");
       const title = sanitizeForFilename(content.title || content.book_title || "독서록");
-      const prefix = `${id}${name ? "_" + name : ""}`;
-      // 확장자는 .docx 로 두면 runGeneration 이 실제 형식(.hwpx)으로 치환한다.
-      return prefix
-        ? `${prefix}_독서활동기록지_${title}.docx`
-        : `독서활동기록지_${title}.docx`;
+      // 파일명 규칙: 학번이름_도서명 (예: 2402구민준_코스모스). 확장자 .docx 는
+      // runGeneration 이 실제 형식(.hwpx)으로 치환한다.
+      const who = `${id}${name}`;
+      return who ? `${who}_${title}.docx` : `독서활동기록지_${title}.docx`;
     },
     generateContent: require("./lib/pipelines/reading-log/generate")
       .generateReportContent,
@@ -385,9 +388,12 @@ const PIPELINES = {
         excel.buffer,
         ext,
       );
-      const recordArea = ["subject", "common"].includes(String(body.recordArea || ""))
+      // 대량은 책마다 영역(분야)에 맞춰 자동 분류가 기본. 명시값이 있으면 그 값을 쓴다.
+      const recordArea = ["auto", "subject", "common"].includes(
+        String(body.recordArea || ""),
+      )
         ? String(body.recordArea)
-        : "";
+        : "auto";
       const VALID_DOMAINS = new Set([
         "major-math", "major-physics", "major-chemistry", "major-biology",
         "major-earth", "major-cs", "general-philosophy", "general-social",
@@ -403,6 +409,7 @@ const PIPELINES = {
         domain,
         recordArea,
         subject: String(body.subject || "").trim().slice(0, 100),
+        enrolledSubjects: String(body.enrolledSubjects || "").trim().slice(0, 400),
         borrowed,
         periodStart: String(body.periodStart || "").trim().slice(0, 20),
         periodEnd: String(body.periodEnd || "").trim().slice(0, 20),

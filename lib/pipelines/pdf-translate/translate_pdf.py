@@ -1276,7 +1276,21 @@ def cmd_analyze(pdf_path):
     text = "\n".join(parts)
     n = len(doc)
     scanned = n > 0 and total < 20 * n
-    two_column = (not scanned) and _detect_two_column(doc)
+    # 깨진 텍스트층 감지: Type0/Identity-H 같은 서브셋 폰트가 ToUnicode 없이 박힌 PDF 는
+    # 추출하면 글리프 인덱스가 그대로 나와 C0 제어문자·사설영역(PUA) 글자로 가득 찬다.
+    # 정상 텍스트(한글·CJK 포함)는 본문에 제어문자가 사실상 없으므로, 비-공백 글자 중
+    # 제어/PUA 비율이 높으면 '글자만 교체'로는 번역 불가 → OCR(이미지) 경로로 보내야 한다.
+    nonspace = [c for c in text if not c.isspace()]
+    ns = len(nonspace)
+    garbage = 0
+    for c in nonspace:
+        o = ord(c)
+        if o < 0x20 or o == 0x7F or 0x80 <= o <= 0x9F or 0xE000 <= o <= 0xF8FF:
+            garbage += 1
+    garbled_ratio = round(garbage / max(ns, 1), 3)
+    # 본문이 충분히 있는데(스캔 아님) 깨짐 비율이 높으면 garbled. 5% 면 정상 문서와 명확히 구분.
+    garbled = (not scanned) and ns > 200 and garbled_ratio > 0.05
+    two_column = (not scanned) and (not garbled) and _detect_two_column(doc)
     # 수식 지표: 그리스 문자(U+0370–03FF), 수학 기호, 위/아래 첨자(U+2070–209F), '=' 빈도
     greek = sum(1 for c in text if "Ͱ" <= c <= "Ͽ")
     syms = sum(1 for c in text if c in _MATH_SYMS)
@@ -1289,6 +1303,8 @@ def cmd_analyze(pdf_path):
             "page_count": n,
             "text_chars": total,
             "scanned": scanned,
+            "garbled": garbled,
+            "garbled_ratio": garbled_ratio,
             "math_score": math_score,
             "math_density": density,
             "two_column": two_column,

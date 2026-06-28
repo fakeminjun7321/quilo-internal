@@ -304,28 +304,32 @@
           const pages = Math.max(1, +meta.page_count || 1);
           const chars = Math.max(0, +meta.text_chars || 0);
           const scanned = !!meta.scanned;
+          // 깨진 텍스트층은 '글자 교체' 불가 → 스캔본과 동일하게 이미지 OCR 경로.
+          const garbled = !!meta.garbled;
+          const visionOcr = scanned || garbled;
           const density = +meta.math_density || 0;
-          const needs = scanned || density >= 12;
+          const needs = visionOcr || density >= 12;
           const rmode =
             mode === "retypeset" ? "retypeset" : needs ? "retypeset" : "inplace";
           const isOpus = /opus/i.test(modelId || ""); // Opus 만 느린 티어(GPT·Sonnet 은 빠름)
           const charTok = chars / 3.5;
-          const ocrMax = 30;
           const maxPages = 700;
           const chunkPages = 50;
-          const tooManyPages = !scanned && pages > maxPages;
+          const ocrChunk = 10, ocrConc = 3;
+          const tooManyPages = pages > maxPages;
           let inTok = 0,
             outTok = 0,
             cacheRead = 0,
             seconds = 0,
             truncated = false;
-          if (scanned) {
-            const pp = Math.min(pages, ocrMax);
-            truncated = pages > ocrMax;
-            const t = Math.min(100, Math.ceil(pp * 1.3));
+          if (visionOcr) {
+            // 모든 페이지를 이미지로 읽음(큰 문서는 20쪽씩 구간 병렬·병합 — 자르지 않음).
+            const t = Math.ceil(pages * 1.3);
             inTok = t * 1600;
             outTok = t * 900;
-            seconds = 1.5 * pp + t * (isOpus ? 4 : 2.6) + 18;
+            const nChunks = Math.max(1, Math.ceil(pages / ocrChunk));
+            const waves = Math.ceil(nChunks / ocrConc);
+            seconds = waves * (ocrChunk * (isOpus ? 4 : 2.6) + 22) + 18;
           } else if (rmode === "retypeset") {
             inTok = pages * 2000;
             outTok = (charTok || pages * 800) * 1.3;
@@ -345,10 +349,11 @@
             (inTok / 1e6) * p.input +
             (outTok / 1e6) * p.output +
             (cacheRead / 1e6) * p.cacheRead;
-          const chunked = !scanned && rmode === "inplace" && pages > chunkPages;
+          const chunked = !visionOcr && rmode === "inplace" && pages > chunkPages;
           return {
             mode: rmode,
             scanned,
+            garbled,
             pages,
             chars,
             truncated,
@@ -372,11 +377,13 @@
               `<br><span style="opacity:.7">PDF를 나눠서 업로드하면 번역할 수 있습니다.</span>`;
             return;
           }
-          const modeLabel = e.scanned
-            ? "스캔본 OCR 재조판"
-            : e.mode === "retypeset"
-              ? "재조판(수식·정밀)"
-              : "빠른 번역(레이아웃 유지)";
+          const modeLabel = e.garbled
+            ? "깨진 글자 PDF → OCR 재조판"
+            : e.scanned
+              ? "스캔본 OCR 재조판"
+              : e.mode === "retypeset"
+                ? "재조판(수식·정밀)"
+                : "빠른 번역(레이아웃 유지)";
           const krwLo = Math.round(e.costUsd.lo * 1400);
           const krwHi = Math.round(e.costUsd.hi * 1400);
           estEl.innerHTML =
@@ -468,7 +475,7 @@
         // 재조판 권유 확인창. 사용자가 '재조판'을 명시하지 않았는데 문서가 재조판을
         // 필요로 하면(스캔본·수식 많음) 자동 전환하지 않고 먼저 물어본다.
         // 반환: 'retypeset' | 'inplace' | 'cancel'
-        function askRetypeset(kind, density) {
+        function askRetypeset(kind, density, garbled) {
           return new Promise((resolve) => {
             const scanned = kind === "scanned";
             const ov = document.createElement("div");
@@ -481,12 +488,16 @@
             card.setAttribute("aria-describedby", "retypesetDlgBody");
             card.style.cssText =
               "background:var(--surface);border-radius:var(--radius);max-width:440px;width:100%;padding:22px 22px 18px;box-shadow:var(--shadow-lg);font-size:14px;line-height:1.6;color:var(--text)";
-            const title = scanned
-              ? "스캔본 PDF — 재조판이 필요합니다"
-              : "수식이 많은 문서입니다";
-            const body = scanned
-              ? "이 PDF는 스캔본/이미지예요. 글자만 바꾸는 <b>빠른 번역</b>은 불가능하고, OCR로 새로 조판하는 <b>재조판</b>으로만 번역할 수 있습니다. (PDF를 새로 생성 · 시간·비용이 더 듭니다.)"
-              : `이 문서는 수식이 많습니다(수식밀도 <b>${density}</b>).<br><b>빠른 번역</b>은 레이아웃·그림은 그대로지만 복잡한 수식·전하·구조식이 깨질 수 있어요.<br><b>재조판</b>은 PDF를 새로 만들어 수식을 정확히 복원합니다(시간·비용↑, 레이아웃은 달라짐).`;
+            const title = garbled
+              ? "본문 글자가 깨진 PDF — 재조판이 필요합니다"
+              : scanned
+                ? "스캔본 PDF — 재조판이 필요합니다"
+                : "수식이 많은 문서입니다";
+            const body = garbled
+              ? "이 PDF는 본문 글자가 깨진 폰트로 박혀 있어(글자 추출 불가) 글자만 바꾸는 <b>빠른 번역</b>이 불가능합니다. 페이지를 이미지로 읽는 <b>재조판(OCR)</b>으로만 번역할 수 있어요. (PDF를 새로 생성 · 시간·비용이 더 듭니다.)"
+              : scanned
+                ? "이 PDF는 스캔본/이미지예요. 글자만 바꾸는 <b>빠른 번역</b>은 불가능하고, OCR로 새로 조판하는 <b>재조판</b>으로만 번역할 수 있습니다. (PDF를 새로 생성 · 시간·비용이 더 듭니다.)"
+                : `이 문서는 수식이 많습니다(수식밀도 <b>${density}</b>).<br><b>빠른 번역</b>은 레이아웃·그림은 그대로지만 복잡한 수식·전하·구조식이 깨질 수 있어요.<br><b>재조판</b>은 PDF를 새로 만들어 수식을 정확히 복원합니다(시간·비용↑, 레이아웃은 달라짐).`;
             card.innerHTML =
               `<div id="retypesetDlgTitle" style="font-weight:var(--fw-bold);font-size:16px;margin-bottom:8px">${title}</div>` +
               `<div id="retypesetDlgBody" style="margin-bottom:16px">${body}</div>`;
@@ -554,11 +565,15 @@
             estKey === fileKey(f0)
           ) {
             const scanned = !!estMeta.scanned;
+            const garbled = !!estMeta.garbled;
             const density = +estMeta.math_density || 0;
-            if (scanned || density >= 12) {
+            if (scanned || garbled || density >= 12) {
+              // 깨진 글자(garbled)·스캔본은 글자 교체가 불가하므로 스캔본 다이얼로그로
+              // (빠른 번역 옵션 없이) 안내한다.
               const choice = await askRetypeset(
-                scanned ? "scanned" : "math",
+                scanned || garbled ? "scanned" : "math",
                 density,
+                garbled,
               );
               if (choice === "cancel") return;
               chosenMode = choice; // 'retypeset' 또는 'inplace'

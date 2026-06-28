@@ -197,7 +197,7 @@
           const r = await fetch("/api/translate-pdf/estimate", { method: "POST", body: fd });
           if (!r.ok) { $("est").textContent = ""; return; }
           const e = await r.json();
-          const m = e.mode === "retypeset" ? (e.scanned ? "스캔 OCR 재조판" : "재조판") : "빠른 번역";
+          const m = e.mode === "retypeset" ? (e.garbled ? "깨진 글자 → OCR 재조판" : e.scanned ? "스캔 OCR 재조판" : "재조판") : "빠른 번역";
           let s = `<b>${e.pages}쪽</b> · 처리방식 <b>${m}</b> · 예상 ${Math.round(e.seconds.lo)}~${Math.round(e.seconds.hi)}초`;
           if (e.tooManyPages) s += ` <span class="warn">· ${e.maxPages}쪽 초과 — 텍스트 PDF 상한</span>`;
           if (e.chunked) s += ` <span style="opacity:.7">· ${e.chunkPages}쪽씩 ${e.chunks}구간 병렬</span>`;

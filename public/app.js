@@ -776,6 +776,7 @@ let currentStudentId = "";
         free: "자유 보고서",
         "problem-set": "문제집 메이커",
         "form-maker": "양식 메이커",
+        "pdf-translate": "PDF 통번역",
       };
       async function renderBgJobs() {
         const list = document.getElementById("filesList");

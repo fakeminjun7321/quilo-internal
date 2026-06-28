@@ -684,8 +684,9 @@ const {
 } = require("./lib/mailer");
 const { generateToken, hashToken } = require("./lib/auth");
 const { getVersionInfo } = require("./lib/version-info");
-const { translatePdf } = require("./lib/pipelines/pdf-translate/translate");
+const { translatePdf, makeGate } = require("./lib/pipelines/pdf-translate/translate");
 const { retypesetPdf } = require("./lib/pipelines/pdf-translate/latex-gen");
+const { prewarmTectonic } = require("./lib/pipelines/pdf-translate/latex-pdf");
 const { convertDocxToHwpx } = require("./lib/pipelines/docx-to-hwpx");
 const {
   analyzePdf,
@@ -3714,7 +3715,7 @@ function estimatePdfTranslation(meta, mode, modelId) {
   let truncated = false;
 
   if (visionOcr) {
-    // OCR 재조판: 모든 페이지를 비전 이미지로 읽음. 큰 문서는 구간(기본 20쪽)으로
+    // OCR 재조판: 모든 페이지를 비전 이미지로 읽음. 큰 문서는 구간(기본 10쪽)으로
     // 나눠 병렬 처리·병합하므로 페이지를 자르지 않는다(상한 초과만 별도로 거부).
     const ocrChunk = Math.max(
       1,
@@ -3722,14 +3723,16 @@ function estimatePdfTranslation(meta, mode, modelId) {
     );
     const ocrConc = Math.max(
       1,
-      parseInt(process.env.PDF_OCR_CHUNK_CONCURRENCY || "3", 10),
+      parseInt(process.env.PDF_OCR_CHUNK_CONCURRENCY || "6", 10),
     );
+    // 타일당 입력 토큰 ~2300(1568px 클램프 실측), 출력 ~900. 1.3 타일/쪽.
     const tiles = Math.ceil(pages * 1.3);
-    inTok = tiles * 1600;
+    inTok = tiles * 2300;
     outTok = tiles * 900;
     const nChunks = Math.max(1, Math.ceil(pages / ocrChunk));
     const waves = Math.ceil(nChunks / ocrConc);
-    seconds = waves * (ocrChunk * (isOpus ? 4.0 : 2.6) + 22) + 18;
+    // 구간당 모델 생성 + Tectonic 컴파일(warm ~2.5s). prewarm 으로 콜드 페널티는 제외.
+    seconds = waves * (ocrChunk * (isOpus ? 4.0 : 2.6) + 22 + 3) + 18;
   } else if (resolvedMode === "retypeset") {
     // 텍스트 PDF 재조판: 페이지를 문서 블록으로 읽고 한국어 LaTeX 생성.
     inTok = pages * 2000;
@@ -3870,6 +3873,31 @@ app.post(
     }
     const model = ALLOWED_MODELS.includes(requested) ? requested : null;
 
+    // ── 백그라운드 실행 모드(관리자 또는 활성 백그라운드 구독자만) ──────────────────
+    // 켜면 제출 후 탭/창을 닫아도 서버가 끝까지 번역하고, '내 파일'+완료 이메일로 받는다.
+    // 결과 PDF 를 파일함(24시간)에 영속화해야 의미가 있으므로 Supabase 가 필요하다.
+    let backgroundMode = false;
+    let backgroundNotifyEmail = false;
+    if (String(req.body.backgroundMode) === "true") {
+      let hasBackground = effectiveIsAdmin;
+      if (!hasBackground && supa.isEnabled() && userInfo.id) {
+        try {
+          hasBackground = !!(await supa.getActiveBackgroundSub(userInfo.id));
+        } catch (_) {
+          hasBackground = false;
+        }
+      }
+      if (!hasBackground) {
+        return res.status(403).json({
+          error:
+            "백그라운드 실행은 구독자 전용입니다. 관리자에게 사용 권한을 문의하세요.",
+          needsBackgroundSub: true,
+        });
+      }
+      backgroundMode = true;
+      backgroundNotifyEmail = String(req.body.notifyEmail) === "true";
+    }
+
     // 진행 중 작업 자동 중단 (generate 와 동일 정책)
     if (userInfo.id) {
       const prevJobId = activeJobByUser.get(userInfo.id);
@@ -3885,11 +3913,17 @@ app.post(
 
     const job = createJob(userInfo);
     job.reportType = "pdf-translate";
+    job.model = model || "";
+    // 백그라운드 실행 플래그 — runPdfTranslation/완료 단계에서 영속화·이메일에 사용.
+    job.background = backgroundMode;
+    job.notifyEmail = backgroundNotifyEmail;
     if (userInfo.id) activeJobByUser.set(userInfo.id, job.id);
     // 베타 일일 사용 기록 (테스터 한정 — 관리자는 면제). requireBeta 에서 한도 확인 완료.
     if (userInfo.id && !userInfo.isAdmin) {
       rateLimit.recordBetaUsage(userInfo.id, "pdf-translate");
     }
+    // 백그라운드 작업은 즉시 report_jobs 에 'running' 으로 기록(탭 닫아도 '내 작업'에서 추적).
+    if (backgroundMode) persistBgJob(job);
 
     res.json({ jobId: job.id });
 
@@ -3909,6 +3943,7 @@ app.post(
       job.status = "error";
       job.error = err.message || String(err);
       pushProgress(job, `❌ 오류: ${job.error}`);
+      if (job.background) persistBgJob(job);
       job.listeners.forEach((r) => {
         sendSse(r, "error", job.error);
         r.end();
@@ -4124,9 +4159,15 @@ async function translateLargeVisionPdf({ pdfBuffer, pageCount, model, signal, on
     1,
     parseInt(process.env.PDF_OCR_CHUNK_PAGES || "10", 10),
   );
+  // 모델 호출 동시 구간 수. 6 으로 상향(벽시계 핵심 레버). CPU 단계는 아래 cpuGate 로 따로 제한.
   const conc = Math.max(
     1,
-    parseInt(process.env.PDF_OCR_CHUNK_CONCURRENCY || "3", 10),
+    parseInt(process.env.PDF_OCR_CHUNK_CONCURRENCY || "6", 10),
+  );
+  // CPU 바운드 단계(PyMuPDF 래스터 + Tectonic 컴파일)는 Render 1CPU 에서 경합·OOM 위험이라
+  // 모델 호출(conc 병렬)과 분리해 별도 세마포어로 직렬화(기본 2). 모델은 6병렬 + CPU 2병렬.
+  const cpuGate = makeGate(
+    Math.max(1, parseInt(process.env.PDF_OCR_CPU_CONCURRENCY || "2", 10)),
   );
   const chunks = await splitPdfToBuffers(pdfBuffer, {
     signal,
@@ -4135,15 +4176,18 @@ async function translateLargeVisionPdf({ pdfBuffer, pageCount, model, signal, on
   });
   if (!chunks || chunks.length <= 1) {
     // 분할 불가/불필요 → 단일 비전 처리(전체 래스터).
-    const r = await rasterizeBufferToBlocks(pdfBuffer, {
-      maxPages: pageCount || chunkPages,
-      signal,
-    });
+    const r = await cpuGate(() =>
+      rasterizeBufferToBlocks(pdfBuffer, {
+        maxPages: pageCount || chunkPages,
+        signal,
+      }),
+    );
     return retypesetPdf({
       pdfBuffer,
       imageBlocks: r.imageBlocks,
       tiles: r.tileBuffers,
       model,
+      cpuGate,
       signal,
       onProgress,
     });
@@ -4183,19 +4227,30 @@ async function translateLargeVisionPdf({ pdfBuffer, pageCount, model, signal, on
         let part = null;
         let cost = null;
         let figs = 0;
-        for (let attempt = 0; attempt <= retries && !part; attempt++) {
-          if (ctrl.signal.aborted) throw new Error("작업이 중단되었습니다.");
-          try {
-            const r = await rasterizeBufferToBlocks(c.buffer, {
+        // 래스터는 구간당 1회만(CPU 게이트로 직렬화). 재시도는 모델/LaTeX 단계만 — 같은 타일
+        // 을 재사용해 불필요한 재래스터를 없앤다.
+        let blocks = null;
+        try {
+          blocks = await cpuGate(() =>
+            rasterizeBufferToBlocks(c.buffer, {
               maxPages: chunkPages + 4,
               signal: ctrl.signal,
-            });
+            }),
+          );
+        } catch (e) {
+          if (ctrl.signal.aborted) throw e;
+          // 래스터 자체 실패 → 이 구간은 원문 폴백.
+        }
+        for (let attempt = 0; blocks && attempt <= retries && !part; attempt++) {
+          if (ctrl.signal.aborted) throw new Error("작업이 중단되었습니다.");
+          try {
             const out = await retypesetPdf({
               pdfBuffer: c.buffer,
-              imageBlocks: r.imageBlocks,
-              tiles: r.tileBuffers,
+              imageBlocks: blocks.imageBlocks,
+              tiles: blocks.tileBuffers,
               model,
               pageNumbers: false, // 구간별 독립 컴파일 → 쪽번호가 재시작하므로 끔(병합 후 혼동 방지)
+              cpuGate, // Tectonic 컴파일을 CPU 게이트로 직렬화
               signal: ctrl.signal,
               onProgress: () => {}, // 구간별 세부 로그는 생략(아래 합산 진행만 표시)
             });
@@ -4492,9 +4547,46 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) 
       addToTotal(result.cost, null);
     }
 
-    // 사용량 기록 (관리자 통계용). 파일함(Supabase storage)은 docx/hwpx MIME 만
-    // 허용하도록 만들어져 있어 PDF 는 저장하지 않는다 — 다운로드는 24시간 동안
-    // job 결과로 제공된다. 일반 공개 시 버킷 정책과 함께 파일함 저장을 켠다.
+    // 백그라운드 작업: 결과 PDF 를 파일함(24시간)에 영속화하고, 옵트인 시 완료 이메일 발송.
+    // (일반 작업은 탭을 유지하므로 in-memory job 결과로 충분 — 파일함 저장 생략.)
+    if (job.background && supa.isEnabled() && job.userInfo?.id) {
+      try {
+        const savedFile = await supa.saveReportFile({
+          userId: job.userInfo.id,
+          jobId: job.id,
+          reportType: "pdf-translate",
+          filename: job.filename,
+          mimeType: "application/pdf",
+          buffer: pdfOutput,
+          meta: {
+            reportLabel: "PDF 통번역",
+            title: originalName,
+            mode: effectiveMode,
+          },
+        });
+        if (savedFile?.id) {
+          job.fileId = savedFile.id;
+          const expires = new Date(savedFile.expires_at).toLocaleString(
+            "ko-KR",
+            { dateStyle: "short", timeStyle: "short" },
+          );
+          pushProgress(
+            job,
+            `☁ 파일함에 24시간 보관됨 (${expires}까지) — '내 파일'에서 받으세요.`,
+          );
+        }
+      } catch (e) {
+        pushProgress(job, `⚠ 파일함 저장 실패: ${e.message}`);
+      }
+      await persistBgJob(job);
+      if (job.notifyEmail) {
+        pushProgress(job, "📧 완료 알림 이메일을 보냅니다...");
+        await notifyBgJobDone(job);
+      }
+    }
+
+    // 사용량 기록 (관리자 통계용). 일반(비백그라운드) PDF 통번역은 파일함에 저장하지 않고
+    // 24시간 동안 in-memory job 결과로 다운로드를 제공한다.
     if (supa.isEnabled() && job.userInfo?.id) {
       try {
         await supa.recordUsage({
@@ -6347,6 +6439,13 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, async () => {
   console.log(`▶ chem-pre-lab-web listening on :${PORT}`);
+  // Tectonic 콜드 컴파일(~60초)을 첫 PDF 재조판 요청에서 빼기 위해 부팅 직후 미리 데운다.
+  // fire-and-forget(부팅·헬스체크 블로킹 금지). 실패는 무시 — 실제 컴파일이 재시도한다.
+  try {
+    prewarmTectonic();
+  } catch (_) {
+    /* best-effort */
+  }
   console.log(`  Supabase: ${supa.isEnabled() ? "ON" : "OFF (로그인 불가!)"}`);
   if (!supa.isEnabled()) {
     console.error(

@@ -1141,10 +1141,11 @@
         <div class="seg-group" style="margin-bottom: 12px">
           <span class="field-label">AI 모델 (베타 기간 무료)</span>
           <div class="segmented">
-            <label><input type="radio" name="rlModel" value="gpt-5.4-mini" checked /> GPT-5.4 mini · 빠름 · 무료(베타)</label>
-            <label><input type="radio" name="rlModel" value="gpt-5.4" /> GPT-5.4 · 무료(베타)</label>
-            <label><input type="radio" name="rlModel" value="claude-sonnet-4-6" /> Sonnet 4.6 · 무료(베타)</label>
+            <label class="fable-model" hidden><input type="radio" name="rlModel" value="claude-fable-5" /> Fable 5 (관리자)</label>
+            <label><input type="radio" name="rlModel" value="claude-sonnet-4-6" checked /> Sonnet 4.6 · 추천 · 무료(베타)</label>
+            <label><input type="radio" name="rlModel" value="claude-opus-4-8" /> Opus 4.8 · 정밀 · 무료(베타)</label>
           </div>
+          <small>독서록은 책 내용을 정확히 써야 해 <b>Claude</b>를 씁니다(GPT는 책 내용을 일반론으로 뭉뚱그려 부정확).</small>
         </div>
         <div class="field">
           <label><span class="field-label">글꼴</span>

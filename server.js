@@ -3325,8 +3325,9 @@ app.post(
       "korean-lit-exam",
       "cap-translate",
       "phys-mock-exam",
-      "reading-log",
-      "reading-log-bulk",
+      // reading-log/-bulk 은 GPT 제외 — GPT(5.4·5.4-mini)는 책 내용을 일반론으로
+      // 뭉뚱그려 부정확하고, 입력과 다른 책(예: '코스모스')으로 바꾸는 사고가 잦다.
+      // Claude(Sonnet/Opus)만 책별 정확한 내용을 쓴다(실측 확인).
     ]);
     const allowedModels = GPT_OK_TYPES.has(reportType)
       ? [...ALLOWED_MODELS, ...GPT_REPORT_MODELS]

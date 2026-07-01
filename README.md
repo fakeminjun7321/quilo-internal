@@ -1,71 +1,105 @@
 # Quilo — Lab Report Generator Web
 
-**Quilo**는 AI 기반 실험 보고서 작성 도우미입니다. 보고서 종류별로 업로드 파일과 입력 폼을 다르게 받아 Claude API로 초안을 만들고 `.docx` 또는 `.hwpx`로 출력합니다. 보고서 생성 외에 **PDF 통번역(베타)**과 **브라우저 전용 도구 모음**도 함께 제공합니다.
+**Quilo**는 AI 기반 실험 보고서 작성 도우미입니다. 보고서 종류별로 업로드 파일과 입력 폼을 다르게 받아 Claude / GPT API로 초안을 만들고 `.docx` 또는 `.hwpx`로 출력합니다. 화학·물리 보고서에서 시작해 지금은 여러 과목의 시험대비·문서 생성 도구, **PDF 통번역**, **창작·코딩 스튜디오**, **커뮤니티/랩**, **브라우저 전용 도구 모음**까지 포함하는 학습 플랫폼으로 확장되었습니다.
+
+라이브 서비스: **https://quilolab.com**
 
 ## 지원 보고서
 
-- 화학 사전보고서
-  - 실험 매뉴얼 PDF와 AI 참고 메모를 바탕으로 사전보고서 생성
-  - 시약 물성, 이론, 실험 과정, 참고문헌 정리
-- 화학 결과보고서
-  - 사전보고서, 실험 데이터, 사진, 매뉴얼, 참고 메모를 바탕으로 결과 추가 작성분 생성
-  - 표, 차트, 사진, 오차 분석, 결론 작성
-- 물리 결과보고서
-  - PASCO Capstone `.cap`, 엑셀/CSV/텍스트 데이터, 매뉴얼 PDF, 사진/그래프 스크린샷, 참고 메모 지원
-  - 물리 결과보고서 양식 기반 `.docx`/`.hwpx` 생성
-  - 표, 그래프, 실험 결과 해석, 결론 및 오차 분석 작성
+보고서는 메인 화면에서 종류를 고르고 → 자료를 올리고 → 정보를 입력하고 → 생성하면, 진행 로그가 실시간으로 표시되며 완성 파일을 다운로드합니다.
+
+### 공개 (로그인 + 크레딧 차감)
+
+- **화학 사전보고서** (`chem-pre`) — 실험 매뉴얼 PDF와 AI 참고 메모로 실험목표·이론·기구/시약·실험과정 생성. 시약 물성은 웹검색으로 보강
+- **화학 결과보고서** (`chem-result`) — 사전보고서(PDF/docx)·실험 데이터·사진·매뉴얼로 결과 추가 작성분(표·차트·오차분석·결론) 생성
+- **물리 결과보고서** (`phys-result`) — PASCO Capstone `.cap`, 엑셀/CSV/텍스트, 매뉴얼 PDF, 사진/그래프 스크린샷 지원. `.cap` 워크북 구조에 맞춰 Part별 표·그래프·분석·결론 작성
+- **자유 보고서** (`free`) — 임의 주제 범용 보고서. 작성 지시 + 평가기준 + 참고자료를 받아 표·수식·그래프·사진 포함 자유 형식 생성
+
+### 베타 (관리자·지정 테스터 전용, 무료)
+
+- **물리 수행평가** (`phys-inquiry`) — 탐구 주제 + 필기노트 PDF → 「탐구 및 사고 과정 성찰 보고서」(오개념→해결→성찰)
+- **수학 수행평가** (`math-inquiry`) — 탐구 주제 + 필기노트 → 「수학Ⅲ 급수 탐구보고서」(Ⅰ~Ⅴ 양식, 표·차트·수식)
+- **독서록** (`reading-log`) — 도서 정보 → 학교 「독서활동 기록지」 HWPX 양식을 채워서 출력 (`.hwpx` 전용)
+- **독서록 대량생성** (`reading-log-bulk`) — 책 목록 엑셀 → 책마다 독서록 HWPX 생성 후 ZIP으로 묶음 (기간 자동 분배)
+- **문제집 메이커** (`problem-set`) — 교재 문제 PDF → 영어/한글 문제지 + 해설지 3종 PDF를 ZIP으로
+- **양식 메이커** (`form-maker`) — 말로 설명한 한글 양식 생성, 또는 종이 문서 사진 → 문서 복원
+- **영어 시험대비 3종 세트** (`eng-exam-prep`) — 영어 지문/학습지 → 모의고사·개념정리·빈칸 학습지 3종 PDF(ZIP)
+- **국어(문학) 내신·모의고사** (`korean-lit-exam`) — 학습지(판서) + 문제은행 → 시험지·답안지·정답해설지 3종 PDF(ZIP)
+- **Capstone `.cap` 번역본** (`cap-translate`) — PASCO Capstone `.cap`의 화면 텍스트를 한국어로 번역한 `.cap` 재생성
+- **물리 모의고사** (`phys-mock-exam`) — 기출 + 교과서 단원 → 같은 스타일의 새 문제와 답안(PDF + HWPX)
+
+## 모델과 크레딧
+
+보고서 1건당 선택한 모델만큼 크레딧이 차감됩니다(베타 타입은 무료). 실제 차감 단가는 `lib/pricing.js`의 `MODEL_CREDITS`가 기준입니다.
+
+| 모델 | 크레딧 | 비고 |
+|---|---|---|
+| **Claude Opus 4.8** | 4 | 기본값, 가장 똑똑함 |
+| Claude Sonnet 5 | 2 | 빠르고 저렴 |
+| GPT-5.5 | 4 | 화학/물리·자유·시험대비 등 대부분 타입에서 선택 가능 |
+| GPT-5.4 | 1 | 〃 |
+| GPT-5.4-mini | 0 (무료) | 〃 |
+| Claude Fable 5 | 9 | 관리자 전용(셀렉터는 관리자에게만 노출) |
+
+- GPT 모델은 `chem-pre`·`chem-result`·`phys-result`·`free`·`problem-set`·`form-maker`·`math-inquiry`·`eng-exam-prep`·`korean-lit-exam`·`cap-translate`·`phys-mock-exam`에서 선택할 수 있습니다(`phys-inquiry`·독서록은 Claude 전용).
+- **AI 이미지 생성**을 켜면 삽입 이미지 1장당 1크레딧이 추가로 차감됩니다.
+- 보고서 생성에는 **로그인 + 이메일 인증 + 관리자 승인**이 필요합니다(관리자는 예외).
 
 ## 주요 기능
 
-- 사용자 로그인, 관리자 페이지
-- **듀얼 모델 + 크레딧제** — 보고서 1건당 선택한 모델로 차감(Claude **Opus 4.8** = 3크레딧 / **Sonnet 4.6** = 1크레딧). 사용자가 모델을 직접 선택
-- 보고서 종류별 입력 검증과 파일 파싱
-- 엑셀/CSV/텍스트 데이터 파싱, PASCO Capstone `.cap` 파일 파싱
-- Chart.js 기반 그래프 PNG 생성
+- 사용자 로그인/회원가입, **학교 이메일 인증 + 관리자 승인** 2단계 게이트
+- **통합 크레딧제** — 보고서 1건당 선택 모델 단가만큼 차감, 개인 사용 내역 대시보드
+- 보고서 종류별 입력 검증과 파일 파싱(엑셀/CSV/텍스트, PASCO Capstone `.cap`)
+- Chart.js 기반 그래프 PNG 생성, `sharp` 이미지 처리
 - HWPX 템플릿 기반 한글 파일 생성 + HWPX 한글 수식 객체 변환
-- AI 참고 메모와 Markdown 메모 파일 입력
-- 생성 파일 24시간 보관용 파일함
-- 개인 설정 — 기본 모델·양식 선호, **사용 내역 대시보드**(크레딧·생성 이력)
-- 건의사항/버그 제보 탭과 이메일 알림, 사이트 버전/패치노트 표시
+- AI 참고 메모(`userNotes`)와 "내 글 스타일"(문체만 참고, 내용·데이터 누출 없음) 입력
+- **백그라운드 실행** — 탭을 닫아도 서버가 끝까지 생성하고 "내 파일함"/이메일로 전달(구독자·관리자 한정)
+- 생성 파일 24시간 보관용 파일함(Supabase)
+- 상단 공지 티커, 건의사항/버그 제보(커뮤니티) + 이메일 알림, 사이트 버전/패치노트
 
 ### 관리자 기능
 
 - 사용자별 크레딧 충전, 시간당 생성 한도 관리
-- **사용자별 모델 제한**(전체 / Opus만 / Sonnet만)
-- **사용자별 보고서 종류 접근 제한**(ACL)
+- **사용자별 모델 제한**(전체 / Opus만 / Sonnet만)과 **보고서 종류 접근 제한**(ACL)
 - **베타 기능 시스템** — 기능별 ON/OFF + 지정 테스터에게만 노출, 테스터 1인당 일일 사용 한도
+- **API 키 위임(Grant)** — 지정 사용자에게 기간 한정 "관리자 키 무료사용" 부여
+- **백그라운드 구독 관리** — 지정 사용자에게 기간 한정 백그라운드 실행 권한 부여
+- 공지사항 CRUD
 
-### PDF 통번역 (베타)
+## 그 외 기능
 
-- PDF를 그림·레이아웃은 그대로 두고 텍스트만 한국어로 바꿔주는 문서 통번역(외부 전송 없이 서버에서만 처리)
-- **변환 방식 자동 선택** — PDF를 분석해 알맞은 방식을 자동 결정
-  - 일반 텍스트 문서 → **빠른 번역**(in-place, 레이아웃 유지, PyMuPDF)
-  - 수식 많은 문서·**스캔본/이미지 PDF** → **재조판**(Claude → 한국어 LaTeX → Tectonic)
-- 스캔본은 페이지를 고해상도 타일로 잘라 **OCR**로 읽고, 원본 **그림도 복원**해 재조판
-
-### 도구 모음 (브라우저 전용)
-
-- 글자수 세기, 선형회귀·추세선, 그래프 생성기
-- **파일 변환기** — 표(Excel↔CSV↔TSV)·이미지 변환/압축·이미지↔PDF·**PDF 도구 10종**(병합/분할/추출/삭제/정렬/회전/페이지번호/워터마크/여백자르기/압축)·LaTeX→한글 수식 변환
-- 모든 처리는 브라우저 안에서만 이뤄지고 파일은 서버로 전송되지 않음 (별도 정적 사이트 [`lab-report-tools`](https://github.com/fakeminjun7321/lab-report-tools)로도 배포)
+- **PDF 통번역** (`/translate.html`, 베타) — 그림·레이아웃은 그대로 두고 텍스트만 한국어로 번역(외부 전송 없이 서버에서만 처리)
+  - **변환 방식 자동 선택** — 일반 텍스트 문서는 **빠른 번역**(in-place, PyMuPDF), 수식 많은 문서·스캔본/이미지 PDF는 **재조판**(Claude → 한국어 LaTeX → Tectonic)
+  - 스캔본·글자 깨진 PDF는 고해상도 타일 **OCR**로 읽고 원본 그림도 복원해 재조판, 대용량은 자동 분할·병렬·병합
+- **도구 모음** (`/tools`, 브라우저 전용) — 글자수 세기, 선형회귀·추세선, 그래프 생성기, 파일 변환기(표·이미지·이미지↔PDF), **PDF 도구 10종**(병합/분할/추출/삭제/정렬/회전/페이지번호/워터마크/여백자르기/압축), LaTeX→한글 수식 변환. 모든 처리는 브라우저 안에서만 이뤄지며 별도 정적 사이트 [`lab-report-tools`](https://github.com/fakeminjun7321/lab-report-tools)로도 배포
+- **창작 스튜디오** (`/create.html`, `/studio.html`) — 대화형 "바이브 코딩" 스튜디오. 미리보기·체크포인트로 웹 아티팩트 제작
+- **바이브 코딩 생성기** (`/vibe-coding.html`) / **고급 물리 문제 스튜디오** (`/physics-studio.html`) — 아이디어·주제로 프로젝트 설계 또는 심화 물리 문제·풀이 생성
+- **수행평가 도움 허브** (`/exam-prep.html`, 베타) — 백준식 코딩 테스트(브라우저 Pyodide 채점, 소크라테스식 GPT 튜터) + 물리 수행평가
+- **커뮤니티 + 랩** (`/community.html`) — 건의/기능요청 게시판 + "랩"(서비스에 쓰인 기술을 GitHub식으로 열람·다운로드)
+- **공부(상대론)** (`/study.html`, 베타) — 상대성이론 민코프스키 평면 학습 도식 생성·렌더링
+- **파일 챗봇** (`/filechat.html`, 베타) — 파일 업로드 후 Claude와 대화
+- **AI 채팅 도우미** — 보고서 폼에 내장. 메모 작성·사용법을 돕는 라이트 챗봇
+- **예시 모음** (`/examples.html`), **이용 가이드** (`/guide.html`), **패치노트** (`/changelog.html`)
 
 ## 기술 스택
 
 - Backend: Node.js, Express
-- AI: Anthropic Claude API (Opus 4.8 / Sonnet 4.6)
+- AI: Anthropic Claude API (Opus 4.8 / Sonnet 5 / Fable 5), OpenAI GPT (5.5 / 5.4 / 5.4-mini)
 - DB/Auth/File records: Supabase
-- Documents: `docx`, HWPX ZIP/XML 생성기
+- Documents: `docx`, HWPX ZIP/XML 생성기(Python)
 - Data: `xlsx`, CSV/text parser
 - Charts: `chart.js`, `chartjs-node-canvas`
 - Images: `sharp`
 - PDF 통번역: `PyMuPDF`(텍스트 교체·페이지 래스터화), `Tectonic`(한국어 LaTeX 재조판 컴파일)
+- 코딩 채점: 브라우저 Pyodide
 - Deploy: Render
 
 ## 문서
 
-유지보수와 배포 전 점검은 아래 문서를 먼저 확인하세요.
+유지보수와 배포 전 점검은 아래 문서를 먼저 확인하세요. 공개 저장소 기준서(`CLAUDE.md`/`AGENTS.md`)와 파이프라인 문서는 웹/Render 서버의 화학·물리 핵심 보고서 흐름을 다룹니다.
 
-- 전체 운영 기준: [`CLAUDE.md`](./CLAUDE.md)
+- 전체 운영 기준: [`CLAUDE.md`](./CLAUDE.md) · [`AGENTS.md`](./AGENTS.md)
+- 다른 AI에게 Quilo를 설명하는 컨텍스트 문서: [`QUILO.md`](./QUILO.md)
 - 화학 사전보고서 파이프라인: [`docs/chem-pre-pipeline.md`](./docs/chem-pre-pipeline.md)
 - 화학 결과보고서 파이프라인: [`docs/chem-result-pipeline.md`](./docs/chem-result-pipeline.md)
 - 물리 결과보고서 파이프라인: [`docs/phys-result-pipeline.md`](./docs/phys-result-pipeline.md)
@@ -112,66 +146,64 @@ Render Web Service 설정 예시:
 
 | Key | 설명 |
 |---|---|
+| `OPENAI_API_KEY` | GPT 보고서 모델 사용 시 |
 | `MAX_TOKENS` | Claude 출력 token 상한, 기본 `32000` |
+| `MAX_UPLOAD_MB` | 업로드 파일 1개 최대 크기, 기본 `64` |
 | `JOB_TIMEOUT_MS` | 작업 timeout, 기본 `480000` ms |
 | `ANTHROPIC_IMAGE_MAX_BASE64_CHARS` | 이미지 1장 base64 제한 |
 | `ANTHROPIC_IMAGE_MAX_EDGE` | 이미지 리사이즈 최대 edge |
 | `PYTHON_BIN` | HWPX·PDF 생성기가 쓸 Python 경로(미설정 시 `.venv` 우선) |
 | `PDF_AUTO_MATH_THRESHOLD` | PDF 통번역 자동 모드의 수식 밀도 임계값, 기본 `12` |
-| `PDF_OCR_MAX_PAGES` | 스캔본 OCR 재조판 최대 페이지, 기본 `20` |
+| `PDF_OCR_MAX_PAGES` | 스캔본 OCR 재조판 최대 페이지 |
 | `PDF_RETYPESET_MODEL` | 재조판 기본 모델(미설정 시 Sonnet/요청값) |
 | `TECTONIC_BIN` | Tectonic 바이너리 경로(미설정 시 `bin/tectonic`→PATH) |
 | `BETA_DAILY_LIMIT` | 베타 기능 테스터 1인당 일일 사용 한도 기본값, 기본 `15` |
-| `RESEND_API_KEY` | 건의사항 이메일 전송용 |
-| `FEEDBACK_EMAIL_FROM` 또는 `RESEND_FROM` | 건의사항 발신자 |
+| `ALLOWED_EMAIL_DOMAINS` | 회원가입 허용 이메일 도메인 화이트리스트 |
+| `PUBLIC_BASE_URL` | 이메일 인증 링크 등에 쓰는 사이트 기본 URL |
+| `RESEND_API_KEY` | 인증/건의사항 이메일 전송용 |
+| `FEEDBACK_EMAIL_FROM` 또는 `RESEND_FROM` | 발신자 |
 | `FEEDBACK_EMAIL_TO` | 건의사항 수신자 |
+| `PREMIUM_PRICE_KRW` / `PREMIUM_BANK` / `PREMIUM_ACCOUNT` / `PREMIUM_HOLDER` / `PREMIUM_PERIOD_DAYS` / `PREMIUM_NOTIFY_EMAIL` | 백그라운드 구독 입금 안내용 |
 
 환경변수 예시는 [`.env.example`](./.env.example)을 참고하세요. 실제 `.env`와 API 키는 절대 GitHub에 올리지 않습니다.
-
-## 입력 파일 요약
-
-| 보고서 종류 | 주요 입력 |
-|---|---|
-| 화학 사전보고서 | 실험 매뉴얼 PDF, AI 참고 메모 |
-| 화학 결과보고서 | 사전보고서 PDF/docx, 데이터 파일, 사진, 매뉴얼 PDF, AI 참고 메모 |
-| 물리 결과보고서 | `.cap`, 엑셀/CSV/txt/md 데이터, 매뉴얼 PDF, 사진/그래프/표 스크린샷, AI 참고 메모 |
 
 ## 출력 형식
 
 - `.docx`
 - `.hwpx`
+- 문제집·시험대비·독서록 대량·모의고사 등 일부 타입은 여러 파일을 **ZIP**으로 묶어 내보냅니다.
 
-HWPX 출력은 각 파이프라인의 Python HWPX 생성기를 통해 만들어집니다. 물리 결과보고서는 학교 결과보고서 HWPX 템플릿을 기반으로 제목, 결과, 결론, 표, 그래프, 사진, 수식을 삽입합니다.
+HWPX 출력은 각 파이프라인의 Python HWPX 생성기를 통해 만들어집니다. 물리 결과보고서와 독서록 등은 학교 표준 양식 HWPX 템플릿을 기반으로 제목·결과·표·그래프·사진·수식을 삽입합니다.
 
 ## 폴더 구조
 
 ```text
-lab-report-generator-web/
-├── server.js
+Quilo/
+├── server.js                 # 메인 서버 + 모든 보고서 PIPELINES 정의
+├── translate-server.js       # PDF 통번역 전용(선택 분리 실행)
 ├── public/
 │   ├── index.html            # 메인(Quilo) — 보고서 작성 + 개인 설정
-│   ├── login.html / admin.html / changelog.html
+│   ├── login / signup / verify-email / admin / changelog / guide / examples
 │   ├── translate.html        # PDF 통번역 (베타)
-│   ├── tools/                # 도구 모음 (파일 변환기 등, 브라우저 전용)
-│   ├── equation/             # LaTeX→한글 수식 변환기
-│   └── style.css / theme.js
+│   ├── community.html         # 커뮤니티 + 랩
+│   ├── create.html / studio.html / vibe-coding.html / physics-studio.html
+│   ├── exam-prep.html / study.html / filechat.html
+│   ├── tools/                # 도구 모음 (브라우저 전용)
+│   └── equation/             # LaTeX→한글 수식 변환기
 ├── lib/
-│   ├── anthropic-media.js
-│   ├── excel-parser.js
-│   ├── feedback-mailer.js
-│   ├── rate-limit.js
-│   ├── version-info.js
-│   ├── equation/
-│   │   └── hwpx_equation_tool.py
+│   ├── anthropic-media.js / anthropic-files.js / excel-parser.js
+│   ├── pricing.js / version-info.js / rate-limit.js / supabase.js
+│   ├── *-routes.js           # community / lab / artifacts / coding / study /
+│   │                         #   vibe / physics-studio / announcement / grant / subscription
+│   ├── equation/hwpx_equation_tool.py
 │   └── pipelines/
-│       ├── chem-pre/
-│       ├── chem-result/
-│       ├── phys-result/
+│       ├── chem-pre/ chem-result/ phys-result/ free-report/
+│       ├── phys-inquiry/ math-inquiry/ reading-log/
+│       ├── problem-set/ form-maker/ eng-exam-prep/ korean-lit-exam/
+│       ├── cap-translate/ phys-mock-exam/
 │       └── pdf-translate/    # PyMuPDF in-place + Claude→LaTeX→Tectonic 재조판
-├── db/
-│   └── migrations/
+├── db/migrations/
 ├── scripts/
-│   └── install-tectonic.sh   # 빌드 시 Tectonic 설치(재조판 PDF용)
 ├── docs/
 ├── .env.example
 ├── package.json
@@ -204,7 +236,7 @@ rg -n "sk-ant-|SUPABASE_SERVICE_KEY|RESEND_API_KEY|SESSION_SECRET|eyJ|password|�
 
 - API 키, Supabase service role key, session secret은 Render 환경변수로만 관리합니다.
 - 실제 사용자 업로드 파일, 예시 보고서 PDF/HWP, 개인 계정 정보는 GitHub에 올리지 않습니다.
-- `.gitignore`에서 `.env`, `.claude/`, `.pdf`, `.hwp`, 예시 보고서 폴더를 제외합니다.
+- `.gitignore`에서 `.env`, `.claude/`, `.pdf`, `.hwp`, `.hwpx`, 예시 보고서 폴더, 테스트 산출물(`test-results/`)을 제외합니다.
 - 공개 저장소에는 학교/기관 전용 양식 PDF/HWPX와 실제 사용자 예시 보고서를 포함하지 않습니다.
 - 생성물은 학습 보조 초안이며 제출 전 반드시 직접 검토해야 합니다.
 

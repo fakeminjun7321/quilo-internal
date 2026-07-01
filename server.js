@@ -1644,7 +1644,7 @@ const CHAT_SYSTEM = `당신은 "Quilo" 사이트의 한국어 도우미입니다
 - 도구 모음: 글자수 세기, LaTeX 수식 변환, 선형회귀·그래프, 이미지 변환·압축, PDF 도구(병합/분할/회전 등).
 - 데스크톱 앱(Quilo, Mac/Windows) 다운로드: https://fakeminjun7321.github.io/quilo-app/
 
-[크레딧] 보고서 1건당 모델만큼 차감: Opus 4.8 = 3크레딧, Sonnet 4.6 = 1크레딧. 신규 계정은 0크레딧이라 운영자 충전 후 사용.
+[크레딧] 보고서 1건당 모델만큼 차감: Opus 4.8 = 3크레딧, Sonnet 5 = 1크레딧. 신규 계정은 0크레딧이라 운영자 충전 후 사용.
 
 [자주 묻는 것]
 - .hwpx는 한컴오피스/한글에서, .docx는 MS Word(또는 한글)에서 열립니다.
@@ -1715,7 +1715,7 @@ const CHAT_MEMO_TYPE_GUIDES = {
 // ── 글쓰기 도우미(write-assist): 보고서 입력·문체 메모 작성을 Sonnet / GPT-5.4-mini 로 돕는다.
 // 메모/스타일 모드에서만 쓰며, 유료 모델이라 로그인 사용자 한정. 키 라우팅은 CODE_ASSIST_PROVIDERS 재사용.
 const WRITE_ASSIST_MODELS = [
-  { id: "claude-sonnet-4-6", label: "Sonnet 4.6", provider: "claude" },
+  { id: "claude-sonnet-5", label: "Sonnet 5", provider: "claude" },
   {
     id: process.env.WRITE_ASSIST_GPT_MODEL || "gpt-5.4-mini",
     label: "GPT-5.4 mini",
@@ -1849,7 +1849,9 @@ app.post("/api/chat", async (req, res) => {
       const stream = client.messages.stream({
         model: effModel,
         max_tokens: effMaxTok,
-        temperature: 0.5,
+        // Sonnet 5 등 최신 모델은 커스텀 temperature 를 거부한다(400). 추론도 OFF로 두어
+        // 평문 스트림의 첫 토큰 지연을 막는다(write-assist 는 Claude Sonnet 만, Fable 미사용).
+        thinking: { type: "disabled" },
         system: sysPrompt,
         messages: turns,
       });
@@ -2418,7 +2420,7 @@ const ADMIN_AI_MODELS = [
   { id: "llama-3.3-70b-versatile", label: "Llama 3.3 70B · 무료(가벼움)", provider: "groq", tier: "free" },
   { id: "gpt-4o", label: "GPT-4o · 똑똑(유료)", provider: "openai", tier: "smart" },
   { id: "gpt-4.1", label: "GPT-4.1 · 똑똑(유료)", provider: "openai", tier: "smart" },
-  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6 · 똑똑(유료)", provider: "claude", tier: "smart" },
+  { id: "claude-sonnet-5", label: "Claude Sonnet 5 · 똑똑(유료)", provider: "claude", tier: "smart" },
   { id: "claude-opus-4-8", label: "Claude Opus 4.8 · 똑똑(최고)", provider: "claude", tier: "smart" },
 ];
 
@@ -2728,7 +2730,7 @@ const CODE_ASSIST_MODELS = [
   // 유료 (OpenAI GPT) — GPT_API_KEY
   ...buildGptModels(),
   // 유료 (Claude) — ANTHROPIC_API_KEY
-  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6 · 유료(정밀)", provider: "claude" },
+  { id: "claude-sonnet-5", label: "Claude Sonnet 5 · 유료(정밀)", provider: "claude" },
   { id: "claude-opus-4-8", label: "Claude Opus 4.8 · 유료(최고)", provider: "claude" },
 ];
 function codeAssistModelAvailable(m) {
@@ -3306,7 +3308,7 @@ app.post(
     // 화이트리스트 검증으로 임의 모델 주입 차단. 기본 Opus 4.8.
     const ALLOWED_MODELS = [
       "claude-opus-4-8",
-      "claude-sonnet-4-6",
+      "claude-sonnet-5",
     ];
     // Fable 5 — 관리자 전용 최상위 모델(셀렉터도 관리자에게만 노출). 단 일시 차단 중에는 제외.
     // 권한은 fresh row(effectiveIsAdmin) 기준 — 회수된 관리자 권한 즉시 반영.
@@ -3359,8 +3361,8 @@ app.post(
         model = usable.includes(requestedModel) ? requestedModel : usable[0];
       } else if (allowList.length) {
         // 제한 모델이 이 보고서 종류에서 안 쓰이면(예: GPT 제한인데 GPT 미허용) 안전한 기본.
-        model = allowedModels.includes("claude-sonnet-4-6")
-          ? "claude-sonnet-4-6"
+        model = allowedModels.includes("claude-sonnet-5")
+          ? "claude-sonnet-5"
           : allowedModels[0];
       }
     }
@@ -3788,7 +3790,7 @@ app.post(
       fs.writeFileSync(pdfPath, req.file.buffer);
       const meta = await analyzePdf(pdfPath, {});
       const mode = String(req.body.mode || "auto");
-      const modelId = String(req.body.model || "claude-sonnet-4-6");
+      const modelId = String(req.body.model || "claude-sonnet-5");
       // meta 도 함께 돌려준다 → 클라이언트가 방식·모델만 바꿀 때 PDF 재업로드 없이
       // 즉시 다시 계산한다(속도↑).
       res.json({ ...estimatePdfTranslation(meta, mode, modelId), meta });
@@ -3851,7 +3853,7 @@ app.post(
     const ALLOWED_MODELS = [
       "claude-opus-4-8",
       "claude-opus-4-7",
-      "claude-sonnet-4-6",
+      "claude-sonnet-5",
       "gpt-5.5",
       "gpt-5.4",
       "gpt-5.4-mini",
@@ -5457,7 +5459,7 @@ app.use(
 // ── 파일 챗봇(베타/위임): 파일을 올리고 Claude와 대화 ───────────────────────────
 // 서버(관리자) 키를 쓰므로 비용이 새지 않게 접근을 제한한다:
 //   관리자 OR 활성 위임(grant) OR 베타('file-chat') 만 사용 가능.
-const FILECHAT_ALLOWED_MODELS = ["claude-sonnet-4-6", "claude-opus-4-8"];
+const FILECHAT_ALLOWED_MODELS = ["claude-sonnet-5", "claude-opus-4-8"];
 const FILECHAT_MAX_TOKENS = parseInt(
   process.env.FILECHAT_MAX_TOKENS || "4000",
   10,
@@ -5557,7 +5559,7 @@ app.post("/api/filechat", requireAuth, limitTotalUpload, requireFilechatAccess, 
   const reqModel = String(req.body.model || "").trim();
   let model = FILECHAT_ALLOWED_MODELS.includes(reqModel)
     ? reqModel
-    : "claude-sonnet-4-6";
+    : "claude-sonnet-5";
   if (isFableModel(reqModel) && u.isAdmin && !FABLE_DISABLED) {
     model = "claude-fable-5";
   }
@@ -6086,7 +6088,7 @@ app.patch("/api/admin/users/:id", requireAdmin, async (req, res) => {
   if (restrictedModel !== undefined) {
     const allowedRestrict = [
       "claude-opus-4-8",
-      "claude-sonnet-4-6",
+      "claude-sonnet-5",
       "gpt-5.5",
       "gpt-5.4",
       "gpt-5.4-mini",

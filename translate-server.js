@@ -43,7 +43,7 @@ const PDF_TRANSLATE_TIMEOUT_MS = parseInt(
 const ALLOWED_MODELS = [
   "claude-opus-4-8",
   "claude-opus-4-7",
-  "claude-sonnet-4-6",
+  "claude-sonnet-5",
   "gpt-5.5",
   "gpt-5.4",
   "gpt-5.4-mini",

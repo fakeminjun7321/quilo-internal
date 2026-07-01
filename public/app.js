@@ -576,7 +576,7 @@ let currentStudentId = "";
         "claude-fable-5": 9,
         "claude-opus-4-8": 4,
         "claude-opus-4-7": 4,
-        "claude-sonnet-4-6": 2,
+        "claude-sonnet-5": 2,
         "gpt-5.5": 4,
         "gpt-5.4": 1,
         "gpt-5.4-mini": 0,
@@ -2100,7 +2100,7 @@ let currentStudentId = "";
       // 모델별 가격 (per 1M tokens, USD)
       const MODEL_PRICING = {
         "claude-fable-5": { input: 10, output: 50, cacheRead: 1.0, cacheWrite: 12.5 },
-        "claude-sonnet-4-6": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+        "claude-sonnet-5": { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
         "claude-opus-4-8": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
         "claude-opus-4-7": { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
         // OpenAI GPT (서버 lib/pricing.js 와 동일). cacheWrite = 캐시 미사용이라 input가.
@@ -2233,7 +2233,7 @@ let currentStudentId = "";
         if (modelId === "claude-fable-5") return "Fable 5";
         if (modelId === "claude-opus-4-8") return "Opus 4.8";
         if (modelId === "claude-opus-4-7") return "Opus 4.7";
-        if (modelId === "claude-sonnet-4-6") return "Sonnet 4.6";
+        if (modelId === "claude-sonnet-5") return "Sonnet 5";
         if (modelId === "gpt-5.5") return "GPT-5.5";
         if (modelId === "gpt-5.4") return "GPT-5.4";
         if (modelId === "gpt-5.4-mini") return "GPT-5.4 mini";
@@ -2418,7 +2418,7 @@ let currentStudentId = "";
         const perK =
           /^claude-fable/.test(modelId || "")
             ? 45
-            : modelId === "claude-sonnet-4-6"
+            : modelId === "claude-sonnet-5"
               ? 9
               : modelId === "gpt-5.4-mini"
                 ? 7

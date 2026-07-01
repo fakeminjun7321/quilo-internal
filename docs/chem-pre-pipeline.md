@@ -102,7 +102,7 @@ HWPX 출력은 Python 의존성이 필요하다. `package.json`의 `postinstall`
 | `studentName` | text | 선택 | 사전보고서 표지/헤더용 이름 |
 | `temperature` | text | 선택 | 실험 온도. 사전보고서는 보통 비어 있음 |
 | `pressure` | text | 선택 | 기압. 사전보고서는 보통 비어 있음 |
-| `model` | text | 선택 | 서버 whitelist: `claude-opus-4-8`(기본)·`claude-sonnet-4-6`·GPT(`gpt-5.5`/`gpt-5.4`/`gpt-5.4-mini`) |
+| `model` | text | 선택 | 서버 whitelist: `claude-opus-4-8`(기본)·`claude-sonnet-5`·GPT(`gpt-5.5`/`gpt-5.4`/`gpt-5.4-mini`) |
 | `format` | text | 선택 | `docx` 또는 `hwpx` |
 | `style` | text | 선택 | `default` 또는 `minimal` |
 | `fontFace` | text | 선택 | 출력 글꼴 |

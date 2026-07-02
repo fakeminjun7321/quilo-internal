@@ -187,8 +187,6 @@
         </a>
         <div class="header-actions">
           <a href="/">메인으로</a>
-          <a href="/create.html">🛠 만들기</a>
-          <a href="/translate.html">PDF 통번역</a>
           <a href="#" id="logout">로그아웃</a>
           <button
             type="button"
@@ -214,7 +212,7 @@
     <nav id="adminTabs" aria-label="관리자 섹션" role="tablist">
       <button class="atab" data-go="ai" role="tab" aria-selected="false">🤖 AI 보조</button>
       <button class="atab" data-go="users" role="tab" aria-selected="false">👤 사용자</button>
-      <button class="atab" data-go="beta" role="tab" aria-selected="false">🧪 베타</button>
+      <button class="atab" data-go="beta" role="tab" aria-selected="false">🧪 Pro</button>
       <button class="atab" data-go="grants" role="tab" aria-selected="false">🔑 키 위임</button>
       <button class="atab" data-go="subs" role="tab" aria-selected="false">🌙 백그라운드</button>
       <button class="atab" data-go="logs" role="tab" aria-selected="false">📊 로그</button>
@@ -225,7 +223,7 @@
 
     <section class="settings-card" id="adminAiSection">
       <h2>🤖 AI 관리자 보조</h2>
-      <p class="hint">로그인·사용 로그·통계·베타 현황을 묻고, 크레딧 충전·rate 해제·베타 토글·사용자 생성 등 작업을 <b>확인 후 실행</b>할 수 있습니다. (질문 데이터는 외부 AI로 전송 — 관리자 전용)</p>
+      <p class="hint">로그인·사용 로그·통계·Pro 현황을 묻고, 크레딧 충전·rate 해제·Pro 토글·사용자 생성 등 작업을 <b>확인 후 실행</b>할 수 있습니다. (질문 데이터는 외부 AI로 전송 — 관리자 전용)</p>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 9px">
         <span style="font-size:12px;color:var(--text-muted);font-weight:var(--fw-bold)">모델</span>
         <select id="aaModel" title="개조(무료) / 똑똑한 모델(유료)" style="padding:6px 9px;border:1px solid var(--border);border-radius:var(--radius-sm);font:inherit;font-size:13px;max-width:300px"></select>
@@ -377,7 +375,7 @@
         <div class="field">
           <label>
             <span class="field-label">메모(선택)</span>
-            <input id="subNote" maxlength="200" placeholder="예: 6월 구독 / 프리미엄" />
+            <input id="subNote" maxlength="200" placeholder="예: 6월 구독 / Max" />
           </label>
         </div>
         <div class="field">
@@ -394,8 +392,8 @@
         <button id="refreshSubReqs" class="secondary compact">새로고침</button>
       </div>
       <p class="hint" style="margin-top:0">
-        사용자가 입금 후 '프리미엄 신청'을 하면 여기에 뜹니다. 입금 확인 후 <b>승인</b>하면
-        즉시 프리미엄(백그라운드 실행)이 활성화됩니다. (기본 30일 · 활성이면 만료일에서 연장)
+        사용자가 입금 후 'Max 신청'을 하면 여기에 뜹니다. 입금 확인 후 <b>승인</b>하면
+        즉시 Max(백그라운드 실행)이 활성화됩니다. (기본 30일 · 활성이면 만료일에서 연장)
       </p>
       <div id="subReqList"></div>
       <hr style="border:none;border-top:1px solid var(--border,#e2e8f0);margin:14px 0" />
@@ -405,11 +403,11 @@
 
     <section class="settings-card" id="betaSection">
       <div class="card-head">
-        <h2>베타 기능</h2>
+        <h2>Pro 기능</h2>
         <button id="refreshBeta" class="secondary compact">새로고침</button>
       </div>
       <p class="hint">
-        베타 기능을 켜고/끄고, 지정한 테스터 계정에게만 노출합니다. 관리자는 항상 사용 가능. 여러 베타를 동시에 운영할 수 있습니다.
+        Pro 기능을 켜고/끄고, 지정한 테스터 계정에게만 노출합니다. 관리자는 항상 사용 가능. 여러 Pro 기능을 동시에 운영할 수 있습니다.
       </p>
       <form id="betaAddForm" class="compact-form" style="margin-bottom: 14px">
         <div class="field">
@@ -490,7 +488,7 @@
       <h2>🧩 코드 에디터</h2>
       <p class="hint">브라우저 안에서 동작하는 VS Code 스타일 편집기 — 여러 파일·탭, 자동완성(Ctrl/⌘+Space), 찾기(Ctrl/⌘+F), 주석 토글(Ctrl/⌘+/), 저장(Ctrl/⌘+S), 멀티커서. JS는 ▶ 실행, HTML은 미리보기.</p>
       <p style="margin:0 0 12px">
-        <a href="/editor.html" target="_blank" style="display:inline-flex;align-items:center;gap:7px;background:#0e639c;color:#fff;text-decoration:none;border-radius:var(--radius-sm);padding:9px 16px;font-weight:var(--fw-semibold)">⛶ 전체 화면 Quilo Code 열기 (베타)</a>
+        <a href="/editor.html" target="_blank" style="display:inline-flex;align-items:center;gap:7px;background:#0e639c;color:#fff;text-decoration:none;border-radius:var(--radius-sm);padding:9px 16px;font-weight:var(--fw-semibold)">⛶ 전체 화면 Quilo Code 열기 (Pro)</a>
         <span class="hint" style="margin-left:8px">— 더 큰 화면 · 오른쪽 Agent 패널 · 로컬 폴더 열기. 아래는 미니 임베드입니다.</span>
       </p>
       <div id="ide" class="ide">
@@ -1037,7 +1035,7 @@
 
       document.getElementById("refreshLogs").addEventListener("click", loadLogs);
 
-      // ── 베타 기능 관리 ──────────────────────────────────────────────────────
+      // ── Pro 기능 관리 ──────────────────────────────────────────────────────
       async function loadBeta() {
         const list = document.getElementById("betaList");
         const status = document.getElementById("betaStatus");
@@ -1060,7 +1058,7 @@
       function renderBeta(features) {
         const list = document.getElementById("betaList");
         if (!features.length) {
-          list.innerHTML = '<p class="hint">등록된 베타 기능이 없습니다.</p>';
+          list.innerHTML = '<p class="hint">등록된 Pro 기능이 없습니다.</p>';
           return;
         }
         list.innerHTML = features
@@ -1515,7 +1513,7 @@
         [
           "최근 로그인 실패가 몰린 IP나 계정 있어?",
           "최근 7일 사용량 통계 집계해줘",
-          "베타 기능 현황 보여줘",
+          "Pro 기능 현황 보여줘",
           "지금 rate-limit에 걸린 사용자 있어?",
           "크레딧 0인데 최근 로그인한 사용자 있어?",
           "최근 AI 도우미 피드백 요약해줘",
@@ -1540,7 +1538,7 @@
           "AI 관리자 보조": "ai",
           "사용자 추가": "users",
           "사용자 목록": "users",
-          "베타 기능": "beta",
+          "Pro 기능": "beta",
           "API 키 위임": "grants",
           "백그라운드 구독": "subs",
           "보고서 생성 로그": "logs",
@@ -2981,7 +2979,7 @@
             var act = btn.getAttribute("data-act");
             var id = btn.getAttribute("data-id");
             if (act === "reject" && !confirm("이 신청을 거절할까요?")) return;
-            if (act === "approve" && !confirm("입금을 확인했나요? 승인하면 즉시 프리미엄이 활성화됩니다.")) return;
+            if (act === "approve" && !confirm("입금을 확인했나요? 승인하면 즉시 Max가 활성화됩니다.")) return;
             btn.disabled = true;
             fetch("/api/subscriptions/requests/" + encodeURIComponent(id) + "/" + act, {
               method: "POST",

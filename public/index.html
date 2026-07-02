@@ -55,27 +55,27 @@
               <a href="#" data-report="chem-result">화학 결과보고서</a>
               <a href="#" data-report="phys-result">물리 결과보고서</a>
               <a href="#" data-report="free">자유 보고서</a>
-              <a href="/?report=problem-set" id="navBetaProblemSet" hidden>문제집 메이커 <span class="beta-pill">베타</span></a>
-              <a href="/?report=form-maker" id="navBetaFormMaker" hidden>양식 메이커 <span class="beta-pill">베타</span></a>
+              <a href="/?report=problem-set" id="navBetaProblemSet" hidden>문제집 메이커</a>
+              <a href="/?report=form-maker" id="navBetaFormMaker" hidden>양식 메이커</a>
             </div>
           </div>
           <!-- ② 공부 -->
           <div class="nav-dd" data-dd>
             <button type="button" class="nav-dd-btn">공부 <span class="caret" aria-hidden="true">▾</span></button>
             <div class="nav-dd-menu">
-              <a href="/exam-prep.html" id="navExamPrep" hidden>수행평가 도움 <span class="beta-pill">베타</span></a>
-              <a href="/physics-studio.html">고급 물리 문제 <span class="beta-pill">베타</span></a>
-              <a href="/study.html">공부 <span class="beta-pill">베타</span></a>
+              <a href="/exam-prep.html" id="navExamPrep" hidden>수행평가 도움</a>
+              <a href="/physics-studio.html" id="navBetaPhysStudio" hidden>고급 물리 문제</a>
+              <a href="/study.html" id="navBetaStudy" hidden>공부</a>
             </div>
           </div>
           <!-- ③ 창작·코딩 -->
           <div class="nav-dd" data-dd>
             <button type="button" class="nav-dd-btn">창작·코딩 <span class="caret" aria-hidden="true">▾</span></button>
             <div class="nav-dd-menu">
-              <a href="/create.html">창작 스튜디오 <span class="beta-pill">베타</span></a>
-              <a href="/vibe-coding.html">바이브 코딩 생성기 <span class="beta-pill">베타</span></a>
-              <a href="/editor.html" id="navBetaEditor" hidden>Quilo Code <span class="beta-pill">베타</span></a>
-              <a href="/filechat.html" id="navBetaFilechat" hidden>파일 챗봇 <span class="beta-pill">베타</span></a>
+              <a href="/create.html" id="navBetaCreate" hidden>창작 스튜디오</a>
+              <a href="/vibe-coding.html" id="navBetaVibe" hidden>바이브 코딩 생성기</a>
+              <a href="/editor.html" id="navBetaEditor" hidden>Quilo Code</a>
+              <a href="/filechat.html" id="navBetaFilechat" hidden>파일 챗봇</a>
             </div>
           </div>
           <!-- ④ 도구 — 소형 유틸리티 -->
@@ -86,7 +86,7 @@
               <a href="/tools/regression.html">선형회귀 · 추세선</a>
               <a href="/tools/graph.html">그래프 생성기</a>
               <a href="/tools/convert.html">파일 변환기 <span style="font-size:11px;opacity:.6">· 이미지·PDF·수식</span></a>
-              <a href="/translate.html" id="navBetaTranslate" hidden>PDF 통번역 <span class="beta-pill">베타</span></a>
+              <a href="/translate.html" id="navBetaTranslate" hidden>PDF 통번역</a>
             </div>
           </div>
           <!-- ⑤ 둘러보기 -->
@@ -269,55 +269,55 @@
         <label id="rtPhysInquiry" hidden>
           <input type="radio" name="reportType" value="phys-inquiry" />
           <span class="rt-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0-3.6 10.8c.5.4.8.9.9 1.5l.2 1.2h5l.2-1.2c.1-.6.4-1.1.9-1.5A6 6 0 0 0 12 3z"/><path d="M9.5 21h5"/><path d="M10 18h4"/></svg></span>
-          <span class="rt-title">물리 수행평가 <span class="beta-pill">베타</span></span>
+          <span class="rt-title">물리 수행평가 <span class="beta-pill">Pro</span></span>
           <span class="rt-tag">주제·필기노트 → 탐구 성찰 보고서</span>
         </label>
         <label id="rtMathInquiry" hidden>
           <input type="radio" name="reportType" value="math-inquiry" />
           <span class="rt-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16"/><path d="M6 4l6 8-6 8"/><path d="M4 20h16"/></svg></span>
-          <span class="rt-title">수학 수행평가 <span class="beta-pill">베타</span></span>
+          <span class="rt-title">수학 수행평가 <span class="beta-pill">Pro</span></span>
           <span class="rt-tag">주제 한 줄 → 급수 탐구보고서</span>
         </label>
         <label id="rtReadingLog" hidden>
           <input type="radio" name="reportType" value="reading-log" />
           <span class="rt-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0-2 2z"/><path d="M4 20a2 2 0 0 1 2-2h13"/></svg></span>
-          <span class="rt-title">독서록 <span class="beta-pill">베타</span></span>
+          <span class="rt-title">독서록 <span class="beta-pill">Pro</span></span>
           <span class="rt-tag">도서 정보 → 독서활동 기록지 .hwpx</span>
         </label>
         <label id="rtProblemSet" hidden>
           <input type="radio" name="reportType" value="problem-set" />
           <span class="rt-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h11l5 5v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z"/><path d="M14 4v5h5"/><path d="M8 13h7M8 17h4"/></svg></span>
-          <span class="rt-title">문제집 메이커 <span class="beta-pill">베타</span></span>
+          <span class="rt-title">문제집 메이커 <span class="beta-pill">Pro</span></span>
           <span class="rt-tag">교재 문제 PDF → 문제지·해설지 3종</span>
         </label>
         <label id="rtFormMaker" hidden>
           <input type="radio" name="reportType" value="form-maker" />
           <span class="rt-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="1"/><path d="M8 7h8M8 11h8M8 15h5"/></svg></span>
-          <span class="rt-title">양식 메이커 <span class="beta-pill">베타</span></span>
+          <span class="rt-title">양식 메이커 <span class="beta-pill">Pro</span></span>
           <span class="rt-tag">말로 양식 생성 · 종이 사진 → 한글 복원</span>
         </label>
         <label id="rtEngExam" hidden>
           <input type="radio" name="reportType" value="eng-exam-prep" />
           <span class="rt-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v14H4z"/><path d="M4 9h16"/><path d="M8 13h8M8 16h5"/></svg></span>
-          <span class="rt-title">영어 시험대비 3종 <span class="beta-pill">베타</span></span>
+          <span class="rt-title">영어 시험대비 3종 <span class="beta-pill">Pro</span></span>
           <span class="rt-tag">영어 지문 → 모의고사·개념·빈칸 PDF</span>
         </label>
         <label id="rtKoreanLit" hidden>
           <input type="radio" name="reportType" value="korean-lit-exam" />
           <span class="rt-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h7a2 2 0 0 1 2 2v12a2 2 0 0 0-2-2H3z"/><path d="M21 5h-7a2 2 0 0 0-2 2v12a2 2 0 0 1 2-2h7z"/></svg></span>
-          <span class="rt-title">국어 문학 시험 <span class="beta-pill">베타</span></span>
+          <span class="rt-title">국어 문학 시험 <span class="beta-pill">Pro</span></span>
           <span class="rt-tag">학습지·필기 → 시험지·답안·해설</span>
         </label>
         <label id="rtCapTranslate" hidden>
           <input type="radio" name="reportType" value="cap-translate" />
           <span class="rt-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h7v14H4z"/><path d="M13 8h7v11h-7z"/><path d="M7 9l1.5 4M8.5 13l-1.5 0"/><path d="M16 11l1.2 3M17.2 14l-1.2 0"/></svg></span>
-          <span class="rt-title">Capstone .cap 번역 <span class="beta-pill">베타</span></span>
+          <span class="rt-title">Capstone .cap 번역 <span class="beta-pill">Pro</span></span>
           <span class="rt-tag">.cap 화면 텍스트 한국어 번역본</span>
         </label>
         <label id="rtPhysMock" hidden>
           <input type="radio" name="reportType" value="phys-mock-exam" />
           <span class="rt-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6v4l-4 6v5a2 2 0 0 0 2 2H9a2 2 0 0 0 2-2v-5L7 7V3z"/><path d="M8 3h8"/></svg></span>
-          <span class="rt-title">물리 모의고사 <span class="beta-pill">베타</span></span>
+          <span class="rt-title">물리 모의고사 <span class="beta-pill">Pro</span></span>
           <span class="rt-tag">기출+교과서 → 시험지·답안 PDF·HWPX</span>
         </label>
       </div>
@@ -681,7 +681,7 @@
     <!-- ── 물리 수행평가 폼 (베타) — 탐구 및 사고 과정 성찰 보고서 ───────────── -->
     <form id="physInquiryForm" class="report-form" data-report-form="phys-inquiry" hidden>
       <div class="notice">
-        <strong>물리 수행평가 「일반물리학 탐구 및 사고 과정 성찰 보고서」 초안 (베타·무료).</strong>
+        <strong>물리 수행평가 「일반물리학 탐구 및 사고 과정 성찰 보고서」 초안 (Pro·무료).</strong>
         주제 + 내가 공부한 필기노트 PDF + 참고자료를 주면, 오개념 → 오류 인식 → 정확한 개념으로의 해결 →
         물리적 해석·성찰 흐름의 초안을 만들어 줍니다. <strong>그대로 제출하지 말고 본인 글로 다듬어 쓰세요.</strong>
       </div>
@@ -800,11 +800,14 @@
           <span class="form-section-title">출력 설정</span>
         </div>
         <div class="seg-group" style="margin-bottom: 12px">
-          <span class="field-label">AI 모델 (베타 기간 무료)</span>
+          <span class="field-label">AI 모델 (Pro 무료)</span>
           <div class="segmented">
             <label class="fable-model" hidden><input type="radio" name="piModel" value="claude-fable-5" /> Fable 5 · 9크레딧 (관리자)</label>
-            <label><input type="radio" name="piModel" value="claude-opus-4-8" checked /> Opus 4.8 · 무료(베타)</label>
-            <label><input type="radio" name="piModel" value="claude-sonnet-5" /> Sonnet 5 · 무료(베타)</label>
+            <label><input type="radio" name="piModel" value="claude-opus-4-8" checked /> Opus 4.8 · 무료(Pro)</label>
+            <label><input type="radio" name="piModel" value="claude-sonnet-5" /> Sonnet 5 · 무료(Pro)</label>
+            <label><input type="radio" name="piModel" value="gpt-5.5" /> GPT-5.5 · 무료(Pro)</label>
+            <label><input type="radio" name="piModel" value="gpt-5.4" /> GPT-5.4 · 무료(Pro)</label>
+            <label><input type="radio" name="piModel" value="gpt-5.4-mini" /> GPT-5.4 mini · 무료(Pro)</label>
           </div>
         </div>
         <div class="field-grid">
@@ -837,14 +840,14 @@
       </div>
 
       <div class="form-actions">
-        <span class="hint">베타 기능입니다. 크레딧이 차감되지 않습니다. 생성에는 보통 1~3분 걸립니다.</span>
+        <span class="hint">Pro 기능입니다. 크레딧이 차감되지 않습니다. 생성에는 보통 1~3분 걸립니다.</span>
         <button type="submit" id="piBtn">물리 수행평가 초안 생성</button>
       </div>
     </form>
 
     <form id="mathInquiryForm" class="report-form" data-report-form="math-inquiry" hidden>
       <div class="notice">
-        <strong>수학 수행평가 「수학Ⅲ 급수 탐구보고서」 초안 (베타·무료).</strong>
+        <strong>수학 수행평가 「수학Ⅲ 급수 탐구보고서」 초안 (Pro·무료).</strong>
         급수 관련 탐구 주제만 입력하면, AI가 정확한 수학 전개와 웹 검색(선행연구)으로 학교 양식(Ⅰ.탐구 주제 ~ Ⅴ.결과 정리 및 반성)에 맞춰
         채점 기준 만점을 노린 초안(표·그래프·수식 풀유도 포함)을 만들어 줍니다. <strong>그대로 제출하지 말고 본인 글로 다듬어 쓰세요.</strong>
       </div>
@@ -935,14 +938,14 @@
           <span class="form-section-title">출력 설정</span>
         </div>
         <div class="seg-group" style="margin-bottom: 12px">
-          <span class="field-label">AI 모델 (베타 기간 무료)</span>
+          <span class="field-label">AI 모델 (Pro 무료)</span>
           <div class="segmented">
             <label class="fable-model" hidden><input type="radio" name="miModel" value="claude-fable-5" /> Fable 5 · 9크레딧 (관리자)</label>
-            <label><input type="radio" name="miModel" value="claude-opus-4-8" checked /> Opus 4.8 · 무료(베타)</label>
-            <label><input type="radio" name="miModel" value="claude-sonnet-5" /> Sonnet 5 · 무료(베타)</label>
-            <label><input type="radio" name="miModel" value="gpt-5.5" /> GPT-5.5 · 무료(베타)</label>
-            <label><input type="radio" name="miModel" value="gpt-5.4" /> GPT-5.4 · 무료(베타)</label>
-            <label><input type="radio" name="miModel" value="gpt-5.4-mini" /> GPT-5.4 mini · 무료(베타)</label>
+            <label><input type="radio" name="miModel" value="claude-opus-4-8" checked /> Opus 4.8 · 무료(Pro)</label>
+            <label><input type="radio" name="miModel" value="claude-sonnet-5" /> Sonnet 5 · 무료(Pro)</label>
+            <label><input type="radio" name="miModel" value="gpt-5.5" /> GPT-5.5 · 무료(Pro)</label>
+            <label><input type="radio" name="miModel" value="gpt-5.4" /> GPT-5.4 · 무료(Pro)</label>
+            <label><input type="radio" name="miModel" value="gpt-5.4-mini" /> GPT-5.4 mini · 무료(Pro)</label>
           </div>
         </div>
         <div class="field-grid">
@@ -975,7 +978,7 @@
       </div>
 
       <div class="form-actions">
-        <span class="hint">베타 기능입니다. 크레딧이 차감되지 않습니다. 생성에는 보통 1~3분 걸립니다.</span>
+        <span class="hint">Pro 기능입니다. 크레딧이 차감되지 않습니다. 생성에는 보통 1~3분 걸립니다.</span>
         <button type="submit" id="miBtn">수학 수행평가 초안 생성</button>
       </div>
     </form>
@@ -984,7 +987,7 @@
     <form id="readingLogForm" class="report-form" data-report-form="reading-log" data-flow-init="1" hidden>
       <input type="hidden" name="rlFormat" value="hwpx" />
       <div class="notice">
-        <strong>독서록 「독서활동 기록지」 초안 (베타·무료).</strong>
+        <strong>독서록 「독서활동 기록지」 초안 (Pro·무료).</strong>
         읽은 책의 정보를 입력하면, AI가 <strong>선택 계기·내용 요약·느낀 점</strong>을 써서 학교 양식(.hwpx)에 채워 줍니다.
         인적사항(이름)은 개인 설정 값으로 자동 출력됩니다. <strong>그대로 제출하지 말고 본인 글로 다듬어 쓰세요.</strong>
       </div>
@@ -1139,11 +1142,14 @@
           <span class="form-section-title">출력 설정</span>
         </div>
         <div class="seg-group" style="margin-bottom: 12px">
-          <span class="field-label">AI 모델 (베타 기간 무료)</span>
+          <span class="field-label">AI 모델 (Pro 무료)</span>
           <div class="segmented">
             <label class="fable-model" hidden><input type="radio" name="rlModel" value="claude-fable-5" /> Fable 5 (관리자)</label>
-            <label><input type="radio" name="rlModel" value="claude-sonnet-5" checked /> Sonnet 5 · 추천 · 무료(베타)</label>
-            <label><input type="radio" name="rlModel" value="claude-opus-4-8" /> Opus 4.8 · 정밀 · 무료(베타)</label>
+            <label><input type="radio" name="rlModel" value="claude-sonnet-5" checked /> Sonnet 5 · 추천 · 무료(Pro)</label>
+            <label><input type="radio" name="rlModel" value="claude-opus-4-8" /> Opus 4.8 · 정밀 · 무료(Pro)</label>
+            <label><input type="radio" name="rlModel" value="gpt-5.5" /> GPT-5.5 · 무료(Pro)</label>
+            <label><input type="radio" name="rlModel" value="gpt-5.4" /> GPT-5.4 · 무료(Pro)</label>
+            <label><input type="radio" name="rlModel" value="gpt-5.4-mini" /> GPT-5.4 mini · 무료(Pro)</label>
           </div>
           <small>독서록은 책 내용을 정확히 써야 해 <b>Claude</b>를 씁니다(GPT는 책 내용을 일반론으로 뭉뚱그려 부정확).</small>
         </div>
@@ -1169,7 +1175,7 @@
       </div>
 
       <div class="form-actions">
-        <span class="hint">베타 기능입니다. 크레딧이 차감되지 않습니다. 생성에는 보통 30초~1분 걸립니다.</span>
+        <span class="hint">Pro 기능입니다. 크레딧이 차감되지 않습니다. 생성에는 보통 30초~1분 걸립니다.</span>
         <button type="submit" id="rlBtn">독서록 생성</button>
       </div>
     </form>
@@ -1179,7 +1185,7 @@
          (간단한 도구라 모든 입력을 한 화면에 보여 주는 편이 낫다). -->
     <form id="problemSetForm" class="report-form" data-report-form="problem-set" data-flow-init="1" hidden>
       <div class="notice">
-        <strong>문제집 메이커 (베타·무료).</strong>
+        <strong>문제집 메이커 (Pro·무료).</strong>
         옥스토비·Serway처럼 빼곡한 교재 문제 PDF(또는 사진)를 올리면, ① 영어 문제지 ② 한글 문제지 ③ 해설지
         <strong>3개 PDF를 ZIP 하나</strong>로 만들어 줍니다. 페이지당 문제 수를 정하면 그만큼 풀이 칸을 비워 주고,
         문제 속 그림·표는 자동으로 잘라 넣습니다(원본에 없으면 표준값으로 재구성해 '재구성됨' 표시).
@@ -1250,14 +1256,14 @@
           <span class="form-section-title">AI 모델</span>
         </div>
         <div class="seg-group">
-          <span class="field-label">AI 모델 (베타 기간 무료)</span>
+          <span class="field-label">AI 모델 (Pro 무료)</span>
           <div class="segmented">
             <label class="fable-model" hidden><input type="radio" name="psModel" value="claude-fable-5" /> Fable 5 (관리자)</label>
-            <label><input type="radio" name="psModel" value="claude-opus-4-8" checked /> Opus 4.8 · 무료(베타)</label>
-            <label><input type="radio" name="psModel" value="claude-sonnet-5" /> Sonnet 5 · 무료(베타)</label>
-            <label><input type="radio" name="psModel" value="gpt-5.5" /> GPT-5.5 · 무료(베타)</label>
-            <label><input type="radio" name="psModel" value="gpt-5.4" /> GPT-5.4 · 무료(베타)</label>
-            <label><input type="radio" name="psModel" value="gpt-5.4-mini" /> GPT-5.4 mini · 무료(베타)</label>
+            <label><input type="radio" name="psModel" value="claude-opus-4-8" checked /> Opus 4.8 · 무료(Pro)</label>
+            <label><input type="radio" name="psModel" value="claude-sonnet-5" /> Sonnet 5 · 무료(Pro)</label>
+            <label><input type="radio" name="psModel" value="gpt-5.5" /> GPT-5.5 · 무료(Pro)</label>
+            <label><input type="radio" name="psModel" value="gpt-5.4" /> GPT-5.4 · 무료(Pro)</label>
+            <label><input type="radio" name="psModel" value="gpt-5.4-mini" /> GPT-5.4 mini · 무료(Pro)</label>
           </div>
           <small>물리·화학 수식과 풀이 정확도는 Opus를 권장합니다.</small>
         </div>
@@ -1272,7 +1278,7 @@
       </div>
 
       <div class="form-actions">
-        <span class="hint">베타 기능입니다. 크레딧이 차감되지 않습니다. 문제 수에 따라 1~5분 걸릴 수 있습니다.</span>
+        <span class="hint">Pro 기능입니다. 크레딧이 차감되지 않습니다. 문제 수에 따라 1~5분 걸릴 수 있습니다.</span>
         <button type="submit" id="psBtn">문제지·해설지 만들기</button>
       </div>
     </form>
@@ -1316,7 +1322,7 @@
         <div class="field">
           <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer">
             <input type="checkbox" id="fmFigureRedraw" name="figureRedraw" value="true" style="margin-top:3px" />
-            <span>사진 속 <strong>그림을 AI로 깔끔히 다시 그리기</strong> (베타)
+            <span>사진 속 <strong>그림을 AI로 깔끔히 다시 그리기</strong> (Pro)
               <br><small style="color:var(--warning)">기본은 원본 그림을 그대로 잘라 넣습니다. 이 옵션을 켜면 잘라낸 그림을 AI(gpt-image)가 다시 그려 더 깔끔해지지만, <strong>그래프 모양·숫자·라벨이 원본과 달라질 수 있습니다.</strong> 시험지 그래프처럼 정확도가 중요하면 끄세요.</small></span>
           </label>
         </div>
@@ -1391,7 +1397,7 @@
       </div>
 
       <div class="form-actions">
-        <span class="hint">생성에는 보통 1~3분 걸립니다. 베타 기능이라 크레딧이 차감되지 않습니다.</span>
+        <span class="hint">생성에는 보통 1~3분 걸립니다. Pro 기능이라 크레딧이 차감되지 않습니다.</span>
         <button type="submit" id="fmBtn">양식 만들기</button>
       </div>
     </form>
@@ -1435,7 +1441,7 @@
         <label><input type="checkbox" required /> 본인이 이용 권한을 가진 자료만 업로드하며, 생성물은 학습 보조 용도로만 사용합니다.</label>
       </div>
       <div class="form-actions">
-        <span class="hint">생성에는 보통 2~5분 걸립니다. 베타 기능이라 크레딧이 차감되지 않습니다.</span>
+        <span class="hint">생성에는 보통 2~5분 걸립니다. Pro 기능이라 크레딧이 차감되지 않습니다.</span>
         <button type="submit" id="engExamBtn">3종 자료 만들기</button>
       </div>
     </form>
@@ -1490,7 +1496,7 @@
         <label><input type="checkbox" required /> 본인이 이용 권한을 가진 자료만 업로드하며, 생성물은 학습 보조 용도로만 사용합니다.</label>
       </div>
       <div class="form-actions">
-        <span class="hint">생성에는 보통 2~5분 걸립니다. 베타 기능이라 크레딧이 차감되지 않습니다.</span>
+        <span class="hint">생성에는 보통 2~5분 걸립니다. Pro 기능이라 크레딧이 차감되지 않습니다.</span>
         <button type="submit" id="koreanLitBtn">시험 자료 만들기</button>
       </div>
     </form>
@@ -1541,7 +1547,7 @@
         <label><input type="checkbox" required /> 본인이 이용 권한을 가진 파일만 업로드합니다.</label>
       </div>
       <div class="form-actions">
-        <span class="hint">파일 크기에 따라 1~4분 걸립니다. 베타 기능이라 크레딧이 차감되지 않습니다.</span>
+        <span class="hint">파일 크기에 따라 1~4분 걸립니다. Pro 기능이라 크레딧이 차감되지 않습니다.</span>
         <button type="submit" id="capTranslateBtn">번역본 만들기</button>
       </div>
     </form>
@@ -1607,7 +1613,7 @@
         <label><input type="checkbox" required /> 본인이 이용 권한을 가진 자료만 업로드하며, 생성물은 학습 보조 용도로만 사용합니다.</label>
       </div>
       <div class="form-actions">
-        <span class="hint">출제·검증 단계라 보통 4~8분 걸립니다. 베타 기능이라 크레딧이 차감되지 않습니다.</span>
+        <span class="hint">출제·검증 단계라 보통 4~8분 걸립니다. Pro 기능이라 크레딧이 차감되지 않습니다.</span>
         <button type="submit" id="physMockBtn">모의고사 만들기</button>
       </div>
     </form>
@@ -2113,6 +2119,7 @@
       <nav class="settings-shortcuts" aria-label="설정 바로가기">
         <a href="#settingsAccountCard">계정</a>
         <a href="#usageCard">사용 내역</a>
+        <a href="#byokCard">API 키</a>
         <a href="#settingsProfileCard">학번</a>
         <a href="#settingsStyleCard">글 스타일</a>
         <a href="#settingsDefaultsCard">기본값</a>
@@ -2130,6 +2137,27 @@
           <dt>권한</dt>
           <dd id="settingsUserRole">일반 사용자</dd>
         </dl>
+      </div>
+
+      <div class="settings-card" id="byokCard">
+        <h2>내 API 키 (BYOK)</h2>
+        <p class="hint">본인 <b>Anthropic</b>/<b>OpenAI</b> API 키를 등록하면 AI 생성이 <b>크레딧 차감 없이 내 키로</b> 실행됩니다. 등급 내 기능·모델에만 적용되며, AI 개념도 이미지 생성 크레딧은 별도입니다. 키는 서버에 암호화되어 저장됩니다.</p>
+        <div id="byokStatus" class="hint" style="margin:8px 0">불러오는 중…</div>
+        <label>Anthropic 키
+          <input id="byokAnthropicInput" type="password" placeholder="sk-ant-..." autocomplete="off" />
+        </label>
+        <div class="form-actions" style="margin:6px 0 14px">
+          <button type="button" class="btn" id="byokSaveAnthropic">저장</button>
+          <button type="button" class="btn" id="byokDelAnthropic">삭제</button>
+        </div>
+        <label>OpenAI(GPT) 키
+          <input id="byokOpenaiInput" type="password" placeholder="sk-..." autocomplete="off" />
+        </label>
+        <div class="form-actions" style="margin:6px 0 0">
+          <button type="button" class="btn" id="byokSaveOpenai">저장</button>
+          <button type="button" class="btn" id="byokDelOpenai">삭제</button>
+        </div>
+        <p id="byokMsg" class="hint" style="margin-top:8px"></p>
       </div>
 
       <div class="settings-card" id="usageCard">

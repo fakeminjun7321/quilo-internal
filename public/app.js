@@ -639,7 +639,7 @@ let currentStudentId = "";
           _balanceState = { known: true, credits, unlimited: !!b.unlimited, isAdmin: false };
           const balCreditsEl = document.getElementById("balCredits");
           if (balCreditsEl) balCreditsEl.textContent = b.unlimited
-            ? "무제한 (베타)"
+            ? "무제한 (Pro)"
             : `${credits} 크레딧`;
           const balanceBoxEl = document.getElementById("balanceBox");
           // 모델별 환산: 잔액이 보고서 몇 건인지 직관적으로 (개편: Sonnet 2 / Opus·GPT-5.5 4 / GPT-5.4 1 / mini 무료)
@@ -843,7 +843,7 @@ let currentStudentId = "";
         const filter = document.getElementById("filesFilter");
         const filterEmpty = document.getElementById("filesFilterEmpty");
         if (!status || !list) return;
-        renderPremiumBadge(); // ✨ 프리미엄 배지(활성 시)
+        renderPremiumBadge(); // ✨ Max 배지(활성 시)
         renderBgJobs(); // '내 작업'(진행중/중단) — 완료본은 아래 파일 목록에 나타남
         status.textContent = "불러오는 중...";
         if (workspaceFilesSummary) workspaceFilesSummary.textContent = "최근 파일 확인 중...";
@@ -1079,7 +1079,7 @@ let currentStudentId = "";
               ? `${dt.getMonth() + 1}/${dt.getDate()} ${String(dt.getHours()).padStart(2, "0")}:${String(dt.getMinutes()).padStart(2, "0")}`
               : "-";
             const cr =
-              x.credits == null ? "베타·무료" : x.credits === 0 ? "무료" : x.credits + "크레딧";
+              x.credits == null ? "Pro·무료" : x.credits === 0 ? "무료" : x.credits + "크레딧";
             const md = x.model ? modelShortName(String(x.model)) : "-";
             const tr = document.createElement("tr");
             [
@@ -1166,35 +1166,53 @@ let currentStudentId = "";
         });
       })();
 
-      // 베타 메뉴 노출: 관리자 또는 지정 테스터에게만 'PDF 통번역(베타)' 표시
+      // 등급별 메뉴 노출: 로그인 사용자의 등급(Pro 기능 보유·Max)에 맞는 항목만 보인다.
+      // 비로그인/미보유 → hidden 유지. 드롭다운이 통째로 비면 드롭다운 버튼도 숨긴다.
+      const showNav = (id) => {
+        const el = document.getElementById(id);
+        if (el) el.hidden = false;
+      };
+      const refreshNavDD = () => {
+        document.querySelectorAll(".nav-dd").forEach((dd) => {
+          const menu = dd.querySelector(".nav-dd-menu");
+          if (!menu) return;
+          const anyVisible = Array.from(menu.querySelectorAll("a")).some(
+            (a) => !a.hidden,
+          );
+          dd.hidden = !anyVisible;
+        });
+      };
+      // PDF 통번역은 Max(백그라운드 구독) 기준 — Pro 기능 목록이 아니라 구독 상태로 판단.
+      fetch("/api/subscriptions/me")
+        .then((r) => (r.ok ? r.json() : { active: false }))
+        .then((s) => {
+          if (s && s.active) showNav("navBetaTranslate");
+          refreshNavDD();
+        })
+        .catch(() => {});
       fetch("/api/me/beta")
         .then((r) => (r.ok ? r.json() : { features: [] }))
         .then((b) => {
           const feats = Array.isArray(b.features) ? b.features : [];
-          if (feats.includes("pdf-translate")) {
-            const el = document.getElementById("navBetaTranslate");
-            if (el) el.hidden = false;
-          }
-          if (feats.includes("code-editor")) {
-            const el2 = document.getElementById("navBetaEditor");
-            if (el2) el2.hidden = false;
-          }
-          // 파일 챗봇(베타/위임): 관리자·테스터는 여기서, 위임(grant) 사용자는 access 조회로 노출.
-          if (b.admin === true || feats.includes("file-chat")) {
-            const elFc = document.getElementById("navBetaFilechat");
-            if (elFc) elFc.hidden = false;
+          const has = (k) => b.admin === true || feats.includes(k);
+          if (has("code-editor")) showNav("navBetaEditor");
+          if (has("create")) showNav("navBetaCreate");
+          if (has("vibe-coding")) showNav("navBetaVibe");
+          if (has("physics-studio")) showNav("navBetaPhysStudio");
+          if (has("relativity-study")) showNav("navBetaStudy");
+          // 파일 챗봇(Pro/위임): 관리자·Pro는 여기서, 위임(grant) 사용자는 access 조회로 노출.
+          if (has("file-chat") || has("create")) {
+            showNav("navBetaFilechat");
           } else {
             fetch("/api/filechat/access")
               .then((r) => (r.ok ? r.json() : { allowed: false }))
               .then((a) => {
-                if (a && a.allowed) {
-                  const elFc = document.getElementById("navBetaFilechat");
-                  if (elFc) elFc.hidden = false;
-                }
+                if (a && a.allowed) showNav("navBetaFilechat");
+                refreshNavDD();
               })
               .catch(() => {});
           }
-          if (b.admin === true || feats.includes("problem-set")) {
+          if (has("problem-set")) {
             const el3 = document.getElementById("navBetaProblemSet");
             if (el3) el3.hidden = false;
           }
@@ -1211,7 +1229,7 @@ let currentStudentId = "";
           // 물리 수행평가(베타): 상단 메뉴 바로가기는 제거됨 — 진입은 '수행평가 도움' 허브로 일원화.
           // 보고서 종류 탭(rtPhysInquiry)은 평소엔 숨기고, 허브에서 '?report=phys-inquiry' 로
           // 들어올 때만 노출·자동 선택한다(아래 딥링크 처리).
-          // 수행평가 도움(베타 허브): 관리자 또는 베타 테스터(coding-test·phys-inquiry)에게만 메뉴 노출.
+          // 수행평가 도움(베타 허브): 관리자 또는 Pro 회원(coding-test·phys-inquiry)에게만 메뉴 노출.
           if (
             b.admin === true ||
             feats.includes("coding-test") ||
@@ -1270,8 +1288,9 @@ let currentStudentId = "";
               if (fs) fs.scrollIntoView({ behavior: "smooth", block: "start" });
             }
           } catch (e) {}
+          refreshNavDD();
         })
-        .catch(() => {});
+        .catch(() => refreshNavDD());
 
       // Default to today
       document.getElementById("date").value = new Date().toISOString().slice(0, 10);
@@ -2567,7 +2586,7 @@ let currentStudentId = "";
         }
       })();
 
-      // 프리미엄(백그라운드 실행 가능) 배지 — '내 파일' 패널 상단에 표시.
+      // Max(백그라운드 실행 가능) 배지 — '내 파일' 패널 상단에 표시.
       function renderPremiumBadge() {
         try {
           const list = document.getElementById("filesList");
@@ -2579,7 +2598,7 @@ let currentStudentId = "";
             list.parentNode.insertBefore(badge, list);
           }
           if (_bgInfo.active) {
-            // 활성 프리미엄 — 안내 배지.
+            // 활성 Max — 안내 배지.
             badge.style.cssText =
               "margin:0 0 12px;padding:10px 12px;border:1px solid #c7a008;border-radius:8px;background:linear-gradient(90deg,#fffbeb,#fef9c3);color:#713f12;font-size:13px;font-weight:600";
             let detail = "백그라운드 실행을 사용할 수 있어요.";
@@ -2593,21 +2612,21 @@ let currentStudentId = "";
                 }
               } catch (_) {}
             }
-            badge.textContent = `✨ 프리미엄 — ${detail}`;
+            badge.textContent = `✨ Max — ${detail}`;
             return;
           }
-          // 비활성 — 프리미엄 신청 CTA.
+          // 비활성 — Max 신청 CTA.
           badge.style.cssText =
             "margin:0 0 12px;padding:12px 14px;border:1px dashed #c7a008;border-radius:8px;background:#fffdf5;color:#713f12;font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap";
           const txt = document.createElement("span");
           txt.style.fontWeight = "600";
           txt.textContent =
-            "✨ 프리미엄으로 백그라운드 실행하기 — 제출 후 탭을 닫아도 보고서가 완성돼요.";
+            "✨ Max으로 백그라운드 실행하기 — 제출 후 탭을 닫아도 보고서가 완성돼요.";
           const btn = document.createElement("button");
           btn.type = "button";
           btn.className = "primary compact";
           btn.style.marginLeft = "auto";
-          btn.textContent = "프리미엄 신청";
+          btn.textContent = "Max 신청";
           btn.addEventListener("click", openPremiumRequestModal);
           badge.replaceChildren(txt, btn);
         } catch (_) {}
@@ -2623,7 +2642,7 @@ let currentStudentId = "";
         card.setAttribute("aria-modal", "true");
 
         const h = document.createElement("h2");
-        h.textContent = "✨ 프리미엄 신청 (백그라운드 실행)";
+        h.textContent = "✨ Max 신청 (백그라운드 실행)";
 
         const guide = document.createElement("div");
         guide.style.cssText =
@@ -3319,7 +3338,7 @@ let currentStudentId = "";
           if (refLinks) inputBits.push(`링크 ${refLinks.split(/\s*\n\s*/).filter(Boolean).length}개`);
 
           const ok = await showConfirmDialog({
-            title: "물리 수행평가 초안 생성 (베타)",
+            title: "물리 수행평가 초안 생성 (Pro)",
             background: true,
             rows: [
               ["모델", modelLabel],
@@ -3329,7 +3348,7 @@ let currentStudentId = "";
               ["입력", inputBits.join(", ") || "주제만"],
               ["참고 메모", userNotesSummary(piUserNotes, piUserNotesFile)],
               ["내 문체", styleRefs.length || styleNote ? `반영${styleRefs.length ? ` (샘플 ${styleRefs.length}개)` : ""}` : "기본"],
-              ["예상 비용", "무료 (베타)"],
+              ["예상 비용", "무료 (Pro)"],
               ["예상 시간", formatDuration(estimateGenSeconds("phys-inquiry", piModel))],
             ],
             note: `탐구·사고 과정 성찰 보고서 양식으로 작성합니다. ${USE_POLICY_NOTE}`,
@@ -3389,7 +3408,7 @@ let currentStudentId = "";
           if (!validateUserNotesFile(miUserNotesFile)) return;
 
           const ok = await showConfirmDialog({
-            title: "수학 수행평가 초안 생성 (베타)",
+            title: "수학 수행평가 초안 생성 (Pro)",
             background: true,
             rows: [
               ["모델", modelLabel],
@@ -3398,7 +3417,7 @@ let currentStudentId = "";
               ["주제", topic.length > 40 ? topic.slice(0, 40) + "…" : topic],
               ["참고 메모", userNotesSummary(miUserNotes, miUserNotesFile)],
               ["내 문체", styleRefs.length || styleNote ? `반영${styleRefs.length ? ` (샘플 ${styleRefs.length}개)` : ""}` : "기본"],
-              ["예상 비용", "무료 (베타)"],
+              ["예상 비용", "무료 (Pro)"],
               ["예상 시간", formatDuration(estimateGenSeconds("math-inquiry", miModel))],
             ],
             note: `주제만으로 AI가 수학 전개·웹 검색을 통해 수학Ⅲ 급수 탐구보고서 양식(Ⅰ~Ⅴ)으로 작성합니다. ${USE_POLICY_NOTE}`,
@@ -3488,7 +3507,7 @@ let currentStudentId = "";
             const periodEnd = document.getElementById("rlPeriodEnd").value;
 
             const ok = await showConfirmDialog({
-              title: "독서록 대량 생성 (베타)",
+              title: "독서록 대량 생성 (Pro)",
               background: true,
               rows: [
                 ["모델", modelLabel],
@@ -3497,7 +3516,7 @@ let currentStudentId = "";
                 ["대출 여부", borrowed === "no" ? "× (기본)" : borrowed === "yes" ? "○" : "미선택"],
                 ["읽기 기간", `${periodStart || "?"} ~ ${periodEnd || "?"} (책 수만큼 분배)`],
                 ["출력", "책마다 .hwpx → ZIP 묶음"],
-                ["예상 비용", "무료 (베타)"],
+                ["예상 비용", "무료 (Pro)"],
               ],
               note: `엑셀의 책마다 AI가 선택 계기·내용·느낀 점을 써서 학교 '독서활동 기록지'(.hwpx)를 만들어 ZIP으로 묶습니다. 책이 많으면 몇 분 걸릴 수 있어요. ${USE_POLICY_NOTE}`,
             });
@@ -3538,7 +3557,7 @@ let currentStudentId = "";
           const userNotes = document.getElementById("rlUserNotes").value.trim();
 
           const ok = await showConfirmDialog({
-            title: "독서록 초안 생성 (베타)",
+            title: "독서록 초안 생성 (Pro)",
             background: true,
             rows: [
               ["모델", modelLabel],
@@ -3548,7 +3567,7 @@ let currentStudentId = "";
               ["저자", author || "AI 추정"],
               ["영역", domainLabel || "미선택"],
               ["감상 메모", userNotes ? "반영" : "없음"],
-              ["예상 비용", "무료 (베타)"],
+              ["예상 비용", "무료 (Pro)"],
               ["예상 시간", formatDuration(estimateGenSeconds("reading-log", rlModel))],
             ],
             note: `도서 정보로 AI가 선택 계기·내용 요약·느낀 점을 써서 학교 '독서활동 기록지' 양식(.hwpx)에 채웁니다. ${USE_POLICY_NOTE}`,
@@ -3603,7 +3622,7 @@ let currentStudentId = "";
           const userNotes = document.getElementById("psUserNotes").value.trim();
 
           const ok = await showConfirmDialog({
-            title: "문제집 메이커 (베타)",
+            title: "문제집 메이커 (Pro)",
             background: true,
             rows: [
               ["모델", modelLabel],
@@ -3612,7 +3631,7 @@ let currentStudentId = "";
               ["교차검증", crossVerify ? "ON (3중 풀이)" : "OFF"],
               ["해설 삽화", allowImageGen ? "생성 (gpt-image)" : "사용 안 함"],
               ["출력", "ZIP · 영어 문제지 + 한글 문제지 + 해설지"],
-              ["예상 비용", "무료 (베타)"],
+              ["예상 비용", "무료 (Pro)"],
               [
                 "예상 시간",
                 crossVerify
@@ -3817,10 +3836,10 @@ let currentStudentId = "";
                     ["그림", fmRedraw ? "AI로 재생성 (원본과 다를 수 있음)" : "원본 그대로 잘라 넣기"],
                   ]
                 : []),
-              ["예상 비용", "무료 (베타)"],
+              ["예상 비용", "무료 (Pro)"],
               ["예상 시간", formatDuration(estimateGenSeconds("free", fmModel, photos.length * 1500))],
             ],
-            note: `베타 기능이라 크레딧이 차감되지 않습니다. 복원은 구조·내용을 재구성하는 것이며 픽셀 단위 복제가 아닙니다. ${USE_POLICY_NOTE}`,
+            note: `Pro 기능이라 크레딧이 차감되지 않습니다. 복원은 구조·내용을 재구성하는 것이며 픽셀 단위 복제가 아닙니다. ${USE_POLICY_NOTE}`,
           });
           if (!ok) return;
 
@@ -3851,7 +3870,7 @@ let currentStudentId = "";
         });
       }
 
-      // ── 스킬 스튜디오 신규 베타 4종 (모두 ZIP 출력, 무료 베타) ───────────────
+      // ── 스킬 스튜디오 신규 베타 4종 (모두 ZIP 출력, Pro 무료) ───────────────
       function pickModel(name) {
         return (
           document.querySelector('input[name="' + name + '"]:checked')?.value ||
@@ -4895,3 +4914,76 @@ let currentStudentId = "";
           initWave2b();
         }
       })();
+
+// ── BYOK: 개인 설정 · 내 API 키 ──────────────────────────────────────────────
+// 본인 Anthropic/OpenAI 키 등록 → 해당 제공자의 AI 생성이 크레딧 차감 없이 본인 키로 실행.
+(function initByok() {
+  const $id = (id) => document.getElementById(id);
+  const status = $id("byokStatus");
+  const msg = $id("byokMsg");
+  if (!status) return;
+  function note(t, ok) {
+    if (msg) {
+      msg.textContent = t;
+      msg.style.color = ok ? "" : "#b91c1c";
+    }
+  }
+  async function refresh() {
+    try {
+      const r = await fetch("/api/me/api-keys");
+      if (r.status === 401) {
+        status.textContent = "로그인 후 등록할 수 있습니다.";
+        return;
+      }
+      const d = await r.json();
+      const keys = Array.isArray(d.keys) ? d.keys : [];
+      const a = keys.find((k) => k.provider === "anthropic");
+      const o = keys.find((k) => k.provider === "openai");
+      const fmt = (k) => (k ? "등록됨 (…" + (k.hint || "") + ")" : "미등록");
+      status.innerHTML =
+        "Anthropic: <b>" + fmt(a) + "</b> · OpenAI: <b>" + fmt(o) + "</b>" +
+        (a || o ? " — 등록된 제공자의 생성은 <b>크레딧 미차감</b>" : "");
+    } catch {
+      status.textContent = "상태를 불러오지 못했습니다.";
+    }
+  }
+  async function save(provider, inputId) {
+    const input = $id(inputId);
+    const key = ((input && input.value) || "").trim();
+    if (!key) return note("키를 입력하세요.", false);
+    try {
+      const r = await fetch("/api/me/api-keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider, key }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) return note(d.error || "저장에 실패했습니다.", false);
+      if (input) input.value = "";
+      note("저장했습니다. 이제 이 제공자의 AI 생성은 내 키로 실행됩니다(크레딧 미차감).", true);
+      refresh();
+    } catch {
+      note("저장 중 오류가 발생했습니다.", false);
+    }
+  }
+  async function del(provider) {
+    try {
+      const r = await fetch("/api/me/api-keys/" + provider, { method: "DELETE" });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) return note(d.error || "삭제에 실패했습니다.", false);
+      note("삭제했습니다. 이후 생성은 서버 키·크레딧으로 실행됩니다.", true);
+      refresh();
+    } catch {
+      note("삭제 중 오류가 발생했습니다.", false);
+    }
+  }
+  const on = (id, fn) => {
+    const el = $id(id);
+    if (el) el.addEventListener("click", fn);
+  };
+  on("byokSaveAnthropic", () => save("anthropic", "byokAnthropicInput"));
+  on("byokDelAnthropic", () => del("anthropic"));
+  on("byokSaveOpenai", () => save("openai", "byokOpenaiInput"));
+  on("byokDelOpenai", () => del("openai"));
+  refresh();
+})();

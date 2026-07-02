@@ -648,7 +648,7 @@ const PIPELINES = {
   },
 };
 
-// 베타·무료 보고서 종류 — /api/generate 에서 테스터 한정 접근 + 크레딧 미차감.
+// Pro 전용·무료 보고서 종류(옛 '베타') — /api/generate 에서 Pro 회원 한정 접근 + 크레딧 미차감.
 const FREE_BETA_TYPES = new Set([
   "phys-inquiry",
   "math-inquiry",
@@ -661,6 +661,19 @@ const FREE_BETA_TYPES = new Set([
   "reading-log",
   "reading-log-bulk",
 ]);
+// 일시 중단(retire)된 보고서 종류 — 코드는 보존(PIPELINES·파이프라인 파일 유지), 요청만 차단.
+// 재공개하려면 이 집합에서 빼면 된다. (2026-07-02 스튜디오 스킬 4종 중단)
+const RETIRED_TYPES = new Set([
+  "eng-exam-prep",
+  "korean-lit-exam",
+  "cap-translate",
+  "phys-mock-exam",
+]);
+// GPT-5.4-mini 무료 경로 일일 한도(2026-07-02 결정): 일 N건까지 0크레딧, 초과분 1크레딧.
+const MINI_FREE_DAILY = Math.max(
+  0,
+  parseInt(process.env.MINI_FREE_DAILY || "5", 10),
+);
 const pricing = require("./lib/pricing");
 const {
   fmtUSD,
@@ -669,6 +682,7 @@ const {
   formatImageCostLine,
 } = pricing;
 const supa = require("./lib/supabase");
+const byok = require("./lib/byok");
 const dbx = require("./lib/cloud/dropbox");
 const { krwToUsd, usdToKrw, getKrwPerUsd } = require("./lib/exchange-rate");
 const rateLimit = require("./lib/rate-limit");
@@ -1056,7 +1070,7 @@ function requireBeta(key) {
         );
         if (!chk.allowed) {
           return res.status(429).json({
-            error: `오늘 베타 사용 한도(${chk.limit}회)를 모두 사용했습니다. 내일 다시 이용해 주세요.`,
+            error: `오늘 Pro 이용 한도(${chk.limit}회)를 모두 사용했습니다. 내일 다시 이용해 주세요.`,
             limit: chk.limit,
             used: chk.count,
           });
@@ -1068,7 +1082,7 @@ function requireBeta(key) {
     }
     return res
       .status(403)
-      .json({ error: "이 기능은 현재 베타 테스터에게만 열려 있습니다." });
+      .json({ error: "이 기능은 Pro 회원 전용입니다." });
   };
 }
 
@@ -1094,7 +1108,34 @@ function requireAdminOrBeta(key) {
     }
     return res
       .status(403)
-      .json({ error: "이 기능은 베타 테스터에게만 열려 있습니다." });
+      .json({ error: "이 기능은 Pro 회원 전용입니다." });
+  };
+}
+
+// Max 회원 게이트: 관리자 또는 활성 백그라운드 구독(=Max) 보유자만 통과.
+// (옛 '프리미엄'. 부여는 관리자 수동 또는 입금 신청 승인 — lib/subscription-routes.js)
+function requireMax() {
+  return async (req, res, next) => {
+    let u;
+    try {
+      u = await refreshSessionUser(req, { failClosed: true });
+    } catch (e) {
+      console.warn("[auth] max privilege refresh failed:", e.message);
+      return res.status(503).json({ error: "권한 확인 중 오류가 발생했습니다." });
+    }
+    if (!u) return res.status(401).json({ error: "로그인이 필요합니다." });
+    if (u.isAdmin) return next();
+    try {
+      if (supa.isEnabled() && u.id && (await supa.getActiveBackgroundSub(u.id))) {
+        return next();
+      }
+    } catch {
+      /* 조회 오류 → 차단(아래 403) */
+    }
+    return res.status(403).json({
+      error:
+        "이 기능은 Max 회원 전용입니다. 개인 설정에서 Max 업그레이드를 신청할 수 있습니다.",
+    });
   };
 }
 
@@ -3081,6 +3122,12 @@ app.post(
         error: `🚧 '${reportType}' 보고서 종류는 아직 준비 중입니다.`,
       });
     }
+    // 일시 중단된 종류 — 코드는 남겨두고 요청만 차단(RETIRED_TYPES 참고).
+    if (RETIRED_TYPES.has(reportType)) {
+      return res.status(403).json({
+        error: "이 기능은 현재 제공이 일시 중단되었습니다. (추후 재공개 예정)",
+      });
+    }
 
     const copyrightAccepted = isTruthyPolicyFlag(req.body.copyrightAccepted);
     const academicIntegrityAccepted = isTruthyPolicyFlag(
@@ -3151,7 +3198,7 @@ app.post(
         }
         if (!hasBeta) {
           return res.status(403).json({
-            error: "이 기능은 현재 베타 테스터에게만 열려 있습니다.",
+            error: "이 기능은 Pro 회원 전용입니다.",
           });
         }
         const chk = rateLimit.checkBetaUsageLimit(
@@ -3161,7 +3208,7 @@ app.post(
         );
         if (!chk.allowed) {
           return res.status(429).json({
-            error: `오늘 베타 사용 한도(${chk.limit}회)를 모두 사용했습니다. 내일 다시 이용해 주세요.`,
+            error: `오늘 Pro 이용 한도(${chk.limit}회)를 모두 사용했습니다. 내일 다시 이용해 주세요.`,
             limit: chk.limit,
             used: chk.count,
           });
@@ -3264,7 +3311,7 @@ app.post(
       if (!hasBackground) {
         return res.status(403).json({
           error:
-            "백그라운드 실행은 구독자 전용입니다. 관리자에게 사용 권한을 문의하세요.",
+            "백그라운드 실행은 Max 회원 전용입니다. 개인 설정에서 Max 업그레이드를 신청하세요.",
           needsBackgroundSub: true,
         });
       }
@@ -3313,24 +3360,11 @@ app.post(
     // Fable 5 — 관리자 전용 최상위 모델(셀렉터도 관리자에게만 노출). 단 일시 차단 중에는 제외.
     // 권한은 fresh row(effectiveIsAdmin) 기준 — 회수된 관리자 권한 즉시 반영.
     if (effectiveIsAdmin && !FABLE_DISABLED) ALLOWED_MODELS.push("claude-fable-5");
-    // GPT(OpenAI) 보고서 생성은 배선 완료된 종류에만 허용(phys-inquiry 는 추후 배선).
+    // GPT(OpenAI) 보고서 생성 — 전 종류 허용(2026-07-02, phys-inquiry 배선 완료).
+    // ⚠ 과거 제외 이력: reading-log/-bulk 은 GPT가 책 내용을 일반론으로 뭉뚱그리거나
+    //   다른 책(예: '코스모스')으로 바꾸는 사고가 있었음(실측) — 품질 민원 시 재제외 검토.
     const GPT_REPORT_MODELS = ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"];
-    const GPT_OK_TYPES = new Set([
-      "chem-pre",
-      "chem-result",
-      "phys-result",
-      "free",
-      "problem-set",
-      "form-maker",
-      "math-inquiry",
-      "eng-exam-prep",
-      "korean-lit-exam",
-      "cap-translate",
-      "phys-mock-exam",
-      // reading-log/-bulk 은 GPT 제외 — GPT(5.4·5.4-mini)는 책 내용을 일반론으로
-      // 뭉뚱그려 부정확하고, 입력과 다른 책(예: '코스모스')으로 바꾸는 사고가 잦다.
-      // Claude(Sonnet/Opus)만 책별 정확한 내용을 쓴다(실측 확인).
-    ]);
+    const GPT_OK_TYPES = new Set(Object.keys(PIPELINES));
     const allowedModels = GPT_OK_TYPES.has(reportType)
       ? [...ALLOWED_MODELS, ...GPT_REPORT_MODELS]
       : ALLOWED_MODELS;
@@ -3367,23 +3401,57 @@ app.post(
       }
     }
     if (!model) model = "claude-opus-4-8"; // 기본 = Opus 4.8
-    // GPT 선택인데 서버에 키가 없으면 명확히 거부(Claude로 조용히 바꾸지 않음).
+    // ── BYOK: 본인 API 키 등록 사용자는 해당 제공자 호출을 본인 키로 + 크레딧 미차감 ──
+    // 등급 내 기능·모델 화이트리스트는 그대로 적용. 키는 아래에서 job 에 비열거 속성으로만
+    // 부착해 persistBgJob(명시 필드 직렬화)·로그에 절대 실리지 않는다.
+    let byokKeys = null;
+    if (supa.isEnabled() && userInfo.id) {
+      byokKeys = await byok.loadUserKeys(supa, userInfo.id);
+    }
+    const byokActive = !!(byokKeys && byokKeys[byok.activeProvider(model)]);
+    // GPT 선택인데 서버·본인 키가 모두 없으면 명확히 거부(Claude로 조용히 바꾸지 않음).
     if (
       /^gpt/i.test(model) &&
-      !(process.env.GPT_API_KEY || process.env.OPENAI_API_KEY)
+      !(process.env.GPT_API_KEY || process.env.OPENAI_API_KEY) &&
+      !(byokKeys && byokKeys.openai)
     ) {
       return res.status(503).json({
         error:
-          "GPT 모델은 현재 서버에 키가 설정되지 않아 사용할 수 없습니다(GPT_API_KEY).",
+          "GPT 모델은 현재 서버에 키가 설정되지 않아 사용할 수 없습니다(GPT_API_KEY). 개인 설정에서 본인 키(BYOK)를 등록하면 사용할 수 있습니다.",
       });
     }
-    // 베타·무료 보고서, 또는 활성 위임(grant) 사용자는 크레딧 미차감(0). 그 외는 모델별 단가.
+    // Pro 무료 보고서, 활성 위임(grant), BYOK 사용자는 크레딧 미차감(0). 그 외는 모델별 단가.
     const isFreeBeta = FREE_BETA_TYPES.has(reportType);
-    const creditCost = isFreeBeta || hasGrant ? 0 : pricing.getModelCredits(model);
+    let creditCost =
+      isFreeBeta || hasGrant || byokActive ? 0 : pricing.getModelCredits(model);
+    // GPT-5.4-mini 무료 캡: 일 MINI_FREE_DAILY건까지 0크레딧, 초과분은 1크레딧(2026-07-02).
+    // 사용 기록은 시도 시점(베타 일일 카운터 재사용, 재시작 리셋). 면제 계층은 카운트 제외.
+    let miniOverCap = false;
+    if (
+      model === "gpt-5.4-mini" &&
+      MINI_FREE_DAILY > 0 &&
+      creditCost === 0 &&
+      !isFreeBeta &&
+      !hasGrant &&
+      !byokActive &&
+      !effectiveIsAdmin &&
+      !effectiveUnlimited &&
+      userInfo.id
+    ) {
+      const used = rateLimit.getBetaUsageCount(userInfo.id, "mini-free");
+      if (used >= MINI_FREE_DAILY) {
+        miniOverCap = true;
+        creditCost = 1;
+      } else {
+        rateLimit.recordBetaUsage(userInfo.id, "mini-free");
+      }
+    }
     // AI 이미지 생성: 장당 1크레딧, 보고서당 최대 2장(lib/report-image-gen.js MAX_FIGURES 동기화).
     // 실제 차감은 생성된 장수만큼(runGeneration). 여기선 최악의 경우를 잔액 검증에 예약.
     const reservedImageCredits =
-      !isFreeBeta && !hasGrant && pipelineInput.allowImageGen ? 1 * 2 : 0;
+      !isFreeBeta && !hasGrant && !byokActive && pipelineInput.allowImageGen
+        ? 1 * 2
+        : 0;
 
     // 크레딧 검증 (Supabase + 일반 사용자. admin·무제한 계정·무료 베타·위임 사용자는 제외)
     // 권한 면제 판단은 fresh row(effectiveIsAdmin/effectiveUnlimited) 기준.
@@ -3466,8 +3534,24 @@ app.post(
     job.reportType = reportType;
     job.model = model;
     job.creditCost = creditCost;
-    // 활성 위임 사용자는 과금 면제(아래 이미지 추가과금·크레딧 차감 단계에서 건너뜀).
-    job.billingExempt = hasGrant;
+    // 활성 위임·BYOK 사용자는 과금 면제(아래 이미지 추가과금·크레딧 차감 단계에서 건너뜀).
+    job.billingExempt = hasGrant || byokActive;
+    if (byokKeys) {
+      // 본인 키는 비열거 속성으로만 부착 — JSON 직렬화·persistBgJob 에 절대 안 실림.
+      Object.defineProperty(job, "byokKeys", {
+        value: byokKeys,
+        enumerable: false,
+      });
+    }
+    if (byokActive) {
+      pushProgress(job, "🔑 내 API 키(BYOK)로 실행 — 크레딧 미차감");
+    }
+    if (miniOverCap) {
+      pushProgress(
+        job,
+        `ℹ️ 오늘 GPT-5.4-mini 무료 ${MINI_FREE_DAILY}건 소진 — 이번 생성은 1크레딧 차감`,
+      );
+    }
     // 백그라운드 실행 플래그 — runGeneration/완료 단계에서 영속화·이메일에 사용.
     job.background = backgroundMode;
     job.notifyEmail = backgroundNotifyEmail;
@@ -3780,7 +3864,7 @@ function estimatePdfTranslation(meta, mode, modelId) {
 // PDF 통번역 — 비용·시간 예측(파일 업로드 시 호출). analyze 만 돌려 빠르고 저렴.
 app.post(
   "/api/translate-pdf/estimate",
-  requireBeta("pdf-translate"),
+  requireMax(),
   upload.single("pdf"),
   async (req, res) => {
     if (!req.file) return res.status(400).json({ error: "PDF 파일이 필요합니다." });
@@ -3809,10 +3893,10 @@ app.post(
 // ── PDF 통번역 (베타: 관리자 + 지정 테스터) ──────────────────────────────────
 // DeepL 식 문서 번역: 그림·레이아웃은 그대로 두고 텍스트만 한국어로 교체한다.
 // 외부로 PDF 를 보내지 않고 우리 서버에서만 처리한다 (Claude + PyMuPDF).
-// 접근 제어는 requireBeta("pdf-translate") — 관리자탭 베타 관리에서 테스터 지정.
+// 접근 제어는 requireMax() — Max(백그라운드 구독) 회원 전용. (옛 'pdf-translate' 베타)
 app.post(
   "/api/translate-pdf",
-  requireBeta("pdf-translate"),
+  requireMax(),
   limitTotalUpload,
   upload.single("pdf"),
   async (req, res) => {
@@ -3893,12 +3977,44 @@ app.post(
       if (!hasBackground) {
         return res.status(403).json({
           error:
-            "백그라운드 실행은 구독자 전용입니다. 관리자에게 사용 권한을 문의하세요.",
+            "백그라운드 실행은 Max 회원 전용입니다. 개인 설정에서 Max 업그레이드를 신청하세요.",
           needsBackgroundSub: true,
         });
       }
       backgroundMode = true;
       backgroundNotifyEmail = String(req.body.notifyEmail) === "true";
+    }
+
+    // ── Max 통번역 월간 페이지 캡 (2026-07-02 결정: 기본 300p/월, 관리자 면제) ──
+    // 통번역 원가 단위는 '페이지'라 문서 수가 아닌 월간 총 페이지로 제한한다.
+    // 카운터는 메모리(재시작 리셋) — 실비 계측 단계의 임시 가드레일.
+    const TR_MONTHLY_PAGES = Math.max(
+      0,
+      parseInt(process.env.TRANSLATE_MONTHLY_PAGES || "300", 10),
+    );
+    if (TR_MONTHLY_PAGES > 0 && !userInfo.isAdmin && userInfo.id) {
+      let trPages = 0;
+      try {
+        const capDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdfcap-"));
+        const capPath = path.join(capDir, "in.pdf");
+        fs.writeFileSync(capPath, file.buffer);
+        const a = await analyzePdf(capPath, {});
+        trPages = Math.max(0, Number(a.page_count) || 0);
+        try {
+          fs.rmSync(capDir, { recursive: true, force: true });
+        } catch (_) {}
+      } catch (_) {
+        trPages = 0; // 분석 실패 → 캡 검사 생략(요청은 진행)
+      }
+      if (trPages > 0) {
+        const used = rateLimit.getTranslatePagesUsed(userInfo.id);
+        if (used + trPages > TR_MONTHLY_PAGES) {
+          return res.status(429).json({
+            error: `이번 달 PDF 통번역 한도(${TR_MONTHLY_PAGES}페이지)를 초과합니다 — 사용 ${used}p + 이 문서 ${trPages}p. 다음 달에 다시 이용해 주세요.`,
+          });
+        }
+        rateLimit.addTranslatePages(userInfo.id, trPages);
+      }
     }
 
     // 진행 중 작업 자동 중단 (generate 와 동일 정책)
@@ -3921,10 +4037,7 @@ app.post(
     job.background = backgroundMode;
     job.notifyEmail = backgroundNotifyEmail;
     if (userInfo.id) activeJobByUser.set(userInfo.id, job.id);
-    // 베타 일일 사용 기록 (테스터 한정 — 관리자는 면제). requireBeta 에서 한도 확인 완료.
-    if (userInfo.id && !userInfo.isAdmin) {
-      rateLimit.recordBetaUsage(userInfo.id, "pdf-translate");
-    }
+    // (구 베타 일일 카운터는 Max 전환으로 폐지 — 월간 페이지 캡이 위에서 대신한다.)
     // 백그라운드 작업은 즉시 report_jobs 에 'running' 으로 기록(탭 닫아도 '내 작업'에서 추적).
     if (backgroundMode) persistBgJob(job);
 
@@ -4897,16 +5010,19 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
   }, jobTimeoutMs);
 
   try {
-    const content = await pipeline.generateContent({
-      ...pipelineInput,
-      date,
-      signal: ac.signal,
-      model,
-      outputFormat: format,
-      allowHighlights: !!pipelineInput.allowHighlights,
-      allowImageGen: !!pipelineInput.allowImageGen,
-      onProgress: (msg) => pushProgress(job, msg),
-    });
+    // BYOK: 본인 키가 있으면 그 키의 컨텍스트에서 파이프라인 실행(없으면 서버 env 키).
+    const content = await byok.run(job.byokKeys || {}, () =>
+      pipeline.generateContent({
+        ...pipelineInput,
+        date,
+        signal: ac.signal,
+        model,
+        outputFormat: format,
+        allowHighlights: !!pipelineInput.allowHighlights,
+        allowImageGen: !!pipelineInput.allowImageGen,
+        onProgress: (msg) => pushProgress(job, msg),
+      }),
+    );
     content.__allowHighlights = !!pipelineInput.allowHighlights;
 
     // AI 개념도 실제 생성분 추가 과금 (장당 1크레딧 — 위 잔액 예약치와 동기화).
@@ -5409,11 +5525,13 @@ app.use("/api/coding", require("./lib/coding-routes")({ requireAdminOrBeta, getS
 // 공부 탭: 상대론 민코프스키 평면 생성기. Claude는 도식 JSON만 만들고 그림은 브라우저가 렌더링.
 app.use("/api/study", require("./lib/study-routes")({ requireBeta, getSessionUser }));
 
-// 바이브 코딩 생성기(창작 탭): 아이디어 한 문장 → AI 프로젝트 설계. 로그인 사용자 + 크레딧 차감.
+// 바이브 코딩 생성기(창작 탭): 아이디어 한 문장 → AI 프로젝트 설계.
+// Pro 회원 전용 + 토큰 사용량 비례 크레딧 차감(ai-studio-core).
 app.use(
   "/api/vibe",
   require("./lib/vibe-routes")({
     requireAuth,
+    requirePro: requireAdminOrBeta("vibe-coding"),
     getSessionUser,
     refreshSessionUser,
     supa,
@@ -5421,11 +5539,13 @@ app.use(
   }),
 );
 
-// 고급 물리 문제 스튜디오(수행평가 탭): 주제·난이도 → AI 심화 물리 문제+풀이. 로그인 사용자 + 크레딧 차감.
+// 고급 물리 문제 스튜디오(수행평가 탭): 주제·난이도 → AI 심화 물리 문제+풀이.
+// Pro 회원 전용 + 토큰 사용량 비례 크레딧 차감(ai-studio-core).
 app.use(
   "/api/physics-studio",
   require("./lib/physics-studio-routes")({
     requireAuth,
+    requirePro: requireAdminOrBeta("physics-studio"),
     getSessionUser,
     refreshSessionUser,
     supa,
@@ -5501,7 +5621,7 @@ async function requireFilechatAccess(req, res, next) {
   const acc = await resolveFilechatAccess(u);
   if (!acc.allowed) {
     return res.status(403).json({
-      error: "파일 챗봇은 관리자·위임 사용자·베타 테스터만 사용할 수 있습니다.",
+      error: "파일 챗봇은 관리자·위임 사용자·Pro 회원만 사용할 수 있습니다.",
     });
   }
   req.filechatAccess = acc;
@@ -6205,6 +6325,71 @@ app.post("/api/admin/users/:id/topup", requireAdmin, async (req, res) => {
   }
 });
 
+// ── BYOK: 본인 API 키 등록/조회/삭제 ──────────────────────────────────────────
+// 등록하면 해당 제공자의 AI 생성이 크레딧 차감 없이 본인 키로 실행된다(등급 내 기능 한정).
+// 키는 AES-256-GCM 암호화 저장(lib/byok.js). 응답·로그에 키 원문을 절대 싣지 않는다.
+app.get("/api/me/api-keys", requireAuth, async (req, res) => {
+  const u = getSessionUser(req);
+  if (!supa.isEnabled() || !u.id) return res.json({ keys: [] });
+  try {
+    const rows = await supa.listUserApiKeys(u.id);
+    res.json({
+      keys: (rows || []).map((r) => ({
+        provider: r.provider,
+        hint: r.hint || "",
+        updatedAt: r.updated_at || r.created_at,
+      })),
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.post("/api/me/api-keys", requireAuth, async (req, res) => {
+  const u = getSessionUser(req);
+  if (!supa.isEnabled() || !u.id)
+    return res.status(503).json({ error: "지금은 키를 등록할 수 없습니다." });
+  const provider = String(req.body.provider || "").trim();
+  const key = String(req.body.key || "").trim();
+  if (!["anthropic", "openai"].includes(provider))
+    return res
+      .status(400)
+      .json({ error: "provider 는 anthropic 또는 openai 여야 합니다." });
+  const looksValid =
+    provider === "anthropic"
+      ? /^sk-ant-[A-Za-z0-9_-]{20,}$/.test(key)
+      : /^sk-[A-Za-z0-9_-]{20,}$/.test(key);
+  if (!looksValid)
+    return res.status(400).json({
+      error:
+        provider === "anthropic"
+          ? "Anthropic 키 형식(sk-ant-…)이 아닙니다."
+          : "OpenAI 키 형식(sk-…)이 아닙니다.",
+    });
+  try {
+    await supa.setUserApiKey(u.id, provider, byok.encryptKey(key), key.slice(-4));
+    res.json({ ok: true, provider, hint: key.slice(-4) });
+  } catch (e) {
+    res
+      .status(e.code === "USER_KEYS_TABLE_MISSING" ? 503 : 500)
+      .json({ error: e.message });
+  }
+});
+
+app.delete("/api/me/api-keys/:provider", requireAuth, async (req, res) => {
+  const u = getSessionUser(req);
+  if (!supa.isEnabled() || !u.id) return res.json({ ok: true });
+  const provider = String(req.params.provider || "").trim();
+  if (!["anthropic", "openai"].includes(provider))
+    return res.status(400).json({ error: "잘못된 provider" });
+  try {
+    await supa.deleteUserApiKey(u.id, provider);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // 사용자 본인 잔액 조회 (메인 화면 잔액 박스용)
 app.get("/api/me/balance", requireAuth, async (req, res) => {
   const u = getSessionUser(req);
@@ -6504,8 +6689,10 @@ app.listen(PORT, async () => {
     } catch (e) {
       console.warn(`  ⚠ 베타 기능 등록 실패(file-chat): ${e.message}`);
     }
-    // 스킬 스튜디오 신규 베타 보고서 4종(영어/국어/캡스톤 번역/물리 모의고사).
+    // 스튜디오 도구 2종(Pro 게이트 키) + 스킬 스튜디오 보고서 4종(현재 RETIRED — 키는 유지).
     for (const [k, label] of [
+      ["vibe-coding", "바이브 코딩 생성기"],
+      ["physics-studio", "고급 물리 문제 스튜디오"],
       ["eng-exam-prep", "영어 시험대비 3종"],
       ["korean-lit-exam", "국어 문학 시험"],
       ["cap-translate", "Capstone 번역"],

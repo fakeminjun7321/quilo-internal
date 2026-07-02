@@ -8,7 +8,7 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="theme-color" content="#2563eb" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>PDF 통번역 (베타) · Quilo</title>
+    <title>PDF 통번역 (Max) · Quilo</title>
     <meta name="description" content="PDF 문서를 그림·레이아웃 그대로 두고 텍스트만 한국어로 통번역합니다. (관리자 테스트 중)" />
     <script>
       (function () {
@@ -56,7 +56,7 @@
       <section class="section" style="border-top: 0">
         <div class="tr-wrap">
           <div class="tool-page-head">
-            <h1>PDF 통번역 <span class="beta-badge">관리자 베타</span></h1>
+            <h1>PDF 통번역 <span class="beta-badge">Max</span></h1>
             <p>PDF를 올리면 <b>그림·표·레이아웃은 그대로 두고 텍스트만 한국어</b>로 바꿔 PDF로 돌려줍니다. 외부로 파일을 보내지 않고 서버에서만 처리합니다(Claude + PyMuPDF).</p>
           </div>
 
@@ -97,9 +97,9 @@
                   <select id="trModel" name="model">
                     <option value="claude-sonnet-5" selected>Sonnet 5 — 빠르고 저렴 (기본·권장)</option>
                     <option value="claude-opus-4-8">Opus 4.8 — 최고 품질·수식 복원 (어려운 수식·논문)</option>
-                    <option value="gpt-5.4-mini">GPT-5.4 mini — 가장 빠르고 저렴 (베타)</option>
-                    <option value="gpt-5.4">GPT-5.4 — 균형 (베타)</option>
-                    <option value="gpt-5.5">GPT-5.5 — 최고 품질 (베타)</option>
+                    <option value="gpt-5.4-mini">GPT-5.4 mini — 가장 빠르고 저렴</option>
+                    <option value="gpt-5.4">GPT-5.4 — 균형</option>
+                    <option value="gpt-5.5">GPT-5.5 — 최고 품질</option>
                   </select>
                 </label>
               </div>
@@ -179,7 +179,7 @@
       const gate = document.getElementById("gate");
       const tool = document.getElementById("tool");
 
-      // 접근 게이트: 로그인 + (관리자 또는 'pdf-translate' 베타 테스터)
+      // 접근 게이트: 로그인 + (관리자 또는 Max(백그라운드 구독) 회원)
       (async function guard() {
         try {
           const res = await fetch("/api/me");
@@ -200,33 +200,19 @@
               sel.appendChild(o);
             }
           }
-          let betaInfo = null;
           if (!allowed) {
             try {
-              const b = await fetch("/api/me/beta").then((r) => r.json());
-              betaInfo = b;
-              allowed =
-                Array.isArray(b.features) && b.features.includes("pdf-translate");
+              const s = await fetch("/api/subscriptions/me").then((r) => r.json());
+              allowed = !!(s && s.active);
             } catch {}
           }
           if (!allowed) {
             gate.innerHTML =
-              '<p class="hint">이 기능은 현재 <b>베타 테스터에게만</b> 열려 있습니다. 사용을 원하면 운영자에게 요청하세요.</p>';
+              '<p class="hint">이 기능은 <b>Max 회원 전용</b>입니다. 메인 화면 개인 설정에서 Max 업그레이드를 신청하거나 운영자에게 문의하세요.</p>';
             return;
           }
           gate.style.display = "none";
           tool.style.display = "block";
-          // 비관리자 테스터: 오늘 남은 베타 사용량 표시
-          if (!me.isAdmin && betaInfo && Array.isArray(betaInfo.usage)) {
-            const u = betaInfo.usage.find((x) => x.key === "pdf-translate");
-            if (u && u.limit > 0) {
-              const left = Math.max(0, u.limit - u.used);
-              tool.insertAdjacentHTML(
-                "afterbegin",
-                `<p class="hint" style="margin:0 0 12px">오늘 사용 가능: <b>${left}/${u.limit}</b>회 (베타 한도)</p>`,
-              );
-            }
-          }
           initTool();
         } catch (e) {
           gate.innerHTML = '<p class="hint">권한 확인 중 오류가 발생했습니다.</p>';

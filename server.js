@@ -3599,7 +3599,18 @@ app.get("/api/me/beta", requireAuth, async (req, res) => {
         admin: true, // 관리자는 한도 면제
       });
     }
-    const keys = await supa.getUserBetaFeatures(u.id);
+    let keys = await supa.getUserBetaFeatures(u.id);
+    // 'pro' 우산 회원: 모든 활성 Pro 기능을 노출(메뉴·허브 표시용 — 게이트는 userHasBeta가 처리).
+    if (keys.includes("pro")) {
+      try {
+        const all = await supa.listBetaFeatures();
+        keys = all
+          .filter((f) => f.enabled && f.key !== "pro")
+          .map((f) => f.key);
+      } catch {
+        /* 목록 조회 실패 → 원래 키 유지 */
+      }
+    }
     const usage = keys.map((k) => {
       const lim = getBetaDailyLimit(k);
       return {
@@ -6689,8 +6700,9 @@ app.listen(PORT, async () => {
     } catch (e) {
       console.warn(`  ⚠ 베타 기능 등록 실패(file-chat): ${e.message}`);
     }
-    // 스튜디오 도구 2종(Pro 게이트 키) + 스킬 스튜디오 보고서 4종(현재 RETIRED — 키는 유지).
+    // 'pro' 우산 회원권 + 스튜디오 도구 2종 + 스킬 스튜디오 4종(RETIRED — 키는 유지).
     for (const [k, label] of [
+      ["pro", "Pro 회원"],
       ["vibe-coding", "바이브 코딩 생성기"],
       ["physics-studio", "고급 물리 문제 스튜디오"],
       ["eng-exam-prep", "영어 시험대비 3종"],

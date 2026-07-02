@@ -678,13 +678,35 @@ const MINI_FREE_DAILY = Math.max(
   parseInt(process.env.MINI_FREE_DAILY || "5", 10),
 );
 
-// ── 임시 전체 공개(관리자): 특정 Pro 기능을 일정 시간 모든 로그인 사용자에게 개방 ──
-// { featureKey → epochMs(만료) }. app_settings 'feature_open_until' 로 영구 보관(부팅 로드).
+// ── 임시 공개(관리자): 특정 Pro 기능을 일정 시간, 선택한 등급에게 개방 ──────────
+// { featureKey → { until: epochMs, audience: "all"|"pro"|"max" } }.
+// audience: all=모든 로그인 사용자, pro=Pro 회원(우산·기능별 지정 합집합), max=활성 Max 구독자.
+// app_settings 'feature_open_until' 로 영구 보관(부팅 로드, 구버전 숫자 포맷 호환).
 // 게이트에서 회원권(userHasBeta)과 OR 판정 — 일일 한도는 동일하게 적용된다.
 const featureOpenUntil = new Map();
-function isFeatureOpenNow(key) {
-  const t = featureOpenUntil.get(String(key));
-  return typeof t === "number" && t > Date.now();
+const OPEN_AUDIENCES = new Set(["all", "pro", "max"]);
+function openMeta(key) {
+  const m = featureOpenUntil.get(String(key));
+  return m && Number(m.until) > Date.now() ? m : null;
+}
+// 이 사용자에게 임시 공개가 적용되는지 (u = 세션 사용자, 로그인 전제).
+async function isFeatureOpenFor(key, u) {
+  const meta = openMeta(key);
+  if (!meta) return false;
+  const aud = meta.audience || "all";
+  if (aud === "all") return true;
+  if (!u || !u.id || !supa.isEnabled()) return false;
+  try {
+    if (aud === "pro") {
+      // Pro 취급 = 'pro' 우산 또는 기능별 지정 보유(등급 탭 합집합과 동일 기준).
+      const feats = await supa.getUserBetaFeatures(u.id);
+      return feats.length > 0;
+    }
+    if (aud === "max") return !!(await supa.getActiveBackgroundSub(u.id));
+  } catch (_) {
+    /* 조회 실패 → 미적용 */
+  }
+  return false;
 }
 async function persistFeatureOpenUntil() {
   try {
@@ -1084,7 +1106,7 @@ function requireBeta(key) {
     if (u.isAdmin) return next(); // 관리자는 접근·한도 모두 면제
     try {
       if (
-        isFeatureOpenNow(key) ||
+        (await isFeatureOpenFor(key, u)) ||
         (supa.isEnabled() && u.id && (await supa.userHasBeta(u.id, key)))
       ) {
         // 접근 OK → 테스터 일일 사용 한도 확인
@@ -1126,7 +1148,7 @@ function requireAdminOrBeta(key) {
     if (u.isAdmin) return next();
     try {
       if (
-        isFeatureOpenNow(key) ||
+        (await isFeatureOpenFor(key, u)) ||
         (supa.isEnabled() && u.id && (await supa.userHasBeta(u.id, key)))
       ) {
         return next();
@@ -3211,7 +3233,7 @@ app.post(
           "cap-translate",
           "phys-mock-exam",
         ]);
-        let hasBeta = isFeatureOpenNow(reportType); // 임시 전체 공개 중이면 통과
+        let hasBeta = await isFeatureOpenFor(reportType, userInfo); // 임시 공개(대상 등급 포함) 통과
         try {
           hasBeta =
             hasBeta ||
@@ -3640,9 +3662,25 @@ app.get("/api/me/beta", requireAuth, async (req, res) => {
         /* 목록 조회 실패 → 원래 키 유지 */
       }
     }
-    // 임시 전체 공개 중인 기능도 노출(메뉴·허브 표시용).
-    for (const [k, t] of featureOpenUntil) {
-      if (t > Date.now() && !keys.includes(k)) keys.push(k);
+    // 임시 공개 중이고 이 사용자 등급이 대상이면 노출(메뉴·허브 표시용).
+    // isProUser: pro 확장 후 keys 에 뭔가 있으면 Pro 취급(합집합 기준). Max 는 필요 시 1회 조회.
+    const isProUser = keys.length > 0;
+    let isMaxUser = null;
+    for (const [k, meta] of featureOpenUntil) {
+      if (!(meta && Number(meta.until) > Date.now()) || keys.includes(k)) continue;
+      const aud = meta.audience || "all";
+      let ok = aud === "all" || (aud === "pro" && isProUser);
+      if (!ok && aud === "max") {
+        if (isMaxUser === null) {
+          try {
+            isMaxUser = !!(await supa.getActiveBackgroundSub(u.id));
+          } catch {
+            isMaxUser = false;
+          }
+        }
+        ok = isMaxUser;
+      }
+      if (ok) keys.push(k);
     }
     const usage = keys.map((k) => {
       const lim = getBetaDailyLimit(k);
@@ -3677,15 +3715,29 @@ app.post("/api/admin/problemset-limit", requireAdmin, async (req, res) => {
   res.json({ ok: true, max: problemSetMaxProblems });
 });
 
-// 임시 전체 공개 설정: hours>0 → 지금부터 N시간 전체 개방, hours=0 → 즉시 해제.
+// 임시 공개 설정: hours>0 → 지금부터 N시간, 선택 등급(audience)에게 개방. hours=0 → 즉시 해제.
+// audience: all(모든 로그인 사용자, 기본) / pro(Pro 회원) / max(활성 Max 구독자).
 app.post("/api/admin/beta/:key/open", requireAdmin, async (req, res) => {
   const key = String(req.params.key || "").trim();
   if (!key) return res.status(400).json({ error: "key 필수" });
   const hours = Math.max(0, Math.min(24 * 30, Number(req.body.hours) || 0));
-  if (hours > 0) featureOpenUntil.set(key, Date.now() + hours * 3600 * 1000);
+  const audience = OPEN_AUDIENCES.has(String(req.body.audience || "").trim())
+    ? String(req.body.audience).trim()
+    : "all";
+  if (hours > 0)
+    featureOpenUntil.set(key, {
+      until: Date.now() + hours * 3600 * 1000,
+      audience,
+    });
   else featureOpenUntil.delete(key);
   await persistFeatureOpenUntil();
-  res.json({ ok: true, key, openUntil: featureOpenUntil.get(key) || 0 });
+  const m = featureOpenUntil.get(key);
+  res.json({
+    ok: true,
+    key,
+    openUntil: m ? m.until : 0,
+    openAudience: m ? m.audience : null,
+  });
 });
 
 // Pro 완전 해제: 'pro' 우산 + 기능별 지정을 전부 즉시 제거(기간 무관 즉시 효력).
@@ -3715,11 +3767,15 @@ app.get("/api/admin/beta", requireAdmin, async (req, res) => {
   try {
     const features = await supa.listBetaFeatures();
     res.json({
-      features: features.map((f) => ({
-        ...f,
-        dailyLimit: getBetaDailyLimit(f.key),
-        openUntil: featureOpenUntil.get(f.key) || 0, // 임시 전체 공개 만료(epoch ms)
-      })),
+      features: features.map((f) => {
+        const m = openMeta(f.key);
+        return {
+          ...f,
+          dailyLimit: getBetaDailyLimit(f.key),
+          openUntil: m ? m.until : 0, // 임시 공개 만료(epoch ms)
+          openAudience: m ? m.audience || "all" : null, // all|pro|max
+        };
+      }),
       defaultDailyLimit: BETA_DAILY_LIMIT_DEFAULT,
     });
   } catch (e) {
@@ -5671,8 +5727,11 @@ const filechatUpload = makeUpload({
 async function resolveFilechatAccess(u) {
   if (!u || !u.id) return { allowed: false, reason: "" };
   if (u.isAdmin) return { allowed: true, reason: "admin" };
-  // 임시 전체 공개(file-chat 또는 우산 create) 중이면 로그인 사용자 모두 허용.
-  if (isFeatureOpenNow("file-chat") || isFeatureOpenNow("create"))
+  // 임시 공개(file-chat 또는 우산 create) 대상이면 허용.
+  if (
+    (await isFeatureOpenFor("file-chat", u)) ||
+    (await isFeatureOpenFor("create", u))
+  )
     return { allowed: true, reason: "open" };
   if (!supa.isEnabled()) return { allowed: false, reason: "" };
   try {
@@ -6804,13 +6863,23 @@ app.listen(PORT, async () => {
     } catch (_) {
       /* 기본값 유지 */
     }
-    // 임시 전체 공개 상태 복원(만료 지난 항목은 버림).
+    // 임시 공개 상태 복원(만료 지난 항목은 버림). 구버전(값=숫자) 포맷은 all 로 승격.
     try {
       const v = await supa.getAppSetting("feature_open_until");
       if (v) {
         const obj = JSON.parse(v);
         for (const [k, t] of Object.entries(obj || {})) {
-          if (Number(t) > Date.now()) featureOpenUntil.set(k, Number(t));
+          const meta =
+            typeof t === "number" ? { until: t, audience: "all" } : t || {};
+          const until = Number(meta.until);
+          if (until > Date.now()) {
+            featureOpenUntil.set(k, {
+              until,
+              audience: OPEN_AUDIENCES.has(meta.audience)
+                ? meta.audience
+                : "all",
+            });
+          }
         }
         if (featureOpenUntil.size)
           console.log(`  ✓ 임시 공개 로드: ${featureOpenUntil.size}건`);

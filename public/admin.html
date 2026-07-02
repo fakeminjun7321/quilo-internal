@@ -369,7 +369,7 @@
         <button id="refreshOpen" class="secondary compact">새로고침</button>
       </div>
       <p class="hint">
-        선택한 기능을 정해진 시간 동안 <b>모든 로그인 사용자</b>에게 개방합니다(체험 이벤트용).
+        선택한 기능을 정해진 시간 동안 <b>선택한 대상 등급</b>(모두/Pro/Max)에게 개방합니다(체험 이벤트용).
         일일 한도는 그대로 적용되고, 시간이 지나면 자동으로 닫힙니다. 0시간 = 즉시 해제.
       </p>
       <form id="openForm" class="compact-form" style="margin-bottom: 10px">
@@ -377,6 +377,16 @@
           <label>
             <span class="field-label">기능</span>
             <select id="openKey" style="min-width:200px"></select>
+          </label>
+        </div>
+        <div class="field">
+          <label>
+            <span class="field-label">대상</span>
+            <select id="openAudience" style="min-width:150px">
+              <option value="all" selected>모두 (로그인 사용자)</option>
+              <option value="pro">Pro 회원</option>
+              <option value="max">Max 회원</option>
+            </select>
           </label>
         </div>
         <div class="field">
@@ -3158,6 +3168,7 @@
               })
               .join("");
           }
+          var AUD_LABEL = { all: "모두", pro: "Pro 회원", max: "Max 회원" };
           var open = featuresCache.filter(function (f) { return (f.openUntil || 0) > Date.now(); });
           if (!openListEl) return;
           if (!open.length) {
@@ -3167,7 +3178,9 @@
               .map(function (f) {
                 return (
                   '<div style="display:flex;align-items:center;gap:8px;margin:4px 0;font-size:13px">🟢 <b>' +
-                  esc(f.label || f.key) + "</b> — " + fmtRemain(f.openUntil - Date.now()) + " 남음" +
+                  esc(f.label || f.key) + "</b> <span class=\"hint\">(대상: " +
+                  esc(AUD_LABEL[f.openAudience] || "모두") + ")</span> — " +
+                  fmtRemain(f.openUntil - Date.now()) + " 남음" +
                   ' <button type="button" class="secondary compact" data-close="' + esc(f.key) + '">지금 닫기</button></div>'
                 );
               })
@@ -3225,16 +3238,21 @@
             ev.preventDefault();
             if (!openSel || !openSel.value) return;
             var hours = Math.max(0, Number((openHours && openHours.value) || 0));
+            var audSel = document.getElementById("openAudience");
+            var audience = (audSel && audSel.value) || "all";
             openSetStatus.textContent = "설정 중...";
             try {
               var r = await fetch("/api/admin/beta/" + encodeURIComponent(openSel.value) + "/open", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ hours: hours }),
+                body: JSON.stringify({ hours: hours, audience: audience }),
               });
               var d = await r.json().catch(function () { return {}; });
               if (!r.ok) throw new Error(d.error || "설정 실패");
-              openSetStatus.textContent = hours > 0 ? "✓ " + hours + "시간 공개" : "✓ 해제됨";
+              openSetStatus.textContent =
+                hours > 0
+                  ? "✓ " + hours + "시간 공개 (" + ({ all: "모두", pro: "Pro", max: "Max" }[audience] || "모두") + ")"
+                  : "✓ 해제됨";
               reload();
             } catch (e) {
               openSetStatus.textContent = e.message;

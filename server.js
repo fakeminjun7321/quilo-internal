@@ -790,9 +790,9 @@ function jobTimeoutForModel(model, reportType) {
   if (reportType === "problem-set") return JOB_TIMEOUT_PROBLEMSET_MS;
   return JOB_TIMEOUT_MS;
 }
-// Fable 5 일시 차단 — 외부 사용 이슈로 관리자 포함 전체 차단(한시적).
-// 재개하려면 환경변수 FABLE_DISABLED=0 으로 설정(또는 이 기본값을 false 로).
-const FABLE_DISABLED = process.env.FABLE_DISABLED !== "0";
+// Fable 5 — 관리자 전용으로 재개(2026-07-03). 각 경로가 effectiveIsAdmin 을 함께
+// 검사하므로 일반 사용자는 여전히 403. 다시 전체 차단하려면 환경변수 FABLE_DISABLED=1.
+const FABLE_DISABLED = process.env.FABLE_DISABLED === "1";
 function isFableModel(model) {
   return /^claude-fable/.test(String(model || ""));
 }

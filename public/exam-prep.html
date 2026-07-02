@@ -127,7 +127,7 @@
     <div class="epwrap">
       <div class="ephead">
         <a class="logo" href="/"><span class="qmark">Q</span> Quilo</a>
-        <span class="muted">· 수행평가 도움 <span class="ep-beta">베타</span></span>
+        <span class="muted">· 수행평가 도움 <span class="ep-beta">Pro</span></span>
         <span style="flex:1"></span>
         <a href="/" class="muted" style="text-decoration:none">← 홈으로</a>
       </div>
@@ -180,7 +180,7 @@
           <h2>물리 수행평가 「일반물리학 탐구 및 사고 과정 성찰 보고서」</h2>
           <p>
             탐구 주제와 필기 노트(PDF)를 올리면 AI가 오개념 → 해결 과정 → 성찰 흐름의
-            성찰 보고서 초안을 만들어 줍니다. (베타·무료)
+            성찰 보고서 초안을 만들어 줍니다. (Pro·무료)
           </p>
           <ul>
             <li>입력: 탐구 주제 + 손필기/노트 PDF</li>
@@ -199,7 +199,7 @@
           <p>
             급수(수열의 극한·무한급수) 관련 탐구 주제만 입력하면 AI가 정확한 수학 전개와
             웹 검색(선행연구)으로 학교 양식(Ⅰ.탐구 주제 ~ Ⅴ.결과 정리 및 반성)에 맞춰
-            채점 기준 만점을 노린 탐구보고서 초안을 만들어 줍니다. (베타·무료)
+            채점 기준 만점을 노린 탐구보고서 초안을 만들어 줍니다. (Pro·무료)
           </p>
           <ul>
             <li>입력: 급수 탐구 주제 한 줄 (+ 선택: AI 참고 메모)</li>
@@ -217,7 +217,7 @@
           <h2>📖 독서록 「독서활동 기록지」</h2>
           <p>
             읽은 책의 정보를 입력하면 AI가 <b>선택 계기 → 내용 요약 → 느낀 점</b>을 써서
-            학교 「독서활동 기록지」 양식에 채워 줍니다. (베타·무료)
+            학교 「독서활동 기록지」 양식에 채워 줍니다. (Pro·무료)
           </p>
           <ul>
             <li>입력: 도서명(+선택: 저자·출판사·영역·기록 구분·감상 메모)</li>
@@ -254,9 +254,9 @@
       }
       function lockedHtml(name) {
         if (!me)
-          return '<p>🔒 <b>' + name + '</b>은 로그인 후 베타 테스터에게 열립니다.</p>' +
+          return '<p>🔒 <b>' + name + '</b>은 로그인 후 Pro 회원에게 열립니다.</p>' +
             '<p style="margin-top:10px"><a class="qbtn primary" href="/login.html">로그인</a></p>';
-        return '<p>🧩 <b>' + name + '</b>은 현재 <b>베타 테스터</b>에게만 열려 있습니다.<br>' +
+        return '<p>🧩 <b>' + name + '</b>은 현재 <b>Pro 회원</b>에게만 열려 있습니다.<br>' +
           '사용을 원하면 운영자에게 요청하세요.</p>' +
           '<p style="margin-top:10px"><a class="qbtn" href="/">메인으로</a></p>';
       }
@@ -282,9 +282,9 @@
           if (beta.admin === true) { el.hidden = true; el.className = "ep-tabbadge"; el.textContent = ""; el.removeAttribute("title"); return; }
           if (!hasBeta(TAB_KEYS[t])) {
             el.hidden = false; el.className = "ep-tabbadge lock"; el.textContent = "🔒";
-            el.setAttribute("title", me ? "베타 테스터에게 열립니다" : "로그인 후 베타에서 열립니다");
+            el.setAttribute("title", me ? "Pro 회원에게 열립니다" : "로그인 후 Pro 회원에게 열립니다");
           } else {
-            el.hidden = false; el.className = "ep-tabbadge beta"; el.textContent = "베타";
+            el.hidden = false; el.className = "ep-tabbadge beta"; el.textContent = "Pro";
             el.removeAttribute("title");
           }
         });

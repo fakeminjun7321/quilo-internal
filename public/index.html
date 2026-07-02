@@ -2118,6 +2118,7 @@
     <section id="settingsPanel" class="tab-panel" data-tab-panel="settings" hidden>
       <nav class="settings-shortcuts" aria-label="설정 바로가기">
         <a href="#settingsAccountCard">계정</a>
+        <a href="#tierCard">등급</a>
         <a href="#usageCard">사용 내역</a>
         <a href="#byokCard">API 키</a>
         <a href="#settingsProfileCard">학번</a>
@@ -2137,6 +2138,17 @@
           <dt>권한</dt>
           <dd id="settingsUserRole">일반 사용자</dd>
         </dl>
+      </div>
+
+      <div class="settings-card" id="tierCard">
+        <h2>내 등급</h2>
+        <div id="tierStatus" class="hint" style="margin:8px 0">확인 중…</div>
+        <div id="maxUpsell" hidden>
+          <p class="hint" id="maxPlanInfo" style="line-height:1.7"></p>
+          <div class="form-actions">
+            <button type="button" class="btn btn-primary" id="maxRequestBtn">Max 업그레이드 신청</button>
+          </div>
+        </div>
       </div>
 
       <div class="settings-card" id="byokCard">

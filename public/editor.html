@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Quilo Code (베타)</title>
+    <title>Quilo Code (Pro)</title>
     <link rel="icon" href="/favicon.ico" />
     <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs/loader.js"></script>
     <style>
@@ -118,7 +118,7 @@
     <div id="gate" class="gate">권한 확인 중…</div>
 
     <div id="app" class="qide" style="display:none">
-      <div class="qt-titlebar"><span class="qt-title">Quilo Code <span class="qt-beta">베타</span></span></div>
+      <div class="qt-titlebar"><span class="qt-title">Quilo Code <span class="qt-beta">Pro</span></span></div>
       <div class="qt-body">
         <div class="ide-activity">
           <button data-act="explorer" class="on" aria-label="탐색기" title="탐색기">🗂</button>
@@ -229,7 +229,7 @@
             } catch (e) {}
           }
           if (!allowed) {
-            showGate('<p>🧩 <b>Quilo Code</b>는 현재 <b>베타 테스터</b>에게만 열려 있습니다.<br>사용을 원하면 운영자에게 요청하세요.</p><a class="qbtn" href="/">메인으로</a>');
+            showGate('<p>🧩 <b>Quilo Code</b>는 현재 <b>Pro 회원</b>에게만 열려 있습니다.<br>사용을 원하면 운영자에게 요청하세요.</p><a class="qbtn" href="/">메인으로</a>');
             return;
           }
           loadMonaco();

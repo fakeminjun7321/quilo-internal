@@ -363,6 +363,35 @@
       <p id="proStatus" class="hint"></p>
     </section>
 
+    <section class="settings-card" id="openFeatureSection">
+      <div class="card-head">
+        <h2>⏰ 임시 공개</h2>
+        <button id="refreshOpen" class="secondary compact">새로고침</button>
+      </div>
+      <p class="hint">
+        선택한 기능을 정해진 시간 동안 <b>모든 로그인 사용자</b>에게 개방합니다(체험 이벤트용).
+        일일 한도는 그대로 적용되고, 시간이 지나면 자동으로 닫힙니다. 0시간 = 즉시 해제.
+      </p>
+      <form id="openForm" class="compact-form" style="margin-bottom: 10px">
+        <div class="field">
+          <label>
+            <span class="field-label">기능</span>
+            <select id="openKey" style="min-width:200px"></select>
+          </label>
+        </div>
+        <div class="field">
+          <label>
+            <span class="field-label">시간(h)</span>
+            <input id="openHours" type="number" min="0" max="720" value="24" style="width: 84px" />
+          </label>
+        </div>
+        <button type="submit">임시 공개 설정</button>
+        <span id="openSetStatus" class="inline-status"></span>
+      </form>
+      <div id="openList"></div>
+      <p id="openStatus" class="hint"></p>
+    </section>
+
     <section class="settings-card" id="bgSubsSection">
       <div class="card-head">
         <h2>🌙 Max 구독 — 백그라운드·PDF 통번역</h2>
@@ -1562,6 +1591,7 @@
           "Pro 기능": "beta",
           "API 키 위임": "grants",
           "Pro 회원": "subs",
+          "임시 공개": "subs",
           "Max 구독": "subs",
           "백그라운드 구독": "subs",
           "보고서 생성 로그": "logs",
@@ -3035,68 +3065,135 @@
       })();
     </script>
     <script>
-      // ── 등급 탭 · Pro 회원 관리 ('pro' 우산 키 — userHasBeta 가 전 기능에 인정) ──
+      // ── 등급 탭 · Pro 회원 관리('pro' 우산 키) + 임시 전체 공개 ──────────────
+      // Pro 해제(✕)는 우산·기능별 지정을 전부 제거(DELETE /api/admin/pro-member/:id)
+      // → 기간 개념 없이 즉시 효력. 임시 공개는 POST /api/admin/beta/:key/open {hours}.
       (function () {
         var listEl = document.getElementById("proList");
         if (!listEl) return;
         var statusEl = document.getElementById("proStatus");
         var addStatus = document.getElementById("proAddStatus");
+        var openSel = document.getElementById("openKey");
+        var openHours = document.getElementById("openHours");
+        var openListEl = document.getElementById("openList");
+        var openStatus = document.getElementById("openStatus");
+        var openSetStatus = document.getElementById("openSetStatus");
+        var featuresCache = [];
         function esc(s) {
           return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
             return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
           });
         }
-        // 'pro' 우산 키가 없으면 자동 생성 (서버 부팅 시드와 이중 안전망).
-        async function ensureProFeature() {
+        async function fetchFeatures() {
           var r = await fetch("/api/admin/beta");
           var d = await r.json().catch(function () { return {}; });
           if (!r.ok) throw new Error(d.error || "목록 조회 실패");
-          var f = (d.features || []).find(function (x) { return x.key === "pro"; });
-          if (f) return f;
-          var cr = await fetch("/api/admin/beta", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ key: "pro", label: "Pro 회원" }),
-          });
-          if (!cr.ok) {
-            var cd = await cr.json().catch(function () { return {}; });
-            throw new Error(cd.error || "'pro' 키 생성 실패");
+          featuresCache = d.features || [];
+          // 'pro' 우산 키가 없으면 자동 생성(서버 부팅 시드와 이중 안전망).
+          if (!featuresCache.some(function (x) { return x.key === "pro"; })) {
+            var cr = await fetch("/api/admin/beta", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ key: "pro", label: "Pro 회원" }),
+            });
+            if (cr.ok) {
+              var r2 = await fetch("/api/admin/beta");
+              var d2 = await r2.json().catch(function () { return {}; });
+              if (r2.ok) featuresCache = d2.features || [];
+            }
           }
-          return { key: "pro", testers: [] };
+          return featuresCache;
         }
-        async function loadPro() {
+        // Pro 목록 = 전 기능 테스터의 합집합(우산 'pro' + 과거 기능별 지정 모두 표시·해제 가능).
+        function renderPro() {
+          var byUser = {};
+          featuresCache.forEach(function (f) {
+            (f.testers || []).forEach(function (t) {
+              var uid = (t.user && t.user.id) || t.user_id || t.id || "";
+              var name = (t.user && t.user.name) || t.name || uid || "?";
+              if (!uid) return;
+              if (!byUser[uid]) byUser[uid] = { name: name, keys: [] };
+              byUser[uid].keys.push(f.key);
+            });
+          });
+          var uids = Object.keys(byUser);
+          if (!uids.length) {
+            listEl.innerHTML = '<p class="hint">아직 Pro 회원이 없습니다. 위에서 이름으로 지정하세요.</p>';
+          } else {
+            listEl.innerHTML = uids
+              .map(function (uid) {
+                var u = byUser[uid];
+                var full = u.keys.indexOf("pro") >= 0;
+                var sub = full ? "" :
+                  ' <span class="hint" style="font-size:11px">(' + esc(u.keys.join(", ")) + ")</span>";
+                return (
+                  '<span style="display:inline-flex;align-items:center;gap:6px;margin:0 6px 6px 0;padding:4px 10px;border:1px solid var(--border,#e2e8f0);border-radius:999px;font-size:13px">' +
+                  esc(u.name) + sub +
+                  ' <button type="button" data-uid="' + esc(uid) + '" title="Pro 완전 해제(즉시)" style="border:none;background:none;cursor:pointer;color:#d23;font-size:13px;line-height:1">✕</button></span>'
+                );
+              })
+              .join("");
+            listEl.querySelectorAll("button[data-uid]").forEach(function (b) {
+              b.addEventListener("click", async function () {
+                if (!confirm("이 사용자의 Pro 권한을 즉시·완전히 해제할까요? (우산 + 기능별 지정 모두 제거)")) return;
+                await fetch("/api/admin/pro-member/" + encodeURIComponent(b.getAttribute("data-uid")), {
+                  method: "DELETE",
+                }).catch(function () {});
+                reload();
+              });
+            });
+          }
+          statusEl.textContent = "총 " + uids.length + "명 (해제는 즉시 효력)";
+        }
+        function fmtRemain(ms) {
+          var m = Math.max(0, Math.round(ms / 60000));
+          return m >= 60 ? Math.floor(m / 60) + "시간 " + (m % 60) + "분" : m + "분";
+        }
+        function renderOpen() {
+          if (openSel) {
+            openSel.innerHTML = featuresCache
+              .filter(function (f) { return f.key !== "pro"; })
+              .map(function (f) {
+                return '<option value="' + esc(f.key) + '">' + esc(f.label || f.key) + " (" + esc(f.key) + ")</option>";
+              })
+              .join("");
+          }
+          var open = featuresCache.filter(function (f) { return (f.openUntil || 0) > Date.now(); });
+          if (!openListEl) return;
+          if (!open.length) {
+            openListEl.innerHTML = '<p class="hint">현재 임시 공개 중인 기능이 없습니다.</p>';
+          } else {
+            openListEl.innerHTML = open
+              .map(function (f) {
+                return (
+                  '<div style="display:flex;align-items:center;gap:8px;margin:4px 0;font-size:13px">🟢 <b>' +
+                  esc(f.label || f.key) + "</b> — " + fmtRemain(f.openUntil - Date.now()) + " 남음" +
+                  ' <button type="button" class="secondary compact" data-close="' + esc(f.key) + '">지금 닫기</button></div>'
+                );
+              })
+              .join("");
+            openListEl.querySelectorAll("button[data-close]").forEach(function (b) {
+              b.addEventListener("click", async function () {
+                await fetch("/api/admin/beta/" + encodeURIComponent(b.getAttribute("data-close")) + "/open", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ hours: 0 }),
+                }).catch(function () {});
+                reload();
+              });
+            });
+          }
+          if (openStatus) openStatus.textContent = open.length ? "임시 공개 " + open.length + "건" : "";
+        }
+        async function reload() {
           statusEl.textContent = "불러오는 중...";
           try {
-            var f = await ensureProFeature();
-            var testers = f.testers || [];
-            if (!testers.length) {
-              listEl.innerHTML = '<p class="hint">아직 Pro 회원이 없습니다. 위에서 이름으로 지정하세요.</p>';
-            } else {
-              listEl.innerHTML = testers
-                .map(function (t) {
-                  var name = (t.user && t.user.name) || t.name || t.user_id || "?";
-                  var uid = (t.user && t.user.id) || t.user_id || t.id || "";
-                  return (
-                    '<span style="display:inline-flex;align-items:center;gap:6px;margin:0 6px 6px 0;padding:4px 10px;border:1px solid var(--border,#e2e8f0);border-radius:999px;font-size:13px">' +
-                    esc(name) +
-                    ' <button type="button" data-uid="' + esc(uid) + '" title="Pro 해제" style="border:none;background:none;cursor:pointer;color:#d23;font-size:13px;line-height:1">✕</button></span>'
-                  );
-                })
-                .join("");
-              listEl.querySelectorAll("button[data-uid]").forEach(function (b) {
-                b.addEventListener("click", async function () {
-                  if (!confirm("이 사용자의 Pro 를 해제할까요?")) return;
-                  await fetch(
-                    "/api/admin/beta/pro/testers/" + encodeURIComponent(b.getAttribute("data-uid")),
-                    { method: "DELETE" },
-                  ).catch(function () {});
-                  loadPro();
-                });
-              });
-            }
-            statusEl.textContent = "총 " + testers.length + "명";
+            await fetchFeatures();
+            renderPro();
+            renderOpen();
           } catch (e) {
             statusEl.textContent = e.message || "불러오기 실패";
+            if (openListEl) openListEl.innerHTML = "";
           }
         }
         var form = document.getElementById("proAddForm");
@@ -3108,7 +3205,6 @@
             if (!name) return;
             addStatus.textContent = "지정 중...";
             try {
-              await ensureProFeature();
               var r = await fetch("/api/admin/beta/pro/testers", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -3118,16 +3214,39 @@
               if (!r.ok) throw new Error(d.error || "지정 실패");
               addStatus.textContent = "✓ 지정됨";
               if (input) input.value = "";
-              loadPro();
+              reload();
             } catch (e) {
               addStatus.textContent = e.message;
             }
           });
+        var openForm = document.getElementById("openForm");
+        openForm &&
+          openForm.addEventListener("submit", async function (ev) {
+            ev.preventDefault();
+            if (!openSel || !openSel.value) return;
+            var hours = Math.max(0, Number((openHours && openHours.value) || 0));
+            openSetStatus.textContent = "설정 중...";
+            try {
+              var r = await fetch("/api/admin/beta/" + encodeURIComponent(openSel.value) + "/open", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ hours: hours }),
+              });
+              var d = await r.json().catch(function () { return {}; });
+              if (!r.ok) throw new Error(d.error || "설정 실패");
+              openSetStatus.textContent = hours > 0 ? "✓ " + hours + "시간 공개" : "✓ 해제됨";
+              reload();
+            } catch (e) {
+              openSetStatus.textContent = e.message;
+            }
+          });
         var rf = document.getElementById("refreshProMembers");
-        rf && rf.addEventListener("click", loadPro);
+        rf && rf.addEventListener("click", reload);
+        var rfo = document.getElementById("refreshOpen");
+        rfo && rfo.addEventListener("click", reload);
         var tabBtn = document.querySelector('#adminTabs .atab[data-go="subs"]');
-        tabBtn && tabBtn.addEventListener("click", loadPro);
-        loadPro();
+        tabBtn && tabBtn.addEventListener("click", reload);
+        reload();
       })();
     </script>
   </body>

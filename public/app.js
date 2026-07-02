@@ -1199,7 +1199,7 @@ let currentStudentId = "";
           if (has("create")) showNav("navBetaCreate");
           if (has("vibe-coding")) showNav("navBetaVibe");
           if (has("physics-studio")) showNav("navBetaPhysStudio");
-          if (has("relativity-study")) showNav("navBetaStudy");
+          // '공부'(study.html) 메뉴 항목은 2026-07-03 제거 — 페이지·게이트 코드는 보존.
           // 파일 챗봇(Pro/위임): 관리자·Pro는 여기서, 위임(grant) 사용자는 access 조회로 노출.
           if (has("file-chat") || has("create")) {
             showNav("navBetaFilechat");

@@ -410,6 +410,9 @@ const PIPELINES = {
         recordArea,
         subject: String(body.subject || "").trim().slice(0, 100),
         enrolledSubjects: String(body.enrolledSubjects || "").trim().slice(0, 400),
+        // '과목-교사' 매핑(줄바꿈 구분) + 담임교사: 매핑에 없는 과목은 담임·공통 ○ 처리.
+        subjectTeachers: String(body.subjectTeachers || "").trim().slice(0, 1200),
+        homeroomTeacher: String(body.homeroomTeacher || "").trim().slice(0, 40),
         borrowed,
         periodStart: String(body.periodStart || "").trim().slice(0, 20),
         periodEnd: String(body.periodEnd || "").trim().slice(0, 20),

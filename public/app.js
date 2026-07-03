@@ -3507,6 +3507,9 @@ let currentStudentId = "";
             }
             const periodStart = document.getElementById("rlPeriodStart").value;
             const periodEnd = document.getElementById("rlPeriodEnd").value;
+            const subjectTeachers = (document.getElementById("rlSubjectTeachers")?.value || "").trim();
+            const homeroomTeacher = (document.getElementById("rlHomeroom")?.value || "").trim();
+            const mapCount = subjectTeachers ? subjectTeachers.split(/\n+/).filter((l) => /[-–:]/.test(l)).length : 0;
 
             const ok = await showConfirmDialog({
               title: "독서록 대량 생성 (Pro)",
@@ -3517,7 +3520,8 @@ let currentStudentId = "";
                 ["영역", domainLabel || "미선택"],
                 ["대출 여부", borrowed === "no" ? "× (기본)" : borrowed === "yes" ? "○" : "미선택"],
                 ["읽기 기간", `${periodStart || "?"} ~ ${periodEnd || "?"} (책 수만큼 분배)`],
-                ["출력", "책마다 .hwpx → ZIP 묶음"],
+                ["과목-담당교사", mapCount ? `${mapCount}건 매핑 · 나머지는 담임(${homeroomTeacher || "미지정"}) 공통 ○` : "미입력 (엑셀/일괄 설정 사용)"],
+                ["출력", mapCount || homeroomTeacher ? "교사별 합본 .hwpx → ZIP" : "책마다 .hwpx → ZIP 묶음"],
                 ["예상 비용", "무료 (Pro)"],
               ],
               note: `엑셀의 책마다 AI가 선택 계기·내용·느낀 점을 써서 학교 '독서활동 기록지'(.hwpx)를 만들어 ZIP으로 묶습니다. 책이 많으면 몇 분 걸릴 수 있어요. ${USE_POLICY_NOTE}`,
@@ -3531,6 +3535,8 @@ let currentStudentId = "";
             if (recordArea === "subject" && subject) fd.append("subject", subject);
             if (recordArea === "auto" && enrolledSubjects)
               fd.append("enrolledSubjects", enrolledSubjects);
+            if (subjectTeachers) fd.append("subjectTeachers", subjectTeachers);
+            if (homeroomTeacher) fd.append("homeroomTeacher", homeroomTeacher);
             if (domain) fd.append("domain", domain);
             fd.append("borrowed", borrowed || "no");
             if (periodStart) fd.append("periodStart", periodStart);

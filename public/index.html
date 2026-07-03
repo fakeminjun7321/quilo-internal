@@ -1024,6 +1024,18 @@
           </div>
         </div>
         <small>위 기간을 책 수만큼 자동으로 나눠 각 권의 '독서활동 일시'로 적습니다.</small>
+        <div class="field" style="margin-top:10px">
+          <label><span class="field-label">과목–담당교사 매핑 (선택)</span>
+            <textarea id="rlSubjectTeachers" rows="4" placeholder="물리-박홍&#10;화학-추재석&#10;문학-윤소영" style="width:100%;resize:vertical"></textarea>
+          </label>
+          <small>한 줄에 하나씩 <strong>과목-교사명</strong>. 책의 영역(또는 엑셀 교과명)이 여기 적은 과목과 일치하면 <strong>과목별 독서기록(교과명)</strong>에 그 과목을 기입합니다. <strong>여기 적지 않은 과목의 책은 전부 담임교사</strong>로 묶여 <strong>공통 독서기록에 ○</strong> 표시됩니다. ZIP은 교사별 합본 파일로 만들어집니다.</small>
+        </div>
+        <div class="field">
+          <label><span class="field-label">담임교사 이름 (선택)</span>
+            <input id="rlHomeroom" type="text" maxlength="40" placeholder="예: 추철우" />
+          </label>
+          <small>매핑에 없는 과목 책들의 합본 파일명에 사용됩니다 (예: 2402홍길동_담임교사(추철우) 18권.hwpx).</small>
+        </div>
       </div>
 
       <div class="form-section">

@@ -5142,6 +5142,36 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
     ac.abort();
   }, jobTimeoutMs);
 
+  // 보고서 본문에서 AI 특유의 긴 하이픈(— – ―)을 결정적으로 제거한다(2026-07-03 지시).
+  // 프롬프트 금지가 1차 방어, 이 후처리가 최종 보장. 숫자 범위는 '~', 그 외 연결은 쉼표로.
+  // Buffer·`__` 내부 키(차트 PNG 등)는 건드리지 않는다.
+  function stripAiDashes(v, depth = 0) {
+    if (depth > 14 || v == null) return v;
+    if (typeof v === "string") {
+      if (!/[—–―]/.test(v)) return v;
+      return v
+        .replace(/(^|\n)\s*[—–―]+\s*/g, "$1") // 행머리 대시 제거
+        .replace(/\s*[—–―]+\s*(?=\n|$)/g, "") // 행끝·문자열 끝 대시 제거
+        .replace(/(\d)\s*[—–―]\s*(?=\d)/g, "$1~") // 숫자 범위 → ~
+        .replace(/\s*[—–―]+\s*(?=[).,!?\]])/g, "") // 닫는 부호 직전 대시 제거
+        .replace(/\s*[—–―]+\s*/g, ", ") // 나머지 → 쉼표
+        .replace(/,\s*,/g, ",");
+    }
+    if (Buffer.isBuffer(v)) return v;
+    if (Array.isArray(v)) {
+      for (let i = 0; i < v.length; i++) v[i] = stripAiDashes(v[i], depth + 1);
+      return v;
+    }
+    if (typeof v === "object") {
+      for (const k of Object.keys(v)) {
+        if (k.startsWith("__")) continue; // 내부 버퍼/메타(__figures 등)
+        v[k] = stripAiDashes(v[k], depth + 1);
+      }
+      return v;
+    }
+    return v;
+  }
+
   try {
     // BYOK: 본인 키가 있으면 그 키의 컨텍스트에서 파이프라인 실행(없으면 서버 env 키).
     const content = await byok.run(job.byokKeys || {}, () =>
@@ -5156,6 +5186,7 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
         onProgress: (msg) => pushProgress(job, msg),
       }),
     );
+    stripAiDashes(content); // 긴 하이픈 최종 제거(전 보고서 종류·docx/hwpx/zip 공통)
     content.__allowHighlights = !!pipelineInput.allowHighlights;
 
     // AI 개념도 실제 생성분 추가 과금 (장당 1크레딧 — 위 잔액 예약치와 동기화).

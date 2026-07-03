@@ -5484,7 +5484,7 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
             /* 사용량 기록 실패는 무시 */
           }
         }
-        pushProgress(job, "🧪 베타 기능 — 크레딧이 차감되지 않았습니다.");
+        pushProgress(job, "💠 Pro 기능 — 크레딧이 차감되지 않았습니다.");
       }
 
       // 2) 크레딧 차감 (admin·무제한 계정·무료 베타 제외). 모델별 단가(Opus 3 / Sonnet 1).

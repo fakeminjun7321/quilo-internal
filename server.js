@@ -4264,12 +4264,21 @@ app.post(
     const mode = ["inplace", "retypeset", "auto"].includes(reqMode)
       ? reqMode
       : "auto";
+    // 복원만(번역 없이 재조판) / 그래프 벡터 재생성 옵션.
+    const restoreOnly = ["1", "true", "on"].includes(
+      String(req.body.restoreOnly || "").trim(),
+    );
+    const chartRedraw = ["1", "true", "on"].includes(
+      String(req.body.chartRedraw || "").trim(),
+    );
 
     runPdfTranslation(job, {
       pdfBuffer: file.buffer,
       originalName: file.originalname || "document.pdf",
       model,
       mode,
+      restoreOnly,
+      chartRedraw,
     }).catch((err) => {
       job.status = "error";
       job.error = err.message || String(err);
@@ -4524,7 +4533,16 @@ function buildOcrHint(pageTexts, startPage, endPage) {
   return parts.length ? parts.join("\n\n") : null;
 }
 
-async function translateLargeVisionPdf({ pdfBuffer, pageCount, model, signal, onProgress, pageTexts = null }) {
+async function translateLargeVisionPdf({
+  pdfBuffer,
+  pageCount,
+  model,
+  signal,
+  onProgress,
+  pageTexts = null,
+  restoreOnly = false,
+  chartRedraw = false,
+}) {
   const chunkPages = Math.max(
     1,
     parseInt(process.env.PDF_OCR_CHUNK_PAGES || "10", 10),
@@ -4557,6 +4575,8 @@ async function translateLargeVisionPdf({ pdfBuffer, pageCount, model, signal, on
       imageBlocks: r.imageBlocks,
       tiles: r.tileBuffers,
       ocrHint: buildOcrHint(pageTexts, 1, Number.MAX_SAFE_INTEGER),
+      restoreOnly,
+      chartRedraw,
       model,
       cpuGate,
       signal,
@@ -4621,6 +4641,8 @@ async function translateLargeVisionPdf({ pdfBuffer, pageCount, model, signal, on
               tiles: blocks.tileBuffers,
               model,
               ocrHint: buildOcrHint(pageTexts, c.start, c.end), // 이 구간 페이지의 숨은 OCR층 힌트
+              restoreOnly,
+              chartRedraw,
               pageNumbers: false, // 구간별 독립 컴파일 → 쪽번호가 재시작하므로 끔(병합 후 혼동 방지)
               cpuGate, // Tectonic 컴파일을 CPU 게이트로 직렬화
               signal: ctrl.signal,
@@ -4707,7 +4729,10 @@ async function translateLargeVisionPdf({ pdfBuffer, pageCount, model, signal, on
   }
 }
 
-async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) {
+async function runPdfTranslation(
+  job,
+  { pdfBuffer, originalName, model, mode, restoreOnly = false, chartRedraw = false },
+) {
   const t0 = Date.now();
   const translateTimeoutMs = /^claude-fable/.test(String(model || ""))
     ? PDF_TRANSLATE_FABLE_TIMEOUT_MS
@@ -4795,6 +4820,12 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) 
       );
     }
 
+    if (restoreOnly && resolvedMode !== "retypeset") {
+      resolvedMode = "retypeset"; // 번역 없는 '글자 교체'는 무의미 — 복원은 항상 재조판
+    }
+    if (restoreOnly) {
+      pushProgress(job, "🧾 복원 모드 — 번역 없이 원문 그대로 깨끗하게 재조판합니다.");
+    }
     let effectiveMode = resolvedMode;
     let result;
     if (routing.scanned && routing.largeVision) {
@@ -4804,6 +4835,8 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) 
         pageCount: routing.pageCount,
         model,
         pageTexts: routing.pageTexts || null,
+        restoreOnly,
+        chartRedraw,
         signal: ac.signal,
         onProgress,
       });
@@ -4823,6 +4856,8 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) 
         imageBlocks: routing.imageBlocks,
         tiles: routing.tileBuffers, // 원본 타일 — 그림 복원 crop 용
         ocrHint: buildOcrHint(routing.pageTexts, 1, Number.MAX_SAFE_INTEGER),
+        restoreOnly,
+        chartRedraw,
         model,
         signal: ac.signal,
         onProgress,
@@ -4863,6 +4898,8 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) 
           pdfChunks,
           figures,
           twoColumn: routing.twoColumn,
+          restoreOnly,
+          chartRedraw,
           model,
           signal: ac.signal,
           onProgress,
@@ -4907,7 +4944,7 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) 
     job.mimeType = "application/pdf";
     job.filename = buildTranslatedFilename(
       originalName,
-      effectiveMode === "retypeset" ? "_재조판" : "_KO",
+      restoreOnly ? "_복원" : effectiveMode === "retypeset" ? "_재조판" : "_KO",
     );
     job.status = "done";
 

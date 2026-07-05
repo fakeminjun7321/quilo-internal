@@ -89,6 +89,14 @@
                   </select>
                 </label>
                 <p class="hint" id="trModeHint" style="margin:4px 0 0">PDF만 올리면 됩니다 — 일반 문서는 ‘빠른 번역’, 스캔본·수식 많은 문서는 ‘재조판’을 권유합니다(진행 전에 한 번 더 여쭤봐요). 원하면 직접 고를 수도 있어요.</p>
+                <label style="display:flex;gap:6px;align-items:flex-start;margin-top:10px;font-size:0.93em;cursor:pointer">
+                  <input type="checkbox" id="trRestoreOnly" style="margin-top:3px" />
+                  <span>🧾 <b>복원만</b> — 번역 없이 원문 그대로 깨끗한 PDF로 재조판합니다 (기울어진 스캔북 → 새 문서, 그림 복원 포함)</span>
+                </label>
+                <label style="display:flex;gap:6px;align-items:flex-start;margin-top:4px;font-size:0.93em;cursor:pointer">
+                  <input type="checkbox" id="trChartRedraw" checked style="margin-top:3px" />
+                  <span>📈 <b>그래프 벡터 재생성</b> — 스캔 그래프의 축·수치가 확실히 읽힐 때만 선명한 차트로 다시 그립니다 (불확실하면 원본 크롭 유지)</span>
+                </label>
               </div>
 
               <div class="field">
@@ -601,6 +609,10 @@
           fd.append("pdf", fileInput.files[0]);
           fd.append("model", document.getElementById("trModel").value);
           fd.append("mode", chosenMode);
+          const roEl = document.getElementById("trRestoreOnly");
+          if (roEl && roEl.checked) fd.append("restoreOnly", "1");
+          const crEl = document.getElementById("trChartRedraw");
+          if (crEl && crEl.checked) fd.append("chartRedraw", "1");
           const bgEl = document.getElementById("trBg");
           const isBg = !!(bgEl && bgEl.checked);
           if (isBg) {

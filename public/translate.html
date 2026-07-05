@@ -90,11 +90,11 @@
                 </label>
                 <p class="hint" id="trModeHint" style="margin:4px 0 0">PDF만 올리면 됩니다 — 일반 문서는 ‘빠른 번역’, 스캔본·수식 많은 문서는 ‘재조판’을 권유합니다(진행 전에 한 번 더 여쭤봐요). 원하면 직접 고를 수도 있어요.</p>
                 <label style="display:flex;gap:6px;align-items:flex-start;margin-top:10px;font-size:0.93em;cursor:pointer">
-                  <input type="checkbox" id="trRestoreOnly" style="margin-top:3px" />
+                  <input type="checkbox" id="trRestoreOnly" style="margin-top:3px;width:auto;flex:0 0 auto" />
                   <span>🧾 <b>복원만</b> — 번역 없이 원문 그대로 깨끗한 PDF로 재조판합니다 (기울어진 스캔북 → 새 문서, 그림 복원 포함)</span>
                 </label>
                 <label style="display:flex;gap:6px;align-items:flex-start;margin-top:4px;font-size:0.93em;cursor:pointer">
-                  <input type="checkbox" id="trChartRedraw" checked style="margin-top:3px" />
+                  <input type="checkbox" id="trChartRedraw" checked style="margin-top:3px;width:auto;flex:0 0 auto" />
                   <span>📈 <b>그래프 벡터 재생성</b> — 스캔 그래프의 축·수치가 확실히 읽힐 때만 선명한 차트로 다시 그립니다 (불확실하면 원본 크롭 유지)</span>
                 </label>
               </div>
@@ -114,14 +114,14 @@
 
               <div class="field" id="trBgField" style="display: none">
                 <label style="display: flex; gap: 8px; align-items: flex-start; cursor: pointer">
-                  <input type="checkbox" id="trBg" style="margin-top: 3px" />
+                  <input type="checkbox" id="trBg" style="margin-top: 3px; width: auto; flex: 0 0 auto" />
                   <span>
                     <span class="field-label" style="display: inline">🌙 백그라운드로 실행 (탭/창 닫아도 됨)</span>
                     <span class="hint" style="display: block; margin-top: 2px">제출 후 창을 닫아도 서버가 끝까지 번역합니다. 완료되면 ‘내 파일’에서 받을 수 있어요(24시간 보관). 페이지 많은 PDF에 특히 유용합니다.</span>
                   </span>
                 </label>
                 <label id="trBgNotifyWrap" style="display: none; gap: 8px; align-items: center; cursor: pointer; margin-top: 8px; padding-left: 24px">
-                  <input type="checkbox" id="trBgNotify" />
+                  <input type="checkbox" id="trBgNotify" style="width: auto; flex: 0 0 auto" />
                   <span class="hint" style="margin: 0">완료되면 이메일로 알림 받기</span>
                 </label>
               </div>

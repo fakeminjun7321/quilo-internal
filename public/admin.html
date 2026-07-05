@@ -213,6 +213,7 @@
       <button class="atab" data-go="ai" role="tab" aria-selected="false">🤖 AI 보조</button>
       <button class="atab" data-go="users" role="tab" aria-selected="false">👤 사용자</button>
       <button class="atab" data-go="subs" role="tab" aria-selected="false">💎 등급 (Pro·Max)</button>
+      <button class="atab" data-go="schools" role="tab" aria-selected="false">🏫 학교 신청</button>
       <button class="atab" data-go="logs" role="tab" aria-selected="false">📊 로그</button>
       <button class="atab" data-go="announce" role="tab" aria-selected="false">📢 공지</button>
       <button class="atab" data-go="appeals" role="tab" aria-selected="false">🛡 소명·제재</button>
@@ -459,6 +460,32 @@
       <hr style="border:none;border-top:1px solid var(--border,#e2e8f0);margin:14px 0" />
       <div id="subList"></div>
       <p id="subStatus" class="hint"></p>
+    </section>
+
+    <section class="settings-card" id="schoolAppsSection">
+      <div class="card-head">
+        <h2>🏫 학교 도입 신청</h2>
+        <button id="refreshSchoolApps" class="secondary compact">새로고침</button>
+      </div>
+      <p class="hint">
+        외부 학교가 <a href="/school-apply.html" target="_blank" rel="noopener">/school-apply.html</a> 에서 도입을 신청하면 여기에 뜹니다.
+        학생 이메일 도메인·학번 체계·업로드한 학교 양식으로 그 학교 전용 설정을 준비하세요.
+        상태를 바꿔 진행 상황을 관리할 수 있습니다.
+      </p>
+      <div style="display:flex;align-items:center;gap:8px;margin:8px 0">
+        <label style="font-size:13px">상태 필터
+          <select id="schoolAppFilter" style="font:inherit;padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm)">
+            <option value="all">전체</option>
+            <option value="new">신규</option>
+            <option value="reviewing">검토중</option>
+            <option value="contacted">연락함</option>
+            <option value="approved">승인</option>
+            <option value="rejected">거절</option>
+            <option value="archived">보관</option>
+          </select>
+        </label>
+      </div>
+      <div id="schoolAppsList"><p class="hint">불러오는 중…</p></div>
     </section>
 
     <section class="settings-card" id="betaSection">
@@ -1607,6 +1634,7 @@
           "보고서 생성 로그": "logs",
           "커뮤니티 소명": "appeals",
           "코드 에디터": "editor",
+          "학교 도입 신청": "schools",
         };
         var sections = Array.prototype.slice.call(
           document.querySelectorAll("section.settings-card")
@@ -1635,6 +1663,7 @@
             localStorage.setItem("adminTab", tab);
           } catch (e) {}
           if (tab === "appeals") loadAppeals();
+          if (tab === "schools" && window.loadSchoolApps) window.loadSchoolApps();
           if (tab === "editor") {
             initEditor();
             if (window.__ceCM)
@@ -3265,6 +3294,129 @@
         var tabBtn = document.querySelector('#adminTabs .atab[data-go="subs"]');
         tabBtn && tabBtn.addEventListener("click", reload);
         reload();
+      })();
+    </script>
+    <script>
+      // ── 학교 도입 신청 관리 ──
+      (function () {
+        var listEl = document.getElementById("schoolAppsList");
+        var filterEl = document.getElementById("schoolAppFilter");
+        var refreshEl = document.getElementById("refreshSchoolApps");
+        if (!listEl) return;
+        var STATUS = {
+          new: "신규",
+          reviewing: "검토중",
+          contacted: "연락함",
+          approved: "승인",
+          rejected: "거절",
+          archived: "보관",
+        };
+        function e(s) {
+          return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+            return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+          });
+        }
+        function d(iso) {
+          if (!iso) return "";
+          try { return new Date(iso).toLocaleString("ko-KR"); } catch (x) { return String(iso); }
+        }
+        function row(label, val) {
+          if (val == null || val === "") return "";
+          return '<div style="display:flex;gap:8px;font-size:13px;margin:2px 0"><span style="min-width:96px;color:var(--text-muted)">' + e(label) + "</span><span style=\"white-space:pre-wrap\">" + e(val) + "</span></div>";
+        }
+        function statusSelect(id, cur) {
+          var opts = Object.keys(STATUS).map(function (k) {
+            return '<option value="' + k + '"' + (k === cur ? " selected" : "") + ">" + e(STATUS[k]) + "</option>";
+          }).join("");
+          return '<select data-status-for="' + e(id) + '" style="font:inherit;padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm)">' + opts + "</select>";
+        }
+        function card(a) {
+          return (
+            '<div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:14px;margin-bottom:12px" data-app="' + e(a.id) + '">' +
+            '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">' +
+            '<b style="font-size:15px">' + e(a.school_name || "(학교명 미기재)") + "</b>" +
+            '<span style="font-size:12px;color:var(--text-muted)">' + e(a.school_type || "") + "</span>" +
+            '<span style="margin-left:auto;font-size:12px;color:var(--text-muted)">' + e(d(a.created_at)) + "</span>" +
+            '<span style="font-size:11px;padding:2px 8px;border-radius:999px;background:var(--surface-2,#eef2f7)">' + e(STATUS[a.status] || a.status) + "</span>" +
+            "</div>" +
+            row("담당자", a.contact_name) +
+            row("이메일", a.contact_email) +
+            row("연락처", a.contact_phone) +
+            row("학생 도메인", a.student_email_domain) +
+            row("학번 체계", a.student_id_scheme) +
+            row("추가 보고서", a.desired_reports) +
+            row("도입 시기", a.desired_start) +
+            row("예산/유료", a.budget_note) +
+            row("문의", a.message) +
+            row("첨부 파일", (a.file_count || 0) + "개") +
+            '<div data-files-for="' + e(a.id) + '" style="margin:6px 0"></div>' +
+            (a.file_count ? '<button data-load-files="' + e(a.id) + '" class="secondary compact">첨부 양식 ' + a.file_count + "개 보기</button>" : "") +
+            '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">' +
+            statusSelect(a.id, a.status) +
+            '<input data-note-for="' + e(a.id) + '" placeholder="관리자 메모" value="' + e(a.admin_note || "") + '" style="flex:1;min-width:160px;font:inherit;padding:5px 8px;border:1px solid var(--border);border-radius:var(--radius-sm)" />' +
+            '<button data-save-for="' + e(a.id) + '" class="secondary compact">저장</button>' +
+            '<span data-save-status="' + e(a.id) + '" style="font-size:12px;color:var(--text-muted)"></span>' +
+            "</div>" +
+            "</div>"
+          );
+        }
+        function load() {
+          var status = filterEl ? filterEl.value : "all";
+          listEl.innerHTML = '<p class="hint">불러오는 중…</p>';
+          fetch("/api/school-apply/admin/list?status=" + encodeURIComponent(status))
+            .then(function (r) { return r.json(); })
+            .then(function (res) {
+              if (res.error) { listEl.innerHTML = '<p class="hint">오류: ' + e(res.error) + "</p>"; return; }
+              var apps = res.applications || [];
+              if (!apps.length) { listEl.innerHTML = '<p class="hint">해당 상태의 신청이 없습니다.</p>'; return; }
+              listEl.innerHTML = apps.map(card).join("");
+            })
+            .catch(function () { listEl.innerHTML = '<p class="hint">목록을 불러오지 못했습니다.</p>'; });
+        }
+        window.loadSchoolApps = load;
+        filterEl && filterEl.addEventListener("change", load);
+        refreshEl && refreshEl.addEventListener("click", load);
+        listEl.addEventListener("click", function (ev) {
+          var lf = ev.target.closest("[data-load-files]");
+          if (lf) {
+            var id = lf.getAttribute("data-load-files");
+            var box = listEl.querySelector('[data-files-for="' + id + '"]');
+            lf.disabled = true; lf.textContent = "불러오는 중…";
+            fetch("/api/school-apply/admin/" + encodeURIComponent(id))
+              .then(function (r) { return r.json(); })
+              .then(function (res) {
+                var files = (res.application && res.application.files) || [];
+                box.innerHTML = files.map(function (f) {
+                  var kb = Math.max(1, Math.round((f.size_bytes || 0) / 1024));
+                  return '<a href="/api/school-apply/admin/' + encodeURIComponent(id) + "/file/" + encodeURIComponent(f.id) + '" style="display:inline-block;margin:2px 8px 2px 0;font-size:13px">📎 ' + e(f.filename) + " (" + kb + "KB)</a>";
+                }).join("") || '<span class="hint">파일 없음</span>';
+                lf.remove();
+              })
+              .catch(function () { lf.disabled = false; lf.textContent = "다시 시도"; });
+            return;
+          }
+          var sv = ev.target.closest("[data-save-for]");
+          if (sv) {
+            var sid = sv.getAttribute("data-save-for");
+            var sel = listEl.querySelector('[data-status-for="' + sid + '"]');
+            var note = listEl.querySelector('[data-note-for="' + sid + '"]');
+            var st = listEl.querySelector('[data-save-status="' + sid + '"]');
+            sv.disabled = true; if (st) st.textContent = "저장 중…";
+            fetch("/api/school-apply/admin/" + encodeURIComponent(sid) + "/status", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ status: sel ? sel.value : undefined, note: note ? note.value : undefined }),
+            })
+              .then(function (r) { return r.json(); })
+              .then(function (res) {
+                sv.disabled = false;
+                if (res.error) { if (st) st.textContent = "오류: " + res.error; return; }
+                if (st) st.textContent = "저장됨 ✓";
+                setTimeout(load, 400);
+              })
+              .catch(function () { sv.disabled = false; if (st) st.textContent = "저장 실패"; });
+          }
+        });
       })();
     </script>
   </body>

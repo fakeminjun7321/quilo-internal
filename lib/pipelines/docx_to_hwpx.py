@@ -82,6 +82,22 @@ def main():
             )
             if r.returncode != 0 or not os.path.exists(out_hwpx):
                 sys.stderr.write("equation marker postprocess failed; refusing raw-marker HWPX\n")
+                if os.path.exists(out_hwpx):
+                    os.remove(out_hwpx)
+                return 1
+            # replace 는 검증하지 않으므로 raw {{EQ-LATEX:...}} / LaTeX 잔재가
+            # 살아남을 수 있다. chem-pre/hwpx-gen.py 의 _postprocess_equations 와
+            # 동일하게 validate 를 fatal 로 돌려 깨진 HWPX 출고를 막는다.
+            v = subprocess.run(
+                [py, EQ_TOOL, "validate", out_hwpx],
+                timeout=STEP_TIMEOUT,
+            )
+            if v.returncode != 0:
+                sys.stderr.write(
+                    "equation validation failed; refusing raw-marker HWPX\n"
+                )
+                if os.path.exists(out_hwpx):
+                    os.remove(out_hwpx)
                 return 1
         else:
             shutil.copy(marked, out_hwpx)

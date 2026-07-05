@@ -1109,7 +1109,12 @@ let currentStudentId = "";
       (function initNav() {
         const dds = Array.from(document.querySelectorAll(".nav-dd[data-dd]"));
         const menu = document.getElementById("navMenu");
-        const closeAll = () => dds.forEach((d) => d.classList.remove("open"));
+        // 드롭다운 열림 상태를 버튼의 aria-expanded 에 동기화(스크린리더 접근성).
+        const syncDdAria = (dd) => {
+          const b = dd.querySelector(".nav-dd-btn");
+          if (b) b.setAttribute("aria-expanded", String(dd.classList.contains("open")));
+        };
+        const closeAll = () => dds.forEach((d) => { d.classList.remove("open"); syncDdAria(d); });
 
         dds.forEach((dd) => {
           const btn = dd.querySelector(".nav-dd-btn");
@@ -1118,6 +1123,7 @@ let currentStudentId = "";
             const wasOpen = dd.classList.contains("open");
             closeAll();
             if (!wasOpen) dd.classList.add("open");
+            syncDdAria(dd);
           });
         });
         // 드롭다운 바깥을 클릭할 때만 닫는다. (로그인 폼 등 .nav-dd 내부 클릭은
@@ -1126,9 +1132,18 @@ let currentStudentId = "";
           if (!e.target.closest(".nav-dd")) closeAll();
         });
 
+        // 햄버거 메뉴 열림 상태를 aria-expanded·aria-label 에 동기화(접근성).
+        const syncBurgerAria = () => {
+          const burger = document.getElementById("navBurger");
+          if (!burger) return;
+          const open = !!menu?.classList.contains("open");
+          burger.setAttribute("aria-expanded", String(open));
+          burger.setAttribute("aria-label", open ? "메뉴 닫기" : "메뉴 열기");
+        };
         document.getElementById("navBurger")?.addEventListener("click", (e) => {
           e.stopPropagation();
           menu?.classList.toggle("open");
+          syncBurgerAria();
         });
 
         // 보고서 작성 드롭다운 → 보고서 종류 선택 + reports 탭으로
@@ -1152,6 +1167,7 @@ let currentStudentId = "";
               updateReportTypeView({ scroll: true });
             }
             menu?.classList.remove("open");
+            syncBurgerAria();
           });
         });
 
@@ -1162,6 +1178,7 @@ let currentStudentId = "";
             showTab(a.dataset.tab);
             closeAll();
             menu?.classList.remove("open");
+            syncBurgerAria();
           });
         });
       })();
@@ -1807,6 +1824,9 @@ let currentStudentId = "";
       let currentJobId = null;
       let currentEs = null;
       let activeFormEl = null; // 어떤 폼이 락 상태인지
+      // 현재 진행 중인 작업이 백그라운드 모드인지(탭 닫아도 됨). 스트림 끊김 처리와
+      // 이탈 경고가 포그라운드/백그라운드를 구분하는 데 쓴다.
+      let _currentIsBackground = false;
 
       // ── Wave2a: 마지막 제출 보관(원클릭 재시도용) ────────────────────────
       // submitReport 가 받은 그대로(formEl/buttonEl/formData/busyText)를 보관한다.
@@ -1860,6 +1880,7 @@ let currentStudentId = "";
         stopBtn.style.display = "none";
         currentJobId = null;
         currentEs = null;
+        _currentIsBackground = false;
       }
 
       stopBtn.addEventListener("click", async () => {
@@ -2638,13 +2659,17 @@ let currentStudentId = "";
         const plan = (_bgInfo && _bgInfo.plan) || {};
         const overlay = document.createElement("div");
         overlay.className = "confirm-overlay";
+        // 이 모달을 연 요소를 기억해 닫을 때 포커스를 복원한다(접근성).
+        const prevFocus = document.activeElement;
         const card = document.createElement("section");
         card.className = "confirm-card";
         card.setAttribute("role", "dialog");
         card.setAttribute("aria-modal", "true");
 
         const h = document.createElement("h2");
+        h.id = "maxModalTitle";
         h.textContent = "✨ Max 신청 (백그라운드 실행)";
+        card.setAttribute("aria-labelledby", h.id);
 
         const guide = document.createElement("div");
         guide.style.cssText =
@@ -2694,11 +2719,17 @@ let currentStudentId = "";
         ok.textContent = "입금했어요 · 신청";
         actions.append(cancel, ok);
 
+        const onKeydown = (e) => {
+          if (e.key === "Escape") close();
+        };
         const close = () => {
+          document.removeEventListener("keydown", onKeydown);
           document.body.classList.remove("modal-open");
           overlay.remove();
+          try { prevFocus && prevFocus.focus && prevFocus.focus(); } catch (_) {}
         };
         cancel.addEventListener("click", close);
+        document.addEventListener("keydown", onKeydown);
         overlay.addEventListener("click", (e) => {
           if (e.target === overlay) close();
         });
@@ -2946,6 +2977,8 @@ let currentStudentId = "";
 
           dialog.append(heading, list, noteEl, bgBox, warnBox, actions);
           overlay.appendChild(dialog);
+          // 다이얼로그를 열기 직전 포커스를 기억해 닫을 때 복원한다(접근성).
+          const prevFocus = document.activeElement;
           document.body.appendChild(overlay);
           document.body.classList.add("modal-open");
 
@@ -2953,10 +2986,35 @@ let currentStudentId = "";
             document.removeEventListener("keydown", onKeydown);
             document.body.classList.remove("modal-open");
             overlay.remove();
+            // 열기 전 포커스로 복원.
+            try { prevFocus && prevFocus.focus && prevFocus.focus(); } catch (_) {}
             resolve(result);
           };
+          // 다이얼로그 안의 포커스 가능한 요소를 훑어 Tab/Shift+Tab 을 가둔다.
+          const getFocusable = () =>
+            Array.from(
+              dialog.querySelectorAll(
+                'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+              ),
+            ).filter((el) => el.offsetParent !== null || el === document.activeElement);
           const onKeydown = (event) => {
-            if (event.key === "Escape") close(false);
+            if (event.key === "Escape") { close(false); return; }
+            if (event.key === "Tab") {
+              const f = getFocusable();
+              if (!f.length) return;
+              const first = f[0];
+              const last = f[f.length - 1];
+              const active = document.activeElement;
+              if (event.shiftKey) {
+                if (active === first || !dialog.contains(active)) {
+                  event.preventDefault();
+                  last.focus();
+                }
+              } else if (active === last || !dialog.contains(active)) {
+                event.preventDefault();
+                first.focus();
+              }
+            }
           };
           document.addEventListener("keydown", onKeydown);
           overlay.addEventListener("click", (event) => {
@@ -2999,10 +3057,15 @@ let currentStudentId = "";
             throw e;
           }
           currentJobId = data.jobId;
+          // 이 작업이 백그라운드 모드인지 기록(스트림 끊김 처리·이탈 경고 분기용).
+          try {
+            _currentIsBackground =
+              !!(formData && formData.get && formData.get("backgroundMode") === "true");
+          } catch (_) { _currentIsBackground = false; }
           streamJob(data.jobId);
           // 백그라운드 모드면 "닫아도 됩니다" 안내 토스트.
           try {
-            if (formData && formData.get && formData.get("backgroundMode") === "true") {
+            if (_currentIsBackground) {
               showBackgroundToast();
             }
           } catch (_) {}
@@ -4350,25 +4413,127 @@ let currentStudentId = "";
         });
 
         es.addEventListener("error", (e) => {
+          // 서버가 명시적으로 보낸 error 이벤트(e.data 있음)인지, 순수 연결 끊김
+          // (e.data 없음)인지 구분한다. 서버 error 이벤트는 작업이 실제로 실패한
+          // 것이라 크레딧 미차감 + 재시도 안전. 반면 연결만 끊긴 경우 서버는 작업을
+          // 중단하지 않고 끝까지 돌려 파일함에 저장 + 크레딧을 차감하므로, "미차감"을
+          // 단정하거나 즉시 재생성(=중복 과금)을 권하면 안 된다.
           let msg;
           try { msg = e.data ? JSON.parse(e.data) : null; } catch (_) { msg = e.data || null; }
-          const detail = msg ||
-            "서버 연결이 끊겼습니다. 보통 (1) 서버 재배포로 컨테이너가 재시작되었거나 (2) 무료 플랜 일시 sleep 진입 시 발생합니다. 이 경우 크레딧(쿠폰)은 차감되지 않습니다. 1~2분 기다린 뒤 보고서 생성을 다시 시도하세요. (이전 작업은 복구 불가 — 새로 만들어집니다)";
-          appendLine("오류: " + detail);
-          statusTitle.textContent = "오류";
-          setProgressStep("document", "error");
+          const serverReportedError = e && e.data != null;
           stopGenTimer(); // 경과 타이머 정지·정리
           if (genSpinner) genSpinner.style.display = "none";
           es.close();
-          resetForm();
-          // 스트림 끊김/5xx/타임아웃 — 같은 입력으로 원클릭 재시도 제공.
-          showGenErrorCard({
-            message: String(detail),
-            detail: String(detail),
-            phase: "stream",
-            httpStatus: 0,
-            allowRetry: true,
-          });
+
+          if (serverReportedError) {
+            // 진짜 실패(서버 error 이벤트). 미차감 + 같은 입력 원클릭 재시도 안전.
+            const detail = msg ||
+              "보고서 생성 중 오류가 발생했습니다. 크레딧은 차감되지 않았습니다. 잠시 후 다시 시도하세요.";
+            appendLine("오류: " + detail);
+            statusTitle.textContent = "오류";
+            setProgressStep("document", "error");
+            resetForm();
+            showGenErrorCard({
+              message: String(detail),
+              detail: String(detail),
+              phase: "stream",
+              httpStatus: 0,
+              allowRetry: true,
+            });
+            return;
+          }
+
+          // 연결만 끊긴 경우: 서버 작업은 계속 진행/완료됐을 수 있다. 단정하지 말고
+          // 실제 작업 상태를 조회한 뒤 안내한다.
+          appendLine("서버 연결이 끊겼습니다. 작업 상태를 확인하는 중…");
+          statusTitle.textContent = "연결 끊김 — 상태 확인 중";
+          const _jobId = jobId;
+          // 완료 여부는 다운로드 엔드포인트로 확인: 200=완료, 409=아직/미완, 404=없음.
+          fetch(`/api/jobs/${_jobId}/download`, { method: "GET" })
+            .then((r) => {
+              if (r.status === 200) {
+                // 서버에서 완료됨 → 크레딧이 이미 차감됐을 수 있으므로 재생성 권하지 않는다.
+                // 파일함/다운로드로 안내.
+                let filename = "";
+                try {
+                  const cd = r.headers.get("Content-Disposition") || "";
+                  const m = cd.match(/filename\*=UTF-8''([^;]+)/i) || cd.match(/filename="?([^";]+)"?/i);
+                  if (m && m[1]) filename = decodeURIComponent(m[1]);
+                } catch (_) {}
+                appendLine("완료 — 보고서가 서버에서 생성되었습니다.");
+                statusTitle.textContent = "완료(연결 끊김)";
+                setProgressStep("ready");
+                clearRetryCard();
+                _retryCount = 0;
+                const box = document.createElement("div");
+                box.style.cssText =
+                  "margin-top:12px;padding:12px 14px;border:1px solid #cde3d2;background:#f3fbf5;border-radius:10px;color:#214a31;font-size:14px;line-height:1.6";
+                const h = document.createElement("div");
+                h.style.cssText = "font-weight:700;margin-bottom:6px";
+                h.textContent = "✅ 연결은 끊겼지만 보고서는 완성됐어요";
+                box.appendChild(h);
+                const p = document.createElement("div");
+                p.textContent =
+                  "화면과의 연결만 끊겼을 뿐, 서버에서 보고서 생성이 끝났습니다. 아래 버튼 또는 '내 파일'에서 받으세요(24시간 보관). 다시 생성하면 중복 요금이 나갈 수 있으니 재생성은 하지 마세요.";
+                box.appendChild(p);
+                const link = document.createElement("a");
+                link.href = `/api/jobs/${_jobId}/download`;
+                link.textContent = filename ? `${filename} 다운로드` : "보고서 다운로드";
+                if (filename) link.download = filename;
+                link.style.cssText = "display:inline-block;margin-top:8px;font-weight:600";
+                box.appendChild(link);
+                resultArea.appendChild(box);
+                resetForm();
+                if (typeof loadBalance === "function") loadBalance();
+                if (typeof loadFiles === "function") loadFiles();
+                return;
+              }
+              if (r.status === 404) {
+                // 작업 기록이 사라짐(재배포로 컨테이너 재시작 등) → 완료 못 함, 미차감. 재시도 안전.
+                appendLine("서버가 재시작되어 작업이 중단되었습니다.");
+                statusTitle.textContent = "오류";
+                setProgressStep("document", "error");
+                resetForm();
+                showGenErrorCard({
+                  message: "서버 재시작으로 작업이 중단되었습니다. 크레딧은 차감되지 않았습니다. 다시 시도하세요.",
+                  detail: "서버 재시작으로 작업이 중단되었습니다. 크레딧은 차감되지 않았습니다. 다시 시도하세요.",
+                  phase: "stream",
+                  httpStatus: 0,
+                  allowRetry: true,
+                });
+                return;
+              }
+              // 409 등 — 아직 진행 중이거나 상태 불명. 미차감 단정·즉시 재생성 금지.
+              appendLine("보고서가 아직 생성 중일 수 있습니다.");
+              statusTitle.textContent = "생성 중일 수 있음";
+              setProgressStep("document", "error");
+              resetForm();
+              showGenErrorCard({
+                message:
+                  "화면과의 연결이 끊겼지만 보고서는 아직 생성 중일 수 있습니다. 1~2분 뒤 '내 파일'을 확인하세요. 완료됐다면 크레딧이 차감되므로, 파일이 없을 때만 다시 시도하세요.",
+                detail:
+                  "화면과의 연결이 끊겼지만 보고서는 아직 생성 중일 수 있습니다. 1~2분 뒤 '내 파일'을 확인하세요. 완료됐다면 크레딧이 차감되므로, 파일이 없을 때만 다시 시도하세요.",
+                phase: "stream",
+                httpStatus: 0,
+                allowRetry: true,
+              });
+            })
+            .catch(() => {
+              // 상태 조회 자체가 실패 — 네트워크 문제. 미차감 단정하지 않고 파일 확인 권함.
+              appendLine("작업 상태를 확인하지 못했습니다.");
+              statusTitle.textContent = "상태 확인 실패";
+              setProgressStep("document", "error");
+              resetForm();
+              showGenErrorCard({
+                message:
+                  "연결이 끊겨 작업 상태를 확인하지 못했습니다. 1~2분 뒤 '내 파일'을 확인하고, 파일이 없을 때만 다시 시도하세요(완료됐다면 크레딧이 차감됩니다).",
+                detail:
+                  "연결이 끊겨 작업 상태를 확인하지 못했습니다. 1~2분 뒤 '내 파일'을 확인하고, 파일이 없을 때만 다시 시도하세요(완료됐다면 크레딧이 차감됩니다).",
+                phase: "stream",
+                httpStatus: 0,
+                allowRetry: true,
+              });
+            });
         });
       }
 
@@ -4572,7 +4737,18 @@ let currentStudentId = "";
         window.addEventListener("beforeunload", (e) => {
           try {
             if (_suppressUnload) return;
-            if (currentJobId) return; // 생성 진행 중은 SSE 가 관리 — 별도 경고 안 함
+            if (currentJobId) {
+              // 백그라운드 작업은 탭을 닫아도 서버가 끝까지 생성 + '내 파일'로 안내되므로
+              // 경고하지 않는다. 포그라운드 작업은 지금 나가면 화면 연결이 끊겨도 서버는
+              // 완료 + 크레딧 차감 + 파일함 저장이 진행되므로, 완료본을 '내 파일'에서
+              // 받아야 한다는 점을 경고한다.
+              if (_currentIsBackground) return;
+              const warn =
+                "보고서를 생성 중입니다. 지금 나가면 완료된 보고서는 '내 파일'에서 받아야 합니다.";
+              e.preventDefault();
+              e.returnValue = warn;
+              return warn;
+            }
             const type = currentReportType();
             if (!type) return;
             if (!hasAnyDraftInput(type)) return;
@@ -5039,11 +5215,15 @@ let currentStudentId = "";
     const days = plan.periodDays || 30;
     const info = document.getElementById("maxPlanInfo");
     if (info) {
+      // 서버/DB에서 온 계좌 정보는 innerHTML에 넣기 전 반드시 escape(XSS 방지).
+      const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+      })[c]);
       info.innerHTML =
         "<b>Max</b> (" + days + "일 · " + price + "): 🌙 백그라운드 실행(탭 닫아도 생성+이메일 수신) · 📄 PDF 통번역(월 300쪽) · 💎 승인 시 10크레딧 지급" +
         (plan.bank
-          ? "<br>입금 계좌: " + plan.bank + " " + (plan.account || "") +
-            (plan.holder ? " (" + plan.holder + ")" : "") +
+          ? "<br>입금 계좌: " + esc(plan.bank) + " " + esc(plan.account || "") +
+            (plan.holder ? " (" + esc(plan.holder) + ")" : "") +
             " — 입금자명은 <b>학번+이름</b>으로"
           : "");
     }

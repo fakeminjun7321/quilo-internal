@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="theme-color" content="#2563eb" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>학교 도입 신청 — Quilo</title>
+    <meta
+      name="description"
+      content="학교에서 Quilo(화학·물리 보고서 및 독서활동 기록지 AI 생성 도구) 도입을 검토하시는 담당 선생님을 위한 신청 폼입니다."
+    />
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("theme");
+          if (!t)
+            t = window.matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light";
+          document.documentElement.setAttribute("data-theme", t);
+        } catch (e) {}
+      })();
+    </script>
+    <link rel="stylesheet" href="/style.css" />
+    <style>
+      /* 신청 폼 레이아웃 — 기존 .field / .field-grid 토큰을 재사용하고
+         이 페이지에서만 쓰는 소소한 배치 규칙만 추가한다. */
+      .apply-form .field {
+        margin-bottom: 15px;
+      }
+      .apply-form .field:last-of-type {
+        margin-bottom: 0;
+      }
+      .apply-form .field input,
+      .apply-form .field select,
+      .apply-form .field textarea {
+        width: 100%;
+        max-width: 100%;
+      }
+      .apply-form textarea {
+        min-height: 84px;
+        resize: vertical;
+      }
+      .apply-form .field-hint {
+        margin: 6px 0 0;
+        font-size: 12.5px;
+        line-height: 1.55;
+        color: var(--text-muted);
+      }
+      .apply-form fieldset {
+        margin: 4px 0 0;
+        padding: 0;
+        border: 0;
+      }
+      .apply-form legend {
+        padding: 0;
+        margin-bottom: 8px;
+        font-size: 13px;
+        font-weight: var(--fw-bold);
+        color: var(--text);
+      }
+      .feature-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px 14px;
+      }
+      .feature-grid label {
+        display: flex;
+        gap: 9px;
+        align-items: center;
+        margin: 0;
+        font-weight: var(--fw-medium);
+        line-height: 1.5;
+        cursor: pointer;
+      }
+      .feature-grid input {
+        flex: 0 0 auto;
+        margin: 0;
+      }
+      .file-row input[type="file"] {
+        width: 100%;
+      }
+      .file-list {
+        margin: 8px 0 0;
+        padding: 0;
+        list-style: none;
+        display: grid;
+        gap: 4px;
+      }
+      .file-list li {
+        font-size: 12.5px;
+        color: var(--text-muted);
+        word-break: break-all;
+      }
+      .file-list li::before {
+        content: "📄 ";
+      }
+      .apply-section-title {
+        margin: 22px 0 10px;
+        padding-top: 18px;
+        border-top: 1px solid var(--border);
+        font-size: 15px;
+        font-weight: var(--fw-heavy);
+        color: var(--text);
+      }
+      .apply-section-title:first-of-type {
+        margin-top: 6px;
+        padding-top: 0;
+        border-top: 0;
+      }
+      .apply-intro {
+        margin: 0 0 4px;
+        line-height: 1.6;
+      }
+      /* 스크린 리더 전용 라벨 (허니팟) */
+      .visually-hidden {
+        position: absolute;
+        left: -9999px;
+        top: auto;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+      }
+      @media (max-width: 560px) {
+        .feature-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body class="landing">
+    <div class="landing-bg" aria-hidden="true"></div>
+
+    <nav class="landing-nav">
+      <div class="landing-nav-inner">
+        <a href="/" class="brand">
+          <span class="brand-mark" aria-hidden="true">Q</span>
+          Quilo
+        </a>
+        <div class="landing-nav-actions">
+          <a href="/" class="nav-link">← Quilo 홈</a>
+          <button
+            type="button"
+            id="themeToggle"
+            class="theme-toggle"
+            aria-label="다크 모드로 전환"
+            title="다크 모드로 전환"
+          >
+            <span class="theme-icon-light" aria-hidden="true">🌙</span>
+            <span class="theme-icon-dark" aria-hidden="true">☀️</span>
+          </button>
+        </div>
+      </div>
+    </nav>
+
+    <main class="landing-shell">
+      <section
+        class="section"
+        style="border-top: 0; display: flex; justify-content: center"
+      >
+        <div class="login-card" style="width: 100%; max-width: 620px">
+          <div id="applyWrap">
+            <div class="auth-head">
+              <h1>학교 도입 신청</h1>
+              <p class="apply-intro hint">
+                Quilo는 화학 사전·결과보고서, 물리 결과보고서, 독서활동 기록지
+                등을 학교 양식에 맞춰 자동으로 초안 생성하는 AI 도구입니다. 이
+                폼은 학교 단위 도입을 검토하시는 담당 선생님을 위한 신청서입니다.
+              </p>
+              <p class="hint">
+                올려주시는 학교 양식 파일은 해당 학교 전용 출력 세팅에 사용됩니다.
+              </p>
+            </div>
+
+            <form id="form" class="apply-form" novalidate>
+              <div class="apply-section-title">학교 정보</div>
+
+              <div class="field">
+                <label for="schoolName">
+                  <span class="field-label"
+                    >학교명 <span class="req" aria-hidden="true">*</span></span
+                  >
+                  <input
+                    id="schoolName"
+                    name="schoolName"
+                    required
+                    maxlength="120"
+                    autocomplete="organization"
+                    placeholder="공식 명칭 (예: OO과학고등학교)"
+                  />
+                </label>
+              </div>
+
+              <div class="field">
+                <label for="schoolType">
+                  <span class="field-label">학교 유형</span>
+                  <select id="schoolType" name="schoolType">
+                    <option value="">선택 안 함</option>
+                    <option value="영재학교">영재학교</option>
+                    <option value="과학고">과학고</option>
+                    <option value="자사고">자사고</option>
+                    <option value="일반고">일반고</option>
+                    <option value="기타">기타</option>
+                  </select>
+                </label>
+              </div>
+
+              <div class="apply-section-title">담당자 정보</div>
+
+              <div class="field">
+                <label for="contactName">
+                  <span class="field-label"
+                    >담당자 이름
+                    <span class="req" aria-hidden="true">*</span></span
+                  >
+                  <input
+                    id="contactName"
+                    name="contactName"
+                    required
+                    maxlength="60"
+                    autocomplete="name"
+                  />
+                </label>
+              </div>
+
+              <div class="field-grid">
+                <div class="field">
+                  <label for="contactEmail">
+                    <span class="field-label"
+                      >담당자 이메일
+                      <span class="req" aria-hidden="true">*</span></span
+                    >
+                    <input
+                      id="contactEmail"
+                      name="contactEmail"
+                      type="email"
+                      required
+                      maxlength="160"
+                      autocomplete="email"
+                      placeholder="teacher@school.hs.kr"
+                    />
+                  </label>
+                </div>
+                <div class="field">
+                  <label for="contactPhone">
+                    <span class="field-label"
+                      >연락처
+                      <span style="font-weight: 400; color: var(--text-muted)"
+                        >(선택)</span
+                      ></span
+                    >
+                    <input
+                      id="contactPhone"
+                      name="contactPhone"
+                      maxlength="40"
+                      autocomplete="tel"
+                      inputmode="tel"
+                      placeholder="010-0000-0000"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div class="apply-section-title">학생 계정 세팅</div>
+
+              <div class="field">
+                <label for="studentEmailDomain">
+                  <span class="field-label"
+                    >학생 이메일 도메인
+                    <span class="req" aria-hidden="true">*</span></span
+                  >
+                  <input
+                    id="studentEmailDomain"
+                    name="studentEmailDomain"
+                    required
+                    maxlength="120"
+                    autocomplete="off"
+                    placeholder="ts.hs.kr"
+                  />
+                </label>
+                <p class="field-hint">
+                  학생 회원가입을 이 도메인으로만 허용(게이트)하는 데 쓰입니다.
+                  <b>@ 없이 도메인만</b> 입력하세요.
+                </p>
+              </div>
+
+              <div class="field">
+                <label for="studentIdScheme">
+                  <span class="field-label">학번 체계 설명</span>
+                  <textarea
+                    id="studentIdScheme"
+                    name="studentIdScheme"
+                    maxlength="500"
+                    placeholder='예: "4자리 = 학년+반+번호 (2402 → 2학년 4반 2번)"'
+                  ></textarea>
+                </label>
+              </div>
+
+              <div class="field">
+                <label for="desiredStart">
+                  <span class="field-label"
+                    >도입 희망 시기
+                    <span style="font-weight: 400; color: var(--text-muted)"
+                      >(선택)</span
+                    ></span
+                  >
+                  <input
+                    id="desiredStart"
+                    name="desiredStart"
+                    maxlength="60"
+                    placeholder="예: 2026학년도 1학기"
+                  />
+                </label>
+              </div>
+
+              <div class="apply-section-title">추가할 학교 전용 보고서</div>
+
+              <p class="field-hint" style="margin: 0 0 12px">
+                독서활동 기록지·PDF 통번역·학습 도구 등
+                <b>기본 기능은 대구과학고 학생과 동일하게</b> 제공됩니다. 화학
+                사전·결과보고서, 물리 결과보고서처럼
+                <b>학교 양식·평가기준이 필요한 보고서</b>만 학교마다 다릅니다.
+                넣고 싶은 보고서 종류를 적고, 관련
+                <b>평가기준·양식·예시 파일</b>을 함께 올려주시면 세팅이 빨라집니다.
+              </p>
+
+              <div class="field">
+                <label for="desiredReports">
+                  <span class="field-label">넣고 싶은 보고서 종류</span>
+                  <textarea
+                    id="desiredReports"
+                    name="desiredReports"
+                    maxlength="1000"
+                    placeholder="예: 생명과학 실험 결과보고서, 지구과학 탐구보고서, 수학 과제탐구 보고서 등 — 학교 양식·평가기준이 필요한 보고서를 적어주세요."
+                  ></textarea>
+                </label>
+              </div>
+
+              <div class="field file-row">
+                <label for="files">
+                  <span class="field-label">평가기준 · 양식 · 예시 파일</span>
+                  <input
+                    id="files"
+                    name="files"
+                    type="file"
+                    multiple
+                    aria-describedby="filesHint"
+                  />
+                </label>
+                <p class="field-hint" id="filesHint">
+                  넣고 싶은 보고서의 <b>평가기준·양식·예시</b> 등 참고 파일을
+                  올려주세요. 여러 개 선택할 수 있습니다 (HWPX·한글·워드·PDF·이미지
+                  등).
+                </p>
+                <ul id="fileList" class="file-list" aria-live="polite"></ul>
+              </div>
+
+              <div class="apply-section-title">추가 문의</div>
+
+              <div class="field">
+                <label for="budgetNote">
+                  <span class="field-label"
+                    >예산 / 유료 의향
+                    <span style="font-weight: 400; color: var(--text-muted)"
+                      >(선택)</span
+                    ></span
+                  >
+                  <textarea
+                    id="budgetNote"
+                    name="budgetNote"
+                    maxlength="500"
+                    placeholder="유료 도입 의향, 예산 범위 등을 자유롭게 적어주세요."
+                  ></textarea>
+                </label>
+              </div>
+
+              <div class="field">
+                <label for="message">
+                  <span class="field-label">자유 문의</span>
+                  <textarea
+                    id="message"
+                    name="message"
+                    maxlength="2000"
+                    placeholder="궁금한 점이나 요청 사항을 자유롭게 적어주세요."
+                  ></textarea>
+                </label>
+              </div>
+
+              <!-- 허니팟: 사람에게는 숨겨져 있고 봇만 채운다. 서버가 비어있는지 검사한다. -->
+              <div style="position: absolute; left: -9999px" aria-hidden="true">
+                <label for="website">이 칸은 비워두세요</label>
+                <input
+                  id="website"
+                  type="text"
+                  name="website"
+                  tabindex="-1"
+                  autocomplete="off"
+                />
+              </div>
+
+              <label class="check-line" for="consent">
+                <input
+                  type="checkbox"
+                  id="consent"
+                  name="consent"
+                  value="true"
+                  required
+                />
+                <span
+                  >개인정보(학교·담당자 연락처)를 도입 검토·연락 목적으로
+                  수집·이용하는 데 동의합니다. <strong>(필수)</strong></span
+                >
+              </label>
+
+              <div class="form-actions">
+                <button type="submit" id="btn">도입 신청 보내기</button>
+              </div>
+              <p id="err" class="form-error" role="alert"></p>
+            </form>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-links">
+        <a href="/terms.html">이용약관</a>
+        <a href="/privacy.html">개인정보처리방침</a>
+        <a href="/refund.html">환불정책</a>
+        <a href="/changelog.html">패치노트</a>
+        <a href="/tools/index.html">도구 모음</a>
+        <a href="https://blog.naver.com/physicjun1905" target="_blank" rel="noopener"
+          >블로그</a
+        >
+      </div>
+      <div class="footer-copy">© 2026 Quilo · MIT License</div>
+    </footer>
+
+    <script>
+      const form = document.getElementById("form");
+      const btn = document.getElementById("btn");
+      const err = document.getElementById("err");
+      const fileInput = document.getElementById("files");
+      const fileList = document.getElementById("fileList");
+
+      // 선택한 파일명 표시.
+      fileInput.addEventListener("change", () => {
+        fileList.innerHTML = "";
+        const files = fileInput.files ? Array.from(fileInput.files) : [];
+        for (const f of files) {
+          const li = document.createElement("li");
+          li.textContent = f.name;
+          fileList.appendChild(li);
+        }
+      });
+
+      // 이메일 형식 가벼운 검사(서버가 최종 검증).
+      function looksLikeEmail(v) {
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v || "").trim());
+      }
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        err.textContent = "";
+
+        const schoolName = document.getElementById("schoolName").value.trim();
+        const contactName = document.getElementById("contactName").value.trim();
+        const contactEmail = document
+          .getElementById("contactEmail")
+          .value.trim();
+        const studentEmailDomain = document
+          .getElementById("studentEmailDomain")
+          .value.trim();
+        const consent = document.getElementById("consent").checked;
+
+        if (!schoolName) {
+          err.textContent = "학교명을 입력해 주세요.";
+          return;
+        }
+        if (!contactName) {
+          err.textContent = "담당자 이름을 입력해 주세요.";
+          return;
+        }
+        if (!looksLikeEmail(contactEmail)) {
+          err.textContent = "담당자 이메일 형식을 확인해 주세요.";
+          return;
+        }
+        if (!studentEmailDomain) {
+          err.textContent =
+            "학생 이메일 도메인을 입력해 주세요 (@ 없이 도메인만).";
+          return;
+        }
+        if (!consent) {
+          err.textContent =
+            "개인정보 수집·이용에 동의해야 신청을 보낼 수 있습니다.";
+          return;
+        }
+
+        btn.disabled = true;
+        const prevLabel = btn.textContent;
+        btn.textContent = "보내는 중…";
+
+        try {
+          const res = await fetch("/api/school-apply", {
+            method: "POST",
+            body: new FormData(form),
+          });
+          let data = {};
+          try {
+            data = await res.json();
+          } catch (_) {}
+          if (!res.ok || !data.ok) {
+            throw new Error(
+              (data && data.error) ||
+                "신청 접수에 실패했습니다. 잠시 후 다시 시도해 주세요.",
+            );
+          }
+          // 성공 — 폼을 성공 카드로 교체.
+          const wrap = document.getElementById("applyWrap");
+          if (wrap) {
+            wrap.innerHTML =
+              '<div class="auth-head" style="text-align:center">' +
+              '<div style="font-size:42px;line-height:1;margin-bottom:10px">✅</div>' +
+              "<h1>신청이 접수되었습니다</h1>" +
+              "</div>" +
+              '<p class="hint" style="margin:10px 0 16px;text-align:center">' +
+              "담당자 이메일로 연락드리겠습니다. 검토에는 보통 며칠이 걸릴 수 있습니다." +
+              "</p>" +
+              '<div class="form-actions" style="justify-content:center">' +
+              '<a href="/" class="btn btn-primary" style="display:inline-block;text-align:center">Quilo 홈으로</a>' +
+              "</div>";
+          } else {
+            location.href = "/";
+          }
+        } catch (e2) {
+          err.textContent =
+            (e2 && e2.message) ||
+            "네트워크 오류로 신청을 보내지 못했습니다. 연결을 확인해 주세요.";
+          btn.disabled = false;
+          btn.textContent = prevLabel;
+        }
+      });
+    </script>
+    <script src="/theme.js"></script>
+    <script src="/chat-widget.js" defer></script>
+  </body>
+</html>

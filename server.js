@@ -835,6 +835,26 @@ const PDF_TRANSLATE_FABLE_TIMEOUT_MS = parseInt(
 // ── Middleware ───────────────────────────────────────────────────────────────
 
 app.set("trust proxy", 1);
+
+// L4: 보안 헤더(심층 방어) — 클릭재킹·MIME 스니핑·레퍼러 유출 방지 + HTTPS 고정.
+// 엄격 CSP 는 인라인 스크립트가 많은 페이지들을 깨뜨릴 수 있어 지금은 넣지 않는다
+// (추후 nonce 기반으로 점진 도입). 아티팩트 공개 페이지(/p/…)는 외부 임베드를 위해
+// 프레임 차단에서 제외한다.
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  if (!req.path.startsWith("/p/")) {
+    res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  }
+  if (process.env.NODE_ENV === "production") {
+    res.setHeader(
+      "Strict-Transport-Security",
+      "max-age=15552000; includeSubDomains",
+    );
+  }
+  next();
+});
+
 // 창작(artifacts)은 생성·업로드 이미지(데이터 URL)나 임베드 미디어로 본문이 커질 수
 // 있어 별도로 상향(8MB). 전역 파서보다 먼저 매칭돼 해당 경로만 큰 본문을 허용한다.
 app.use("/api/artifacts", express.json({ limit: "8mb" }));
@@ -1018,12 +1038,30 @@ function getSessionUser(req) {
   return req.session && req.session.userInfo ? req.session.userInfo : null;
 }
 
+// L12: 세션 무효화 마커 — 저장된 password_hash 의 짧은 해시(원문 해시는 쿠키에 넣지 않음).
+// 비밀번호가 바뀌면 이 값이 달라지므로, 옛 마커를 가진 세션(=다른 기기/탈취된 쿠키)은
+// refreshSessionUser 에서 무효화된다(비번 변경 = 다른 세션 강제 로그아웃).
+function pwMarkOf(passwordHash) {
+  if (!passwordHash) return null;
+  return crypto
+    .createHash("sha256")
+    .update("pwmark:" + String(passwordHash))
+    .digest("hex")
+    .slice(0, 16);
+}
+
 async function refreshSessionUser(req, { failClosed = false } = {}) {
   const u = getSessionUser(req);
   if (!u || !u.id || !supa.isEnabled()) return u;
   try {
     const fresh = await supa.findUserById(u.id);
     if (!fresh) {
+      req.session = null;
+      return null;
+    }
+    // L12: 세션 발급 이후 비밀번호가 바뀌었으면(마커 불일치) 이 세션을 무효화한다.
+    // 마커가 없는 예전 세션(u.pwMark 미보유)은 건드리지 않는다(하위호환 — 다음 로그인부터 적용).
+    if (u.pwMark && fresh.password_hash && pwMarkOf(fresh.password_hash) !== u.pwMark) {
       req.session = null;
       return null;
     }
@@ -1301,17 +1339,10 @@ function pruneJobListeners(job) {
   return job.listeners.length;
 }
 
-// 작업 결과는 24시간 보관 (사용자가 핸드폰→컴퓨터 이동 등의 시나리오 지원).
-// rate limit으로 사용자당 시간당 5건이라 24시간 누적 최대 ~120건 × 100KB = ~12MB 안전.
-setInterval(
-  () => {
-    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
-    for (const [id, job] of jobs.entries()) {
-      if (job.createdAt < cutoff) jobs.delete(id);
-    }
-  },
-  60 * 60 * 1000,
-);
+// (I1) 중복 정리 인터벌 제거: 위 cleanupOldJobs(jobCleanupTimer)가 이미 24시간 보관 +
+// 'running' 작업 보호 + unref 를 모두 처리한다. 여기 있던 두 번째 인터벌은 running 상태를
+// 확인하지 않고 unref 도 안 돼(이벤트 루프 유지) 진행 중 작업의 /download·/stream 을 404 로
+// 만들 수 있어 삭제한다.
 
 // ── 학생 인증(이메일 + 관리자 승인) 공통 헬퍼 ────────────────────────────────
 
@@ -1415,6 +1446,7 @@ app.post("/api/login", async (req, res) => {
       restrictedModel: user.restricted_model || null,
       emailVerified: !!user.email_verified,
       approved: !!user.approved,
+      pwMark: pwMarkOf(user.password_hash), // L12: 비번 변경 시 세션 무효화 마커
     };
     // 로그인 유지: 체크 시 30일 지속 쿠키, 아니면 브라우저/앱 세션 한정.
     // (cookie-session 은 req.sessionOptions 로 이번 응답의 쿠키 만료를 조절한다.)
@@ -1480,8 +1512,8 @@ app.post("/api/signup", async (req, res) => {
   if (name.length < 2) {
     return res.status(400).json({ error: "이름은 2자 이상이어야 합니다." });
   }
-  if (String(password).length < 6) {
-    return res.status(400).json({ error: "비밀번호는 6자 이상이어야 합니다." });
+  if (String(password).length < 8) {
+    return res.status(400).json({ error: "비밀번호는 8자 이상이어야 합니다." });
   }
   // 학교 이메일 검증(도메인 제한). 1단계 인증에 사용.
   const emailCheck = normalizeSchoolEmail(email);
@@ -1543,6 +1575,7 @@ app.post("/api/signup", async (req, res) => {
       restrictedModel: null,
       emailVerified: false,
       approved: false,
+      pwMark: pwMarkOf(user.password_hash), // L12: 비번 변경 시 세션 무효화 마커
     };
 
     // 1단계: 인증 메일 발송.
@@ -1868,6 +1901,16 @@ app.post("/api/chat", async (req, res) => {
           : "오늘 사용량이 많습니다. 잠시 후 다시 시도해 주세요.",
     });
   }
+  // M4: 유료(서버 키) 모델 경로는 per-IP 공유 버킷 외에 per-user 일일 상한도 적용.
+  // (per-IP 는 IP 로테이션·NAT 공유로 우회되므로 계정 단위 상한이 실질 방어선.)
+  if (usePaid && sessionUser && sessionUser.id) {
+    const pl = rateLimit.checkPaidLlmLimit(sessionUser.id);
+    if (!pl.allowed) {
+      return res.status(429).json({
+        error: `오늘 유료 글쓰기 도우미 사용 한도(${pl.limit}회)를 초과했습니다. 내일 다시 시도해 주세요.`,
+      });
+    }
+  }
 
   // 최근 대화만, 길이 제한
   const raw = Array.isArray(req.body && req.body.messages)
@@ -1888,6 +1931,7 @@ app.post("/api/chat", async (req, res) => {
   }
 
   rateLimit.recordChatAttempt(ip);
+  if (usePaid && sessionUser && sessionUser.id) rateLimit.recordPaidLlmUse(sessionUser.id);
 
   // 모드: memo/style = 작성 도우미(전용 프롬프트), 그 외 = 사용법 도우미
   const assistKind = String((req.body && req.body.assistKind) || "").trim();
@@ -3039,10 +3083,10 @@ app.post("/api/me/password", requireAuth, async (req, res) => {
       .status(400)
       .json({ error: "현재 비밀번호와 새 비밀번호를 입력하세요." });
   }
-  if (String(newPassword).length < 5) {
+  if (String(newPassword).length < 8) {
     return res
       .status(400)
-      .json({ error: "새 비밀번호는 최소 5자 이상이어야 합니다." });
+      .json({ error: "새 비밀번호는 최소 8자 이상이어야 합니다." });
   }
   if (currentPassword === newPassword) {
     return res
@@ -3061,6 +3105,16 @@ app.post("/api/me/password", requireAuth, async (req, res) => {
 
     // 비번 업데이트
     await supa.updateUser(userInfo.id, { password: newPassword });
+    // L12: 현재 세션 마커를 새 비번 기준으로 갱신(현재 기기는 유지). 다른 기기의 옛 세션은
+    // refreshSessionUser 에서 마커 불일치로 무효화된다.
+    try {
+      const freshSelf = await supa.findUserById(userInfo.id);
+      if (freshSelf && freshSelf.password_hash && req.session && req.session.userInfo) {
+        req.session.userInfo.pwMark = pwMarkOf(freshSelf.password_hash);
+      }
+    } catch {
+      /* 마커 갱신 실패는 치명적이지 않음(현재 세션이 다음 refresh 에서 무효화될 뿐) */
+    }
     console.log(`[password-change] user=${verified.name}`);
     res.json({ ok: true });
   } catch (e) {
@@ -3500,15 +3554,22 @@ app.post(
         rateLimit.recordBetaUsage(userInfo.id, "mini-free");
       }
     }
-    // AI 이미지 생성: 장당 1크레딧, 보고서당 최대 2장(lib/report-image-gen.js MAX_FIGURES 동기화).
-    // 실제 차감은 생성된 장수만큼(runGeneration). 여기선 최악의 경우를 잔액 검증에 예약.
+    // AI 이미지 생성: 장당 1크레딧, 보고서당 최대 REPORT_IMAGE_MAX장(lib/report-image-gen.js
+    // MAX_FIGURES 와 동일 env). 실제 차감은 생성된 장수만큼. 여기선 '최악의 경우'를 예약해
+    // 실제 생성분이 예약을 넘겨 과소청구(0 바닥)되는 일이 없게 한다(M2/#47).
+    const REPORT_IMAGE_MAX = parseInt(process.env.REPORT_IMAGE_MAX || "2", 10) || 2;
     const reservedImageCredits =
       !isFreeBeta && !hasGrant && !byokActive && pipelineInput.allowImageGen
-        ? 1 * 2
+        ? 1 * REPORT_IMAGE_MAX
         : 0;
 
-    // 크레딧 검증 (Supabase + 일반 사용자. admin·무제한 계정·무료 베타·위임 사용자는 제외)
+    // 크레딧 예약/검증 (Supabase + 일반 사용자. admin·무제한 계정·무료 베타·위임 사용자는 제외)
     // 권한 면제 판단은 fresh row(effectiveIsAdmin/effectiveUnlimited) 기준.
+    // P1(H2/M2/M3): '요청 시점 검사 → 생성 후 차감(0 바닥)' 구조는 동시요청·과대생성 시
+    // 부족분을 조용히 무료로 흘렸다. 이제 생성 '전'에 최악치를 원자적으로 선차감(예약)하고,
+    // 완료 시 실제 비용만 남기고 차액을 환불한다(reserve→settle/refund). 실패/중단 시 전액 환불.
+    // reserve RPC 미생성(마이그레이션 전)이면 기존 후불 경로로 폴백해 동작이 바뀌지 않는다.
+    let creditReservation = null; // { amount } — 성공 예약(정산/환불 대상)
     if (
       !isFreeBeta &&
       !hasGrant &&
@@ -3517,21 +3578,30 @@ app.post(
       !effectiveIsAdmin &&
       !effectiveUnlimited
     ) {
+      const need = creditCost + reservedImageCredits;
       try {
-        // 위 profile lookup 에서 받은 fresh row 가 있으면 잔액도 거기서 읽어
-        // 중복 DB 호출을 피한다(getCredits 와 동일한 정규화 적용). 없으면 조회.
-        const have =
-          freshUser != null
-            ? Math.max(0, Math.trunc(Number(freshUser.credits) || 0))
-            : await supa.getCredits(userInfo.id);
-        const need = creditCost + reservedImageCredits;
-        if (have < need) {
+        const r = await supa.reserveCredits(userInfo.id, need);
+        if (r.unavailable) {
+          // 마이그레이션 전 — 레거시(후불) 경로: 요청 시점 잔액만 검사.
+          const have =
+            freshUser != null
+              ? Math.max(0, Math.trunc(Number(freshUser.credits) || 0))
+              : await supa.getCredits(userInfo.id);
+          if (have < need) {
+            return res.status(402).json({
+              error: `🚫 크레딧 부족 (보유 ${have} / 필요 ${need}). 관리자에게 충전을 요청하세요.`,
+            });
+          }
+        } else if (!r.ok) {
+          const have = await supa.getCredits(userInfo.id);
           return res.status(402).json({
             error: `🚫 크레딧 부족 (보유 ${have} / 필요 ${need}). 관리자에게 충전을 요청하세요.`,
           });
+        } else if (need > 0) {
+          creditReservation = { amount: need };
         }
       } catch (e) {
-        console.error("[credit] error:", e);
+        console.error("[credit] reserve error:", e);
         return res
           .status(500)
           .json({ error: "잔액 확인 중 오류가 발생했습니다." });
@@ -3588,6 +3658,8 @@ app.post(
     job.reportType = reportType;
     job.model = model;
     job.creditCost = creditCost;
+    // P1: 선예약분(있으면). 완료 시 실제비용만 남기고 환불, 실패/중단 시 전액 환불.
+    job.creditReservation = creditReservation;
     // 활성 위임·BYOK 사용자는 과금 면제(아래 이미지 추가과금·크레딧 차감 단계에서 건너뜀).
     job.billingExempt = hasGrant || byokActive;
     if (byokKeys) {
@@ -3624,10 +3696,12 @@ app.post(
       format,
       policyAcknowledgement,
     }).catch(
-      (err) => {
+      async (err) => {
         job.status = "error";
         job.error = err.message || String(err);
         pushProgress(job, `❌ 오류: ${job.error}`);
+        // P1: 실패/중단(자동중단·타임아웃·에러) 시 선예약 크레딧 전액 환불(아직 정산 안 됐으면).
+        await settleReservationOnFailure(job);
         if (job.background) persistBgJob(job);
         job.listeners.forEach((r) => {
           sendSse(r, "error", job.error);
@@ -5120,6 +5194,57 @@ async function notifyBgJobDone(job) {
   }
 }
 
+// ── P1 크레딧 예약 정산 헬퍼 ────────────────────────────────────────────────
+// 예약(job.creditReservation)이 있는 작업은 '선차감(reserve)' 되었으므로, 실제 비용만
+// 남기고 나머지를 환불한다. 예약이 없으면(레거시/마이그레이션 전) 후불 spendCredits.
+// 이중 정산 방지를 위해 job.creditSettled 로 1회만 실행한다.
+async function settleReservationOnSuccess(job, cost) {
+  if (job.creditSettled) return;
+  job.creditSettled = true;
+  const reserved = job.creditReservation ? job.creditReservation.amount : 0;
+  const spend = Math.max(0, Math.trunc(Number(cost) || 0));
+  try {
+    if (reserved > 0) {
+      if (spend < reserved) {
+        const refund = reserved - spend;
+        const { newBalance } = await supa.refundCredits(job.userInfo.id, refund);
+        pushProgress(job, `💳 크레딧 ${spend} 차감(예약 ${reserved} 중 ${refund} 환불) — 남은 크레딧: ${newBalance}`);
+      } else if (spend > reserved) {
+        // 예외: 실제 비용이 예약(최악치)을 넘음 — 초과분만 추가 차감(0 바닥 가능하나 보수적).
+        const { newBalance } = await supa.spendCredits(job.userInfo.id, spend - reserved);
+        pushProgress(job, `💳 크레딧 ${spend} 차감(예약 ${reserved} + 추가 ${spend - reserved}) — 남은 크레딧: ${newBalance}`);
+      } else {
+        pushProgress(job, `💳 크레딧 ${spend} 차감 — 남은 크레딧: ${await supa.getCredits(job.userInfo.id)}`);
+      }
+    } else {
+      // 레거시(후불) 경로.
+      const { newBalance } = await supa.spendCredits(job.userInfo.id, spend);
+      pushProgress(job, `💳 크레딧 ${spend} 차감 — 남은 크레딧: ${newBalance}`);
+    }
+  } catch (e) {
+    console.error(
+      `[BILLING] settle FAILED userId=${job.userInfo.id} jobId=${job.id} model=${job.model} reserved=${reserved} cost=${spend} :: ${e.message}`,
+    );
+    pushProgress(job, `⚠ 크레딧 정산 실패(운영자 확인 필요): ${e.message}`);
+  }
+}
+
+// 실패/중단 시: 선예약분 전액 환불(성공 정산이 이미 됐으면 no-op).
+async function settleReservationOnFailure(job) {
+  if (!job || job.creditSettled) return;
+  const reserved = job.creditReservation ? job.creditReservation.amount : 0;
+  if (reserved <= 0) return;
+  job.creditSettled = true;
+  try {
+    const { newBalance } = await supa.refundCredits(job.userInfo.id, reserved);
+    pushProgress(job, `↩ 작업 미완료 — 예약 크레딧 ${reserved} 환불(잔액 ${newBalance})`);
+  } catch (e) {
+    console.error(
+      `[BILLING] refund-on-failure FAILED userId=${job.userInfo && job.userInfo.id} jobId=${job.id} reserved=${reserved} :: ${e.message}`,
+    );
+  }
+}
+
 async function runGeneration(job, pipeline, pipelineInput, meta) {
   const {
     date,
@@ -5510,21 +5635,11 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
         // 0크레딧 모델(무료, 예: GPT-5.4 mini)은 차감 자체를 건너뛴다.
         // (?? 사용: ||는 0을 falsy로 봐서 모델 단가로 잘못 폴백함)
         const cost = job.creditCost ?? pricing.getModelCredits(job.model);
-        if (cost <= 0) {
+        if (cost <= 0 && !(job.creditReservation && job.creditReservation.amount > 0)) {
           pushProgress(job, "💳 무료 모델 — 크레딧이 차감되지 않았습니다.");
         } else {
-        try {
-          const { newBalance } = await supa.spendCredits(job.userInfo.id, cost);
-          pushProgress(job, `💳 크레딧 ${cost} 차감 — 남은 크레딧: ${newBalance}`);
-        } catch (e) {
-          console.error(
-            `[BILLING] credit deduction FAILED (uncharged report) userId=${job.userInfo.id} jobId=${job.id} model=${job.model} cost=${cost} :: ${e.message}`,
-          );
-          pushProgress(
-            job,
-            `⚠ 크레딧 차감 실패로 이번 건이 미청구로 기록되었습니다(운영자 확인 필요): ${e.message}`,
-          );
-        }
+          // P1: 예약분 정산(실제비용만 남기고 환불) 또는 레거시 후불 차감. 1회만.
+          await settleReservationOnSuccess(job, cost);
         }
       }
     } else {
@@ -5743,6 +5858,18 @@ app.use(
   }),
 );
 
+// 학교 도입 신청: 공개 제출(POST /api/school-apply) + 관리자 검토(/api/school-apply/admin/*).
+// 외부 학교 담당자가 로그인 없이 양식 파일과 함께 신청 → school_applications 저장 + 이메일 알림.
+app.use(
+  "/api/school-apply",
+  require("./lib/school-apply-routes")({
+    requireAdmin,
+    getSessionUser,
+    upload,
+    limitTotalUpload,
+  }),
+);
+
 // ── 파일 챗봇(베타/위임): 파일을 올리고 Claude와 대화 ───────────────────────────
 // 서버(관리자) 키를 쓰므로 비용이 새지 않게 접근을 제한한다:
 //   관리자 OR 활성 위임(grant) OR 베타('file-chat') 만 사용 가능.
@@ -5824,6 +5951,16 @@ app.post("/api/filechat", requireAuth, limitTotalUpload, requireFilechatAccess, 
           : "오늘 사용량이 많습니다. 잠시 후 다시 시도해 주세요.",
     });
   }
+  // M4: filechat 은 서버 키로 Opus/Sonnet 을 크레딧 차감 없이 호출한다. per-IP 공유
+  // 버킷만으론 IP 로테이션·계정 공유로 남용되므로 per-user 일일 상한을 추가한다.
+  if (u && u.id) {
+    const pl = rateLimit.checkPaidLlmLimit(u.id);
+    if (!pl.allowed) {
+      return res.status(429).json({
+        error: `오늘 파일 챗 사용 한도(${pl.limit}회)를 초과했습니다. 내일 다시 시도해 주세요.`,
+      });
+    }
+  }
 
   // 직전 대화(텍스트만) + 현재 메시지
   let priorTurns = [];
@@ -5858,6 +5995,7 @@ app.post("/api/filechat", requireAuth, limitTotalUpload, requireFilechatAccess, 
   }
 
   rateLimit.recordChatAttempt(ip);
+  if (u && u.id) rateLimit.recordPaidLlmUse(u.id);
 
   const {
     prepareImageForAnthropic,

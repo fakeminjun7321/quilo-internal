@@ -45,11 +45,11 @@
           <span class="brand-mark" aria-hidden="true">Q</span>
           Quilo
         </a>
-        <button type="button" class="topnav-burger" id="navBurger" aria-label="메뉴 열기">☰</button>
+        <button type="button" class="topnav-burger" id="navBurger" aria-label="메뉴 열기" aria-expanded="false">☰</button>
         <nav class="topnav-menu" id="navMenu" aria-label="주 메뉴">
           <!-- ① 보고서 만들기 — AI가 만들어주는 문서·산출물 -->
           <div class="nav-dd" data-dd>
-            <button type="button" class="nav-dd-btn">보고서 만들기 <span class="caret" aria-hidden="true">▾</span></button>
+            <button type="button" class="nav-dd-btn" aria-expanded="false">보고서 만들기 <span class="caret" aria-hidden="true">▾</span></button>
             <div class="nav-dd-menu">
               <a href="#" data-report="chem-pre">화학 사전보고서</a>
               <a href="#" data-report="chem-result">화학 결과보고서</a>
@@ -61,7 +61,7 @@
           </div>
           <!-- ② 공부 -->
           <div class="nav-dd" data-dd>
-            <button type="button" class="nav-dd-btn">공부 <span class="caret" aria-hidden="true">▾</span></button>
+            <button type="button" class="nav-dd-btn" aria-expanded="false">공부 <span class="caret" aria-hidden="true">▾</span></button>
             <div class="nav-dd-menu">
               <a href="/exam-prep.html" id="navExamPrep" hidden>수행평가 도움</a>
               <a href="/physics-studio.html" id="navBetaPhysStudio" hidden>고급 물리 문제</a>
@@ -69,7 +69,7 @@
           </div>
           <!-- ③ 창작·코딩 -->
           <div class="nav-dd" data-dd>
-            <button type="button" class="nav-dd-btn">창작·코딩 <span class="caret" aria-hidden="true">▾</span></button>
+            <button type="button" class="nav-dd-btn" aria-expanded="false">창작·코딩 <span class="caret" aria-hidden="true">▾</span></button>
             <div class="nav-dd-menu">
               <a href="/create.html" id="navBetaCreate" hidden>창작 스튜디오</a>
               <a href="/vibe-coding.html" id="navBetaVibe" hidden>바이브 코딩 생성기</a>
@@ -79,7 +79,7 @@
           </div>
           <!-- ④ 도구 — 소형 유틸리티 -->
           <div class="nav-dd" data-dd>
-            <button type="button" class="nav-dd-btn">도구 <span class="caret" aria-hidden="true">▾</span></button>
+            <button type="button" class="nav-dd-btn" aria-expanded="false">도구 <span class="caret" aria-hidden="true">▾</span></button>
             <div class="nav-dd-menu">
               <a href="/tools/word-count.html">글자수 세기</a>
               <a href="/tools/regression.html">선형회귀 · 추세선</a>
@@ -90,17 +90,18 @@
           </div>
           <!-- ⑤ 둘러보기 -->
           <div class="nav-dd" data-dd>
-            <button type="button" class="nav-dd-btn">둘러보기 <span class="caret" aria-hidden="true">▾</span></button>
+            <button type="button" class="nav-dd-btn" aria-expanded="false">둘러보기 <span class="caret" aria-hidden="true">▾</span></button>
             <div class="nav-dd-menu">
               <a href="/examples.html">예시 모음</a>
               <a href="/guide.html">이용 가이드</a>
               <a href="/changelog.html">패치노트</a>
               <a href="/community.html">커뮤니티</a>
+              <a href="/school-apply.html">🏫 학교 도입 신청</a>
             </div>
           </div>
           <!-- 로그아웃 상태: '로그인' 누르면 로그인 폼이 드롭다운으로 내려온다 -->
           <div class="nav-dd nav-dd-right" data-dd id="loginDd" hidden>
-            <button type="button" class="nav-dd-btn nav-login-trigger">로그인 <span class="caret" aria-hidden="true">▾</span></button>
+            <button type="button" class="nav-dd-btn nav-login-trigger" aria-expanded="false">로그인 <span class="caret" aria-hidden="true">▾</span></button>
             <div class="nav-dd-menu nav-login-menu">
               <form id="loginForm">
                 <div class="auth-head" style="margin-bottom:6px">
@@ -129,7 +130,7 @@
 
           <!-- 로그인 상태: 계정 메뉴 -->
           <div class="nav-dd nav-dd-right" data-dd id="acctDd" hidden>
-            <button type="button" class="nav-dd-btn"><span id="user">내 계정</span> <span class="caret" aria-hidden="true">▾</span></button>
+            <button type="button" class="nav-dd-btn" aria-expanded="false"><span id="user">내 계정</span> <span class="caret" aria-hidden="true">▾</span></button>
             <div class="nav-dd-menu">
               <a href="#" data-tab="files">내 파일</a>
               <a href="#" data-tab="settings">개인 설정</a>

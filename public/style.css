@@ -18,7 +18,9 @@
   /* text */
   --text: #15171c;
   --text-muted: #5e6672;
-  --text-faint: #8b929d;
+  /* 정보성 보조 텍스트(dropzone-sub·form-section-note·placeholder 등)가 WCAG AA(≈4.5:1)를
+     넘도록 상향(구 #8b929d 는 미달). #6b7280 은 흰색/#f5f6f8 위에서 약 4.9:1. */
+  --text-faint: #6b7280;
 
   /* accent (refined blue, 계승) */
   --accent: #2563eb;
@@ -105,7 +107,8 @@ html[data-theme="dark"] {
 
   --text: #e7ebf2;
   --text-muted: #9aa3b0;
-  --text-faint: #69727f;
+  /* 다크에서도 보조 텍스트가 어두운 표면 위에서 ≈4.5:1 이상 되도록 상향(구 #69727f 는 미달). */
+  --text-faint: #9aa3b0;
 
   --accent: #3b76ee;
   --accent-hover: #5288f5;

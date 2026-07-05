@@ -1265,7 +1265,9 @@ def _detect_two_column(doc, _frac=(0.2, 0.35, 0.5, 0.65, 0.8)):
 def cmd_analyze(pdf_path):
     """텍스트 레이어 유무 + 수식 밀도 + 2단 여부를 판정(자동 변환방식 선택용).
     scanned: 텍스트 레이어 없음(스캔/이미지). math_density: 1000자당 수식 지표 점수.
-    two_column: 본문이 2단 레이아웃인지(재조판 시 2단 보존 + 읽기순서 보정용)."""
+    two_column: 본문이 2단 레이아웃인지(재조판 시 2단 보존 + 읽기순서 보정용).
+    ocr_layer: 사진 스캔 위에 '숨은' OCR 텍스트층이 심긴 PDF(vFlat 등) — 이 경우
+    scanned 를 True 로 승격해 비전 OCR 재조판 경로를 태운다(글자 교체 무의미)."""
     doc = fitz.open(pdf_path)
     total = 0
     parts = []
@@ -1290,6 +1292,71 @@ def cmd_analyze(pdf_path):
     garbled_ratio = round(garbage / max(ns, 1), 3)
     # 본문이 충분히 있는데(스캔 아님) 깨짐 비율이 높으면 garbled. 5% 면 정상 문서와 명확히 구분.
     garbled = (not scanned) and ns > 200 and garbled_ratio > 0.05
+    # ── 사진 스캔 + 숨은 OCR 텍스트층(vFlat·ocrmypdf 등) 감지 ──────────────────
+    # 스캔 앱이 사진 위에 '보이지 않는' OCR 텍스트를 심으면 text_chars 가 커져 위
+    # scanned(<20자/쪽) 판정을 통과하지 못한다. 그러나 실제 글자는 사진 픽셀이라
+    # in-place 글자 교체는 '기울어진 사진 위 겹쳐쓰기 + 유령 redaction 박스'가 된다.
+    # 판정: (1) 표본 페이지 대부분에서 이미지 한 장이 페이지의 85%+ 를 덮고
+    #       (2) 텍스트 글리프 대부분이 비가시(render mode 3) → 스캔본으로 승격.
+    # 전면 배경이미지 + '보이는' 실제 텍스트(포스터·슬라이드)는 (2)에서 걸러져
+    # 오탐하지 않는다. texttrace 미지원 환경에서만 OCR 폰트명(V6X_OCR·GlyphLess
+    # 등)을 폴백 증거로 쓴다(OCR-A/B 디자인 폰트 오탐 방지).
+    ocr_layer = False
+    photo_ratio = 0.0
+    invis_ratio = 0.0
+    if (not scanned) and (not garbled) and n > 0 and total > 0:
+        idxs = list(range(n)) if n <= 24 else sorted({round(i * (n - 1) / 23) for i in range(24)})
+        photo_pages = 0
+        invis_glyphs = 0
+        vis_glyphs = 0
+        ocr_font = False
+        for pi in idxs:
+            pg = doc[pi]
+            parea = abs(pg.rect) or 1.0
+            best_cov = 0.0
+            try:
+                for im in pg.get_images(full=True):
+                    for r in pg.get_image_rects(im[0]):
+                        rr = fitz.Rect(r)
+                        rr.intersect(pg.rect)
+                        cov = abs(rr) / parea
+                        if cov > best_cov:
+                            best_cov = cov
+                    if best_cov >= 0.85:
+                        break
+            except Exception:
+                pass
+            if best_cov >= 0.85:
+                photo_pages += 1
+            try:
+                for sp in pg.get_texttrace():
+                    cnt = len(sp.get("chars") or ())
+                    if not cnt:
+                        continue
+                    # type 3 = render mode 3(그리지 않는 글자). opacity 0 도 비가시.
+                    if sp.get("type") == 3 or sp.get("opacity") == 0:
+                        invis_glyphs += cnt
+                    else:
+                        vis_glyphs += cnt
+            except Exception:
+                pass
+            if not ocr_font:
+                try:
+                    for f in pg.get_fonts():
+                        nm = str(f[3] or "").upper()
+                        if "OCR" in nm or "GLYPHLESS" in nm or "INVISIBLE" in nm:
+                            ocr_font = True
+                            break
+                except Exception:
+                    pass
+        photo_ratio = round(photo_pages / max(len(idxs), 1), 3)
+        seen = invis_glyphs + vis_glyphs
+        invis_ratio = round(invis_glyphs / seen, 3) if seen else 0.0
+        strong_invis = seen > 0 and invis_ratio >= 0.5
+        fallback_font = seen == 0 and ocr_font  # texttrace 판독 불가 환경 폴백
+        if photo_ratio >= 0.8 and (strong_invis or fallback_font):
+            ocr_layer = True
+            scanned = True  # 기존 스캔 라우팅(비전 OCR 재조판)을 그대로 태운다
     two_column = (not scanned) and (not garbled) and _detect_two_column(doc)
     # 수식 지표: 그리스 문자(U+0370–03FF), 수학 기호, 위/아래 첨자(U+2070–209F), '=' 빈도
     greek = sum(1 for c in text if "Ͱ" <= c <= "Ͽ")
@@ -1308,8 +1375,30 @@ def cmd_analyze(pdf_path):
             "math_score": math_score,
             "math_density": density,
             "two_column": two_column,
+            "ocr_layer": ocr_layer,
+            "photo_page_ratio": photo_ratio,
+            "invisible_text_ratio": invis_ratio,
         }
     )
+    doc.close()
+
+
+def cmd_pagetext(pdf_path, max_chars_per_page=3500):
+    """페이지별 텍스트층 덤프(JSON) — 스캔본에 심긴 기존 OCR 텍스트층을 비전 OCR
+    재조판의 '참고 힌트'로 쓰기 위함. 판독 기준은 항상 페이지 이미지고 이 텍스트는
+    보조다(오인식 가능). stdout: {"page_count": N, "pages": [{"page", "text"}]}"""
+    max_chars_per_page = int(max_chars_per_page)
+    doc = fitz.open(pdf_path)
+    pages = []
+    for i, page in enumerate(doc):
+        t = (page.get_text("text") or "").strip()
+        if not t:
+            continue
+        t = re.sub(r"[ \t]+", " ", t)
+        if len(t) > max_chars_per_page:
+            t = t[:max_chars_per_page] + " …(잘림)"
+        pages.append({"page": i + 1, "text": t})
+    write_json_response({"page_count": len(doc), "pages": pages})
     doc.close()
 
 
@@ -2266,6 +2355,9 @@ def main():
             cmd_extract(sys.argv[2])
         elif mode == "analyze":
             cmd_analyze(sys.argv[2])
+        elif mode == "pagetext":
+            # pagetext <pdf> [max_chars_per_page] — 숨은 OCR 텍스트층 페이지별 덤프(비전 힌트용)
+            cmd_pagetext(*sys.argv[2:4])
         elif mode == "rasterize":
             # rasterize <pdf> <out_dir> [long_edge_px] [max_pages]
             cmd_rasterize(*sys.argv[2:6])

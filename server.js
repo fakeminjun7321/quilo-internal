@@ -4575,14 +4575,27 @@ async function prepareScannedRouting(pdfBuffer, { signal, onProgress }) {
 function buildOcrHint(pageTexts, startPage, endPage) {
   if (!Array.isArray(pageTexts) || !pageTexts.length) return null;
   const parts = [];
-  let budget = 60000; // 구간당 힌트 상한(문자) ≈ 15k 토큰
+  // 구간당 힌트 상한(문자). 힌트는 '보조'(판독 기준은 항상 이미지)인데도 예전 60K 는
+  // 밀집 교재에서 입력 토큰의 ~40%를 먹었다 → 40K(≈10k 토큰)로 낮춰 비용을 줄인다.
+  // 예산 초과 시 그 페이지를 통째로 버리지 않고 앞부분만 잘라 넣어(고유명사·번호는 보통
+  // 페이지 앞쪽) 뒤 페이지 커버리지 손실을 막는다. env 로 조절 가능.
+  const total = Math.max(
+    4000,
+    parseInt(process.env.PDF_OCR_HINT_BUDGET_CHARS || "40000", 10),
+  );
+  let budget = total;
   for (const p of pageTexts) {
+    if (budget < 200) break; // 남은 예산이 무의미하게 작으면 종료
     const pno = Number(p && p.page);
     if (!pno || pno < startPage || pno > endPage) continue;
     const t = String((p && p.text) || "").trim();
     if (!t) continue;
-    const chunk = `[원본 ${pno}쪽 OCR]\n${t}`;
-    if (chunk.length > budget) break;
+    const head = `[원본 ${pno}쪽 OCR]\n`;
+    let chunk = head + t;
+    if (chunk.length > budget) {
+      // 페이지 앞부분만 남기고 잘림 표시(뒤 페이지도 힌트를 받도록 통째 drop 금지).
+      chunk = head + t.slice(0, Math.max(0, budget - head.length - 12)) + " …(잘림)";
+    }
     parts.push(chunk);
     budget -= chunk.length;
   }

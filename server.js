@@ -748,6 +748,7 @@ const { getVersionInfo } = require("./lib/version-info");
 const { translatePdf, makeGate } = require("./lib/pipelines/pdf-translate/translate");
 const { retypesetPdf } = require("./lib/pipelines/pdf-translate/latex-gen");
 const { prewarmTectonic } = require("./lib/pipelines/pdf-translate/latex-pdf");
+const mistralOcr = require("./lib/pipelines/pdf-translate/mistral-ocr");
 const { convertDocxToHwpx } = require("./lib/pipelines/docx-to-hwpx");
 const {
   analyzePdf,
@@ -4499,6 +4500,26 @@ async function prepareScannedRouting(pdfBuffer, { signal, onProgress }) {
         pageTexts = Array.isArray(pt.pages) && pt.pages.length ? pt.pages : null;
       } catch (e) {
         onProgress(`⚠ OCR 텍스트층 덤프 실패(힌트 없이 진행): ${e.message}`);
+      }
+    }
+    // 숨은 OCR 텍스트층이 없으면(순수 스캔·깨진 폰트) Mistral OCR 로 원문 텍스트를 뽑아
+    // 비전 프롬프트의 힌트로 쓴다(고유명사·숫자·코드 정확도↑·모델 부담↓).
+    // ⚠ 안전장치: 키 미설정·API 오류·과대용량이면 조용히 폴백해 기존 비전 OCR(모델이 이미지를
+    // 직접 판독) 그대로 진행한다 — Mistral 실패가 번역 전체를 막지 않는다.
+    if (!pageTexts && mistralOcr.mistralOcrConfigured()) {
+      try {
+        onProgress("🔎 Mistral OCR 로 원문 텍스트 추출 중(정확도 향상)...");
+        const pt = await mistralOcr.ocrPdfToPageTexts(pdfBuffer, { signal });
+        if (pt && pt.length) {
+          pageTexts = pt;
+          onProgress(`✅ Mistral OCR ${pt.length}쪽 추출 완료 — 번역 힌트로 사용합니다.`);
+        } else {
+          onProgress("ℹ Mistral OCR 사용 불가(용량/설정) — 기존 비전 OCR 로 진행합니다.");
+        }
+      } catch (e) {
+        onProgress(
+          `⚠ Mistral OCR 실패 — 기존 비전 OCR 로 진행합니다 (${String(e.message).slice(0, 80)})`,
+        );
       }
     }
     // 큰 문서는 한 번에 래스터하지 않고(메모리), 구간별로 나눠 OCR 후 병합한다.

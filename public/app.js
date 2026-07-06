@@ -256,7 +256,7 @@ let currentStudentId = "";
             if (!d.fableDisabled) {
               document.querySelectorAll("label.fable-model").forEach((l) => { l.hidden = false; });
             }
-            // 신규 제공자 모델(Gemini/Kimi) — 신규 AI 기능은 관리자 전용으로 먼저 노출.
+            // 신규 제공자 모델(Gemini) — 신규 AI 기능은 관리자 전용으로 먼저 노출.
             document.querySelectorAll("label.beta-model").forEach((l) => { l.hidden = false; });
           }
           // 관리자는 서버에서 제한 면제 → 카드도 전부 표시
@@ -584,7 +584,6 @@ let currentStudentId = "";
         "gpt-5.4-mini": 0,
         "gemini-3.1-pro": 2,
         "gemini-2.5-flash": 1,
-        "kimi-latest": 1,
       };
       function getModelCredits(modelId) {
         return MODEL_CREDITS[modelId] != null ? MODEL_CREDITS[modelId] : 4;
@@ -3033,21 +3032,6 @@ let currentStudentId = "";
       }
 
       async function submitReport({ formEl, buttonEl, formData, busyText = "생성 중...", estimate = null }) {
-        // ⚠ 중국 서버(Kimi 등) 모델 — 전송 전 사용자 동의를 명시적으로 받는다(서버도 403 재검증).
-        try {
-          const m = formData && formData.get ? String(formData.get("model") || "") : "";
-          if (/^kimi/i.test(m) && formData.get("foreignConsent") !== "true") {
-            const ok = window.confirm(
-              "선택한 모델(Kimi)은 가격이 매우 저렴하고 성능이 좋지만, 입력하신 자료가 " +
-              "중국 소재 서버(Moonshot)로 전송됩니다.\n\n" +
-              "· 이름·학번·이메일·전화번호 등 개인정보는 자동 제거 후 전송됩니다.\n" +
-              "· 민감한 내용이 있으면 다른 모델(Claude/GPT/Gemini)을 권장합니다.\n\n" +
-              "동의하고 이 모델로 생성할까요?",
-            );
-            if (!ok) return; // 폼은 아직 잠그기 전이라 그대로 사용 가능
-            formData.set("foreignConsent", "true");
-          }
-        } catch (_) {}
         lockForm(formEl);
         if (buttonEl) buttonEl.textContent = busyText;
         // 백그라운드 실행 선택을 FormData 에 1회 baking(재시도 시 동일 모드 유지).

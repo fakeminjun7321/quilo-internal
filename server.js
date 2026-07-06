@@ -3474,10 +3474,10 @@ app.post(
     // ⚠ 과거 제외 이력: reading-log/-bulk 은 GPT가 책 내용을 일반론으로 뭉뚱그리거나
     //   다른 책(예: '코스모스')으로 바꾸는 사고가 있었음(실측) — 품질 민원 시 재제외 검토.
     const GPT_REPORT_MODELS = ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"];
-    // Gemini/Qwen(OpenAI 호환) — 라우팅을 배선한 핵심 보고서 타입에서만 허용.
+    // Gemini/Kimi(OpenAI 호환) — 라우팅을 배선한 핵심 보고서 타입에서만 허용.
     // 미배선 타입(reading-log 등)은 Claude 경로로 빠져 깨지므로 화이트리스트에 넣지 않는다.
     const GEMINI_REPORT_MODELS = ["gemini-3.1-pro", "gemini-2.5-flash"];
-    const QWEN_REPORT_MODELS = ["qwen-flash"]; // ⚠중국 — foreignConsent 필수(아래 게이트)
+    const KIMI_REPORT_MODELS = ["kimi-latest"]; // ⚠중국(Moonshot) — foreignConsent 필수(아래 게이트)
     const GPT_OK_TYPES = new Set(Object.keys(PIPELINES));
     const OPENAI_COMPAT_TYPES = new Set([
       "chem-pre",
@@ -3488,7 +3488,7 @@ app.post(
     const allowedModels = [...ALLOWED_MODELS];
     if (GPT_OK_TYPES.has(reportType)) allowedModels.push(...GPT_REPORT_MODELS);
     if (OPENAI_COMPAT_TYPES.has(reportType)) {
-      allowedModels.push(...GEMINI_REPORT_MODELS, ...QWEN_REPORT_MODELS);
+      allowedModels.push(...GEMINI_REPORT_MODELS, ...KIMI_REPORT_MODELS);
     }
     const requestedModel = String(req.body.model || "").trim();
     // Fable 5 요청 처리: 일시 차단 중이면 관리자 포함 전체 거부, 아니면 관리자 전용.
@@ -3549,19 +3549,19 @@ app.post(
           "Gemini 모델은 현재 서버에 키가 설정되지 않아 사용할 수 없습니다(GEMINI_API_KEY).",
       });
     }
-    // Qwen(⚠중국 서버) — 키 미설정 거부 + 사용자 동의(foreignConsent) 강제.
+    // Kimi(⚠중국 서버, Moonshot) — 키 미설정 거부 + 사용자 동의(foreignConsent) 강제.
     // 동의는 클라이언트 모달에서 받고, 서버가 재검증한다(우회 방지).
-    if (/^qwen/i.test(model)) {
-      if (!(process.env.DASHSCOPE_API_KEY || process.env.QWEN_API_KEY)) {
+    if (/^kimi/i.test(model) || /^moonshot/i.test(model)) {
+      if (!(process.env.MOONSHOT_API_KEY || process.env.KIMI_API_KEY)) {
         return res.status(503).json({
           error:
-            "Qwen 모델은 현재 서버에 키가 설정되지 않아 사용할 수 없습니다(DASHSCOPE_API_KEY).",
+            "Kimi 모델은 현재 서버에 키가 설정되지 않아 사용할 수 없습니다(MOONSHOT_API_KEY).",
         });
       }
       if (String(req.body.foreignConsent) !== "true") {
         return res.status(403).json({
           error:
-            "이 모델은 입력 자료가 중국 소재 서버(Alibaba)로 전송됩니다. 사용하려면 동의가 필요합니다.",
+            "이 모델은 입력 자료가 중국 소재 서버(Moonshot)로 전송됩니다. 사용하려면 동의가 필요합니다.",
         });
       }
     }

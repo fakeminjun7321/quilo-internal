@@ -4385,6 +4385,7 @@ async function extractFiguresForRetypeset(pdfBuffer, { signal, onProgress }) {
             n: f.n,
             page: f.page,
             caption: f.caption || "",
+            anchor: f.anchor || "", // 배치용 앵커(그림 바로 앞 문항/문단 텍스트)
             buffer: fs.readFileSync(f.file),
           };
         } catch {

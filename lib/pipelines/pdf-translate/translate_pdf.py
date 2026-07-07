@@ -2361,14 +2361,32 @@ def _expand_region_with_labels(
 
     # 다른 그림 영역(살짝 수축시켜 경계 접촉은 허용)과 겹침 판정 — 다중 패널 상호 잠식 방지.
     others = []
+    others_full = []
     for o in other_regions or []:
         if abs(o.x0 - reg.x0) < 0.5 and abs(o.y0 - reg.y0) < 0.5 and abs(o.x1 - reg.x1) < 0.5:
             continue  # 자기 자신
         others.append(fitz.Rect(o.x0 + 3, o.y0 + 3, o.x1 - 3, o.y1 - 3))
+        others_full.append(fitz.Rect(o))
 
     def _hits_other(rect):
         for o in others:
             if not o.is_empty and rect.intersects(o):
+                return True
+        return False
+
+    def _edge_dist(rect, box):
+        dx = max(box.x0 - rect.x1, rect.x0 - box.x1, 0.0)
+        dy = max(box.y0 - rect.y1, rect.y0 - box.y1, 0.0)
+        return (dx * dx + dy * dy) ** 0.5
+
+    def _owned_by_other(br_):
+        # 라벨(축 숫자·화살표 이름 등)은 '가장 가까운 그림'의 것 — 다른 그림에 더 가까우면
+        # 이 그림 크롭에 넣지 않는다(인접 그림의 →x·y 축 라벨이 옆 그림에 딸려오는 것 방지).
+        if not others_full:
+            return False
+        d_self = _edge_dist(br_, reg)
+        for o in others_full:
+            if _edge_dist(br_, o) < d_self - 0.5:
                 return True
         return False
 
@@ -2399,8 +2417,8 @@ def _expand_region_with_labels(
             include = True  # (3) 바로 위 축 문자(p·y 등, 아주 짧은 것만)
         if not include:
             continue
-        # 라벨 자체가 다른 그림 영역 안에 있으면(그 그림의 라벨) 스킵.
-        if _hits_other(br):
+        # 라벨 자체가 다른 그림 영역 안에 있거나, 다른 그림에 더 가까우면(그 그림의 라벨) 스킵.
+        if _hits_other(br) or _owned_by_other(br):
             continue
         # 이 라벨을 넣었을 때 확장 영역이 본문 산문이나 다른 그림 영역과 겹치면 스킵
         # (여백 그림 옆 본문 보호 + 인접 다중 패널 상호 잠식 방지).
@@ -2421,6 +2439,140 @@ def _expand_region_with_labels(
     return grown if not grown.is_empty else fitz.Rect(reg)
 
 
+def _merge_panel_rows(regions, page):
+    """가로로 나란한 패널들((a)(b)(c) 다중 패널 그림처럼 세로로 겹치고 가로 간격이 좁은
+    그림 영역)을 하나의 그림으로 병합한다. 이렇게 해야 재조판본에서 원본처럼 '옆으로'
+    배치되고(세로 스택 방지), 모델이 어느 패널을 어디 두는지 헷갈릴 일도 없다.
+    독립된 그림 2개가 우연히 같은 높이에 있어도(간격이 크면) 병합하지 않는다."""
+    W = page.rect.width
+    rects = [fitz.Rect(r) for r in regions]
+    used = [False] * len(rects)
+    merged = []
+    # 패널 사이 간격은 좁다(축 라벨 한 칸 정도). 컬럼 거터(~50pt+)를 패널 간격으로
+    # 오인해 다른 단의 그림까지 병합하지 않도록 상한을 40pt 로 좁게 잡는다.
+    max_gap = 40.0
+    for i in range(len(rects)):
+        if used[i]:
+            continue
+        grp = fitz.Rect(rects[i])
+        used[i] = True
+        changed = True
+        while changed:
+            changed = False
+            for j in range(len(rects)):
+                if used[j]:
+                    continue
+                s = rects[j]
+                yov = min(grp.y1, s.y1) - max(grp.y0, s.y0)
+                minh = min(grp.height, s.height)
+                maxh = max(grp.height, s.height)
+                gapx = max(s.x0 - grp.x1, grp.x0 - s.x1)  # 겹치면 음수
+                # 같은 패널 행 조건: (1) 세로로 60%+ 겹침, (2) 가로 간격이 좁음,
+                # (3) 두 영역의 높이가 비슷함(패널은 크기가 유사; 여백의 작은 그림이
+                # 큰 그림에 딸려가는 것 방지), (4) 병합 결과가 페이지 폭을 거의 다
+                # 덮지 않음(과병합 방지).
+                if (
+                    yov > 0.6 * minh
+                    and gapx < max_gap
+                    and minh > 0.55 * maxh
+                ):
+                    cand = grp | s
+                    if cand.width < 0.94 * W:
+                        grp = cand
+                        used[j] = True
+                        changed = True
+        merged.append(grp)
+    return merged
+
+
+def _figure_anchor(tblocks, reg, page):
+    """그림이 '어느 문항/문단'에 속하는지 알려주는 텍스트 앵커를 만든다 — 그래프가 많은
+    연습문제 페이지에서 모델이 비슷한 그래프를 엉뚱한 문항에 배치하는 것을 막기 위함.
+    그림 바로 위(같은 단 안)에서 가장 가까운 본문 블록의 앞부분을 앵커로 쓴다.
+    문항 번호(예: '19.')가 있으면 특히 강한 단서가 된다."""
+    W = page.rect.width
+    cx = (reg.x0 + reg.x1) / 2.0
+    best = None
+    best_dy = 1e9
+    for b in tblocks:
+        if len(b) < 5:
+            continue
+        x0, y0, x1, y1 = b[0], b[1], b[2], b[3]
+        txt = " ".join((b[4] or "").split())
+        if len(txt) < 4:
+            continue
+        # 같은 단(가로로 그림과 겹치거나 그림 중심을 포함) + 그림 위에 있는 블록.
+        horiz = x0 <= cx + 20 and x1 >= cx - 20
+        if not horiz:
+            continue
+        dy = reg.y0 - y1  # 그림 위: 양수
+        if dy < -6 or dy > 220:
+            continue
+        if dy < best_dy:
+            best_dy = dy
+            best = txt
+    if not best:
+        return ""
+    # 문항 번호가 있으면 그것부터, 없으면 앞부분 60자.
+    m = re.match(r"\s*(\d{1,3})[.)]", best)
+    snippet = best[:70]
+    return snippet
+
+
+def _branding_image_xrefs(doc, sample_cap=60):
+    """여러 페이지의 헤더/푸터 자리에 반복 등장하는 이미지의 xref 집합 — 로고·워터마크·
+    브랜딩. 이런 이미지는 '그림'이 아니라 페이지 장식이므로 그림 추출에서 제외한다.
+    xref 로 식별하므로, 같은 로고가 본문 중간에 '깨진 그림 대체'로 박혀도(예: LibreTexts
+    가 누락 그림을 로고로 대체) 함께 걸러낸다.
+    판정: 상단 18% 또는 하단 12% 띠 안에 나온 이미지 xref 가 3쪽 이상 & 표본의 40% 이상."""
+    n = len(doc)
+    if n < 3:
+        return set()
+    idxs = list(range(n)) if n <= sample_cap else sorted(
+        {round(i * (n - 1) / (sample_cap - 1)) for i in range(sample_cap)}
+    )
+    from collections import defaultdict
+
+    counts = defaultdict(int)
+    for pi in idxs:
+        pg = doc[pi]
+        H = pg.rect.height or 1.0
+        top_band = pg.rect.y0 + 0.18 * H
+        bot_band = pg.rect.y1 - 0.12 * H
+        seen = set()
+        try:
+            for im in pg.get_images(full=True):
+                xref = im[0]
+                in_band = False
+                for r in pg.get_image_rects(xref):
+                    rr = fitz.Rect(r)
+                    if rr.y1 <= top_band or rr.y0 >= bot_band:
+                        in_band = True
+                        break
+                if in_band and xref not in seen:
+                    seen.add(xref)
+                    counts[xref] += 1
+        except Exception:
+            pass
+    thresh = max(3, int(0.4 * len(idxs)))
+    return {x for x, c in counts.items() if c >= thresh}
+
+
+def _branding_rects_on_page(page, branding_xrefs):
+    """이 페이지에서 브랜딩 xref 이미지가 차지하는 모든 bbox(헤더/푸터든 본문이든)."""
+    out = []
+    if not branding_xrefs:
+        return out
+    try:
+        for im in page.get_images(full=True):
+            if im[0] in branding_xrefs:
+                for r in page.get_image_rects(im[0]):
+                    out.append(fitz.Rect(r))
+    except Exception:
+        pass
+    return out
+
+
 def cmd_figures(pdf_path, out_dir, zoom=3.0, max_figures=80):
     """텍스트 PDF 의 그림/도표 영역을 PNG 로 잘라 out_dir 에 저장하고 메타데이터를 낸다.
     재조판(re-typeset) 시 원본 그림을 \\includegraphics 로 복원하기 위한 입력.
@@ -2437,6 +2589,8 @@ def cmd_figures(pdf_path, out_dir, zoom=3.0, max_figures=80):
     max_figures = max(1, min(500, max_figures))
     doc = fitz.open(pdf_path)
     os.makedirs(out_dir, exist_ok=True)
+    # 여러 페이지 헤더/푸터에 반복되는 로고·워터마크 이미지 xref(그림 아님) → 제외.
+    branding_xrefs = _branding_image_xrefs(doc)
     figs_out = []
     n = 0
     for pno in range(len(doc)):
@@ -2444,6 +2598,24 @@ def cmd_figures(pdf_path, out_dir, zoom=3.0, max_figures=80):
         regs = _figure_regions(page)
         if not regs:
             continue
+        # 브랜딩 로고 이미지와 대부분 겹치는 region 은 그림이 아니므로 버린다(본문 중간에
+        # 박힌 로고 = 깨진 그림 대체 포함).
+        brand_rects = _branding_rects_on_page(page, branding_xrefs)
+        if brand_rects:
+            def _is_branding(r):
+                rr = fitz.Rect(r)
+                area = abs(rr) or 1.0
+                for b in brand_rects:
+                    inter = fitz.Rect(rr) & b
+                    if not inter.is_empty and abs(inter) >= 0.6 * area:
+                        return True
+                return False
+
+            regs = [r for r in regs if not _is_branding(r)]
+            if not regs:
+                continue
+        # 가로로 나란한 패널((a)(b)(c) 등)을 한 그림으로 병합 → 원본처럼 옆으로 배치.
+        regs = _merge_panel_rows(regs, page)
         regs = sorted(regs, key=lambda r: (round(r.y0, 1), round(r.x0, 1)))
         try:
             tblocks = page.get_text("blocks")
@@ -2451,11 +2623,22 @@ def cmd_figures(pdf_path, out_dir, zoom=3.0, max_figures=80):
             tblocks = []
         mat = fitz.Matrix(zoom, zoom)
         pr = page.rect
+        pgH = pr.height or 1.0
+        pgW = pr.width or 1.0
         for reg in regs:
             if n >= max_figures:
                 break
             if reg.width < 45 or reg.height < 45:
                 continue  # 너무 작음(아이콘·기호 조각) → 그림으로 보지 않음
+            # 페이지 최상단 여백의 작은 영역 = 로고/헤더 장식(벡터 로고 포함) → 그림 아님.
+            # 실제 그림은 상단 6% 여백에서 시작하지 않는다(제목·헤더 자리). 보수적으로 작은
+            # 것만 제외(넓거나 큰 상단 배너형 그림은 유지).
+            if (
+                reg.y0 - pr.y0 < 0.06 * pgH
+                and reg.height < 0.12 * pgH
+                and reg.width < 0.5 * pgW
+            ):
+                continue
             # 벡터 드로잉 밖의 축 눈금 숫자·곡선 라벨·축 제목까지 크롭에 포함(잘림 방지).
             # 같은 페이지의 다른 그림 영역(regs)은 침범 금지 — 인접 다중 패널 상호 잠식 방지.
             reg2 = _expand_region_with_labels(page, reg, other_regions=regs)
@@ -2491,6 +2674,7 @@ def cmd_figures(pdf_path, out_dir, zoom=3.0, max_figures=80):
                         round(reg.y1, 1),
                     ],
                     "caption": _figure_caption(tblocks, reg),
+                    "anchor": _figure_anchor(tblocks, reg, page),
                     "file": os.path.abspath(fname),
                     "w": pix.width,
                     "h": pix.height,

@@ -4132,20 +4132,25 @@ app.post(
   "/api/translate-pdf",
   requireMax(),
   limitTotalUpload,
-  upload.single("pdf"),
+  // 여러 PDF 를 한 번에 받아 순서대로(제한 병렬) 번역한다 — 기존 단일 업로드도 그대로 동작.
+  upload.array("pdf", 10),
   async (req, res) => {
-    const file = req.file;
-    if (!file) {
+    const files = req.files || [];
+    if (!files.length) {
       return res.status(400).json({ error: "PDF 파일을 업로드하세요." });
     }
-    // multer 가 주는 originalname 은 한글이 latin1 로 깨져 들어온다 — /api/generate
-    // 와 동일하게 정규화해야 다운로드 파일명(…_KO.pdf)이 깨지지 않는다.
-    file.originalname = normalizeUploadFilename(file.originalname);
-    if (
-      file.mimetype !== "application/pdf" &&
-      !/\.pdf$/i.test(file.originalname || "")
-    ) {
-      return res.status(400).json({ error: "PDF 파일만 업로드 가능합니다." });
+    for (const file of files) {
+      // multer 가 주는 originalname 은 한글이 latin1 로 깨져 들어온다 — /api/generate
+      // 와 동일하게 정규화해야 다운로드 파일명(…_KO.pdf)이 깨지지 않는다.
+      file.originalname = normalizeUploadFilename(file.originalname);
+      if (
+        file.mimetype !== "application/pdf" &&
+        !/\.pdf$/i.test(file.originalname || "")
+      ) {
+        return res.status(400).json({
+          error: `PDF 파일만 업로드 가능합니다: ${file.originalname || "(이름 없음)"}`,
+        });
+      }
     }
 
     const userInfo = getSessionUser(req);
@@ -4227,24 +4232,27 @@ app.post(
       parseInt(process.env.TRANSLATE_MONTHLY_PAGES || "300", 10),
     );
     if (TR_MONTHLY_PAGES > 0 && !userInfo.isAdmin && userInfo.id) {
+      // 여러 파일이면 전체 페이지 합계로 캡을 검사한다.
       let trPages = 0;
-      try {
-        const capDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdfcap-"));
-        const capPath = path.join(capDir, "in.pdf");
-        fs.writeFileSync(capPath, file.buffer);
-        const a = await analyzePdf(capPath, {});
-        trPages = Math.max(0, Number(a.page_count) || 0);
+      for (const file of files) {
         try {
-          fs.rmSync(capDir, { recursive: true, force: true });
-        } catch (_) {}
-      } catch (_) {
-        trPages = 0; // 분석 실패 → 캡 검사 생략(요청은 진행)
+          const capDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdfcap-"));
+          const capPath = path.join(capDir, "in.pdf");
+          fs.writeFileSync(capPath, file.buffer);
+          const a = await analyzePdf(capPath, {});
+          trPages += Math.max(0, Number(a.page_count) || 0);
+          try {
+            fs.rmSync(capDir, { recursive: true, force: true });
+          } catch (_) {}
+        } catch (_) {
+          // 분석 실패한 파일은 캡 검사에서 제외(요청은 진행)
+        }
       }
       if (trPages > 0) {
         const used = rateLimit.getTranslatePagesUsed(userInfo.id);
         if (used + trPages > TR_MONTHLY_PAGES) {
           return res.status(429).json({
-            error: `이번 달 PDF 통번역 한도(${TR_MONTHLY_PAGES}페이지)를 초과합니다 — 사용 ${used}p + 이 문서 ${trPages}p. 다음 달에 다시 이용해 주세요.`,
+            error: `이번 달 PDF 통번역 한도(${TR_MONTHLY_PAGES}페이지)를 초과합니다 — 사용 ${used}p + 이 문서${files.length > 1 ? `들(${files.length}개)` : ""} ${trPages}p. 다음 달에 다시 이용해 주세요.`,
           });
         }
         rateLimit.addTranslatePages(userInfo.id, trPages);
@@ -4283,6 +4291,15 @@ app.post(
     const mode = ["inplace", "retypeset", "auto"].includes(reqMode)
       ? reqMode
       : "auto";
+    // 파일별 변환 방식(선택): 프런트가 파일 순서에 맞춘 JSON 배열('modes')을 보낼 수 있다
+    // (예: 스캔본만 재조판, 나머지는 빠른 번역). 없거나 값이 이상하면 mode 를 적용.
+    let reqModes = null;
+    try {
+      const arr = JSON.parse(String(req.body.modes || "null"));
+      if (Array.isArray(arr)) reqModes = arr;
+    } catch (_) {
+      /* modes 없음/파싱 실패 → 공통 mode 사용 */
+    }
     // 복원만(번역 없이 재조판) / 그래프 벡터 재생성 옵션.
     const restoreOnly = ["1", "true", "on"].includes(
       String(req.body.restoreOnly || "").trim(),
@@ -4291,9 +4308,17 @@ app.post(
       String(req.body.chartRedraw || "").trim(),
     );
 
+    const fileItems = files.map((f, i) => {
+      const m = String((reqModes && reqModes[i]) || "").trim();
+      return {
+        buffer: f.buffer,
+        originalName: f.originalname || "document.pdf",
+        mode: ["inplace", "retypeset", "auto"].includes(m) ? m : mode,
+      };
+    });
+
     runPdfTranslation(job, {
-      pdfBuffer: file.buffer,
-      originalName: file.originalname || "document.pdf",
+      files: fileItems,
       model,
       mode,
       restoreOnly,
@@ -4781,309 +4806,434 @@ async function translateLargeVisionPdf({
   }
 }
 
-async function runPdfTranslation(
-  job,
-  { pdfBuffer, originalName, model, mode, restoreOnly = false, chartRedraw = false },
-) {
-  const t0 = Date.now();
-  const translateTimeoutMs = /^claude-fable/.test(String(model || ""))
-    ? PDF_TRANSLATE_FABLE_TIMEOUT_MS
-    : PDF_TRANSLATE_TIMEOUT_MS;
-  const timeoutMin = Math.round(translateTimeoutMs / 60000);
-  pushProgress(job, `🚀 PDF 통번역 시작 (timeout: ${timeoutMin}분)`);
+// ── PDF 1개 통번역 코어 ─────────────────────────────────────────────────────
+// runPdfTranslation 이 파일별로 호출한다. job 을 직접 만지지 않고 signal/onProgress
+// 로만 소통한다 → 여러 파일을 순서대로(제한 병렬) 돌릴 때 파일별 중단·로그 prefix 가 가능.
+async function translateOnePdfCore({
+  pdfBuffer,
+  originalName,
+  model,
+  mode,
+  restoreOnly = false,
+  chartRedraw = false,
+  signal,
+  onProgress,
+  isTimedOut = () => false,
+}) {
+  const sizeKB = Math.round(pdfBuffer.length / 1024);
+  onProgress(`📥 PDF 수신 (${sizeKB}KB)`);
 
-  const ac = new AbortController();
-  job.abortController = ac;
-  let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
-    pushProgress(job, `⏰ ${timeoutMin}분 초과 — 강제 종료 중...`);
-    ac.abort();
-  }, translateTimeoutMs);
+  // 스캔/이미지 PDF 라우팅: 텍스트 레이어가 없으면 in-place 든 retypeset 이든
+  // 무조건 고해상도 OCR 재조판으로 처리한다(글자 교체는 텍스트 박스가 없어 불가).
+  const routing = await prepareScannedRouting(pdfBuffer, {
+    signal,
+    onProgress,
+  });
+  // 상한 이내면 in-place 경로가 자동으로 50쪽씩 구간 분할·병렬 번역 후 합친다
+  // (translate.js translatePdf). 상한을 넘는 초대형 문서만 거부한다.
+  // 상한은 in-place(구간 분할·병합)·OCR 재조판(구간 분할·병합) 양쪽 모두에 적용한다.
+  const maxTextPages = parseInt(process.env.PDF_TRANSLATE_MAX_PAGES || "700", 10);
+  if (routing.pageCount > maxTextPages) {
+    throw new Error(
+      `페이지가 너무 많습니다 (${routing.pageCount}쪽 > 상한 ${maxTextPages}쪽). 파일을 나눠서 시도하세요.`,
+    );
+  }
 
-  try {
-    const sizeKB = Math.round(pdfBuffer.length / 1024);
-    pushProgress(job, `📥 PDF 수신 (${sizeKB}KB)`);
+  // 변환 방식 결정.
+  // - 명시적 '재조판' → 그대로.
+  // - '자동' → 스캔/수식밀도로 결정.
+  // - 명시적 '빠른 번역(in-place)' → **사용자 선택 존중**. 프런트엔드에서 수식 많은
+  //   문서면 '재조판 권유' 확인창을 먼저 띄우므로(아래 estimate 기반), 여기까지 inplace
+  //   로 온 건 사용자가 권유를 받고도 빠른 번역을 고른 것 → 그대로 둔다. 단 **스캔본은
+  //   글자 교체할 텍스트 박스가 없어 in-place 가 물리적으로 불가능** → 재조판으로 전환.
+  const AUTO_MATH_THRESHOLD = Number(process.env.PDF_AUTO_MATH_THRESHOLD || 12);
+  const isAuto = mode !== "inplace" && mode !== "retypeset";
+  const needsRetypeset =
+    routing.scanned || (routing.mathDensity || 0) >= AUTO_MATH_THRESHOLD;
+  let resolvedMode;
+  if (mode === "retypeset") {
+    resolvedMode = "retypeset";
+  } else if (mode === "inplace") {
+    // 사용자가 명시적으로 빠른 번역 선택 → 스캔본만 재조판 강제, 수식 밀집은 존중.
+    resolvedMode = routing.scanned ? "retypeset" : "inplace";
+  } else {
+    resolvedMode = needsRetypeset ? "retypeset" : "inplace";
+  }
+  if (mode === "inplace" && routing.scanned) {
+    onProgress(
+      routing.ocrLayer
+        ? "⚠ 사진 스캔 + 숨은 OCR 텍스트층 PDF는 '빠른 번역(글자 교체)' 시 기울어진 사진 위에 글자가 겹쳐 깨집니다 → 'OCR 재조판'으로 전환합니다."
+        : routing.garbled
+          ? "⚠ 본문 글자가 깨진 폰트로 박혀 추출 불가한 PDF는 '빠른 번역(글자 교체)'이 불가능합니다 → 'OCR 재조판'으로 전환합니다."
+          : "⚠ 스캔본/이미지 PDF는 글자만 교체하는 '빠른 번역'이 불가능합니다 → 'OCR 재조판'으로 전환합니다.",
+    );
+  } else if (mode === "inplace" && needsRetypeset) {
+    // 수식 많은 문서를 사용자가 빠른 번역으로 고른 경우(확인창에서 유지 선택).
+    onProgress(
+      `ℹ 수식이 많은 문서(수식밀도 ${routing.mathDensity ?? 0})를 '빠른 번역'으로 처리합니다 — 일부 수식이 깨질 수 있습니다(원하면 '재조판'으로 다시 시도).`,
+    );
+  } else if (isAuto) {
+    onProgress(
+      `🔎 자동 변환방식 → ${resolvedMode === "retypeset" ? "재조판(수식·정밀)" : "빠른 번역(레이아웃 유지)"}` +
+        (routing.scanned
+          ? routing.ocrLayer
+            ? " · 사진 스캔+숨은 OCR층 감지"
+            : routing.garbled
+              ? " · 깨진 텍스트층 감지"
+              : " · 스캔본 감지"
+          : ` · 수식밀도 ${routing.mathDensity ?? 0}`),
+    );
+  }
 
-    const onProgress = (msg) => pushProgress(job, msg);
-
-    // 스캔/이미지 PDF 라우팅: 텍스트 레이어가 없으면 in-place 든 retypeset 이든
-    // 무조건 고해상도 OCR 재조판으로 처리한다(글자 교체는 텍스트 박스가 없어 불가).
-    const routing = await prepareScannedRouting(pdfBuffer, {
-      signal: ac.signal,
+  if (restoreOnly && resolvedMode !== "retypeset") {
+    resolvedMode = "retypeset"; // 번역 없는 '글자 교체'는 무의미 — 복원은 항상 재조판
+  }
+  if (restoreOnly) {
+    onProgress("🧾 복원 모드 — 번역 없이 원문 그대로 깨끗하게 재조판합니다.");
+  }
+  let effectiveMode = resolvedMode;
+  let result;
+  if (routing.scanned && routing.largeVision) {
+    // 대용량 스캔/깨진 PDF: 구간으로 나눠 OCR 재조판(병렬) 후 병합.
+    result = await translateLargeVisionPdf({
+      pdfBuffer,
+      pageCount: routing.pageCount,
+      model,
+      pageTexts: routing.pageTexts || null,
+      restoreOnly,
+      chartRedraw,
+      signal,
       onProgress,
     });
-    // 상한 이내면 in-place 경로가 자동으로 50쪽씩 구간 분할·병렬 번역 후 합친다
-    // (translate.js translatePdf). 상한을 넘는 초대형 문서만 거부한다.
-    // 상한은 in-place(구간 분할·병합)·OCR 재조판(구간 분할·병합) 양쪽 모두에 적용한다.
-    const maxTextPages = parseInt(process.env.PDF_TRANSLATE_MAX_PAGES || "700", 10);
-    if (routing.pageCount > maxTextPages) {
-      throw new Error(
-        `페이지가 너무 많습니다 (${routing.pageCount}쪽 > 상한 ${maxTextPages}쪽). 파일을 나눠서 시도하세요.`,
+    effectiveMode = "retypeset";
+    if (result.figures) {
+      onProgress(`🖼️ 원본 그림 ${result.figures}개를 본문에 복원했습니다.`);
+    }
+  } else if (routing.scanned && routing.imageBlocks) {
+    if (routing.truncated) {
+      onProgress(
+        `⚠ 페이지/분량이 많아 앞부분 위주로 처리합니다(이미지 ${routing.tiles}조각).`,
       );
     }
-
-    // 변환 방식 결정.
-    // - 명시적 '재조판' → 그대로.
-    // - '자동' → 스캔/수식밀도로 결정.
-    // - 명시적 '빠른 번역(in-place)' → **사용자 선택 존중**. 프런트엔드에서 수식 많은
-    //   문서면 '재조판 권유' 확인창을 먼저 띄우므로(아래 estimate 기반), 여기까지 inplace
-    //   로 온 건 사용자가 권유를 받고도 빠른 번역을 고른 것 → 그대로 둔다. 단 **스캔본은
-    //   글자 교체할 텍스트 박스가 없어 in-place 가 물리적으로 불가능** → 재조판으로 전환.
-    const AUTO_MATH_THRESHOLD = Number(process.env.PDF_AUTO_MATH_THRESHOLD || 12);
-    const isAuto = mode !== "inplace" && mode !== "retypeset";
-    const needsRetypeset =
-      routing.scanned || (routing.mathDensity || 0) >= AUTO_MATH_THRESHOLD;
-    let resolvedMode;
-    if (mode === "retypeset") {
-      resolvedMode = "retypeset";
-    } else if (mode === "inplace") {
-      // 사용자가 명시적으로 빠른 번역 선택 → 스캔본만 재조판 강제, 수식 밀집은 존중.
-      resolvedMode = routing.scanned ? "retypeset" : "inplace";
-    } else {
-      resolvedMode = needsRetypeset ? "retypeset" : "inplace";
+    result = await retypesetPdf({
+      pdfBuffer,
+      imageBlocks: routing.imageBlocks,
+      tiles: routing.tileBuffers, // 원본 타일 — 그림 복원 crop 용
+      ocrHint: buildOcrHint(routing.pageTexts, 1, Number.MAX_SAFE_INTEGER),
+      restoreOnly,
+      chartRedraw,
+      model,
+      signal,
+      onProgress,
+    });
+    effectiveMode = "retypeset"; // 출력은 재조판본(_재조판)
+    if (result.figures) {
+      onProgress(`🖼️ 원본 그림 ${result.figures}개를 본문에 복원했습니다.`);
     }
-    if (mode === "inplace" && routing.scanned) {
-      pushProgress(
-        job,
-        routing.ocrLayer
-          ? "⚠ 사진 스캔 + 숨은 OCR 텍스트층 PDF는 '빠른 번역(글자 교체)' 시 기울어진 사진 위에 글자가 겹쳐 깨집니다 → 'OCR 재조판'으로 전환합니다."
-          : routing.garbled
-            ? "⚠ 본문 글자가 깨진 폰트로 박혀 추출 불가한 PDF는 '빠른 번역(글자 교체)'이 불가능합니다 → 'OCR 재조판'으로 전환합니다."
-            : "⚠ 스캔본/이미지 PDF는 글자만 교체하는 '빠른 번역'이 불가능합니다 → 'OCR 재조판'으로 전환합니다.",
-      );
-    } else if (mode === "inplace" && needsRetypeset) {
-      // 수식 많은 문서를 사용자가 빠른 번역으로 고른 경우(확인창에서 유지 선택).
-      pushProgress(
-        job,
-        `ℹ 수식이 많은 문서(수식밀도 ${routing.mathDensity ?? 0})를 '빠른 번역'으로 처리합니다 — 일부 수식이 깨질 수 있습니다(원하면 '재조판'으로 다시 시도).`,
-      );
-    } else if (isAuto) {
-      pushProgress(
-        job,
-        `🔎 자동 변환방식 → ${resolvedMode === "retypeset" ? "재조판(수식·정밀)" : "빠른 번역(레이아웃 유지)"}` +
-          (routing.scanned
-            ? routing.ocrLayer
-              ? " · 사진 스캔+숨은 OCR층 감지"
-              : routing.garbled
-                ? " · 깨진 텍스트층 감지"
-                : " · 스캔본 감지"
-            : ` · 수식밀도 ${routing.mathDensity ?? 0}`),
-      );
-    }
-
-    if (restoreOnly && resolvedMode !== "retypeset") {
-      resolvedMode = "retypeset"; // 번역 없는 '글자 교체'는 무의미 — 복원은 항상 재조판
-    }
-    if (restoreOnly) {
-      pushProgress(job, "🧾 복원 모드 — 번역 없이 원문 그대로 깨끗하게 재조판합니다.");
-    }
-    let effectiveMode = resolvedMode;
-    let result;
-    if (routing.scanned && routing.largeVision) {
-      // 대용량 스캔/깨진 PDF: 구간으로 나눠 OCR 재조판(병렬) 후 병합.
-      result = await translateLargeVisionPdf({
-        pdfBuffer,
-        pageCount: routing.pageCount,
-        model,
-        pageTexts: routing.pageTexts || null,
-        restoreOnly,
-        chartRedraw,
-        signal: ac.signal,
+  } else if (resolvedMode === "retypeset") {
+    // 텍스트 PDF 재조판: 원본 그림을 미리 잘라두고(복원용), 페이지 구간으로 분할해
+    // 병렬 번역(Opus 품질 유지·속도↑). 그림은 %%FIG:n%% 마커 자리에 다시 끼워넣는다.
+    // 재조판은 LaTeX 조판·Tectonic 컴파일 등 실패 지점이 많다(미정의 명령어, 폰트,
+    // 환경). 실패해도 텍스트 PDF 는 '빠른 번역'으로 대체해 사용자가 빈손이 되지 않게
+    // 한다(하드 에러 방지). 스캔본은 위 분기에서 처리되므로 여기 폴백은 항상 가능.
+    try {
+      const figures = await extractFiguresForRetypeset(pdfBuffer, {
+        signal,
         onProgress,
       });
-      effectiveMode = "retypeset";
-      if (result.figures) {
-        pushProgress(job, `🖼️ 원본 그림 ${result.figures}개를 본문에 복원했습니다.`);
-      }
-    } else if (routing.scanned && routing.imageBlocks) {
-      if (routing.truncated) {
-        pushProgress(
-          job,
-          `⚠ 페이지/분량이 많아 앞부분 위주로 처리합니다(이미지 ${routing.tiles}조각).`,
+      if (figures.length) {
+        onProgress(
+          `🖼️ 본문 그림 ${figures.length}개 추출 — 재조판본에 복원합니다.`,
         );
       }
+      if (routing.twoColumn) {
+        onProgress(
+          "📐 2단 레이아웃 감지 — 읽기 순서를 좌→우 단으로 맞추고 2단으로 조판합니다.",
+        );
+      }
+      const pdfChunks = await splitPdfToBuffers(pdfBuffer, {
+        signal,
+        onProgress,
+      });
       result = await retypesetPdf({
         pdfBuffer,
-        imageBlocks: routing.imageBlocks,
-        tiles: routing.tileBuffers, // 원본 타일 — 그림 복원 crop 용
-        ocrHint: buildOcrHint(routing.pageTexts, 1, Number.MAX_SAFE_INTEGER),
+        pdfChunks,
+        figures,
+        twoColumn: routing.twoColumn,
         restoreOnly,
         chartRedraw,
         model,
-        signal: ac.signal,
+        signal,
         onProgress,
       });
-      effectiveMode = "retypeset"; // 출력은 재조판본(_재조판)
       if (result.figures) {
-        pushProgress(job, `🖼️ 원본 그림 ${result.figures}개를 본문에 복원했습니다.`);
-      }
-    } else if (resolvedMode === "retypeset") {
-      // 텍스트 PDF 재조판: 원본 그림을 미리 잘라두고(복원용), 페이지 구간으로 분할해
-      // 병렬 번역(Opus 품질 유지·속도↑). 그림은 %%FIG:n%% 마커 자리에 다시 끼워넣는다.
-      // 재조판은 LaTeX 조판·Tectonic 컴파일 등 실패 지점이 많다(미정의 명령어, 폰트,
-      // 환경). 실패해도 텍스트 PDF 는 '빠른 번역'으로 대체해 사용자가 빈손이 되지 않게
-      // 한다(하드 에러 방지). 스캔본은 위 분기에서 처리되므로 여기 폴백은 항상 가능.
-      try {
-        const figures = await extractFiguresForRetypeset(pdfBuffer, {
-          signal: ac.signal,
-          onProgress,
-        });
-        if (figures.length) {
-          pushProgress(
-            job,
-            `🖼️ 본문 그림 ${figures.length}개 추출 — 재조판본에 복원합니다.`,
-          );
-        }
-        if (routing.twoColumn) {
-          pushProgress(
-            job,
-            "📐 2단 레이아웃 감지 — 읽기 순서를 좌→우 단으로 맞추고 2단으로 조판합니다.",
-          );
-        }
-        const pdfChunks = await splitPdfToBuffers(pdfBuffer, {
-          signal: ac.signal,
-          onProgress,
-        });
-        result = await retypesetPdf({
-          pdfBuffer,
-          pdfChunks,
-          figures,
-          twoColumn: routing.twoColumn,
-          restoreOnly,
-          chartRedraw,
-          model,
-          signal: ac.signal,
-          onProgress,
-        });
-        if (result.figures) {
-          pushProgress(
-            job,
-            `🖼️ 원본 그림 ${result.figures}개를 재조판본에 복원했습니다.`,
-          );
-        }
-      } catch (e) {
-        if (ac.signal.aborted || timedOut) throw e; // 사용자 중단/타임아웃은 폴백 안 함
-        pushProgress(
-          job,
-          `⚠ 재조판 실패 → '빠른 번역(레이아웃 유지)'으로 대체합니다: ${String(e.message || e).slice(0, 160)}`,
+        onProgress(
+          `🖼️ 원본 그림 ${result.figures}개를 재조판본에 복원했습니다.`,
         );
-        effectiveMode = "inplace";
-        result = await translatePdf({
-          pdfBuffer,
-          model,
-          pageCount: routing.pageCount, // 재분석 생략 — 큰 문서면 내부에서 구간 분할·병합
-          signal: ac.signal,
-          onProgress,
-        });
       }
-    } else {
+    } catch (e) {
+      if (signal.aborted || isTimedOut()) throw e; // 사용자 중단/타임아웃은 폴백 안 함
+      onProgress(
+        `⚠ 재조판 실패 → '빠른 번역(레이아웃 유지)'으로 대체합니다: ${String(e.message || e).slice(0, 160)}`,
+      );
+      effectiveMode = "inplace";
       result = await translatePdf({
         pdfBuffer,
         model,
         pageCount: routing.pageCount, // 재분석 생략 — 큰 문서면 내부에서 구간 분할·병합
-        signal: ac.signal,
+        signal,
         onProgress,
       });
     }
+  } else {
+    result = await translatePdf({
+      pdfBuffer,
+      model,
+      pageCount: routing.pageCount, // 재분석 생략 — 큰 문서면 내부에서 구간 분할·병합
+      signal,
+      onProgress,
+    });
+  }
 
-    const pdfOutput = assertGeneratedOutputMagic(
-      result.buffer,
-      "pdf",
-      "PDF translation output",
-    );
-    job.result = pdfOutput;
-    job.mimeType = "application/pdf";
-    job.filename = buildTranslatedFilename(
-      originalName,
-      restoreOnly ? "_복원" : effectiveMode === "retypeset" ? "_재조판" : "_KO",
-    );
-    job.status = "done";
+  const pdfOutput = assertGeneratedOutputMagic(
+    result.buffer,
+    "pdf",
+    "PDF translation output",
+  );
+  const filename = buildTranslatedFilename(
+    originalName,
+    restoreOnly ? "_복원" : effectiveMode === "retypeset" ? "_재조판" : "_KO",
+  );
+  return { buffer: pdfOutput, filename, effectiveMode, result };
+}
 
-    const totalSec = Math.floor((Date.now() - t0) / 1000);
-    const outKB = Math.round(pdfOutput.length / 1024);
-    pushProgress(
-      job,
-      effectiveMode === "retypeset"
-        ? `🎉 재조판 완료! ${outKB}KB, 총 ${totalSec}초. 다운로드 가능합니다.`
-        : `🎉 완료! ${result.pageCount}쪽 / 문단 ${result.blockCount}개 → ${outKB}KB, 총 ${totalSec}초. 다운로드 가능합니다.`,
-    );
+async function runPdfTranslation(
+  job,
+  { files, model, mode, restoreOnly = false, chartRedraw = false },
+) {
+  const t0 = Date.now();
+  const multi = files.length > 1;
+  const translateTimeoutMs = /^claude-fable/.test(String(model || ""))
+    ? PDF_TRANSLATE_FABLE_TIMEOUT_MS
+    : PDF_TRANSLATE_TIMEOUT_MS;
+  const timeoutMin = Math.round(translateTimeoutMs / 60000);
+  // 여러 파일이면 순서대로 시작하되 제한 병렬(기본 2개)로 겹쳐 처리한다.
+  // 파이프라인 내부의 API 동시성 gate·CPU 세마포어는 전역 공유라 총량은 안전하다.
+  const FILE_CONC = Math.max(
+    1,
+    parseInt(process.env.PDF_TRANSLATE_FILE_CONCURRENCY || "2", 10),
+  );
+  pushProgress(
+    job,
+    multi
+      ? `🚀 PDF 통번역 시작 — ${files.length}개 파일을 순서대로 처리합니다 (동시 최대 ${Math.min(FILE_CONC, files.length)}개 · 파일당 timeout ${timeoutMin}분)`
+      : `🚀 PDF 통번역 시작 (timeout: ${timeoutMin}분)`,
+  );
 
-    if (result.cost) {
-      pushProgress(job, `📊 ${pricing.formatCostLine(result.cost)}`);
-      addToTotal(result.cost, null);
-    }
+  // 중지 버튼/새 작업 자동 중단은 master 를 abort → 모든 파일에 전파된다.
+  const master = new AbortController();
+  job.abortController = master;
+  job.files = []; // 완료된 파일 [{ filename, mimeType, buffer, fileId }]
+  const fileErrors = [];
+  let failCount = 0;
 
-    // 백그라운드 작업: 결과 PDF 를 파일함(24시간)에 영속화하고, 옵트인 시 완료 이메일 발송.
-    // (일반 작업은 탭을 유지하므로 in-memory job 결과로 충분 — 파일함 저장 생략.)
-    if (job.background && supa.isEnabled() && job.userInfo?.id) {
-      try {
-        const savedFile = await supa.saveReportFile({
-          userId: job.userInfo.id,
-          jobId: job.id,
-          reportType: "pdf-translate",
-          filename: job.filename,
-          mimeType: "application/pdf",
-          buffer: pdfOutput,
-          meta: {
-            reportLabel: "PDF 통번역",
-            title: originalName,
-            mode: effectiveMode,
-          },
-        });
-        if (savedFile?.id) {
-          job.fileId = savedFile.id;
-          const expires = new Date(savedFile.expires_at).toLocaleString(
-            "ko-KR",
-            { dateStyle: "short", timeStyle: "short" },
-          );
-          pushProgress(
-            job,
-            `☁ 파일함에 24시간 보관됨 (${expires}까지) — '내 파일'에서 받으세요.`,
+  const shortName = (s) => {
+    const n = String(s || "");
+    return n.length > 28 ? n.slice(0, 25) + "…" : n;
+  };
+
+  const runOne = async (item, idx) => {
+    const tag = multi
+      ? `[${idx + 1}/${files.length} ${shortName(item.originalName)}] `
+      : "";
+    const onProgress = (msg) => pushProgress(job, tag + msg);
+    const tFile = Date.now();
+    const ac = new AbortController();
+    const onMasterAbort = () => ac.abort();
+    master.signal.addEventListener("abort", onMasterAbort);
+    let timedOut = false;
+    // timeout 은 파일별 — 큰 파일 하나가 늦어도 다른 파일 처리 시간을 깎지 않는다.
+    const timer = setTimeout(() => {
+      timedOut = true;
+      onProgress(`⏰ ${timeoutMin}분 초과 — 강제 종료 중...`);
+      ac.abort();
+    }, translateTimeoutMs);
+    try {
+      const out = await translateOnePdfCore({
+        pdfBuffer: item.buffer,
+        originalName: item.originalName,
+        model,
+        mode: item.mode || mode,
+        restoreOnly,
+        chartRedraw,
+        signal: ac.signal,
+        onProgress,
+        isTimedOut: () => timedOut,
+      });
+      const entry = {
+        filename: out.filename,
+        mimeType: "application/pdf",
+        buffer: out.buffer,
+        fileId: null,
+      };
+      const fileIndex = job.files.push(entry) - 1;
+
+      const result = out.result;
+      const fileSec = Math.floor((Date.now() - tFile) / 1000);
+      const outKB = Math.round(out.buffer.length / 1024);
+      onProgress(
+        out.effectiveMode === "retypeset"
+          ? `🎉 재조판 완료! ${outKB}KB, 총 ${fileSec}초. 다운로드 가능합니다.`
+          : `🎉 완료! ${result.pageCount}쪽 / 문단 ${result.blockCount}개 → ${outKB}KB, 총 ${fileSec}초. 다운로드 가능합니다.`,
+      );
+      if (result.cost) {
+        onProgress(`📊 ${pricing.formatCostLine(result.cost)}`);
+        addToTotal(result.cost, null);
+      }
+
+      // 백그라운드 작업: 결과 PDF 를 파일함(24시간)에 파일별로 즉시 영속화.
+      // (일반 작업은 탭을 유지하므로 in-memory job 결과로 충분 — 파일함 저장 생략.)
+      if (job.background && supa.isEnabled() && job.userInfo?.id) {
+        try {
+          const savedFile = await supa.saveReportFile({
+            userId: job.userInfo.id,
+            jobId: job.id,
+            reportType: "pdf-translate",
+            filename: entry.filename,
+            mimeType: "application/pdf",
+            buffer: entry.buffer,
+            meta: {
+              reportLabel: "PDF 통번역",
+              title: item.originalName,
+              mode: out.effectiveMode,
+            },
+          });
+          if (savedFile?.id) {
+            entry.fileId = savedFile.id;
+            const expires = new Date(savedFile.expires_at).toLocaleString(
+              "ko-KR",
+              { dateStyle: "short", timeStyle: "short" },
+            );
+            onProgress(
+              `☁ 파일함에 24시간 보관됨 (${expires}까지) — '내 파일'에서 받으세요.`,
+            );
+          }
+        } catch (e) {
+          onProgress(`⚠ 파일함 저장 실패: ${e.message}`);
+        }
+      }
+
+      // 다중 파일이면 완료 즉시 개별 다운로드 링크를 내려보낸다(전체 완료 전에도 수령 가능).
+      if (multi) {
+        job.listeners.forEach((r) =>
+          sendSse(r, "file", {
+            index: fileIndex,
+            filename: entry.filename,
+            fileId: entry.fileId,
+          }),
+        );
+      }
+
+      // 사용량 기록 (관리자 통계용) — 파일별 1건. 일반(비백그라운드) 통번역은 파일함에
+      // 저장하지 않고 24시간 동안 in-memory job 결과로 다운로드를 제공한다.
+      if (supa.isEnabled() && job.userInfo?.id) {
+        try {
+          await supa.recordUsage({
+            userId: job.userInfo.id,
+            jobId: job.id,
+            textCostUsd: result.cost?.total || 0,
+            imageCostUsd: 0,
+            meta: {
+              reportType: "pdf-translate",
+              reportLabel: "PDF 통번역",
+              title: item.originalName,
+              model: result.cost?.model,
+              inputTokens: result.cost?.inputTokens,
+              outputTokens: result.cost?.outputTokens,
+              cacheReadTokens: result.cost?.cacheReadTokens,
+              cacheWriteTokens: result.cost?.cacheWriteTokens,
+              pageCount: result.pageCount,
+              blockCount: result.blockCount,
+            },
+          });
+        } catch (e) {
+          onProgress(`⚠ 사용량 통계 기록 실패: ${e.message}`);
+        }
+      } else {
+        onProgress(
+          `📊 서버 누적 (메모리): ${totalUsage.jobs}건 / 총 ${fmtUSD(totalUsage.totalUSD)} ${fmtKRW(totalUsage.totalUSD)}`,
+        );
+      }
+    } catch (e) {
+      // 단일 파일 작업·전체 중단(중지/새 작업)은 기존과 동일하게 상위로 전파.
+      if (!multi || (master.signal.aborted && !timedOut)) {
+        if (timedOut && !master.signal.aborted) {
+          const elapsedMin = Math.floor((Date.now() - tFile) / 60000);
+          throw new Error(
+            `${timeoutMin}분 timeout으로 작업이 강제 종료되었습니다 (실제 ${elapsedMin}분 경과).`,
           );
         }
-      } catch (e) {
-        pushProgress(job, `⚠ 파일함 저장 실패: ${e.message}`);
+        throw e;
       }
+      // 다중 파일: 한 파일 실패는 기록하고 다음 파일로 계속(부분 성공 보장).
+      failCount++;
+      const reason = timedOut
+        ? `${timeoutMin}분 시간 초과`
+        : String(e.message || e).slice(0, 200);
+      fileErrors.push(`${shortName(item.originalName)}: ${reason}`);
+      onProgress(`❌ 이 파일은 실패 — ${reason} (다음 파일로 계속)`);
+    } finally {
+      clearTimeout(timer);
+      master.signal.removeEventListener("abort", onMasterAbort);
+    }
+  };
+
+  try {
+    // 순서대로 시작하되 최대 FILE_CONC 개까지 겹쳐 실행하는 작은 worker pool.
+    let next = 0;
+    const worker = async () => {
+      while (!master.signal.aborted) {
+        const idx = next++;
+        if (idx >= files.length) return;
+        await runOne(files[idx], idx);
+      }
+    };
+    await Promise.all(
+      Array.from({ length: Math.min(FILE_CONC, files.length) }, worker),
+    );
+    if (!job.files.length) {
+      throw new Error(fileErrors[0] || "모든 파일 번역에 실패했습니다.");
+    }
+
+    if (multi) {
+      job.filename = `PDF 통번역 ${job.files.length}개 파일`;
+      job.fileId = job.files.find((f) => f.fileId)?.fileId || null;
+      const totalSec = Math.floor((Date.now() - t0) / 1000);
+      pushProgress(
+        job,
+        `🏁 전체 완료 — ${job.files.length}/${files.length}개 성공, 총 ${Math.floor(totalSec / 60)}분 ${totalSec % 60}초. 파일별로 내려받으세요.`,
+      );
+      if (failCount) {
+        pushProgress(job, `⚠ 실패 ${failCount}개: ${fileErrors.join(" · ")}`);
+      }
+    } else {
+      const entry = job.files[0];
+      job.result = entry.buffer;
+      job.mimeType = entry.mimeType;
+      job.filename = entry.filename;
+      job.fileId = entry.fileId;
+    }
+    job.status = "done";
+
+    // 백그라운드: 작업 레코드 갱신 + 완료 이메일(옵트인 시 1회).
+    if (job.background) {
       await persistBgJob(job);
       if (job.notifyEmail) {
         pushProgress(job, "📧 완료 알림 이메일을 보냅니다...");
         await notifyBgJobDone(job);
       }
     }
-
-    // 사용량 기록 (관리자 통계용). 일반(비백그라운드) PDF 통번역은 파일함에 저장하지 않고
-    // 24시간 동안 in-memory job 결과로 다운로드를 제공한다.
-    if (supa.isEnabled() && job.userInfo?.id) {
-      try {
-        await supa.recordUsage({
-          userId: job.userInfo.id,
-          jobId: job.id,
-          textCostUsd: result.cost?.total || 0,
-          imageCostUsd: 0,
-          meta: {
-            reportType: "pdf-translate",
-            reportLabel: "PDF 통번역",
-            title: originalName,
-            model: result.cost?.model,
-            inputTokens: result.cost?.inputTokens,
-            outputTokens: result.cost?.outputTokens,
-            cacheReadTokens: result.cost?.cacheReadTokens,
-            cacheWriteTokens: result.cost?.cacheWriteTokens,
-            pageCount: result.pageCount,
-            blockCount: result.blockCount,
-          },
-        });
-      } catch (e) {
-        pushProgress(job, `⚠ 사용량 통계 기록 실패: ${e.message}`);
-      }
-    } else {
-      pushProgress(
-        job,
-        `📊 서버 누적 (메모리): ${totalUsage.jobs}건 / 총 ${fmtUSD(totalUsage.totalUSD)} ${fmtKRW(totalUsage.totalUSD)}`,
-      );
-    }
-    // 관리자 전용 기능 — 크레딧 차감 없음.
+    // 관리자/Max 전용 기능 — 크레딧 차감 없음.
   } catch (e) {
     if (job.autoAborted) {
       throw new Error("새 작업 시작으로 자동 중단되었습니다.");
@@ -5091,15 +5241,8 @@ async function runPdfTranslation(
     if (job.userAborted) {
       throw new Error("사용자가 작업을 중지했습니다.");
     }
-    if (timedOut) {
-      const elapsedMin = Math.floor((Date.now() - t0) / 60000);
-      throw new Error(
-        `${timeoutMin}분 timeout으로 작업이 강제 종료되었습니다 (실제 ${elapsedMin}분 경과).`,
-      );
-    }
     throw e;
   } finally {
-    clearTimeout(timer);
     if (
       job.userInfo?.id &&
       activeJobByUser.get(job.userInfo.id) === job.id
@@ -5109,7 +5252,15 @@ async function runPdfTranslation(
   }
 
   job.listeners.forEach((r) => {
-    sendSse(r, "done", { filename: job.filename, fileId: job.fileId });
+    sendSse(r, "done", {
+      filename: job.filename,
+      fileId: job.fileId,
+      files: job.files.map((f, i) => ({
+        index: i,
+        filename: f.filename,
+        fileId: f.fileId,
+      })),
+    });
     r.end();
   });
   job.listeners = [];
@@ -5859,7 +6010,7 @@ app.get("/api/jobs/:id/stream", requireAuth, (req, res) => {
   job.progress.forEach((p) => sendSse(res, "progress", p));
 
   if (job.status === "done") {
-    sendSse(res, "done", { filename: job.filename, fileId: job.fileId, warnings: job.warnings || [], styleFont: job.styleFont || null, handoff: job.handoff || "" });
+    sendSse(res, "done", { filename: job.filename, fileId: job.fileId, warnings: job.warnings || [], styleFont: job.styleFont || null, handoff: job.handoff || "", files: (job.files || []).map((f, i) => ({ index: i, filename: f.filename, fileId: f.fileId || null })) });
     return res.end();
   }
   if (job.status === "error") {
@@ -5888,6 +6039,20 @@ app.get("/api/jobs/:id/download", requireAuth, (req, res) => {
   if (!job) return res.status(404).send("작업을 찾을 수 없습니다.");
   const u = getSessionUser(req);
   if (!u.id || job.userInfo?.id !== u.id) return res.status(403).send("권한 없음");
+  // 다중 파일 job(PDF 통번역 여러 개): ?file=N 으로 개별 파일 다운로드.
+  // 완료된 파일은 전체 작업이 끝나기 전에도 바로 받을 수 있다.
+  if (req.query.file !== undefined) {
+    const entry = (job.files || [])[parseInt(String(req.query.file), 10)];
+    if (!entry || !entry.buffer) {
+      return res.status(404).send("파일을 찾을 수 없습니다.");
+    }
+    res.set({
+      "Content-Type": entry.mimeType || "application/pdf",
+      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(entry.filename)}`,
+      "Content-Length": entry.buffer.length,
+    });
+    return res.send(entry.buffer);
+  }
   if (job.status !== "done" || !job.result) {
     return res.status(409).send("아직 완료되지 않았습니다.");
   }

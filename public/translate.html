@@ -71,10 +71,10 @@
               <div class="field">
                 <span class="field-label">번역할 PDF <span class="req">*</span></span>
                 <div class="dropzone">
-                  <input id="trPdf" name="pdf" type="file" accept="application/pdf,.pdf" required aria-label="번역할 PDF" />
+                  <input id="trPdf" name="pdf" type="file" accept="application/pdf,.pdf" multiple required aria-label="번역할 PDF (여러 개 가능)" />
                   <span class="dropzone-icon" aria-hidden="true">📄</span>
-                  <span class="dropzone-title">PDF를 끌어다 놓거나 클릭</span>
-                  <span class="dropzone-sub">일반 PDF · 스캔본/이미지 PDF 모두 지원 (스캔본은 자동 OCR)</span>
+                  <span class="dropzone-title">PDF를 끌어다 놓거나 클릭 (여러 개 가능)</span>
+                  <span class="dropzone-sub">일반 PDF · 스캔본/이미지 PDF 모두 지원 (스캔본은 자동 OCR) · 여러 파일은 순서대로 번역 후 파일별 다운로드</span>
                   <span class="dropzone-file" data-dz-file></span>
                 </div>
               </div>
@@ -147,6 +147,7 @@
                 <li><b>2단 논문</b>은 2단 구조를 유지하며 재조판합니다(읽기 순서 좌→우 자동 보정).</li>
                 <li>스캔본·이미지 PDF: 자동 OCR 후 재조판 — 원본 그림도 잘라 복원.</li>
                 <li>긴 문서는 구간을 나눠 병렬로 빠르게 처리합니다.</li>
+                <li><b>여러 PDF를 한 번에</b>: 파일을 여러 개 선택하면(최대 10개) 순서대로 번역하고, 끝난 파일부터 바로 내려받을 수 있습니다(2개씩 겹쳐 처리).</li>
               </ul>
               <b style="display:block;margin-top:10px">아직 안 되거나 제한되는 것</b>
               <ul>
@@ -283,7 +284,13 @@
           const render = () => {
             if (input.files && input.files.length) {
               dz.classList.add("is-filled");
-              if (fileEl) fileEl.textContent = input.files[0].name;
+              if (fileEl) {
+                const names = Array.from(input.files).map((f) => f.name);
+                fileEl.textContent =
+                  names.length === 1
+                    ? names[0]
+                    : `${names.length}개 파일: ${names.join(", ")}`;
+              }
             } else {
               dz.classList.remove("is-filled");
               if (fileEl) fileEl.textContent = "";
@@ -311,10 +318,15 @@
         // ── 예상 비용·시간 ──
         // 파일은 한 번만 업로드해 분석(meta)하고 캐시한다. 방식·모델만 바꾸면 재업로드
         // 없이 즉시 다시 계산한다(속도↑). 업로드엔 30초 타임아웃(멈춤 방지).
+        // 여러 파일이면 파일별로 분석해 fileKey → meta 로 캐시하고 합산해 보여준다.
         const estEl = document.getElementById("trEstimate");
         let estSeq = 0;
-        let estMeta = null;
-        let estKey = null;
+        const estMetas = new Map(); // fileKey(f) → meta
+        const escHtml = (s) =>
+          String(s || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
         const fmtDur = (s) =>
           s < 90 ? `${Math.round(s)}초` : `${Math.round(s / 60)}분`;
         const EST_PRICE = {
@@ -425,56 +437,108 @@
         }
         const fileKey = (f) =>
           f ? `${f.name}|${f.size}|${f.lastModified}` : "";
+        // 다중 파일 요약: 파일별 한 줄 + 합산 시간·비용.
+        function renderEstimateMulti(list, mode, model) {
+          let usdLo = 0,
+            usdHi = 0,
+            secLo = 0,
+            secHi = 0,
+            pages = 0,
+            unknown = 0;
+          const over = [];
+          const lines = list.map((f, i) => {
+            const meta = estMetas.get(fileKey(f));
+            if (!meta) {
+              unknown++;
+              return `${i + 1}. ${escHtml(f.name)} — <span style="opacity:.6">분석 지연/실패 (그대로 진행 가능)</span>`;
+            }
+            const e = calcEstimate(meta, mode, model);
+            if (e.tooManyPages) {
+              over.push(f.name);
+              return `${i + 1}. ${escHtml(f.name)} — <span style="color:var(--warning)">⚠ ${e.pages}쪽 · 한도(약 ${e.maxPages}쪽) 초과</span>`;
+            }
+            usdLo += e.costUsd.lo;
+            usdHi += e.costUsd.hi;
+            secLo += e.seconds.lo;
+            secHi += e.seconds.hi;
+            pages += e.pages;
+            const label = e.garbled
+              ? "깨진 글자 OCR 재조판"
+              : e.scanned
+                ? "스캔 OCR 재조판"
+                : e.mode === "retypeset"
+                  ? "재조판"
+                  : "빠른 번역";
+            return `${i + 1}. ${escHtml(f.name)} — ${e.pages}쪽 · ${label}`;
+          });
+          estEl.style.display = "block";
+          estEl.innerHTML =
+            lines.join("<br>") +
+            `<br>📄 총 <b>${pages}쪽</b> · ⏱ 순차 합계 <b>약 ${fmtDur(secLo)} ~ ${fmtDur(secHi)}</b> <span style="opacity:.7">(2개씩 겹쳐 처리해 실제는 더 짧을 수 있어요)</span>` +
+            ` · 💰 <b>약 ₩${Math.round(usdLo * 1400).toLocaleString()} ~ ₩${Math.round(usdHi * 1400).toLocaleString()}</b>` +
+            (over.length
+              ? `<br><span style="color:var(--warning)">⚠ 한도 초과 파일은 번역에 실패합니다 — 나눠서 올리세요: ${escHtml(over.join(", "))}</span>`
+              : "") +
+            `<br><span style="opacity:.65">파일은 순서대로 번역되고, 끝난 파일부터 바로 내려받을 수 있습니다.</span>`;
+        }
+        // 캐시에 없는 파일들만 서버 분석을 받아 estMetas 를 채운다.
+        async function ensureMetas(list, mode, model, seq) {
+          for (const f of list) {
+            if (estMetas.has(fileKey(f))) continue;
+            const fd = new FormData();
+            fd.append("pdf", f);
+            fd.append("model", model);
+            fd.append("mode", mode);
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 30000);
+            try {
+              const r = await fetch("/api/translate-pdf/estimate", {
+                method: "POST",
+                body: fd,
+                signal: ctrl.signal,
+              });
+              clearTimeout(timer);
+              if (seq !== estSeq) return false; // 최신 요청만 반영
+              if (r.ok) {
+                const e = await r.json();
+                if (e.meta) estMetas.set(fileKey(f), e.meta);
+              }
+            } catch (err) {
+              clearTimeout(timer);
+              if (seq !== estSeq) return false;
+              // 분석 실패/타임아웃 → 이 파일은 추정 없이 진행 가능
+            }
+          }
+          return true;
+        }
         async function updateEstimate() {
-          if (!fileInput.files || !fileInput.files.length) {
+          const list = Array.from(fileInput.files || []);
+          if (!list.length) {
             estEl.style.display = "none";
             return;
           }
-          const f = fileInput.files[0];
           const mode = document.getElementById("trMode").value;
           const model = document.getElementById("trModel").value;
-          // 같은 파일이면 재업로드 없이 즉시 재계산(방식·모델만 바뀐 경우).
-          if (estMeta && estKey === fileKey(f)) {
-            renderEstimate(calcEstimate(estMeta, mode, model));
+          const seq = ++estSeq;
+          if (list.some((f) => !estMetas.has(fileKey(f)))) {
+            estEl.style.display = "block";
+            estEl.textContent =
+              "⏳ 예상 비용·시간 계산 중..." +
+              (list.length > 1 ? ` (${list.length}개 파일)` : "");
+            if (!(await ensureMetas(list, mode, model, seq))) return;
+          }
+          if (seq !== estSeq) return;
+          if (list.length > 1) {
+            renderEstimateMulti(list, mode, model);
             return;
           }
-          const seq = ++estSeq;
-          estEl.style.display = "block";
-          estEl.textContent = "⏳ 예상 비용·시간 계산 중...";
-          const fd = new FormData();
-          fd.append("pdf", f);
-          fd.append("model", model);
-          fd.append("mode", mode);
-          const ctrl = new AbortController();
-          const timer = setTimeout(() => ctrl.abort(), 30000);
-          try {
-            const r = await fetch("/api/translate-pdf/estimate", {
-              method: "POST",
-              body: fd,
-              signal: ctrl.signal,
-            });
-            clearTimeout(timer);
-            if (seq !== estSeq) return; // 최신 요청만 반영
-            if (!r.ok) {
-              estEl.style.display = "none";
-              return;
-            }
-            const e = await r.json();
-            if (e.meta) {
-              estMeta = e.meta;
-              estKey = fileKey(f);
-            }
-            renderEstimate(e);
-          } catch (err) {
-            clearTimeout(timer);
-            if (seq !== estSeq) return;
-            if (err && err.name === "AbortError") {
-              estEl.innerHTML =
-                '<span style="opacity:.75">예상 계산이 지연됩니다(파일이 크거나 네트워크가 느림) — 그냥 번역을 진행해도 됩니다.</span>';
-            } else {
-              estEl.style.display = "none";
-            }
+          const meta = estMetas.get(fileKey(list[0]));
+          if (!meta) {
+            estEl.innerHTML =
+              '<span style="opacity:.75">예상 계산이 지연됩니다(파일이 크거나 네트워크가 느림) — 그냥 번역을 진행해도 됩니다.</span>';
+            return;
           }
+          renderEstimate(calcEstimate(meta, mode, model));
         }
         fileInput.addEventListener("change", updateEstimate);
         document
@@ -566,33 +630,121 @@
           });
         }
 
+        // 다중 파일용 재조판 확인창 — 해당 파일 목록을 한 번에 보여주고 일괄 결정한다.
+        // 반환: 'retypeset' | 'inplace' | 'cancel' (inplace 는 수식 파일에만 적용됨)
+        function askRetypesetMulti(affected) {
+          return new Promise((resolve) => {
+            const forced = affected.filter(
+              (x) => x.meta.scanned || x.meta.garbled,
+            );
+            const mathOnly = affected.filter(
+              (x) => !(x.meta.scanned || x.meta.garbled),
+            );
+            const ov = document.createElement("div");
+            ov.style.cssText =
+              "position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:18px";
+            const card = document.createElement("div");
+            card.setAttribute("role", "dialog");
+            card.setAttribute("aria-modal", "true");
+            card.setAttribute("aria-labelledby", "retypesetMultiTitle");
+            card.setAttribute("aria-describedby", "retypesetMultiBody");
+            card.style.cssText =
+              "background:var(--surface);border-radius:var(--radius);max-width:480px;width:100%;padding:22px 22px 18px;box-shadow:var(--shadow-lg);font-size:14px;line-height:1.6;color:var(--text);max-height:80vh;overflow:auto";
+            const items = affected
+              .map(({ f, meta }) => {
+                const why =
+                  meta.scanned || meta.garbled
+                    ? meta.garbled
+                      ? "깨진 글자 — 재조판(OCR) 필수"
+                      : "스캔본 — 재조판(OCR) 필수"
+                    : `수식 많음(밀도 ${+meta.math_density || 0}) — 재조판 권장`;
+                return `<li><b>${escHtml(f.name)}</b> · ${why}</li>`;
+              })
+              .join("");
+            card.innerHTML =
+              `<div id="retypesetMultiTitle" style="font-weight:var(--fw-bold);font-size:16px;margin-bottom:8px">재조판이 필요한 파일이 있습니다 (${affected.length}개)</div>` +
+              `<div id="retypesetMultiBody" style="margin-bottom:16px"><ul style="margin:0 0 10px;padding-left:18px">${items}</ul>` +
+              `재조판은 PDF를 새로 만들어 수식·스캔을 정확히 복원하지만 시간·비용이 더 듭니다. 나머지 파일은 선택한 방식 그대로 진행됩니다.</div>`;
+            const row = document.createElement("div");
+            row.style.cssText =
+              "display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end";
+            const onKeydown = (ev) => {
+              if (ev.key === "Escape") {
+                ev.preventDefault();
+                close("cancel");
+              }
+            };
+            const close = (val) => {
+              document.removeEventListener("keydown", onKeydown);
+              if (ov.parentNode) document.body.removeChild(ov);
+              resolve(val);
+            };
+            const mk = (label, val, primary) => {
+              const b = document.createElement("button");
+              b.type = "button";
+              b.textContent = label;
+              b.className = primary ? "primary" : "secondary";
+              b.addEventListener("click", () => close(val));
+              return b;
+            };
+            row.appendChild(mk("취소", "cancel", false));
+            if (mathOnly.length)
+              row.appendChild(
+                mk("수식 파일은 빠른 번역 유지", "inplace", false),
+              );
+            row.appendChild(mk("재조판으로 진행 (권장)", "retypeset", true));
+            card.appendChild(row);
+            ov.appendChild(card);
+            ov.addEventListener("click", (ev) => {
+              if (ev.target === ov) close("cancel");
+            });
+            document.addEventListener("keydown", onKeydown);
+            document.body.appendChild(ov);
+            const primaryBtn = row.lastElementChild;
+            if (primaryBtn && primaryBtn.focus) primaryBtn.focus();
+          });
+        }
+
         form.addEventListener("submit", async (e) => {
           e.preventDefault();
           errEl.style.display = "none";
-          if (!fileInput.files || !fileInput.files.length) {
+          const list = Array.from(fileInput.files || []);
+          if (!list.length) {
             errEl.textContent = "PDF 파일을 선택하세요.";
+            errEl.style.display = "block";
+            return;
+          }
+          if (list.length > 10) {
+            errEl.textContent = "한 번에 최대 10개 파일까지 번역할 수 있습니다.";
             errEl.style.display = "block";
             return;
           }
 
           // 재조판이 필요한 문서인데 사용자가 '재조판'을 고르지 않았으면 먼저 확인.
           let chosenMode = document.getElementById("trMode").value;
-          const f0 = fileInput.files[0];
-          if (!estMeta || estKey !== fileKey(f0)) {
-            // 추정이 아직 없거나 다른 파일이면 한 번 계산해서 메타 확보.
+          if (list.some((f) => !estMetas.has(fileKey(f)))) {
+            // 추정이 아직 없는 파일이 있으면 한 번 계산해서 메타 확보.
             try {
               await updateEstimate();
             } catch (_) {}
           }
-          if (
-            chosenMode !== "retypeset" &&
-            estMeta &&
-            estKey === fileKey(f0)
-          ) {
-            const scanned = !!estMeta.scanned;
-            const garbled = !!estMeta.garbled;
-            const density = +estMeta.math_density || 0;
-            if (scanned || garbled || density >= 12) {
+          // 파일별 변환 방식(서버 'modes' 배열) — 기본은 선택한 공통 방식.
+          let modes = list.map(() => chosenMode);
+          if (chosenMode !== "retypeset") {
+            const affected = list
+              .map((f, i) => ({ f, i, meta: estMetas.get(fileKey(f)) }))
+              .filter(
+                (x) =>
+                  x.meta &&
+                  (x.meta.scanned ||
+                    x.meta.garbled ||
+                    (+x.meta.math_density || 0) >= 12),
+              );
+            if (affected.length && list.length === 1) {
+              const m = affected[0].meta;
+              const scanned = !!m.scanned;
+              const garbled = !!m.garbled;
+              const density = +m.math_density || 0;
               // 깨진 글자(garbled)·스캔본은 글자 교체가 불가하므로 스캔본 다이얼로그로
               // (빠른 번역 옵션 없이) 안내한다.
               const choice = await askRetypeset(
@@ -602,13 +754,24 @@
               );
               if (choice === "cancel") return;
               chosenMode = choice; // 'retypeset' 또는 'inplace'
+              modes = [choice];
+            } else if (affected.length) {
+              // 여러 파일: 해당 파일 목록을 한 번에 보여주고 일괄 결정.
+              const choice = await askRetypesetMulti(affected);
+              if (choice === "cancel") return;
+              affected.forEach(({ i, meta }) => {
+                // 스캔본/깨진 글자는 어차피 재조판만 가능 → 항상 재조판.
+                modes[i] =
+                  meta.scanned || meta.garbled ? "retypeset" : choice;
+              });
             }
           }
 
           const fd = new FormData();
-          fd.append("pdf", fileInput.files[0]);
+          list.forEach((f) => fd.append("pdf", f));
           fd.append("model", document.getElementById("trModel").value);
           fd.append("mode", chosenMode);
+          fd.append("modes", JSON.stringify(modes));
           const roEl = document.getElementById("trRestoreOnly");
           if (roEl && roEl.checked) fd.append("restoreOnly", "1");
           const crEl = document.getElementById("trChartRedraw");
@@ -701,20 +864,42 @@
         function streamJob(jobId) {
           const es = new EventSource(`/api/jobs/${jobId}/stream`);
           currentEs = es;
+          // 다중 파일: 파일이 끝날 때마다 개별 다운로드 링크(중복 방지 index 기준).
+          const addedFileLinks = new Set();
+          function addFileLink(d) {
+            if (d == null || d.index == null || addedFileLinks.has(d.index)) return;
+            addedFileLinks.add(d.index);
+            const link = document.createElement("a");
+            link.href = `/api/jobs/${jobId}/download?file=${d.index}`;
+            link.textContent = `📥 ${d.filename} 다운로드`;
+            link.download = d.filename;
+            link.className = "btn btn-primary";
+            link.style.cssText = "display:block;width:fit-content;margin-top:8px";
+            resultArea.appendChild(link);
+          }
 
           es.addEventListener("progress", (e) => {
             appendLine(JSON.parse(e.data));
           });
 
+          // 다중 파일 job: 완료된 파일부터 바로 받을 수 있게 즉시 링크를 붙인다.
+          es.addEventListener("file", (e) => {
+            addFileLink(JSON.parse(e.data));
+          });
+
           es.addEventListener("done", (e) => {
             const data = JSON.parse(e.data);
             statusTitle.textContent = "완료 ✓";
-            const link = document.createElement("a");
-            link.href = `/api/jobs/${jobId}/download`;
-            link.textContent = `📥 ${data.filename} 다운로드`;
-            link.download = data.filename;
-            link.className = "btn btn-primary";
-            resultArea.appendChild(link);
+            if (data.files && data.files.length > 1) {
+              data.files.forEach(addFileLink);
+            } else {
+              const link = document.createElement("a");
+              link.href = `/api/jobs/${jobId}/download`;
+              link.textContent = `📥 ${data.filename} 다운로드`;
+              link.download = data.filename;
+              link.className = "btn btn-primary";
+              resultArea.appendChild(link);
+            }
             es.close();
             setBusy(false);
             stopBtn.textContent = "중지";

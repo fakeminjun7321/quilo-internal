@@ -2300,7 +2300,9 @@ def _figure_caption(tblocks, reg, gap=80.0):
     return ""
 
 
-def _expand_region_with_labels(page, reg, side_margin=64.0, below_pad=26.0, above_pad=11.0):
+def _expand_region_with_labels(
+    page, reg, side_margin=64.0, below_pad=26.0, above_pad=11.0, other_regions=None
+):
     """그림 region 을 주변에 '붙은' 짧은 라벨까지 넓힌다 — 축 눈금 숫자(350·40 등),
     곡선/화살표 이름(Secant Lines·Tangent Line), 축 제목(Time (days)·Number of flies).
     이 라벨들은 벡터 드로잉 bbox 밖의 '텍스트'라 _figure_regions 클러스터에 안 잡혀,
@@ -2310,7 +2312,9 @@ def _expand_region_with_labels(page, reg, side_margin=64.0, below_pad=26.0, abov
     - 옆(좌/우): 그림과 세로로 겹치는 블록만 side_margin 까지 병합(축 숫자·곡선 라벨).
     - 아래: 바로 아래 below_pad 이내 + 가로로 겹치는 '짧은' 라벨만(x축 숫자·축 제목).
     - 위: 바로 위 above_pad 이내 + 가로로 겹치는 '아주 짧은' 라벨만(y축 문자 p·y 등).
-    캡션 블록(FIGURE/그림 …)과 본문 산문(긴 문장)은 항상 제외한다."""
+    캡션 블록(FIGURE/그림 …)과 본문 산문(긴 문장)은 항상 제외한다.
+    other_regions(같은 페이지의 다른 그림 영역)를 침범하지 않는다 — 인접한 다중 패널
+    (그림 2.8 (a)(b)(c) 등)이 서로를 삼켜 같은 그리드가 중복 렌더되던 회귀 방지."""
     try:
         blocks = page.get_text("blocks")
     except Exception:
@@ -2353,6 +2357,19 @@ def _expand_region_with_labels(page, reg, side_margin=64.0, below_pad=26.0, abov
                 return True
         return False
 
+    # 다른 그림 영역(살짝 수축시켜 경계 접촉은 허용)과 겹침 판정 — 다중 패널 상호 잠식 방지.
+    others = []
+    for o in other_regions or []:
+        if abs(o.x0 - reg.x0) < 0.5 and abs(o.y0 - reg.y0) < 0.5 and abs(o.x1 - reg.x1) < 0.5:
+            continue  # 자기 자신
+        others.append(fitz.Rect(o.x0 + 3, o.y0 + 3, o.x1 - 3, o.y1 - 3))
+
+    def _hits_other(rect):
+        for o in others:
+            if not o.is_empty and rect.intersects(o):
+                return True
+        return False
+
     grown = fitz.Rect(reg)
     for b in blocks:
         if len(b) < 5:
@@ -2380,9 +2397,13 @@ def _expand_region_with_labels(page, reg, side_margin=64.0, below_pad=26.0, abov
             include = True  # (3) 바로 위 축 문자(p·y 등, 아주 짧은 것만)
         if not include:
             continue
-        # 이 라벨을 넣었을 때 확장 영역이 본문 산문과 겹치면 스킵(여백 그림 옆 본문 보호).
+        # 라벨 자체가 다른 그림 영역 안에 있으면(그 그림의 라벨) 스킵.
+        if _hits_other(br):
+            continue
+        # 이 라벨을 넣었을 때 확장 영역이 본문 산문이나 다른 그림 영역과 겹치면 스킵
+        # (여백 그림 옆 본문 보호 + 인접 다중 패널 상호 잠식 방지).
         tentative = fitz.Rect(grown) | br
-        if _hits_prose(tentative):
+        if _hits_prose(tentative) or _hits_other(tentative):
             continue
         grown = tentative
     # 폭주 안전장치: 세로(위/아래 = 본문·캡션 방향)는 좁게 클립하고, 가로(옆 = 여백·거터
@@ -2434,7 +2455,8 @@ def cmd_figures(pdf_path, out_dir, zoom=3.0, max_figures=80):
             if reg.width < 45 or reg.height < 45:
                 continue  # 너무 작음(아이콘·기호 조각) → 그림으로 보지 않음
             # 벡터 드로잉 밖의 축 눈금 숫자·곡선 라벨·축 제목까지 크롭에 포함(잘림 방지).
-            reg2 = _expand_region_with_labels(page, reg)
+            # 같은 페이지의 다른 그림 영역(regs)은 침범 금지 — 인접 다중 패널 상호 잠식 방지.
+            reg2 = _expand_region_with_labels(page, reg, other_regions=regs)
             # 화살촉 등 미세 잘림 방지용 소폭 여백을 더하되, 페이지 밖으로 안 나가게.
             pad = 5.0
             rr = fitz.Rect(

@@ -342,7 +342,9 @@
           const chars = Math.max(0, +meta.text_chars || 0);
           const scanned = !!meta.scanned;
           // 깨진 텍스트층은 '글자 교체' 불가 → 스캔본과 동일하게 이미지 OCR 경로.
+          // (수학 폰트 깨짐 math_garbled 도 서버가 garbled 로 접어서 내려준다.)
           const garbled = !!meta.garbled;
+          const mathGarbled = !!meta.math_garbled;
           const visionOcr = scanned || garbled;
           const density = +meta.math_density || 0;
           const needs = visionOcr || density >= 12;
@@ -391,6 +393,7 @@
             mode: rmode,
             scanned,
             garbled,
+            mathGarbled,
             pages,
             chars,
             truncated,
@@ -414,13 +417,15 @@
               `<br><span style="opacity:.7">PDF를 나눠서 업로드하면 번역할 수 있습니다.</span>`;
             return;
           }
-          const modeLabel = e.garbled
-            ? "깨진 글자 PDF → OCR 재조판"
-            : e.scanned
-              ? "스캔본 OCR 재조판"
-              : e.mode === "retypeset"
-                ? "재조판(수식·정밀)"
-                : "빠른 번역(레이아웃 유지)";
+          const modeLabel = e.mathGarbled
+            ? "수식 폰트 깨짐 → OCR 재조판"
+            : e.garbled
+              ? "깨진 글자 PDF → OCR 재조판"
+              : e.scanned
+                ? "스캔본 OCR 재조판"
+                : e.mode === "retypeset"
+                  ? "재조판(수식·정밀)"
+                  : "빠른 번역(레이아웃 유지)";
           const krwLo = Math.round(e.costUsd.lo * 1400);
           const krwHi = Math.round(e.costUsd.hi * 1400);
           estEl.innerHTML =
@@ -462,13 +467,15 @@
             secLo += e.seconds.lo;
             secHi += e.seconds.hi;
             pages += e.pages;
-            const label = e.garbled
-              ? "깨진 글자 OCR 재조판"
-              : e.scanned
-                ? "스캔 OCR 재조판"
-                : e.mode === "retypeset"
-                  ? "재조판"
-                  : "빠른 번역";
+            const label = e.mathGarbled
+              ? "수식 폰트 깨짐 OCR 재조판"
+              : e.garbled
+                ? "깨진 글자 OCR 재조판"
+                : e.scanned
+                  ? "스캔 OCR 재조판"
+                  : e.mode === "retypeset"
+                    ? "재조판"
+                    : "빠른 번역";
             return `${i + 1}. ${escHtml(f.name)} — ${e.pages}쪽 · ${label}`;
           });
           estEl.style.display = "block";
@@ -564,7 +571,7 @@
         // 재조판 권유 확인창. 사용자가 '재조판'을 명시하지 않았는데 문서가 재조판을
         // 필요로 하면(스캔본·수식 많음) 자동 전환하지 않고 먼저 물어본다.
         // 반환: 'retypeset' | 'inplace' | 'cancel'
-        function askRetypeset(kind, density, garbled) {
+        function askRetypeset(kind, density, garbled, mathGarbled) {
           return new Promise((resolve) => {
             const scanned = kind === "scanned";
             const ov = document.createElement("div");
@@ -577,14 +584,18 @@
             card.setAttribute("aria-describedby", "retypesetDlgBody");
             card.style.cssText =
               "background:var(--surface);border-radius:var(--radius);max-width:440px;width:100%;padding:22px 22px 18px;box-shadow:var(--shadow-lg);font-size:14px;line-height:1.6;color:var(--text)";
-            const title = garbled
-              ? "본문 글자가 깨진 PDF — 재조판이 필요합니다"
-              : scanned
-                ? "스캔본 PDF — 재조판이 필요합니다"
-                : "수식이 많은 문서입니다";
-            const body = garbled
-              ? "이 PDF는 본문 글자가 깨진 폰트로 박혀 있어(글자 추출 불가) 글자만 바꾸는 <b>빠른 번역</b>이 불가능합니다. 페이지를 이미지로 읽는 <b>재조판(OCR)</b>으로만 번역할 수 있어요. (PDF를 새로 생성 · 시간·비용이 더 듭니다.)"
-              : scanned
+            const title = mathGarbled
+              ? "수식 폰트가 깨진 PDF — 재조판이 필요합니다"
+              : garbled
+                ? "본문 글자가 깨진 PDF — 재조판이 필요합니다"
+                : scanned
+                  ? "스캔본 PDF — 재조판이 필요합니다"
+                  : "수식이 많은 문서입니다";
+            const body = mathGarbled
+              ? "이 PDF는 수학 기호가 깨진 폰트(Math Pi 계열)로 인코딩돼 있어, 글자만 바꾸는 <b>빠른 번역</b>은 수식을 훼손합니다(예: [a, b]→3a, b4, √x→2x). 페이지를 이미지로 읽는 <b>재조판(OCR)</b>으로만 정확하게 번역할 수 있어요. (PDF를 새로 생성 · 시간·비용이 더 듭니다.)"
+              : garbled
+                ? "이 PDF는 본문 글자가 깨진 폰트로 박혀 있어(글자 추출 불가) 글자만 바꾸는 <b>빠른 번역</b>이 불가능합니다. 페이지를 이미지로 읽는 <b>재조판(OCR)</b>으로만 번역할 수 있어요. (PDF를 새로 생성 · 시간·비용이 더 듭니다.)"
+                : scanned
                 ? "이 PDF는 스캔본/이미지예요. 글자만 바꾸는 <b>빠른 번역</b>은 불가능하고, OCR로 새로 조판하는 <b>재조판</b>으로만 번역할 수 있습니다. (PDF를 새로 생성 · 시간·비용이 더 듭니다.)"
                 : `이 문서는 수식이 많습니다(수식밀도 <b>${density}</b>).<br><b>빠른 번역</b>은 레이아웃·그림은 그대로지만 복잡한 수식·전하·구조식이 깨질 수 있어요.<br><b>재조판</b>은 PDF를 새로 만들어 수식을 정확히 복원합니다(시간·비용↑, 레이아웃은 달라짐).`;
             card.innerHTML =
@@ -654,9 +665,11 @@
               .map(({ f, meta }) => {
                 const why =
                   meta.scanned || meta.garbled
-                    ? meta.garbled
-                      ? "깨진 글자 — 재조판(OCR) 필수"
-                      : "스캔본 — 재조판(OCR) 필수"
+                    ? meta.math_garbled
+                      ? "수식 폰트 깨짐 — 재조판(OCR) 필수"
+                      : meta.garbled
+                        ? "깨진 글자 — 재조판(OCR) 필수"
+                        : "스캔본 — 재조판(OCR) 필수"
                     : `수식 많음(밀도 ${+meta.math_density || 0}) — 재조판 권장`;
                 return `<li><b>${escHtml(f.name)}</b> · ${why}</li>`;
               })
@@ -751,6 +764,7 @@
                 scanned || garbled ? "scanned" : "math",
                 density,
                 garbled,
+                !!m.math_garbled,
               );
               if (choice === "cancel") return;
               chosenMode = choice; // 'retypeset' 또는 'inplace'

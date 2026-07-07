@@ -4469,6 +4469,7 @@ async function prepareScannedRouting(pdfBuffer, { signal, onProgress }) {
     fs.writeFileSync(pdfPath, pdfBuffer);
     let scanned = false;
     let garbled = false;
+    let mathGarbled = false;
     let ocrLayer = false;
     let mathDensity = 0;
     let twoColumn = false;
@@ -4477,6 +4478,7 @@ async function prepareScannedRouting(pdfBuffer, { signal, onProgress }) {
       const a = await analyzePdf(pdfPath, { signal });
       scanned = !!a.scanned;
       garbled = !!a.garbled;
+      mathGarbled = !!a.math_garbled;
       ocrLayer = !!a.ocr_layer;
       mathDensity = Number(a.math_density) || 0;
       twoColumn = !!a.two_column;
@@ -4495,9 +4497,11 @@ async function prepareScannedRouting(pdfBuffer, { signal, onProgress }) {
     onProgress(
       ocrLayer
         ? "📷 사진 스캔 + 숨은 OCR 텍스트층 감지 — '글자 교체'는 사진 위 겹쳐쓰기가 되어 불가 → 고해상도 OCR 재조판으로 전환(내장 OCR 텍스트는 참고 힌트로 활용)"
-        : garbled && !scanned
-          ? "🔤 본문 글자가 깨진 폰트로 박힌 PDF 감지 (글자 추출 불가) → 고해상도 OCR 재조판으로 전환"
-          : "🖼️ 텍스트 레이어가 없는 스캔/이미지 PDF 감지 → 고해상도 OCR 재조판으로 전환",
+        : mathGarbled && !scanned
+          ? "🧮 수학 기호가 깨진 폰트(Math Pi 계열, ToUnicode 없음)로 박힌 PDF 감지 — 글자 교체 시 [→3, /→> 처럼 수식이 훼손됩니다 → 고해상도 OCR 재조판으로 전환"
+          : garbled && !scanned
+            ? "🔤 본문 글자가 깨진 폰트로 박힌 PDF 감지 (글자 추출 불가) → 고해상도 OCR 재조판으로 전환"
+            : "🖼️ 텍스트 레이어가 없는 스캔/이미지 PDF 감지 → 고해상도 OCR 재조판으로 전환",
     );
     // 숨은 OCR 텍스트층은 페이지별로 덤프해 비전 프롬프트의 참고 힌트로 쓴다
     // (고유명사·숫자·코드 철자 정확도↑). 덤프 실패는 힌트 없이 진행(치명 아님).
@@ -4539,6 +4543,7 @@ async function prepareScannedRouting(pdfBuffer, { signal, onProgress }) {
       return {
         scanned: true,
         garbled,
+        mathGarbled,
         ocrLayer,
         pageTexts,
         largeVision: true,
@@ -4555,6 +4560,7 @@ async function prepareScannedRouting(pdfBuffer, { signal, onProgress }) {
     return {
       scanned: true,
       garbled,
+      mathGarbled,
       ocrLayer,
       pageTexts,
       imageBlocks: r.imageBlocks,
@@ -4617,6 +4623,7 @@ async function translateLargeVisionPdf({
   signal,
   onProgress,
   pageTexts = null,
+  figures = null, // 디지털 PDF 정밀 추출 그림(수학 폰트 깨짐 문서) — 모델 bbox 크롭 대체
   restoreOnly = false,
   chartRedraw = false,
 }) {
@@ -4651,6 +4658,7 @@ async function translateLargeVisionPdf({
       pdfBuffer,
       imageBlocks: r.imageBlocks,
       tiles: r.tileBuffers,
+      figures,
       ocrHint: buildOcrHint(pageTexts, 1, Number.MAX_SAFE_INTEGER),
       restoreOnly,
       chartRedraw,
@@ -4709,6 +4717,14 @@ async function translateLargeVisionPdf({
           if (ctrl.signal.aborted) throw e;
           // 래스터 자체 실패 → 이 구간은 원문 폴백.
         }
+        // 정밀 그림(디지털 PDF): 이 구간 페이지 범위의 그림만, 구간 내 상대 페이지로 전달
+        // (모델은 구간의 이미지 1..N 만 보므로 목록의 위치 안내도 구간 기준이어야 한다).
+        const chunkFigs =
+          Array.isArray(figures) && figures.length
+            ? figures
+                .filter((f) => f.page >= c.start && f.page <= c.end)
+                .map((f) => ({ ...f, page: f.page - c.start + 1 }))
+            : null;
         for (let attempt = 0; blocks && attempt <= retries && !part; attempt++) {
           if (ctrl.signal.aborted) throw new Error("작업이 중단되었습니다.");
           try {
@@ -4716,6 +4732,7 @@ async function translateLargeVisionPdf({
               pdfBuffer: c.buffer,
               imageBlocks: blocks.imageBlocks,
               tiles: blocks.tileBuffers,
+              figures: chunkFigs && chunkFigs.length ? chunkFigs : null,
               model,
               ocrHint: buildOcrHint(pageTexts, c.start, c.end), // 이 구간 페이지의 숨은 OCR층 힌트
               restoreOnly,
@@ -4786,16 +4803,16 @@ async function translateLargeVisionPdf({
       cache_read_input_tokens: 0,
       cache_creation_input_tokens: 0,
     };
-    let figures = 0;
+    let figureTotal = 0;
     for (const r of results) {
       const c = (r && r.cost) || {};
       usage.input_tokens += c.inputTokens || 0;
       usage.output_tokens += c.outputTokens || 0;
       usage.cache_read_input_tokens += c.cacheReadTokens || 0;
       usage.cache_creation_input_tokens += c.cacheWriteTokens || 0;
-      figures += (r && r.figures) || 0;
+      figureTotal += (r && r.figures) || 0;
     }
-    return { buffer, cost: pricing.calcCost({ usage, model }), pageCount, figures, model };
+    return { buffer, cost: pricing.calcCost({ usage, model }), pageCount, figures: figureTotal, model };
   } finally {
     if (signal) signal.removeEventListener("abort", onAbort);
     try {
@@ -4863,9 +4880,11 @@ async function translateOnePdfCore({
     onProgress(
       routing.ocrLayer
         ? "⚠ 사진 스캔 + 숨은 OCR 텍스트층 PDF는 '빠른 번역(글자 교체)' 시 기울어진 사진 위에 글자가 겹쳐 깨집니다 → 'OCR 재조판'으로 전환합니다."
-        : routing.garbled
-          ? "⚠ 본문 글자가 깨진 폰트로 박혀 추출 불가한 PDF는 '빠른 번역(글자 교체)'이 불가능합니다 → 'OCR 재조판'으로 전환합니다."
-          : "⚠ 스캔본/이미지 PDF는 글자만 교체하는 '빠른 번역'이 불가능합니다 → 'OCR 재조판'으로 전환합니다.",
+        : routing.mathGarbled
+          ? "⚠ 수학 기호가 깨진 폰트로 박힌 PDF는 '빠른 번역(글자 교체)' 시 수식이 훼손됩니다([→3, /→> 등) → 'OCR 재조판'으로 전환합니다."
+          : routing.garbled
+            ? "⚠ 본문 글자가 깨진 폰트로 박혀 추출 불가한 PDF는 '빠른 번역(글자 교체)'이 불가능합니다 → 'OCR 재조판'으로 전환합니다."
+            : "⚠ 스캔본/이미지 PDF는 글자만 교체하는 '빠른 번역'이 불가능합니다 → 'OCR 재조판'으로 전환합니다.",
     );
   } else if (mode === "inplace" && needsRetypeset) {
     // 수식 많은 문서를 사용자가 빠른 번역으로 고른 경우(확인창에서 유지 선택).
@@ -4878,9 +4897,11 @@ async function translateOnePdfCore({
         (routing.scanned
           ? routing.ocrLayer
             ? " · 사진 스캔+숨은 OCR층 감지"
-            : routing.garbled
-              ? " · 깨진 텍스트층 감지"
-              : " · 스캔본 감지"
+            : routing.mathGarbled
+              ? " · 수식 폰트 깨짐 감지"
+              : routing.garbled
+                ? " · 깨진 텍스트층 감지"
+                : " · 스캔본 감지"
           : ` · 수식밀도 ${routing.mathDensity ?? 0}`),
     );
   }
@@ -4893,6 +4914,22 @@ async function translateOnePdfCore({
   }
   let effectiveMode = resolvedMode;
   let result;
+  // 수학 폰트 깨짐(math_garbled) 문서는 스캔본과 달리 '디지털 PDF'라 그림 좌표를
+  // fitz 로 정확히 뽑을 수 있다 → 비전 경로에서도 모델 bbox 추정 크롭(위치 오류·
+  // 본문 글자 섞임) 대신 정밀 크롭을 쓴다. 추출 실패/0개면 기존 bbox 방식 폴백.
+  let preciseFigs = null;
+  if (routing.scanned && routing.mathGarbled) {
+    const figs = await extractFiguresForRetypeset(pdfBuffer, {
+      signal,
+      onProgress,
+    });
+    if (figs.length) {
+      preciseFigs = figs;
+      onProgress(
+        `🖼️ 디지털 원본에서 그림 ${figs.length}개 정밀 추출 — 재조판본에 복원합니다.`,
+      );
+    }
+  }
   if (routing.scanned && routing.largeVision) {
     // 대용량 스캔/깨진 PDF: 구간으로 나눠 OCR 재조판(병렬) 후 병합.
     result = await translateLargeVisionPdf({
@@ -4900,6 +4937,7 @@ async function translateOnePdfCore({
       pageCount: routing.pageCount,
       model,
       pageTexts: routing.pageTexts || null,
+      figures: preciseFigs,
       restoreOnly,
       chartRedraw,
       signal,
@@ -4919,6 +4957,7 @@ async function translateOnePdfCore({
       pdfBuffer,
       imageBlocks: routing.imageBlocks,
       tiles: routing.tileBuffers, // 원본 타일 — 그림 복원 crop 용
+      figures: preciseFigs,
       ocrHint: buildOcrHint(routing.pageTexts, 1, Number.MAX_SAFE_INTEGER),
       restoreOnly,
       chartRedraw,

@@ -1292,6 +1292,57 @@ def cmd_analyze(pdf_path):
     garbled_ratio = round(garbage / max(ns, 1), 3)
     # 본문이 충분히 있는데(스캔 아님) 깨짐 비율이 높으면 garbled. 5% 면 정상 문서와 명확히 구분.
     garbled = (not scanned) and ns > 200 and garbled_ratio > 0.05
+    # ── 수학 글리프 깨짐(Math Pi 계열 폰트) 감지 ────────────────────────────────
+    # Pearson MATHPRO·Mathematical Pi·MathTime(MTMI/MTSY)·GreekwMathPi 같은
+    # 출판사 수학 폰트가 ToUnicode 없이 박히면 글리프가 멀쩡한 ASCII 로 '위장'되어
+    # 추출된다: [→3, ]→4, /→>, >→7, <→6, ≥→Ú, √→2 등 (Thomas Calculus 실측 4.7%).
+    # 제어문자가 없어 위 garbled_ratio(0%)를 통과하고, 수학 기호가 ASCII 로 새서
+    # math_density 도 과소측정된다. 이 텍스트층으로 글자 교체(in-place)나 텍스트
+    # 재조판을 하면 √x→2x, [0,3]→30,34 처럼 수학적으로 틀린 번역이 나오므로,
+    # 스캔본과 동일하게 비전 OCR 재조판(이미지 판독) 경로로 보내야 한다.
+    # 판정: 표본 페이지에서 'ToUnicode 없는 수학폰트' 글리프 비중 ≥1% + 절대량 확보.
+    # (GillSansMTPro 같은 Monotype 'MT' 텍스트 폰트가 걸리지 않게 접두사 규칙 분리.)
+    math_garbled = False
+    math_garbled_ratio = 0.0
+    if (not scanned) and (not garbled) and n > 0 and total > 0:
+        rx_sub = re.compile(
+            r"MATHPRO|MATHEMATICALPI|MATHPI|GREEKWMATHPI|MATHTIME|ESSTIX", re.I
+        )
+        rx_pre = re.compile(r"^(MTMI|MTSY|MTEX|MTGU|MTMS)", re.I)
+        m_idxs = list(range(n)) if n <= 24 else sorted({round(i * (n - 1) / 23) for i in range(24)})
+        bad_fonts = set()
+        for pi in m_idxs:
+            try:
+                for f in doc[pi].get_fonts(full=True):
+                    base = str(f[3] or "").split("+")[-1]
+                    if rx_sub.search(base) or rx_pre.match(base):
+                        tou = doc.xref_get_key(f[0], "ToUnicode")
+                        if not tou or tou[0] in ("null", ""):
+                            bad_fonts.add(base)
+            except Exception:
+                pass
+        if bad_fonts:
+            bad_glyphs = 0
+            tot_glyphs = 0
+            # texttrace 의 span font 는 서브셋 접두사(AAAAKU+)가 없고 31자 내로 잘릴 수
+            # 있어 base 이름 앞부분 일치로 센다.
+            keys = {b[:28] for b in bad_fonts}
+            for pi in m_idxs:
+                try:
+                    for sp in doc[pi].get_texttrace():
+                        cnt = len(sp.get("chars") or ())
+                        if not cnt:
+                            continue
+                        fname = str(sp.get("font") or "")
+                        if any(fname.startswith(k) for k in keys):
+                            bad_glyphs += cnt
+                        tot_glyphs += cnt
+                except Exception:
+                    pass
+            math_garbled_ratio = round(bad_glyphs / max(tot_glyphs, 1), 4)
+            math_garbled = bad_glyphs >= 150 and math_garbled_ratio >= 0.01
+    if math_garbled:
+        garbled = True  # 라우팅은 기존 garbled(비전 OCR)와 동일 — 메시지 구분용 필드만 별도
     # ── 사진 스캔 + 숨은 OCR 텍스트층(vFlat·ocrmypdf 등) 감지 ──────────────────
     # 스캔 앱이 사진 위에 '보이지 않는' OCR 텍스트를 심으면 text_chars 가 커져 위
     # scanned(<20자/쪽) 판정을 통과하지 못한다. 그러나 실제 글자는 사진 픽셀이라
@@ -1372,6 +1423,8 @@ def cmd_analyze(pdf_path):
             "scanned": scanned,
             "garbled": garbled,
             "garbled_ratio": garbled_ratio,
+            "math_garbled": math_garbled,
+            "math_garbled_ratio": math_garbled_ratio,
             "math_score": math_score,
             "math_density": density,
             "two_column": two_column,
@@ -2247,6 +2300,104 @@ def _figure_caption(tblocks, reg, gap=80.0):
     return ""
 
 
+def _expand_region_with_labels(page, reg, side_margin=64.0, below_pad=26.0, above_pad=11.0):
+    """그림 region 을 주변에 '붙은' 짧은 라벨까지 넓힌다 — 축 눈금 숫자(350·40 등),
+    곡선/화살표 이름(Secant Lines·Tangent Line), 축 제목(Time (days)·Number of flies).
+    이 라벨들은 벡터 드로잉 bbox 밖의 '텍스트'라 _figure_regions 클러스터에 안 잡혀,
+    좁은 pad 로 크롭하면 잘려 나간다.
+
+    확장 방향을 구분해 그림 '위/아래'의 본문·수식을 이미지에 굽지 않는다:
+    - 옆(좌/우): 그림과 세로로 겹치는 블록만 side_margin 까지 병합(축 숫자·곡선 라벨).
+    - 아래: 바로 아래 below_pad 이내 + 가로로 겹치는 '짧은' 라벨만(x축 숫자·축 제목).
+    - 위: 바로 위 above_pad 이내 + 가로로 겹치는 '아주 짧은' 라벨만(y축 문자 p·y 등).
+    캡션 블록(FIGURE/그림 …)과 본문 산문(긴 문장)은 항상 제외한다."""
+    try:
+        blocks = page.get_text("blocks")
+    except Exception:
+        return reg
+    cap_pat = re.compile(
+        r"^\s*(FIG(?:URE)?|그림|Figure|Table|TABLE|표|SCHEME|Scheme)\.?\s*[\dIVXP]",
+        re.I,
+    )
+
+    def _is_prose(oneline, nlines):
+        # 본문 문단 판정(여백 배치 그림 옆 본문 포함). 단어 수를 함께 봐서 '다단 수식
+        # 라벨'(분수 스택처럼 여러 줄이지만 단어가 적음)을 본문으로 오인하지 않는다.
+        letters = sum(1 for c in oneline if c.isalpha())
+        words = len(re.findall(r"[A-Za-z][A-Za-z]+|[가-힣]{2,}", oneline))
+        return (
+            (letters >= 55 and words >= 9)  # 긴 한 줄 문단
+            or (nlines >= 3 and words >= 10)  # 여러 줄 문단(수식 스택은 단어가 적어 제외)
+            or (nlines >= 2 and words >= 14)  # 빽빽한 2줄 문단
+        )
+
+    # 본문 산문 블록 목록 — 확장이 이 블록과 겹치면 그 라벨은 병합하지 않는다(여백 그림
+    # 옆 본문·수식을 이미지에 굽지 않기 위한 핵심 가드). 캡션은 산문에서 제외(짧고 별도 번역).
+    prose_rects = []
+    for b in blocks:
+        if len(b) < 5:
+            continue
+        txt = (b[4] or "").strip()
+        if not txt:
+            continue
+        oneline = " ".join(txt.split())
+        if cap_pat.search(oneline[:40]):
+            continue
+        nlines = txt.count("\n") + 1
+        if _is_prose(oneline, nlines):
+            prose_rects.append(fitz.Rect(b[0], b[1], b[2], b[3]))
+
+    def _hits_prose(rect):
+        for pr_ in prose_rects:
+            if rect.intersects(pr_):
+                return True
+        return False
+
+    grown = fitz.Rect(reg)
+    for b in blocks:
+        if len(b) < 5:
+            continue
+        txt = (b[4] or "").strip()
+        if not txt:
+            continue
+        br = fitz.Rect(b[0], b[1], b[2], b[3])
+        oneline = " ".join(txt.split())
+        # 캡션·본문 산문 제외.
+        if cap_pat.search(oneline[:40]):
+            continue
+        nlines = txt.count("\n") + 1
+        if _is_prose(oneline, nlines):
+            continue
+        short = len(oneline) <= 18
+        vert_overlap = br.y0 < reg.y1 - 2 and br.y1 > reg.y0 + 2
+        horiz_overlap = br.x0 < reg.x1 - 2 and br.x1 > reg.x0 + 2
+        include = False
+        if vert_overlap and br.x1 >= reg.x0 - side_margin and br.x0 <= reg.x1 + side_margin:
+            include = True  # (1) 좌/우 옆 라벨 — 축 숫자·곡선/화살표 이름
+        elif horiz_overlap and 0 <= br.y0 - reg.y1 <= below_pad and short:
+            include = True  # (2) 바로 아래 x축 숫자·축 제목(짧은 것만)
+        elif horiz_overlap and 0 <= reg.y0 - br.y1 <= above_pad and len(oneline) <= 6:
+            include = True  # (3) 바로 위 축 문자(p·y 등, 아주 짧은 것만)
+        if not include:
+            continue
+        # 이 라벨을 넣었을 때 확장 영역이 본문 산문과 겹치면 스킵(여백 그림 옆 본문 보호).
+        tentative = fitz.Rect(grown) | br
+        if _hits_prose(tentative):
+            continue
+        grown = tentative
+    # 폭주 안전장치: 세로(위/아래 = 본문·캡션 방향)는 좁게 클립하고, 가로(옆 = 여백·거터
+    # 방향, 본문 잠식 위험 낮음)는 넉넉히 둔다 — 세로로 겹치는 넓은 라벨(예: 접선 기울기
+    # 식)이 오른쪽으로 길어도 온전히 담기게. 페이지 밖 클립은 호출부(cmd_figures)가 한다.
+    safe = fitz.Rect(
+        reg.x0 - side_margin - 150,
+        reg.y0 - above_pad - 4,
+        reg.x1 + side_margin + 150,
+        reg.y1 + below_pad + 6,
+    )
+    grown = grown & safe
+    return grown if not grown.is_empty else fitz.Rect(reg)
+
+
 def cmd_figures(pdf_path, out_dir, zoom=3.0, max_figures=80):
     """텍스트 PDF 의 그림/도표 영역을 PNG 로 잘라 out_dir 에 저장하고 메타데이터를 낸다.
     재조판(re-typeset) 시 원본 그림을 \\includegraphics 로 복원하기 위한 입력.
@@ -2282,13 +2433,15 @@ def cmd_figures(pdf_path, out_dir, zoom=3.0, max_figures=80):
                 break
             if reg.width < 45 or reg.height < 45:
                 continue  # 너무 작음(아이콘·기호 조각) → 그림으로 보지 않음
-            # 축 라벨·화살촉이 잘리지 않게 약간 여백을 주되, 페이지 밖으로 안 나가게.
-            pad = 7.0
+            # 벡터 드로잉 밖의 축 눈금 숫자·곡선 라벨·축 제목까지 크롭에 포함(잘림 방지).
+            reg2 = _expand_region_with_labels(page, reg)
+            # 화살촉 등 미세 잘림 방지용 소폭 여백을 더하되, 페이지 밖으로 안 나가게.
+            pad = 5.0
             rr = fitz.Rect(
-                max(pr.x0, reg.x0 - pad),
-                max(pr.y0, reg.y0 - pad),
-                min(pr.x1, reg.x1 + pad),
-                min(pr.y1, reg.y1 + pad),
+                max(pr.x0, reg2.x0 - pad),
+                max(pr.y0, reg2.y0 - pad),
+                min(pr.x1, reg2.x1 + pad),
+                min(pr.y1, reg2.y1 + pad),
             )
             try:
                 pix = page.get_pixmap(matrix=mat, clip=rr, alpha=False)

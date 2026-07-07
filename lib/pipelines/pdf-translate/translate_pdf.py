@@ -1340,7 +1340,9 @@ def cmd_analyze(pdf_path):
                 except Exception:
                     pass
             math_garbled_ratio = round(bad_glyphs / max(tot_glyphs, 1), 4)
-            math_garbled = bad_glyphs >= 150 and math_garbled_ratio >= 0.01
+            # ratio(≥1%)가 주 신호 — 정상 문서는 이 폰트를 안 써서 ~0%다. 절대 하한(50)은
+            # 아주 짧은 문서에서 소수 글리프로 오탐하는 것만 막는 안전장치(짧은 발췌도 감지).
+            math_garbled = bad_glyphs >= 50 and math_garbled_ratio >= 0.01
     if math_garbled:
         garbled = True  # 라우팅은 기존 garbled(비전 OCR)와 동일 — 메시지 구분용 필드만 별도
     # ── 사진 스캔 + 숨은 OCR 텍스트층(vFlat·ocrmypdf 등) 감지 ──────────────────

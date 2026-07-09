@@ -3515,7 +3515,7 @@ let currentStudentId = "";
         });
       }
 
-      // ── 독서록(베타) submit — 도서 정보 → 독서활동 기록지(.hwpx) ──────────
+      // ── 독서록 submit — 도서 정보 → 독서활동 기록지(.hwpx) (크레딧 과금) ──────────
       if (rlForm) {
         // 생성 방식(한 권씩 / 엑셀 대량) 토글 — 관련 섹션 표시·필수속성·버튼 라벨 전환.
         const rlIsBulk = () =>
@@ -3578,8 +3578,9 @@ let currentStudentId = "";
             const homeroomTeacher = (document.getElementById("rlHomeroom")?.value || "").trim();
             const mapCount = subjectTeachers ? subjectTeachers.split(/\n+/).filter((l) => /[-–:]/.test(l)).length : 0;
 
+            const rlMaxCredits = getModelCredits(rlModel);
             const ok = await showConfirmDialog({
-              title: "독서록 대량 생성 (Pro)",
+              title: "독서록 대량 생성",
               background: true,
               rows: [
                 ["모델", modelLabel],
@@ -3589,9 +3590,11 @@ let currentStudentId = "";
                 ["읽기 기간", `${periodStart || "?"} ~ ${periodEnd || "?"} (책 수만큼 분배)`],
                 ["과목-담당교사", mapCount ? `${mapCount}건 매핑 · 나머지는 담임(${homeroomTeacher || "미지정"}) 공통 ○` : "미입력 (엑셀/일괄 설정 사용)"],
                 ["출력", mapCount || homeroomTeacher ? "교사별 합본 .hwpx → ZIP" : "책마다 .hwpx → ZIP 묶음"],
-                ["예상 비용", "무료 (Pro)"],
+                ["차감 크레딧", rlMaxCredits > 0
+                  ? `권당 최대 ${rlMaxCredits}크레딧 예약 · 실제 사용 토큰만큼만 차감(차액 환불)`
+                  : "무료 (mini)"],
               ],
-              note: `엑셀의 책마다 AI가 선택 계기·내용·느낀 점을 써서 학교 '독서활동 기록지'(.hwpx)를 만들어 ZIP으로 묶습니다. 책이 많으면 몇 분 걸릴 수 있어요. ${USE_POLICY_NOTE}`,
+              note: `엑셀의 책마다 AI가 선택 계기·내용·느낀 점을 써서 학교 '독서활동 기록지'(.hwpx)를 만들어 ZIP으로 묶습니다. 책이 많으면 몇 분 걸릴 수 있어요. 크레딧은 실제 생성된 책의 토큰만큼만 차감됩니다(실패한 책은 미차감). ${USE_POLICY_NOTE}`,
             });
             if (!ok) return;
 
@@ -3631,8 +3634,9 @@ let currentStudentId = "";
           const endDate = document.getElementById("rlEndDate").value;
           const userNotes = document.getElementById("rlUserNotes").value.trim();
 
+          const rlMaxCredits = getModelCredits(rlModel);
           const ok = await showConfirmDialog({
-            title: "독서록 초안 생성 (Pro)",
+            title: "독서록 초안 생성",
             background: true,
             rows: [
               ["모델", modelLabel],
@@ -3642,7 +3646,9 @@ let currentStudentId = "";
               ["저자", author || "AI 추정"],
               ["영역", domainLabel || "미선택"],
               ["감상 메모", userNotes ? "반영" : "없음"],
-              ["예상 비용", "무료 (Pro)"],
+              ["차감 크레딧", rlMaxCredits > 0
+                ? `최대 ${rlMaxCredits}크레딧 예약 · 실제 사용 토큰만큼만 차감(차액 환불)`
+                : "무료 (mini)"],
               ["예상 시간", formatDuration(estimateGenSeconds("reading-log", rlModel))],
             ],
             note: `도서 정보로 AI가 선택 계기·내용 요약·느낀 점을 써서 학교 '독서활동 기록지' 양식(.hwpx)에 채웁니다. ${USE_POLICY_NOTE}`,

@@ -278,10 +278,10 @@
           <span class="rt-title">수학 수행평가 <span class="beta-pill">Pro</span></span>
           <span class="rt-tag">주제 한 줄 → 급수 탐구보고서</span>
         </label>
-        <label id="rtReadingLog" hidden>
+        <label id="rtReadingLog">
           <input type="radio" name="reportType" value="reading-log" />
           <span class="rt-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5a2 2 0 0 1 2-2h13v15H6a2 2 0 0 0-2 2z"/><path d="M4 20a2 2 0 0 1 2-2h13"/></svg></span>
-          <span class="rt-title">독서록 <span class="beta-pill">Pro</span></span>
+          <span class="rt-title">독서록</span>
           <span class="rt-tag">도서 정보 → 독서활동 기록지 .hwpx</span>
         </label>
         <label id="rtProblemSet" hidden>
@@ -987,11 +987,11 @@
       </div>
     </form>
 
-    <!-- ── 독서록 폼 (베타) — 학교 '독서활동 기록지' 양식(.hwpx) 채우기 ──────── -->
+    <!-- ── 독서록 폼 — 학교 '독서활동 기록지' 양식(.hwpx) 채우기 (크레딧 과금) ──────── -->
     <form id="readingLogForm" class="report-form" data-report-form="reading-log" data-flow-init="1" hidden>
       <input type="hidden" name="rlFormat" value="hwpx" />
       <div class="notice">
-        <strong>독서록 「독서활동 기록지」 초안 (Pro·무료).</strong>
+        <strong>독서록 「독서활동 기록지」 초안.</strong>
         읽은 책의 정보를 입력하면, AI가 <strong>선택 계기·내용 요약·느낀 점</strong>을 써서 학교 양식(.hwpx)에 채워 줍니다.
         인적사항(이름)은 개인 설정 값으로 자동 출력됩니다. <strong>그대로 제출하지 말고 본인 글로 다듬어 쓰세요.</strong>
       </div>
@@ -1158,16 +1158,16 @@
           <span class="form-section-title">출력 설정</span>
         </div>
         <div class="seg-group" style="margin-bottom: 12px">
-          <span class="field-label">AI 모델 (Pro 무료)</span>
+          <span class="field-label">AI 모델</span>
           <div class="segmented">
             <label class="fable-model" hidden><input type="radio" name="rlModel" value="claude-fable-5" /> Fable 5 (관리자)</label>
-            <label><input type="radio" name="rlModel" value="claude-sonnet-5" checked /> Sonnet 5 · 추천 · 무료(Pro)</label>
-            <label><input type="radio" name="rlModel" value="claude-opus-4-8" /> Opus 4.8 · 정밀 · 무료(Pro)</label>
-            <label><input type="radio" name="rlModel" value="gpt-5.5" /> GPT-5.5 · 무료(Pro)</label>
-            <label><input type="radio" name="rlModel" value="gpt-5.4" /> GPT-5.4 · 무료(Pro)</label>
-            <label><input type="radio" name="rlModel" value="gpt-5.4-mini" /> GPT-5.4 mini · 무료(Pro)</label>
+            <label><input type="radio" name="rlModel" value="claude-sonnet-5" checked /> Sonnet 5 · 추천 · 2크레딧</label>
+            <label><input type="radio" name="rlModel" value="claude-opus-4-8" /> Opus 4.8 · 정밀 · 4크레딧</label>
+            <label><input type="radio" name="rlModel" value="gpt-5.5" /> GPT-5.5 · 4크레딧</label>
+            <label><input type="radio" name="rlModel" value="gpt-5.4" /> GPT-5.4 · 1크레딧</label>
+            <label><input type="radio" name="rlModel" value="gpt-5.4-mini" /> GPT-5.4 mini · 무료</label>
           </div>
-          <small>독서록은 책 내용을 정확히 써야 해 <b>Claude</b>를 씁니다(GPT는 책 내용을 일반론으로 뭉뚱그려 부정확).</small>
+          <small>표시 크레딧은 <b>예약(최대)</b>이며, 실제로는 생성에 <b>실제 사용한 토큰만큼만</b> 차감되고 차액은 환불됩니다(보통 표시보다 적음). 독서록은 책 내용을 정확히 써야 해 <b>Claude</b>를 권합니다(GPT는 책 내용을 일반론으로 뭉뚱그려 부정확).</small>
         </div>
         <div class="field">
           <label><span class="field-label">글꼴</span>
@@ -1191,7 +1191,7 @@
       </div>
 
       <div class="form-actions">
-        <span class="hint">Pro 기능입니다. 크레딧이 차감되지 않습니다. 생성에는 보통 30초~1분 걸립니다.</span>
+        <span class="hint">실제 사용한 토큰만큼만 크레딧이 차감됩니다(예약 후 차액 환불). 대량은 책 수만큼 차감됩니다. 생성에는 보통 30초~1분 걸립니다.</span>
         <button type="submit" id="rlBtn">독서록 생성</button>
       </div>
     </form>

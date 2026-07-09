@@ -127,7 +127,7 @@
     <div class="epwrap">
       <div class="ephead">
         <a class="logo" href="/"><span class="qmark">Q</span> Quilo</a>
-        <span class="muted">· 수행평가 도움 <span class="ep-beta">Pro</span></span>
+        <span class="muted">· 수행평가 도움</span>
         <span style="flex:1"></span>
         <a href="/" class="muted" style="text-decoration:none">← 홈으로</a>
       </div>
@@ -219,7 +219,7 @@
           <h2>📖 독서록 「독서활동 기록지」</h2>
           <p>
             읽은 책의 정보를 입력하면 AI가 <b>선택 계기 → 내용 요약 → 느낀 점</b>을 써서
-            학교 「독서활동 기록지」 양식에 채워 줍니다. (Pro·무료)
+            학교 「독서활동 기록지」 양식에 채워 줍니다. (실제 사용 토큰만큼 크레딧 차감)
           </p>
           <ul>
             <li>입력: 도서명(+선택: 저자·출판사·영역·기록 구분·감상 메모)</li>
@@ -281,6 +281,8 @@
         ["phys", "math", "reading"].forEach(function (t) {
           var el = document.getElementById(TAB_BADGE[t]);
           if (!el) return;
+          // 독서록은 전 사용자 공개(크레딧 과금) — 잠금/Pro 배지 없음.
+          if (t === "reading") { el.hidden = true; el.className = "ep-tabbadge"; el.textContent = ""; el.removeAttribute("title"); return; }
           if (beta.admin === true) { el.hidden = true; el.className = "ep-tabbadge"; el.textContent = ""; el.removeAttribute("title"); return; }
           if (!hasBeta(TAB_KEYS[t])) {
             el.hidden = false; el.className = "ep-tabbadge lock"; el.textContent = "🔒";
@@ -770,14 +772,11 @@
       }
 
       // ───────────────────────── 독서록 ─────────────────────────
+      // 독서록은 전 사용자 공개(크레딧 과금). 잠금 없이 항상 안내를 보여 준다.
+      // 로그인·크레딧 검증은 실제 생성 시점(/api/generate)에서 처리된다.
       function initReading() {
-        if (hasBeta("reading-log")) {
-          document.getElementById("readingMain").style.display = "";
-          document.getElementById("readingGate").style.display = "none";
-        } else {
-          document.getElementById("readingGate").style.display = "";
-          document.getElementById("readingGate").innerHTML = lockedHtml("독서록");
-        }
+        document.getElementById("readingMain").style.display = "";
+        document.getElementById("readingGate").style.display = "none";
       }
 
       // ───────────────────────── 초기화 ─────────────────────────

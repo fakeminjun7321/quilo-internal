@@ -652,6 +652,8 @@ const PIPELINES = {
 };
 
 // Pro 전용·무료 보고서 종류(옛 '베타') — /api/generate 에서 Pro 회원 한정 접근 + 크레딧 미차감.
+// ⚠ reading-log/-bulk 은 2026-07-09 부터 전 사용자 크레딧 과금(다른 보고서와 동일 단가,
+//   예약=최악치 → 생성 후 실제 토큰 정산)으로 전환됨 — 여기서 제외한다(아래 READING_LOG_TYPES).
 const FREE_BETA_TYPES = new Set([
   "phys-inquiry",
   "math-inquiry",
@@ -661,9 +663,10 @@ const FREE_BETA_TYPES = new Set([
   "korean-lit-exam",
   "cap-translate",
   "phys-mock-exam",
-  "reading-log",
-  "reading-log-bulk",
 ]);
+// 독서록(단일·대량) — 정상 크레딧 과금 보고서. 예약은 '권수 × 모델단가'(최악치)로 선차감하고,
+// 생성 후 실제 소비 토큰(content.__usage)으로 정산해 차액을 환불한다(reserve→settle).
+const READING_LOG_TYPES = new Set(["reading-log", "reading-log-bulk"]);
 // 일시 중단(retire)된 보고서 종류 — 코드는 보존(PIPELINES·파이프라인 파일 유지), 요청만 차단.
 // 재공개하려면 이 집합에서 빼면 된다.
 // (2026-07-02 스튜디오 스킬 4종 · 2026-07-03 물리/수학 수행평가 추가 중단)
@@ -3552,6 +3555,15 @@ app.post(
     const isFreeBeta = FREE_BETA_TYPES.has(reportType);
     let creditCost =
       isFreeBeta || hasGrant || byokActive ? 0 : pricing.getModelCredits(model);
+    // 독서록: 예약(선차감)은 '권수 × 모델단가'(최악치). 실제 차감은 생성 후 실제 소비 토큰으로
+    // 정산(settleReadingLogCost)하고 차액을 환불한다. 단일은 1권, 대량은 업로드한 책 수.
+    if (creditCost > 0 && READING_LOG_TYPES.has(reportType)) {
+      const bookCount =
+        reportType === "reading-log-bulk" && Array.isArray(pipelineInput.books)
+          ? pipelineInput.books.length
+          : 1;
+      creditCost = creditCost * Math.max(1, bookCount);
+    }
     // GPT-5.4-mini 무료 캡: 일 MINI_FREE_DAILY건까지 0크레딧, 초과분은 1크레딧(2026-07-02).
     // 사용 기록은 시도 시점(베타 일일 카운터 재사용, 재시작 리셋). 면제 계층은 카운트 제외.
     let miniOverCap = false;
@@ -5966,7 +5978,23 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
       ) {
         // 0크레딧 모델(무료, 예: GPT-5.4 mini)은 차감 자체를 건너뛴다.
         // (?? 사용: ||는 0을 falsy로 봐서 모델 단가로 잘못 폴백함)
-        const cost = job.creditCost ?? pricing.getModelCredits(job.model);
+        let cost = job.creditCost ?? pricing.getModelCredits(job.model);
+        // 독서록: 예약(최악치)이 아니라 '실제 소비 토큰'으로 정산한다. 생성 결과에 합산된
+        // 사용량(content.__usage)을 크레딧으로 환산(creditsForUsage, min 1·올림)한 값이
+        // 실제 차감액이고, 예약분과의 차액은 settleReservationOnSuccess 가 환불한다.
+        // 사용량이 없으면(집계 실패) 0으로 두어 예약분을 전액 환불한다(과청구 방지).
+        if (READING_LOG_TYPES.has(job.reportType)) {
+          const usage = content && content.__usage;
+          cost = usage
+            ? pricing.creditsForUsage({ usage, model: job.model })
+            : 0;
+          pushProgress(
+            job,
+            usage
+              ? `🧮 실제 토큰 정산: ${cost} 크레딧 (예약 ${job.creditReservation ? job.creditReservation.amount : cost} 중 차액 환불)`
+              : "🧮 실제 토큰 집계 없음 — 예약분 전액 환불",
+          );
+        }
         if (cost <= 0 && !(job.creditReservation && job.creditReservation.amount > 0)) {
           pushProgress(job, "💳 무료 모델 — 크레딧이 차감되지 않았습니다.");
         } else {

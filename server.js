@@ -1282,6 +1282,46 @@ const JOB_RETENTION_MS = 24 * 60 * 60 * 1000;
 // curl 등으로 폼 락을 우회한 동시 요청도 1개로 제한됨.
 const activeJobByUser = new Map(); // userId -> jobId
 
+// ── 전역 동시 생성 상한 (서버 보호) ─────────────────────────────────────────
+// 사용자당 1개(activeJobByUser) 위에, 서로 다른 사용자들의 '동시에 도는 생성'을
+// 서버 전체 N개로 제한한다. 초과분은 대기열에서 순서를 기다린다(슬롯 나면 실행).
+// Render 인스턴스 CPU/메모리(HWPX Python spawn 포함)와 API 동시요청 한도를 지키기 위함.
+// env MAX_CONCURRENT_GENERATIONS 로 조정.
+const MAX_CONCURRENT_GENERATIONS = Math.max(
+  1,
+  parseInt(process.env.MAX_CONCURRENT_GENERATIONS || "10", 10) || 10,
+);
+class GenerationSemaphore {
+  constructor(max) {
+    this.max = max;
+    this.active = 0;
+    this.queue = [];
+  }
+  acquire() {
+    return new Promise((resolve) => {
+      if (this.active < this.max) {
+        this.active++;
+        resolve();
+      } else {
+        this.queue.push(resolve);
+      }
+    });
+  }
+  release() {
+    if (this.queue.length > 0) {
+      // 슬롯을 반납하지 않고 대기 중인 다음 작업에 바로 넘긴다(active 유지).
+      const next = this.queue.shift();
+      next();
+    } else {
+      this.active = Math.max(0, this.active - 1);
+    }
+  }
+  get waiting() {
+    return this.queue.length;
+  }
+}
+const genSemaphore = new GenerationSemaphore(MAX_CONCURRENT_GENERATIONS);
+
 function createJob(userInfo) {
   const id = crypto.randomBytes(12).toString("hex");
   const job = {
@@ -3464,6 +3504,34 @@ app.post(
       }
     }
 
+    // ── 비용 서킷 브레이커 (admin 제외) ──────────────────────────────────────
+    // 최근 1시간 실제 API 비용이 임계를 넘으면 신규 생성을 자동 중단한다. 대용량 입력·
+    // 반복 호출로 토큰(=운영자 API 비용)을 폭증시키는 공격을 막는 방어선.
+    //   · userTripped  = 이 계정이 1시간에 $USER_HOURLY_COST_USD 초과 → 이 사용자만 차단
+    //   · globalTripped= 전체가 1시간에 $GLOBAL_HOURLY_COST_USD 초과 → 신규 생성 전체 차단(경보)
+    // 비용은 생성 완료 후 실측치로 누적되므로(recordGenCost), 공격이 쌓일수록 곧 차단된다.
+    if (!effectiveIsAdmin && userInfo.id) {
+      const cb = rateLimit.checkCostCircuitBreaker(userInfo.id);
+      if (cb.globalTripped) {
+        console.error(
+          `[ABUSE] 전역 비용 서킷 브레이커 작동 — 최근1h $${cb.globalUsd.toFixed(2)} ≥ $${cb.globalLimit} (trigger user=${userInfo.id})`,
+        );
+        return res.status(503).json({
+          error:
+            "🛡️ 서버 보호를 위해 생성이 일시 중단되었습니다. 잠시 후 다시 시도해 주세요.",
+        });
+      }
+      if (cb.userTripped) {
+        console.warn(
+          `[ABUSE] 사용자 비용 서킷 브레이커 — user=${userInfo.id} 최근1h $${cb.userUsd.toFixed(2)} ≥ $${cb.userLimit}`,
+        );
+        return res.status(429).json({
+          error:
+            "🛡️ 최근 1시간 사용량이 많아 잠시 제한되었습니다. 1시간 이내에 자동 해제되며, 더 필요하시면 관리자에게 문의하세요.",
+        });
+      }
+    }
+
     // ── 모델 결정 (통합 크레딧 포인트제: 모델별 과금 Opus 3 / Sonnet 1) ──────────
     // 화이트리스트 검증으로 임의 모델 주입 차단. 기본 Opus 4.8.
     const ALLOWED_MODELS = [
@@ -4268,6 +4336,22 @@ app.post(
           });
         }
         rateLimit.addTranslatePages(userInfo.id, trPages);
+      }
+    }
+
+    // 비용 서킷 브레이커 (admin 제외) — 최근 1시간 실측 API 비용이 임계 초과면 차단.
+    if (!effectiveIsAdmin && userInfo.id) {
+      const cb = rateLimit.checkCostCircuitBreaker(userInfo.id);
+      if (cb.globalTripped || cb.userTripped) {
+        if (cb.globalTripped) {
+          console.error(
+            `[ABUSE] 전역 비용 서킷 브레이커(통번역) — 최근1h $${cb.globalUsd.toFixed(2)} ≥ $${cb.globalLimit} (user=${userInfo.id})`,
+          );
+        }
+        return res.status(cb.globalTripped ? 503 : 429).json({
+          error:
+            "🛡️ 최근 사용량이 많아 통번역이 잠시 제한되었습니다. 잠시 후 다시 시도해 주세요.",
+        });
       }
     }
 
@@ -5141,6 +5225,11 @@ async function runPdfTranslation(
       if (result.cost) {
         onProgress(`📊 ${pricing.formatCostLine(result.cost)}`);
         addToTotal(result.cost, null);
+        // 비용 서킷 브레이커에 통번역 실측 비용도 반영(전역·per-user). PDF 통번역은
+        // 페이지가 많으면 토큰 비용이 큰 경로라 돈 빼가기 방어에 특히 중요하다.
+        if (!job.userInfo?.isAdmin && !job.userInfo?.unlimited) {
+          rateLimit.recordGenCost(job.userInfo?.id, result.cost.total || 0);
+        }
       }
 
       // 백그라운드 작업: 결과 PDF 를 파일함(24시간)에 파일별로 즉시 영속화.
@@ -5600,19 +5689,12 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
   const t0 = Date.now();
   const jobTimeoutMs = jobTimeoutForModel(model, job.reportType);
   const timeoutMin = Math.round(jobTimeoutMs / 60000);
-  pushProgress(
-    job,
-    `🚀 작업 시작 (${pipeline.label}, timeout: ${timeoutMin}분)`,
-  );
 
   const ac = new AbortController();
-  job.abortController = ac; // 사용자 중지 요청용
+  job.abortController = ac; // 사용자 중지 요청용(대기열 대기 중에도 중지 가능)
   let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
-    pushProgress(job, `⏰ ${timeoutMin}분 초과 — 강제 종료 중...`);
-    ac.abort();
-  }, jobTimeoutMs);
+  let timer = null; // 슬롯 확보 후에 가동(대기열 대기 시간은 timeout 에 안 넣음)
+  let gotSlot = false; // 전역 동시 상한 슬롯 확보 여부(finally 반납 판단용)
 
   // 보고서 본문에서 AI 특유의 긴 하이픈(— – ―)을 결정적으로 제거한다(2026-07-03 지시).
   // 프롬프트 금지가 1차 방어, 이 후처리가 최종 보장. 숫자 범위는 '~', 그 외 연결은 쉼표로.
@@ -5645,6 +5727,32 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
   }
 
   try {
+    // 전역 동시 생성 상한 — 슬롯을 확보한다. 만석이면 대기열에서 순서를 기다린다.
+    // 대기 중에는 timeout 시계를 켜지 않는다(대기 시간이 생성 시간으로 잘못 잡히지 않게).
+    if (genSemaphore.active >= genSemaphore.max) {
+      const ahead = genSemaphore.active + genSemaphore.waiting;
+      pushProgress(
+        job,
+        `⏳ 서버가 혼잡해 대기열에서 대기 중… (동시 ${genSemaphore.max}건 상한, 앞 ${ahead}건)`,
+      );
+    }
+    await genSemaphore.acquire();
+    gotSlot = true;
+    // 대기 중에 자동 중단(새 작업)·사용자 중지가 걸렸으면 슬롯만 반납하고 종료.
+    if (ac.signal.aborted) {
+      throw new Error(
+        job.userAborted
+          ? "사용자가 작업을 중지했습니다."
+          : "새 작업 시작으로 자동 중단되었습니다.",
+      );
+    }
+    pushProgress(job, `🚀 작업 시작 (${pipeline.label}, timeout: ${timeoutMin}분)`);
+    timer = setTimeout(() => {
+      timedOut = true;
+      pushProgress(job, `⏰ ${timeoutMin}분 초과 — 강제 종료 중...`);
+      ac.abort();
+    }, jobTimeoutMs);
+
     // BYOK: 본인 키가 있으면 그 키의 컨텍스트에서 파이프라인 실행(없으면 서버 env 키).
     const content = await byok.run(job.byokKeys || {}, () =>
       pipeline.generateContent({
@@ -5915,6 +6023,14 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
     // Server-wide running total (in-memory)
     addToTotal(content.__cost, content.__imageCost);
 
+    // 비용 서킷 브레이커용 실측 비용 누적(관리자·무제한 제외). 최근 1시간 합계가 임계를
+    // 넘으면 다음 요청부터 자동 차단된다(토큰 폭주·돈 빼가기 방어).
+    if (!job.userInfo?.isAdmin && !job.userInfo?.unlimited) {
+      const actualUsd =
+        (content.__cost?.total || 0) + (content.__imageCost?.total || 0);
+      rateLimit.recordGenCost(job.userInfo?.id, actualUsd);
+    }
+
     // DB 누적 (Supabase enabled + 일반 user)
     if (supa.isEnabled() && job.userInfo?.id) {
       // 1) 실제 Anthropic 비용 누적 (admin 통계용). 실패해도 보고서엔 영향 없는
@@ -6023,7 +6139,9 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
     }
     throw e;
   } finally {
-    clearTimeout(timer);
+    if (timer) clearTimeout(timer);
+    // 전역 동시 상한 슬롯 반납(확보했을 때만) — 대기열의 다음 작업이 즉시 시작된다.
+    if (gotSlot) genSemaphore.release();
     // 사용자별 active job 매핑에서 제거 (현재 매핑이 이 작업을 가리키고 있을 때만)
     if (
       job.userInfo?.id &&

@@ -2794,6 +2794,102 @@ let currentStudentId = "";
         } catch (_) {}
       }
 
+      // 비용 남용 정지 안내 + 소명(해명) 제출 모달. 커뮤니티 소명(community_appeals)을
+      // kind="generation" 으로 재사용 → 관리자 '소명·제재' 탭에서 검토·해제한다.
+      function showSuspendedAppealModal(reason, serverMessage) {
+        const overlay = document.createElement("div");
+        overlay.className = "confirm-overlay";
+        const dialog = document.createElement("section");
+        dialog.className = "confirm-card";
+        dialog.setAttribute("role", "dialog");
+        dialog.setAttribute("aria-modal", "true");
+
+        const h = document.createElement("h2");
+        h.textContent = "🚫 생성이 일시 정지되었습니다";
+
+        const msg = document.createElement("p");
+        msg.className = "confirm-note";
+        msg.textContent =
+          serverMessage ||
+          "비정상적인 사용량이 감지되어 생성이 정지되었습니다. 소명(해명)을 제출하면 관리자가 검토 후 해제합니다.";
+
+        const reasonEl = document.createElement("p");
+        reasonEl.className = "hint";
+        if (reason) reasonEl.textContent = "사유: " + reason;
+
+        const ta = document.createElement("textarea");
+        ta.rows = 4;
+        ta.maxLength = 1500;
+        ta.placeholder =
+          "관리자에게 상황을 설명해 주세요 (예: 정상적인 과제 작업이었습니다 / 어떤 보고서를 만들던 중이었는지 등).";
+        ta.style.cssText =
+          "width:100%;box-sizing:border-box;margin-top:10px;padding:10px;border:1px solid var(--border,#d1d5db);border-radius:8px;font:inherit";
+
+        const status = document.createElement("p");
+        status.className = "hint";
+        status.setAttribute("aria-live", "polite");
+
+        const actions = document.createElement("div");
+        actions.className = "confirm-actions";
+        const cancel = document.createElement("button");
+        cancel.type = "button";
+        cancel.className = "secondary";
+        cancel.textContent = "닫기";
+        const submit = document.createElement("button");
+        submit.type = "button";
+        submit.textContent = "소명 제출";
+
+        const close = () => overlay.remove();
+        cancel.onclick = close;
+        overlay.addEventListener("click", (e) => {
+          if (e.target === overlay) close();
+        });
+        submit.onclick = async () => {
+          const text = ta.value.trim();
+          if (text.length < 5) {
+            status.style.color = "var(--danger,#d23)";
+            status.textContent = "해명 내용을 조금 더 자세히 적어 주세요.";
+            ta.focus();
+            return;
+          }
+          submit.disabled = true;
+          submit.textContent = "제출 중…";
+          try {
+            const r = await fetch("/api/community/appeal", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                kind: "generation",
+                reason: text,
+                blockedText: reason || "",
+              }),
+            });
+            const d = await r.json().catch(() => ({}));
+            if (!r.ok) throw new Error(d.error || "제출 실패");
+            status.style.color = "var(--accent,#16a34a)";
+            status.textContent =
+              "✅ 소명이 접수되었습니다. 관리자 검토 후 해제됩니다.";
+            submit.textContent = "제출됨";
+            ta.disabled = true;
+            cancel.textContent = "확인";
+          } catch (e) {
+            status.style.color = "var(--danger,#d23)";
+            status.textContent =
+              "제출에 실패했습니다: " + (e.message || "잠시 후 다시 시도해 주세요.");
+            submit.disabled = false;
+            submit.textContent = "소명 제출";
+          }
+        };
+
+        actions.append(cancel, submit);
+        dialog.append(h, msg);
+        if (reason) dialog.append(reasonEl);
+        dialog.append(ta, status, actions);
+        overlay.appendChild(dialog);
+        document.body.appendChild(overlay);
+        ta.focus();
+      }
+
       function showConfirmDialog({ title, rows, note, okLabel = "생성", credits, recovery = null, background = false }) {
         // 매 다이얼로그마다 백그라운드 선택 초기화(토글 안 켜면 기본 일반 실행).
         // background:true 인 '생성' 다이얼로그에서만 토글을 노출한다(삭제·중지 등엔 미노출).
@@ -3058,6 +3154,8 @@ let currentStudentId = "";
           if (!res.ok) {
             const e = new Error(data.error || `요청 실패 (HTTP ${res.status})`);
             e.httpStatus = res.status;
+            e.suspended = !!data.suspended; // 비용 남용 정지 → 소명 모달로 분기
+            e.suspendReason = data.reason || "";
             throw e;
           }
           currentJobId = data.jobId;
@@ -3074,6 +3172,13 @@ let currentStudentId = "";
             }
           } catch (_) {}
         } catch (err) {
+          // 비용 남용 정지 → 전용 소명(해명) 모달로 안내(관리자 검토 후 해제).
+          if (err && err.suspended) {
+            stopGenTimer();
+            resetForm();
+            showSuspendedAppealModal(err.suspendReason || "", err.message || "");
+            return;
+          }
           // 제출 단계 실패(입력 오류/크레딧 부족/네트워크). 행동중심 에러 카드로.
           const status = err && err.httpStatus;
           const isInput = status === 400;

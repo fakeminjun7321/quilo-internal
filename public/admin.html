@@ -564,10 +564,10 @@
 
     <section class="settings-card" id="adminAppealsSection">
       <div class="card-head">
-        <h2>🛡 커뮤니티 소명·제재</h2>
+        <h2>🛡 소명·제재</h2>
         <button id="appealsRefresh" class="secondary compact">새로고침</button>
       </div>
-      <p class="hint">비속어 감지로 제재된 사용자가 보낸 해명입니다. 오탐(욕설이 아닌데 차단)이면 ‘밴 해제’로 풀어주세요.</p>
+      <p class="hint">제재된 사용자가 보낸 해명입니다. <b>커뮤니티</b>(비속어 오탐)와 <b>🚫 생성 정지</b>(시간당 API 비용이 등급 한도 초과)가 함께 표시됩니다. 정상 이용이었다면 ‘밴 해제’로 풀어주세요.</p>
       <div id="appealsList"><p class="hint">불러오는 중…</p></div>
     </section>
 
@@ -1712,7 +1712,11 @@
                 '<div style="font-size:12px;color:var(--text-muted)">' +
                 escA(a.author_name || "익명") +
                 " · " +
-                (a.kind === "comment" ? "댓글" : "글") +
+                (a.kind === "generation"
+                  ? '<b style="color:#b91c1c">🚫 생성 정지</b>'
+                  : a.kind === "comment"
+                    ? "댓글"
+                    : "글") +
                 " · " +
                 new Date(a.created_at).toLocaleString("ko-KR") +
                 " · " +

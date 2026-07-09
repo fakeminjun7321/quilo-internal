@@ -736,6 +736,7 @@ const byok = require("./lib/byok");
 const dbx = require("./lib/cloud/dropbox");
 const { krwToUsd, usdToKrw, getKrwPerUsd } = require("./lib/exchange-rate");
 const rateLimit = require("./lib/rate-limit");
+const comm = require("./lib/community"); // 생성 정지(banGeneration)·소명 재사용
 const {
   CATEGORY_LABELS: FEEDBACK_CATEGORY_LABELS,
   sendFeedbackEmail,
@@ -1321,6 +1322,25 @@ class GenerationSemaphore {
   }
 }
 const genSemaphore = new GenerationSemaphore(MAX_CONCURRENT_GENERATIONS);
+
+// ── 비용 서킷 브레이커 등급별 시간당 한도(USD) ──────────────────────────────
+// 무료 15 / Pro 20 / Max 30 (env 로 조정). 초과 시 정지(banGeneration) + 소명.
+// 관리자·무제한 계정은 호출 자체를 건너뛴다(무제한).
+const COST_LIMIT_FREE = Math.max(0, Number(process.env.USER_HOURLY_COST_USD) || 15);
+const COST_LIMIT_PRO = Math.max(0, Number(process.env.PRO_HOURLY_COST_USD) || 20);
+const COST_LIMIT_MAX = Math.max(0, Number(process.env.MAX_HOURLY_COST_USD) || 30);
+async function costLimitForUser(userInfo) {
+  if (!supa.isEnabled() || !userInfo || !userInfo.id) return COST_LIMIT_FREE;
+  try {
+    // Max(백그라운드 구독) > Pro('pro' 우산 또는 베타 기능 보유) > 무료.
+    if (await supa.getActiveBackgroundSub(userInfo.id)) return COST_LIMIT_MAX;
+    const feats = await supa.getUserBetaFeatures(userInfo.id);
+    if (feats && feats.length) return COST_LIMIT_PRO;
+  } catch (_) {
+    /* 조회 실패 → 무료 한도(가장 보수적) */
+  }
+  return COST_LIMIT_FREE;
+}
 
 function createJob(userInfo) {
   const id = crypto.randomBytes(12).toString("hex");
@@ -3504,14 +3524,24 @@ app.post(
       }
     }
 
-    // ── 비용 서킷 브레이커 (admin 제외) ──────────────────────────────────────
-    // 최근 1시간 실제 API 비용이 임계를 넘으면 신규 생성을 자동 중단한다. 대용량 입력·
-    // 반복 호출로 토큰(=운영자 API 비용)을 폭증시키는 공격을 막는 방어선.
-    //   · userTripped  = 이 계정이 1시간에 $USER_HOURLY_COST_USD 초과 → 이 사용자만 차단
-    //   · globalTripped= 전체가 1시간에 $GLOBAL_HOURLY_COST_USD 초과 → 신규 생성 전체 차단(경보)
-    // 비용은 생성 완료 후 실측치로 누적되므로(recordGenCost), 공격이 쌓일수록 곧 차단된다.
-    if (!effectiveIsAdmin && userInfo.id) {
-      const cb = rateLimit.checkCostCircuitBreaker(userInfo.id);
+    // ── 비용 남용 방어(admin·무제한 제외): 정지 상태 확인 → 등급별 시간당 비용 검사 ──
+    // 1) 이미 정지(banGeneration)된 계정이면 즉시 차단 + 소명 안내(suspended 플래그).
+    // 2) 최근 1시간 실측 API 비용이 등급 한도(무료 15 / Pro 20 / Max 30)를 넘으면
+    //    그 자리에서 정지시키고 차단한다. 대용량 입력·반복 호출로 토큰(=운영자 API 비용)을
+    //    폭증시키는 공격 방어. 전체가 $GLOBAL_HOURLY_COST_USD 초과면 신규 생성 전체 차단(경보).
+    // 비용은 생성 완료 후 실측치로 누적되므로(recordGenCost), 공격이 쌓일수록 곧 걸린다.
+    if (!effectiveIsAdmin && !effectiveUnlimited && userInfo.id) {
+      const suspension = await comm.getGenerationBan(userInfo.id);
+      if (suspension) {
+        return res.status(403).json({
+          error:
+            "🚫 비정상적인 사용량이 감지되어 생성이 정지되었습니다. 소명(해명)을 제출하면 관리자가 검토 후 해제합니다.",
+          suspended: true,
+          reason: suspension.reason || "",
+        });
+      }
+      const userLimit = await costLimitForUser(userInfo);
+      const cb = rateLimit.checkCostCircuitBreaker(userInfo.id, userLimit);
       if (cb.globalTripped) {
         console.error(
           `[ABUSE] 전역 비용 서킷 브레이커 작동 — 최근1h $${cb.globalUsd.toFixed(2)} ≥ $${cb.globalLimit} (trigger user=${userInfo.id})`,
@@ -3522,12 +3552,16 @@ app.post(
         });
       }
       if (cb.userTripped) {
-        console.warn(
-          `[ABUSE] 사용자 비용 서킷 브레이커 — user=${userInfo.id} 최근1h $${cb.userUsd.toFixed(2)} ≥ $${cb.userLimit}`,
-        );
-        return res.status(429).json({
+        const reason = `시간당 API 비용 $${cb.userUsd.toFixed(2)} 가 등급 한도 $${cb.userLimit} 를 초과`;
+        console.warn(`[ABUSE] 생성 정지 — user=${userInfo.id} ${reason}`);
+        try {
+          await comm.banGeneration(userInfo.id, reason);
+        } catch (_) {}
+        return res.status(403).json({
           error:
-            "🛡️ 최근 1시간 사용량이 많아 잠시 제한되었습니다. 1시간 이내에 자동 해제되며, 더 필요하시면 관리자에게 문의하세요.",
+            "🚫 시간당 사용량이 등급 한도를 크게 넘어 생성이 정지되었습니다. 소명(해명)을 제출하면 관리자가 검토 후 해제합니다.",
+          suspended: true,
+          reason,
         });
       }
     }
@@ -4339,18 +4373,39 @@ app.post(
       }
     }
 
-    // 비용 서킷 브레이커 (admin 제외) — 최근 1시간 실측 API 비용이 임계 초과면 차단.
+    // 비용 남용 방어(admin 제외) — 정지 상태 확인 → 등급별 시간당 비용 검사(초과 시 정지).
     if (!effectiveIsAdmin && userInfo.id) {
-      const cb = rateLimit.checkCostCircuitBreaker(userInfo.id);
-      if (cb.globalTripped || cb.userTripped) {
-        if (cb.globalTripped) {
-          console.error(
-            `[ABUSE] 전역 비용 서킷 브레이커(통번역) — 최근1h $${cb.globalUsd.toFixed(2)} ≥ $${cb.globalLimit} (user=${userInfo.id})`,
-          );
-        }
-        return res.status(cb.globalTripped ? 503 : 429).json({
+      const suspension = await comm.getGenerationBan(userInfo.id);
+      if (suspension) {
+        return res.status(403).json({
           error:
-            "🛡️ 최근 사용량이 많아 통번역이 잠시 제한되었습니다. 잠시 후 다시 시도해 주세요.",
+            "🚫 비정상적인 사용량이 감지되어 생성이 정지되었습니다. 소명을 제출하면 관리자가 검토 후 해제합니다.",
+          suspended: true,
+          reason: suspension.reason || "",
+        });
+      }
+      const userLimit = await costLimitForUser(userInfo);
+      const cb = rateLimit.checkCostCircuitBreaker(userInfo.id, userLimit);
+      if (cb.globalTripped) {
+        console.error(
+          `[ABUSE] 전역 비용 서킷 브레이커(통번역) — 최근1h $${cb.globalUsd.toFixed(2)} ≥ $${cb.globalLimit} (user=${userInfo.id})`,
+        );
+        return res.status(503).json({
+          error:
+            "🛡️ 서버 보호를 위해 통번역이 일시 중단되었습니다. 잠시 후 다시 시도해 주세요.",
+        });
+      }
+      if (cb.userTripped) {
+        const reason = `통번역 포함 시간당 API 비용 $${cb.userUsd.toFixed(2)} 가 등급 한도 $${cb.userLimit} 를 초과`;
+        console.warn(`[ABUSE] 생성 정지(통번역) — user=${userInfo.id} ${reason}`);
+        try {
+          await comm.banGeneration(userInfo.id, reason);
+        } catch (_) {}
+        return res.status(403).json({
+          error:
+            "🚫 시간당 사용량이 등급 한도를 크게 넘어 정지되었습니다. 소명을 제출하면 관리자가 검토 후 해제합니다.",
+          suspended: true,
+          reason,
         });
       }
     }

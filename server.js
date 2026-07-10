@@ -732,6 +732,7 @@ const {
   formatImageCostLine,
 } = pricing;
 const supa = require("./lib/supabase");
+const externalApi = require("./lib/external-api");
 const byok = require("./lib/byok");
 const dbx = require("./lib/cloud/dropbox");
 const { krwToUsd, usdToKrw, getKrwPerUsd } = require("./lib/exchange-rate");
@@ -878,6 +879,10 @@ app.use(
     sameSite: "lax",
   }),
 );
+
+// Codex·외부 클라이언트용 /api/v1 Bearer 인증. 브라우저 세션 쿠키와 분리하며,
+// 토큰에 부여된 scope에 해당하는 안정된 v1 경로만 기존 검증 파이프라인으로 연결한다.
+app.use(externalApi.createExternalApiMiddleware({ supa }));
 
 // DEV 전용: 로컬에서 Supabase 없이 UI 를 점검하기 위한 가짜 관리자 세션.
 // DEV_FAKE_AUTH=1 + 비-production 일 때만 동작. (Render 는 NODE_ENV=production 이라
@@ -1041,6 +1046,7 @@ function limitTotalUpload(req, res, next) {
 // ── Auth helpers ─────────────────────────────────────────────────────────────
 
 function getSessionUser(req) {
+  if (req.apiUser) return req.apiUser;
   return req.session && req.session.userInfo ? req.session.userInfo : null;
 }
 
@@ -1062,27 +1068,31 @@ async function refreshSessionUser(req, { failClosed = false } = {}) {
   try {
     const fresh = await supa.findUserById(u.id);
     if (!fresh) {
-      req.session = null;
+      if (req.apiUser) req.apiUser = null;
+      else req.session = null;
       return null;
     }
     // L12: 세션 발급 이후 비밀번호가 바뀌었으면(마커 불일치) 이 세션을 무효화한다.
     // 마커가 없는 예전 세션(u.pwMark 미보유)은 건드리지 않는다(하위호환 — 다음 로그인부터 적용).
-    if (u.pwMark && fresh.password_hash && pwMarkOf(fresh.password_hash) !== u.pwMark) {
+    if (!req.apiUser && u.pwMark && fresh.password_hash && pwMarkOf(fresh.password_hash) !== u.pwMark) {
       req.session = null;
       return null;
     }
-    req.session.userInfo = {
+    const refreshed = {
       ...u,
       name: fresh.name || u.name,
       username: fresh.username || u.username || fresh.name || u.name,
       studentId: normalizeStudentId(fresh.student_id),
-      isAdmin: !!fresh.is_admin,
+      // 외부 토큰은 관리자 권한으로 승격되지 않는다. 허용 작업은 scope가 전부 결정한다.
+      isAdmin: req.apiUser ? false : !!fresh.is_admin,
       unlimited: !!fresh.unlimited,
       restrictedModel: fresh.restricted_model || null,
       emailVerified: !!fresh.email_verified,
       approved: !!fresh.approved,
     };
-    return req.session.userInfo;
+    if (req.apiUser) req.apiUser = refreshed;
+    else req.session.userInfo = refreshed;
+    return refreshed;
   } catch (e) {
     if (failClosed) throw e;
     return u;
@@ -3422,14 +3432,18 @@ app.post(
         if (freshUser) {
           savedStudentId =
             normalizeStudentId(freshUser.student_id) || savedStudentId;
-          req.session.userInfo.studentId = savedStudentId;
           effectiveIsAdmin = !!freshUser.is_admin;
           effectiveUnlimited = !!freshUser.unlimited;
           effectiveRestrictedModel = freshUser.restricted_model || null;
-          // 세션 복사본도 최신화(이후 요청에서의 stale 권한 노출 축소).
-          req.session.userInfo.isAdmin = effectiveIsAdmin;
-          req.session.userInfo.unlimited = effectiveUnlimited;
-          req.session.userInfo.restrictedModel = effectiveRestrictedModel;
+          const authUser = req.apiUser || (req.session && req.session.userInfo);
+          if (authUser) {
+            authUser.studentId = savedStudentId;
+            // API 토큰은 관리자 권한으로 승격하지 않되 과금·모델 제한은 최신화한다.
+            authUser.isAdmin = req.apiUser ? false : effectiveIsAdmin;
+            authUser.unlimited = effectiveUnlimited;
+            authUser.restrictedModel = effectiveRestrictedModel;
+          }
+          if (req.apiUser) effectiveIsAdmin = false;
         }
       } catch (e) {
         console.warn("[generate] profile lookup failed:", e.message);
@@ -6322,6 +6336,15 @@ function appBaseUrl(req) {
   return `${proto}://${req.get("host")}`;
 }
 const dropboxRedirectUri = (req) => `${appBaseUrl(req)}/api/cloud/dropbox/callback`;
+
+// Quilo 전체 기능 카탈로그(공개) + 외부 API 토큰 관리(브라우저 로그인) +
+// 범위 제한 Bearer API. 플러그인은 하드코딩 대신 이 카탈로그를 원본으로 사용한다.
+app.use("/api/catalog", externalApi.createCatalogRouter());
+app.use(
+  "/api/integrations",
+  externalApi.createTokenRouter({ supa, requireAuth, getSessionUser }),
+);
+app.use("/api/v1", externalApi.createV1Router({ supa }));
 
 // 커뮤니티 API (건의·기능요청 게시판) — 라우터 모듈 마운트(읽기 공개, 작성/공감/댓글 로그인).
 app.use(

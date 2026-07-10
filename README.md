@@ -102,6 +102,7 @@
 
 - 전체 운영 기준: [`CLAUDE.md`](./CLAUDE.md) · [`AGENTS.md`](./AGENTS.md)
 - 다른 AI에게 Quilo를 설명하는 컨텍스트 문서: [`QUILO.md`](./QUILO.md)
+- Codex 플러그인·외부 API: [`docs/codex-plugin-api.md`](./docs/codex-plugin-api.md)
 - 화학 사전보고서 파이프라인: [`docs/chem-pre-pipeline.md`](./docs/chem-pre-pipeline.md)
 - 화학 결과보고서 파이프라인: [`docs/chem-result-pipeline.md`](./docs/chem-result-pipeline.md)
 - 물리 결과보고서 파이프라인: [`docs/phys-result-pipeline.md`](./docs/phys-result-pipeline.md)

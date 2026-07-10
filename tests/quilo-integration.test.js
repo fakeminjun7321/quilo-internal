@@ -7,6 +7,7 @@ const express = require("express");
 const {
   createCatalogRouter,
   createExternalApiMiddleware,
+  createTokenRouter,
   normalizeScopes,
 } = require("../lib/external-api");
 const { listFeatures } = require("../lib/quilo-catalog");
@@ -73,4 +74,21 @@ test("v1 middleware requires bearer auth and rewrites an allowed job route", asy
   });
   assert.equal(allowed.status, 200);
   assert.deepEqual(await allowed.json(), { ok: true, user: "user-1" });
+});
+
+test("token management returns JSON 401 instead of a login redirect", async (t) => {
+  const app = express();
+  app.use(express.json());
+  app.use("/api/integrations", createTokenRouter({
+    supa: { getClient: () => null },
+    getSessionUser: () => null,
+  }));
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => server.close());
+  const { port } = server.address();
+  const response = await fetch(`http://127.0.0.1:${port}/api/integrations/tokens`, { redirect: "manual" });
+  assert.equal(response.status, 401);
+  assert.match(response.headers.get("content-type") || "", /application\/json/);
+  assert.deepEqual(await response.json(), { error: "로그인이 필요합니다." });
 });

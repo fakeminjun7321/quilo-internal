@@ -6342,7 +6342,7 @@ const dropboxRedirectUri = (req) => `${appBaseUrl(req)}/api/cloud/dropbox/callba
 app.use("/api/catalog", externalApi.createCatalogRouter());
 app.use(
   "/api/integrations",
-  externalApi.createTokenRouter({ supa, requireAuth, getSessionUser }),
+  externalApi.createTokenRouter({ supa, getSessionUser }),
 );
 app.use("/api/v1", externalApi.createV1Router({ supa }));
 

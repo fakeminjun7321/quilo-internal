@@ -1898,8 +1898,9 @@ app.get("/api/me", async (req, res) => {
 
 // ── Quilo Bot (저비용 OpenAI 모델, 무로그인, 사이트 사용법 안내) ──
 // 기존 Groq 환경은 fallback으로 남겨 배포 전환 중에도 서비스가 끊기지 않게 한다.
-const CHAT_USES_OPENAI = !!process.env.OPENAI_API_KEY;
-const CHAT_API_KEY = process.env.OPENAI_API_KEY || process.env.CHAT_API_KEY || "";
+const CHAT_USES_OPENAI = !!(process.env.OPENAI_API_KEY || process.env.GPT_API_KEY);
+const CHAT_API_KEY =
+  process.env.OPENAI_API_KEY || process.env.GPT_API_KEY || process.env.CHAT_API_KEY || "";
 const CHAT_API_BASE = (
   CHAT_USES_OPENAI
     ? process.env.OPENAI_CHAT_API_BASE || "https://api.openai.com/v1"
@@ -1919,7 +1920,7 @@ const CHAT_SYSTEM = `당신은 "Quilo" 사이트의 한국어 도우미입니다
   · 결과보고서 = 실험 후 (데이터 표·그래프·분석·결론·오차). 입력: 화학은 사전보고서 PDF + 데이터(엑셀/CSV/사진) + 실험 사진(+매뉴얼), 물리는 PASCO Capstone(.cap)/엑셀/CSV/매뉴얼/사진.
 - PDF 통번역(베타): 그림·표·레이아웃은 두고 텍스트만 한국어로.
 - 도구 모음: LaTeX 수식 변환, 파일·이미지 변환·압축, PDF 도구(병합/분할/회전 등).
-- 데스크톱 앱(Quilo, Mac/Windows) 다운로드: https://fakeminjun7321.github.io/quilo-app/
+- 데스크톱 앱(Quilo, Mac/Windows) 다운로드: https://quilolab.com/apps/quilo.html
 
 [크레딧] 보고서 1건당 선택 모델 기준으로 차감: Opus 4.8 = 4크레딧, Sonnet 5 = 2크레딧, GPT-5.5 = 4크레딧, GPT-5.4 = 1크레딧, GPT-5.4 mini = 무료. 실제 표시 단가는 사이트의 최신 모델 선택 화면을 우선합니다.
 

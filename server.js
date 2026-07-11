@@ -6401,7 +6401,9 @@ function appBaseUrl(req) {
   const env = (
     process.env.PUBLIC_BASE_URL ||
     process.env.APP_BASE_URL ||
-    process.env.RENDER_EXTERNAL_URL ||
+    (process.env.NODE_ENV === "production"
+      ? "https://quilolab.com"
+      : process.env.RENDER_EXTERNAL_URL) ||
     ""
   ).replace(/\/+$/, "");
   if (env) return env;

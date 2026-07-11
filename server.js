@@ -1,3 +1,5 @@
+// 로컬 개발은 git-ignored .env.local을 우선하고, Render는 프로세스 환경변수를 사용한다.
+require("dotenv").config({ path: ".env.local" });
 require("dotenv").config();
 const express = require("express");
 // 세션은 '무상태(stateless) 서명 쿠키'로. express-session 의 기본 MemoryStore 는 서버
@@ -1893,12 +1895,19 @@ app.get("/api/me", async (req, res) => {
   });
 });
 
-// ── AI 도우미 챗 (OpenAI 호환 오픈모델 API; 기본 Groq, 무로그인, 사이트 사용법 안내) ──
-const CHAT_API_KEY = process.env.CHAT_API_KEY || "";
+// ── Quilo Bot (저비용 OpenAI 모델, 무로그인, 사이트 사용법 안내) ──
+// 기존 Groq 환경은 fallback으로 남겨 배포 전환 중에도 서비스가 끊기지 않게 한다.
+const CHAT_USES_OPENAI = !!process.env.OPENAI_API_KEY;
+const CHAT_API_KEY = process.env.OPENAI_API_KEY || process.env.CHAT_API_KEY || "";
 const CHAT_API_BASE = (
-  process.env.CHAT_API_BASE || "https://api.groq.com/openai/v1"
+  CHAT_USES_OPENAI
+    ? process.env.OPENAI_CHAT_API_BASE || "https://api.openai.com/v1"
+    : process.env.CHAT_API_BASE || "https://api.groq.com/openai/v1"
 ).replace(/\/+$/, "");
-const CHAT_MODEL = process.env.CHAT_MODEL || "llama-3.3-70b-versatile";
+const CHAT_MODEL =
+  (CHAT_USES_OPENAI
+    ? process.env.OPENAI_CHAT_MODEL || "gpt-4o-mini"
+    : process.env.CHAT_MODEL || "llama-3.3-70b-versatile");
 const CHAT_MAX_TOKENS = parseInt(process.env.CHAT_MAX_TOKENS || "700", 10);
 const CHAT_DAILY_MAX = parseInt(process.env.CHAT_DAILY_MAX || "1500", 10);
 const CHAT_SYSTEM = `당신은 "Quilo" 사이트의 한국어 도우미입니다. Quilo는 학생의 실험 보고서 작성을 돕는 학습 보조 서비스입니다.
@@ -1908,10 +1917,10 @@ const CHAT_SYSTEM = `당신은 "Quilo" 사이트의 한국어 도우미입니다
   · 사전보고서 = 실험 전 (목표·이론적 배경·기구/시약·실험 과정). 입력: 실험 매뉴얼 PDF.
   · 결과보고서 = 실험 후 (데이터 표·그래프·분석·결론·오차). 입력: 화학은 사전보고서 PDF + 데이터(엑셀/CSV/사진) + 실험 사진(+매뉴얼), 물리는 PASCO Capstone(.cap)/엑셀/CSV/매뉴얼/사진.
 - PDF 통번역(베타): 그림·표·레이아웃은 두고 텍스트만 한국어로.
-- 도구 모음: 글자수 세기, LaTeX 수식 변환, 선형회귀·그래프, 이미지 변환·압축, PDF 도구(병합/분할/회전 등).
+- 도구 모음: LaTeX 수식 변환, 파일·이미지 변환·압축, PDF 도구(병합/분할/회전 등).
 - 데스크톱 앱(Quilo, Mac/Windows) 다운로드: https://fakeminjun7321.github.io/quilo-app/
 
-[크레딧] 보고서 1건당 모델만큼 차감: Opus 4.8 = 3크레딧, Sonnet 5 = 1크레딧. 신규 계정은 0크레딧이라 운영자 충전 후 사용.
+[크레딧] 보고서 1건당 선택 모델 기준으로 차감: Opus 4.8 = 4크레딧, Sonnet 5 = 2크레딧, GPT-5.5 = 4크레딧, GPT-5.4 = 1크레딧, GPT-5.4 mini = 무료. 실제 표시 단가는 사이트의 최신 모델 선택 화면을 우선합니다.
 
 [자주 묻는 것]
 - .hwpx는 한컴오피스/한글에서, .docx는 MS Word(또는 한글)에서 열립니다.
@@ -1920,13 +1929,16 @@ const CHAT_SYSTEM = `당신은 "Quilo" 사이트의 한국어 도우미입니다
 
 [답변 규칙]
 - 한국어로 짧고 친절하게. 단계가 필요하면 번호로.
+- 한 답변은 핵심 5단계 이내로 하고, 굵게 표시용 별표 같은 Markdown 기호 없이 평문으로 답하세요.
 - 범위는 Quilo 사용법과 실험 보고서 작성 안내까지. 그 외 요청(일반 지식 문답, 코딩, 숙제 대신 풀이, 보고서 본문 통째 대필 등)은 정중히 거절하고 Quilo 기능으로 안내.
 - 생성 결과는 AI라 부정확할 수 있으니 필요할 때 "직접 검토·수정하고 학교/교사의 AI 사용 정책을 확인한 뒤 쓰세요, 그대로 제출하지 마세요"라고 안내.
 - 모르거나 계정/결제/오류 등 운영자 영역이면 추측하지 말고 "운영자 문의 / 건의사항"을 안내.
 - 서비스 이름은 항상 "Quilo"로 표기하세요. '퀄로'·'퀼로'처럼 한글로 풀어쓰지 마세요.`;
 
 // 메모 작성 도우미(더 무거운 모델). 보고서 입력칸의 'AI 참고 메모' 초안을 돕는다.
-const CHAT_MEMO_MODEL = process.env.CHAT_MEMO_MODEL || "openai/gpt-oss-120b";
+const CHAT_MEMO_MODEL = CHAT_USES_OPENAI
+  ? process.env.OPENAI_CHAT_MEMO_MODEL || "gpt-4o-mini"
+  : process.env.CHAT_MEMO_MODEL || "openai/gpt-oss-120b";
 const CHAT_MEMO_MAX_TOKENS = parseInt(
   process.env.CHAT_MEMO_MAX_TOKENS || "1200",
   10,
@@ -2018,7 +2030,7 @@ app.get("/api/write-assist/models", (req, res) => {
 });
 
 app.get("/api/chat/status", (req, res) => {
-  res.json({ enabled: !!CHAT_API_KEY });
+  res.json({ enabled: !!CHAT_API_KEY, model: CHAT_MODEL });
 });
 
 app.post("/api/chat", async (req, res) => {

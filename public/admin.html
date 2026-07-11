@@ -177,13 +177,14 @@
       #adminTabs button.atab:hover { border-color: var(--accent); }
       .CodeMirror { height: 360px; border: 1px solid #e6e8f0; border-radius: var(--radius-sm); font-size: 14px; }
     </style>
+    <link rel="stylesheet" href="/admin-redesign.css" />
   </head>
-  <body>
+  <body class="admin-console">
     <header class="app-header">
       <div class="app-bar">
-        <a href="/" class="brand">
+        <a href="/" class="brand" aria-label="Quilo 메인으로">
           <span class="brand-mark" aria-hidden="true">Q</span>
-          관리자
+          <span class="brand-copy"><strong>Quilo</strong><small>Operations</small></span>
         </a>
         <div class="header-actions">
           <a href="/">메인으로</a>
@@ -201,7 +202,7 @@
         </div>
       </div>
       <div class="app-hero">
-        <h1>관리자 페이지</h1>
+        <h1 id="adminPageTitle">운영 개요</h1>
         <div class="notice">
           사용자 계정 발급 전 만 14세 이상 여부와 이용약관·개인정보처리방침·환불정책 동의 여부를 확인하세요.
         </div>
@@ -210,17 +211,23 @@
     </header>
 
     <nav id="adminTabs" aria-label="관리자 섹션" role="tablist">
-      <button class="atab" data-go="ai" role="tab" aria-selected="false">🤖 AI 보조</button>
-      <button class="atab" data-go="users" role="tab" aria-selected="false">👤 사용자</button>
-      <button class="atab" data-go="subs" role="tab" aria-selected="false">💎 등급 (Pro·Max)</button>
-      <button class="atab" data-go="schools" role="tab" aria-selected="false">🏫 학교 신청</button>
-      <button class="atab" data-go="logs" role="tab" aria-selected="false">📊 로그</button>
-      <button class="atab" data-go="announce" role="tab" aria-selected="false">📢 공지</button>
-      <button class="atab" data-go="appeals" role="tab" aria-selected="false">🛡 소명·제재</button>
+      <span class="admin-nav-label">Workspace</span>
+      <button type="button" class="atab" data-go="ai" role="tab" aria-selected="false">AI 관리자 보조</button>
+      <button type="button" class="atab" data-go="users" role="tab" aria-selected="false">사용자</button>
+      <button type="button" class="atab" data-go="subs" role="tab" aria-selected="false">등급 관리</button>
+      <button type="button" class="atab" data-go="grants" role="tab" aria-selected="false">권한·위임</button>
+      <button type="button" class="atab" data-go="beta" role="tab" aria-selected="false">기능 운영</button>
+      <span class="admin-nav-label">Governance</span>
+      <button type="button" class="atab" data-go="schools" role="tab" aria-selected="false">학교 신청</button>
+      <button type="button" class="atab" data-go="logs" role="tab" aria-selected="false">생성 로그</button>
+      <button type="button" class="atab" data-go="announce" role="tab" aria-selected="false">공지</button>
+      <button type="button" class="atab" data-go="appeals" role="tab" aria-selected="false">소명·제재</button>
+      <span class="admin-nav-label">Development</span>
+      <button type="button" class="atab" data-go="editor" role="tab" aria-selected="false">코드 에디터</button>
     </nav>
 
-    <section class="settings-card" id="adminAiSection">
-      <h2>🤖 AI 관리자 보조</h2>
+    <section class="settings-card" id="adminAiSection" data-atab="ai">
+      <h2>AI 관리자 보조</h2>
       <p class="hint">로그인·사용 로그·통계·Pro 현황을 묻고, 크레딧 충전·rate 해제·Pro 토글·사용자 생성 등 작업을 <b>확인 후 실행</b>할 수 있습니다. (질문 데이터는 외부 AI로 전송 — 관리자 전용)</p>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 9px">
         <span style="font-size:12px;color:var(--text-muted);font-weight:var(--fw-bold)">모델</span>
@@ -235,8 +242,8 @@
       </div>
     </section>
 
-    <section class="settings-card" id="adminAnnSection">
-      <h2>📢 공지사항 (상단 티커)</h2>
+    <section class="settings-card" id="adminAnnSection" data-atab="announce">
+      <h2>공지사항 (상단 티커)</h2>
       <p class="hint">여기 등록한 공지는 메인 화면 상단에 흐르는 띠(티커)로 계속 노출됩니다. 활성/비활성·삭제로 관리하세요.</p>
       <div class="compact-form" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
         <label style="flex:2;min-width:200px">제목<br><input id="annTitle" maxlength="200" placeholder="예: 1학기 기말 대비 점검 안내" style="width:100%"></label>
@@ -248,7 +255,7 @@
       <div id="annAdminList" style="margin-top:12px"></div>
     </section>
 
-    <section class="settings-card">
+    <section class="settings-card" data-atab="users">
       <h2>사용자 추가</h2>
       <form id="addForm" class="compact-form">
         <div class="field">
@@ -273,7 +280,7 @@
       </form>
     </section>
 
-    <section class="settings-card">
+    <section class="settings-card" data-atab="users">
       <div class="card-head">
         <h2>사용자 목록</h2>
         <button id="refresh" class="secondary compact">새로고침</button>
@@ -298,9 +305,9 @@
       <p id="listStatus" class="hint"></p>
     </section>
 
-    <section class="settings-card" id="grantsSection">
+    <section class="settings-card" id="grantsSection" data-atab="grants">
       <div class="card-head">
-        <h2>🔑 API 키 위임</h2>
+        <h2>API 키 위임</h2>
         <button id="refreshGrants" class="secondary compact">새로고침</button>
       </div>
       <p class="hint">
@@ -340,9 +347,9 @@
       <p id="grantStatus" class="hint"></p>
     </section>
 
-    <section class="settings-card" id="proTierSection">
+    <section class="settings-card" id="proTierSection" data-atab="subs">
       <div class="card-head">
-        <h2>💠 Pro 회원</h2>
+        <h2>Pro 회원</h2>
         <button id="refreshProMembers" class="secondary compact">새로고침</button>
       </div>
       <p class="hint">
@@ -364,9 +371,9 @@
       <p id="proStatus" class="hint"></p>
     </section>
 
-    <section class="settings-card" id="openFeatureSection">
+    <section class="settings-card" id="openFeatureSection" data-atab="subs">
       <div class="card-head">
-        <h2>⏰ 임시 공개</h2>
+        <h2>임시 공개</h2>
         <button id="refreshOpen" class="secondary compact">새로고침</button>
       </div>
       <p class="hint">
@@ -403,9 +410,9 @@
       <p id="openStatus" class="hint"></p>
     </section>
 
-    <section class="settings-card" id="bgSubsSection">
+    <section class="settings-card" id="bgSubsSection" data-atab="subs">
       <div class="card-head">
-        <h2>🌙 Max 구독 — 백그라운드·PDF 통번역</h2>
+        <h2>Max 구독 — 백그라운드·PDF 통번역</h2>
         <button id="refreshSubs" class="secondary compact">새로고침</button>
       </div>
       <p class="hint">
@@ -449,7 +456,7 @@
         <span id="subAddStatus" class="inline-status"></span>
       </form>
       <div style="display:flex;align-items:center;gap:8px;margin:6px 0 8px">
-        <b style="font-size:14px">💰 입금 신청 대기</b>
+        <b style="font-size:14px">입금 신청 대기</b>
         <button id="refreshSubReqs" class="secondary compact">새로고침</button>
       </div>
       <p class="hint" style="margin-top:0">
@@ -462,9 +469,9 @@
       <p id="subStatus" class="hint"></p>
     </section>
 
-    <section class="settings-card" id="schoolAppsSection">
+    <section class="settings-card" id="schoolAppsSection" data-atab="schools">
       <div class="card-head">
-        <h2>🏫 학교 도입 신청</h2>
+        <h2>학교 도입 신청</h2>
         <button id="refreshSchoolApps" class="secondary compact">새로고침</button>
       </div>
       <p class="hint">
@@ -488,7 +495,7 @@
       <div id="schoolAppsList"><p class="hint">불러오는 중…</p></div>
     </section>
 
-    <section class="settings-card" id="betaSection">
+    <section class="settings-card" id="betaSection" data-atab="beta">
       <div class="card-head">
         <h2>Pro 기능</h2>
         <button id="refreshBeta" class="secondary compact">새로고침</button>
@@ -516,9 +523,9 @@
       <p id="betaStatus" class="hint"></p>
     </section>
 
-    <section class="settings-card" id="problemsetSection">
+    <section class="settings-card" id="problemsetSection" data-atab="beta">
       <div class="card-head">
-        <h2>📚 문제집 메이커 한도</h2>
+        <h2>문제집 메이커 한도</h2>
         <button id="refreshPsLimit" class="secondary compact">새로고침</button>
       </div>
       <p class="hint">
@@ -536,7 +543,7 @@
       </form>
     </section>
 
-    <section class="settings-card">
+    <section class="settings-card" data-atab="logs">
       <div class="card-head">
         <h2>보고서 생성 로그</h2>
         <button id="refreshLogs" class="secondary compact">새로고침</button>
@@ -562,17 +569,17 @@
       <p id="logStatus" class="hint"></p>
     </section>
 
-    <section class="settings-card" id="adminAppealsSection">
+    <section class="settings-card" id="adminAppealsSection" data-atab="appeals">
       <div class="card-head">
-        <h2>🛡 소명·제재</h2>
+        <h2>소명·제재</h2>
         <button id="appealsRefresh" class="secondary compact">새로고침</button>
       </div>
       <p class="hint">제재된 사용자가 보낸 해명입니다. <b>커뮤니티</b>(비속어 오탐)와 <b>🚫 생성 정지</b>(시간당 API 비용이 등급 한도 초과)가 함께 표시됩니다. 정상 이용이었다면 ‘밴 해제’로 풀어주세요.</p>
       <div id="appealsList"><p class="hint">불러오는 중…</p></div>
     </section>
 
-    <section class="settings-card" id="adminEditorSection">
-      <h2>🧩 코드 에디터</h2>
+    <section class="settings-card" id="adminEditorSection" data-atab="editor">
+      <h2>코드 에디터</h2>
       <p class="hint">브라우저 안에서 동작하는 VS Code 스타일 편집기 — 여러 파일·탭, 자동완성(Ctrl/⌘+Space), 찾기(Ctrl/⌘+F), 주석 토글(Ctrl/⌘+/), 저장(Ctrl/⌘+S), 멀티커서. JS는 ▶ 실행, HTML은 미리보기.</p>
       <p style="margin:0 0 12px">
         <a href="/editor.html" target="_blank" style="display:inline-flex;align-items:center;gap:7px;background:#0e639c;color:#fff;text-decoration:none;border-radius:var(--radius-sm);padding:9px 16px;font-weight:var(--fw-semibold)">⛶ 전체 화면 Quilo Code 열기 (Pro)</a>
@@ -1651,6 +1658,18 @@
           document.querySelectorAll("#adminTabs .atab")
         );
         function showTab(tab) {
+          var titles = {
+            ai: "운영 개요",
+            users: "사용자 관리",
+            subs: "등급 관리",
+            grants: "권한·위임",
+            beta: "기능 운영",
+            schools: "학교 도입 신청",
+            logs: "생성 로그",
+            announce: "공지 관리",
+            appeals: "소명·제재",
+            editor: "코드 에디터",
+          };
           sections.forEach(function (s) {
             s.style.display = s.getAttribute("data-atab") === tab ? "" : "none";
           });
@@ -1659,6 +1678,8 @@
             b.classList.toggle("on", on);
             b.setAttribute("aria-selected", on ? "true" : "false");
           });
+          var pageTitle = document.getElementById("adminPageTitle");
+          if (pageTitle) pageTitle.textContent = titles[tab] || "운영 개요";
           try {
             localStorage.setItem("adminTab", tab);
           } catch (e) {}

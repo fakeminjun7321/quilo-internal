@@ -157,8 +157,8 @@ let currentStudentId = "";
         } catch (_) { /* 무시 */ }
         if (document.querySelector('input[name="reportType"]:checked')) return;
         const p = readLastPrefs();
-        if (!p || !p.type) return;
-        const radio = document.querySelector('input[name="reportType"][value="' + p.type + '"]');
+        const preferredType = p && p.type ? p.type : "free";
+        const radio = document.querySelector('input[name="reportType"][value="' + preferredType + '"]');
         if (!radio || radio.disabled) return;
         const label = radio.closest("label");
         if (label && label.style.display === "none") return; // 차단된 종류면 무시
@@ -273,6 +273,13 @@ let currentStudentId = "";
         } else {
           applyReportTypeAccess([]);
           applyVerificationState(null);
+          try {
+            const requestedReport = new URLSearchParams(location.search).get("report");
+            if (requestedReport) {
+              setPendingReportType(requestedReport);
+              if (typeof openLoginDropdown === "function") openLoginDropdown();
+            }
+          } catch (_) {}
         }
       }
 
@@ -453,7 +460,12 @@ let currentStudentId = "";
       fetch("/api/me")
         .then((r) => (r.ok ? r.json() : Promise.reject()))
         .then((d) => applyAuth(true, d))
-        .catch(() => applyAuth(false));
+        .catch(() => {
+          applyAuth(false);
+          if (new URLSearchParams(location.search).get("login") === "1") {
+            openLoginDropdown();
+          }
+        });
 
       // 외부 서비스 OAuth 연결 결과 안내(+ URL 정리)
       try {
@@ -1307,8 +1319,6 @@ let currentStudentId = "";
             if (radio && !radio.disabled && document.body.dataset.auth !== "out") {
               radio.checked = true;
               if (typeof updateReportTypeView === "function") updateReportTypeView({ scroll: true });
-              const fs = document.getElementById("reportTypeFieldset");
-              if (fs) fs.scrollIntoView({ behavior: "smooth", block: "start" });
             }
           } catch (e) {}
           refreshNavDD();
@@ -1541,12 +1551,18 @@ let currentStudentId = "";
         }
       }
 
-      const choosePrompt = document.getElementById("choosePrompt");
       function updateReportTypeView(options = {}) {
         const checked = document.querySelector(
           'input[name="reportType"]:checked',
         );
         const selected = checked ? checked.value : null;
+        const reportsPanel = document.getElementById("reportsPanel");
+        if (reportsPanel) {
+          reportsPanel.classList.toggle(
+            "workspace-mode",
+            !!selected && document.body.dataset.auth !== "out",
+          );
+        }
         let matched = false;
 
         reportForms.forEach((formEl) => {
@@ -1555,9 +1571,7 @@ let currentStudentId = "";
           setVisible(formEl, active);
           matched = matched || active;
         });
-        // 아무 종류도 안 고르면 폼 대신 안내만(로그인 직후 홈 상태).
         // 고른 종류에 폼이 없을 때만 '준비 중'.
-        if (choosePrompt) setVisible(choosePrompt, !selected);
         setVisible(comingSoon, !!selected && !matched);
         updateReportChecklist(selected);
         if (!selected) return;
@@ -1597,20 +1611,6 @@ let currentStudentId = "";
           updateReportTypeView({ scroll: true });
         }),
       );
-
-      // 빈 상태(#choosePrompt) '자주 쓰는 3종 바로가기' — 해당 종류 라디오를 클릭한다.
-      // 실제 라디오를 .click() 하므로 로그인 게이트·폼 전환 등 기존 동선을 그대로 탄다.
-      document.querySelectorAll("#choosePrompt [data-choose-type]").forEach((b) => {
-        b.addEventListener("click", () => {
-          const want = b.dataset.chooseType;
-          const radio =
-            want &&
-            document.querySelector('input[name="reportType"][value="' + want + '"]');
-          if (radio && !radio.disabled) {
-            try { radio.click(); } catch (_) { radio.checked = true; radio.dispatchEvent(new Event("change", { bubbles: true })); }
-          }
-        });
-      });
 
       updateReportTypeView();
 
@@ -4308,7 +4308,7 @@ let currentStudentId = "";
           back.addEventListener("click", () => {
             const target = o.scrollToForm || (_lastSubmission && _lastSubmission.formEl) || null;
             if (target) { try { target.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (_) {} }
-            else { try { document.getElementById("reportTypeFieldset")?.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (_) {} }
+            else { try { document.getElementById("reportsPanel")?.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (_) {} }
           });
           actions.appendChild(back);
         }
@@ -4394,9 +4394,6 @@ let currentStudentId = "";
                 );
                 if (radio && !radio.disabled) {
                   try { radio.click(); } catch (_) { radio.checked = true; radio.dispatchEvent(new Event("change", { bubbles: true })); }
-                  try {
-                    document.getElementById("reportTypeFieldset")?.scrollIntoView({ behavior: "smooth", block: "start" });
-                  } catch (_) {}
                 }
               });
               meta.appendChild(next);

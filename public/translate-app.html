@@ -18,7 +18,7 @@
     <style>
       :root { --card:var(--surface); --bd:var(--border); --ink:var(--text); --mut:var(--text-muted); --acc:var(--accent); --accd:var(--accent-hover); --ok:var(--success); }
       * { box-sizing:border-box; }
-      body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Apple SD Gothic Neo",sans-serif; background:var(--bg); color:var(--ink); }
+      body { width:100%; max-width:100%; margin:0; padding:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Apple SD Gothic Neo",sans-serif; background:var(--bg); color:var(--ink); }
       .wrap { max-width:760px; margin:0 auto; padding:28px 18px 60px; }
       header.top { display:flex; align-items:center; gap:10px; margin-bottom:6px; }
       .logo { width:30px;height:30px;border-radius:var(--radius-sm);background:var(--acc);color:var(--on-accent);display:grid;place-items:center;font-weight:var(--fw-heavy); }
@@ -44,14 +44,18 @@
       .spin { display:inline-block;width:13px;height:13px;border:2px solid var(--border-strong);border-top-color:var(--acc);border-radius:50%;animation:s .7s linear infinite;vertical-align:-2px; }
       @keyframes s { to { transform:rotate(360deg); } }
       /* 로그인 오버레이 */
-      #gate { position:fixed; inset:0; background:var(--bg); display:none; place-items:center; z-index:10; }
+      #gate { position:fixed; inset:var(--q-shell-height, 76px) 0 0; background:var(--bg); display:none; place-items:center; z-index:10; }
       #gate .box { background:var(--surface); border:1px solid var(--bd); border-radius:16px; padding:28px; width:min(380px,92%); text-align:center; }
       #gate .err { color:var(--danger); font-size:13px; min-height:18px; margin-top:8px; }
       .foot { text-align:center; color:var(--mut); font-size:12px; margin-top:24px; }
       .pill { display:inline-block; background:var(--accent-soft); color:var(--accent-text); border-radius:999px; padding:2px 9px; font-size:11px; font-weight:var(--fw-bold); }
     </style>
+    <link rel="stylesheet" href="/site-shell.css" />
   </head>
-  <body>
+  <body class="q-shell-page">
+    <div data-q-shell><a class="q-shell-fallback" href="/">Quilo 홈</a></div>
+    <button type="button" id="themeToggle" hidden aria-hidden="true" tabindex="-1"></button>
+    <main id="main-content">
     <!-- 코드 게이트 -->
     <div id="gate">
       <div class="box">
@@ -66,12 +70,7 @@
 
     <div class="wrap" id="app" style="display:none">
       <header class="top">
-        <div class="logo">Q</div>
         <h1>PDF 통번역 <span class="pill">Max</span></h1>
-        <button type="button" id="themeToggle" class="theme-toggle" aria-label="다크 모드로 전환" title="다크 모드로 전환" style="margin-left:auto">
-          <span class="theme-icon-light" aria-hidden="true">🌙</span>
-          <span class="theme-icon-dark" aria-hidden="true">☀️</span>
-        </button>
       </header>
       <p class="sub">그림·표·레이아웃을 최대한 보존하며 <b>텍스트를 한국어로</b> 바꾼 PDF를 돌려줍니다. 수식 많은 논문·스캔본은 자동으로 재조판/OCR 처리합니다. 번역 제공자 및 서버에 설정된 OCR 제공자에 텍스트, PDF 또는 페이지 이미지가 전송될 수 있습니다.</p>
 
@@ -133,6 +132,7 @@
         <p style="color:var(--text-muted);font-size:12px;margin-top:12px">본 안내는 일반적 고지이며 법률 자문이 아닙니다. 구체적 사안은 전문가 검토가 필요할 수 있습니다.</p>
       </div>
     </div>
+    </main>
 
     <script>
       const $ = (id) => document.getElementById(id);
@@ -242,5 +242,6 @@
       init();
     </script>
     <script src="/theme.js"></script>
+    <script src="/site-shell.js"></script>
   </body>
 </html>

@@ -18,23 +18,13 @@
       })();
     </script>
     <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/site-shell.css" />
   </head>
-  <body class="landing">
+  <body class="landing q-shell-page">
     <div class="landing-bg" aria-hidden="true"></div>
-    <nav class="landing-nav">
-      <div class="landing-nav-inner">
-        <a href="/" class="brand"><span class="brand-mark" aria-hidden="true">Q</span> Quilo</a>
-        <div class="landing-nav-actions">
-          <a href="/tools/index.html" class="nav-link">← 도구 모음</a>
-          <button type="button" id="themeToggle" class="theme-toggle" aria-label="다크 모드로 전환" title="다크 모드로 전환">
-            <span class="theme-icon-light" aria-hidden="true">🌙</span>
-            <span class="theme-icon-dark" aria-hidden="true">☀️</span>
-          </button>
-        </div>
-      </div>
-    </nav>
+    <div data-q-shell><a class="q-shell-fallback" href="/">Quilo 홈</a></div>
 
-    <main class="landing-shell">
+    <main class="landing-shell" id="main-content">
       <section class="section" style="border-top:0">
         <div class="tool-page-head">
           <h1>PDF 페이지 제거</h1>
@@ -85,6 +75,7 @@
 
     <script src="/tools/vendor/pdf-lib.min.js"></script>
     <script src="/theme.js"></script>
+    <script src="/site-shell.js"></script>
     <script>
       (function () {
         var drop = document.getElementById("prDrop"), input = document.getElementById("prFile");

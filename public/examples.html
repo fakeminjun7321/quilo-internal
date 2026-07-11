@@ -20,6 +20,7 @@
       })();
     </script>
     <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/site-shell.css" />
     <style>
       .ex-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0 4px; }
       .ex-pre {
@@ -101,24 +102,11 @@
       .ex-bullets li:last-child { margin-bottom: 0; }
     </style>
   </head>
-  <body class="landing">
+  <body class="landing q-shell-page">
     <div class="landing-bg" aria-hidden="true"></div>
-    <nav class="landing-nav">
-      <div class="landing-nav-inner">
-        <a href="/" class="brand"><span class="brand-mark" aria-hidden="true">Q</span> Quilo</a>
-        <div class="landing-nav-actions">
-          <a href="/" class="nav-link">메인</a>
-          <a href="/guide.html" class="nav-link">이용 가이드</a>
-          <a href="/tools/index.html" class="nav-link">도구 모음</a>
-          <button type="button" id="themeToggle" class="theme-toggle" aria-label="다크 모드로 전환" title="다크 모드로 전환">
-            <span class="theme-icon-light" aria-hidden="true">🌙</span>
-            <span class="theme-icon-dark" aria-hidden="true">☀️</span>
-          </button>
-        </div>
-      </div>
-    </nav>
+    <div data-q-shell></div>
 
-    <main class="landing-shell">
+    <main class="landing-shell" id="main-content">
       <section class="section" style="border-top:0">
         <div class="tool-page-head">
           <h1>예시 모음</h1>
@@ -351,6 +339,7 @@
       })();
     </script>
     <script src="/theme.js"></script>
-      <script src="/chat-widget.js" defer></script>
+    <script src="/site-shell.js"></script>
+    <script src="/chat-widget.js" defer></script>
 </body>
 </html>

@@ -149,7 +149,12 @@ Render Web Service 설정 예시:
 
 | Key | 설명 |
 |---|---|
-| `OPENAI_API_KEY` | GPT 보고서 모델 사용 시 |
+| `OPENAI_API_KEY` | GPT 보고서 모델과 Quilo Bot 사용 시 |
+| `OPENAI_CHAT_MODEL` | Quilo Bot 저비용 모델, 기본 `gpt-4o-mini` |
+| `OPENAI_CHAT_MEMO_MODEL` | 메모 작성 도우미 모델, 기본 `gpt-4o-mini` |
+| `OPENAI_CHAT_API_BASE` | OpenAI 호환 API 주소, 기본 `https://api.openai.com/v1` |
+| `CHAT_MAX_TOKENS` | Quilo Bot 답변 길이 상한, 기본 `700` |
+| `CHAT_DAILY_MAX` | Quilo Bot 전역 일일 메시지 상한, 기본 `1500` |
 | `MAX_TOKENS` | Claude 출력 token 상한, 기본 `32000` |
 | `MAX_UPLOAD_MB` | 업로드 파일 1개 최대 크기, 기본 `64` |
 | `JOB_TIMEOUT_MS` | 작업 timeout, 기본 `480000` ms |

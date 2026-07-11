@@ -170,20 +170,13 @@
 
       .spin { display: inline-block; width: 14px; height: 14px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: -2px; }
     </style>
+    <link rel="stylesheet" href="/site-shell.css" />
   </head>
-  <body>
-    <header class="top">
-      <a class="brand" href="/"><span class="qmark">Q</span> Quilo</a>
-      <nav>
-        <a href="/create.html">← 창작</a>
-        <button type="button" id="themeToggle" class="theme-toggle" aria-label="테마 전환" title="테마 전환">
-          <span class="theme-icon-light" aria-hidden="true">🌙</span>
-          <span class="theme-icon-dark" aria-hidden="true">☀️</span>
-        </button>
-      </nav>
-    </header>
+  <body class="q-shell-page">
+    <div data-q-shell><a class="q-shell-fallback" href="/">Quilo 홈</a></div>
+    <button type="button" id="themeToggle" hidden aria-hidden="true" tabindex="-1"></button>
 
-    <div class="page">
+    <div class="page" id="main-content">
       <div class="intro" id="intro">
         <span class="eyebrow">✨ 바이브 코딩 생성기</span>
         <h1>아이디어, 같이 정리해 볼까요?</h1>
@@ -573,5 +566,6 @@
       boot();
     </script>
     <script src="/theme.js"></script>
+    <script src="/site-shell.js"></script>
   </body>
 </html>

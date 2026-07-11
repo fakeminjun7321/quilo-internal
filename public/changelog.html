@@ -24,28 +24,12 @@
       })();
     </script>
     <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/site-shell.css" />
   </head>
-  <body>
-    <div class="app-bar">
-      <a href="/" class="brand">
-        <span class="brand-mark" aria-hidden="true">Q</span>
-        Quilo
-      </a>
-      <div class="header-actions">
-        <button
-          type="button"
-          id="themeToggle"
-          class="theme-toggle"
-          aria-label="다크 모드로 전환"
-          title="다크 모드로 전환"
-        >
-          <span class="theme-icon-light" aria-hidden="true">🌙</span>
-          <span class="theme-icon-dark" aria-hidden="true">☀️</span>
-        </button>
-      </div>
-    </div>
+  <body class="q-shell-page">
+    <div data-q-shell></div>
 
-    <main class="legal-page">
+    <main class="legal-page" id="main-content">
       <a href="/" class="legal-back">← Quilo로 돌아가기</a>
       <h1>패치노트</h1>
       <p class="hint">
@@ -101,6 +85,7 @@
 
     <script src="/version-footer.js"></script>
     <script src="/theme.js"></script>
+    <script src="/site-shell.js"></script>
     <script>
       function formatDateTime(value) {
         if (!value) return "미확인";
@@ -164,6 +149,6 @@
 
       loadVersion();
     </script>
-      <script src="/chat-widget.js" defer></script>
+    <script src="/chat-widget.js" defer></script>
 </body>
 </html>

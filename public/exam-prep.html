@@ -21,6 +21,8 @@
     <!-- Monaco(VS Code 엔진) — Quilo Code 와 동일 -->
     <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs/loader.js"></script>
     <style>
+      html, body { width: 100%; max-width: 100%; }
+      body { margin: 0; padding: 0; }
       .epwrap { max-width: 1100px; margin: 0 auto; padding: 18px 16px 80px; }
       .ephead { display: flex; align-items: center; gap: 12px; margin: 8px 0 16px; flex-wrap: wrap; }
       .ephead a.logo { display: flex; align-items: center; gap: 8px; text-decoration: none; color: inherit; font-weight: var(--fw-heavy); font-size: 19px; }
@@ -122,15 +124,11 @@
       .pi-card p { color: var(--text-muted); line-height: 1.7; font-size: 14px; }
       .pi-card ul { color: var(--text-muted); line-height: 1.7; font-size: 14px; }
     </style>
+    <link rel="stylesheet" href="/site-shell.css" />
   </head>
-  <body>
-    <div class="epwrap">
-      <div class="ephead">
-        <a class="logo" href="/"><span class="qmark">Q</span> Quilo</a>
-        <span class="muted">· 수행평가 도움</span>
-        <span style="flex:1"></span>
-        <a href="/" class="muted" style="text-decoration:none">← 홈으로</a>
-      </div>
+  <body class="q-shell-page">
+    <div data-q-shell><a class="q-shell-fallback" href="/">Quilo 홈</a></div>
+    <main class="epwrap" id="main-content">
 
       <div class="eptabs" role="tablist" aria-label="수행평가 도움 탭">
         <!-- 코딩 테스트 탭 — 비활성화(노출 제거). JS·#paneCoding 코드는 보존하되 화면에 나오지 않는다.
@@ -229,7 +227,7 @@
           <a class="qbtn primary" href="/?report=reading-log">독서록 만들기 →</a>
         </div>
       </section>
-    </div>
+    </main>
 
     <script>
       // ───────────────────────── 공통 ─────────────────────────
@@ -800,5 +798,6 @@
           });
       })();
     </script>
+    <script src="/site-shell.js"></script>
   </body>
 </html>

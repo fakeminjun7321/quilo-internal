@@ -5,7 +5,7 @@
     <link rel="canonical" href="https://quilolab.com/tools/index.html" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>보고서 도구 모음</title>
-    <meta name="description" content="실험 보고서에 쓰기 좋은 브라우저 전용 도구 모음 — 글자수 세기, LaTeX→한글 수식 변환, 선형회귀·그래프, 이미지 변환, PDF 병합." />
+    <meta name="description" content="실험 보고서에 쓰기 좋은 브라우저 전용 도구 모음 — 파일·이미지·PDF 변환과 LaTeX→한글 수식 변환." />
     <script>
       (function () {
         try {
@@ -16,62 +16,26 @@
       })();
     </script>
     <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/site-shell.css" />
+    <style>
+      .feature-grid.tools-index-grid { grid-template-columns: minmax(0, 560px); }
+      @media (max-width: 900px) {
+        .feature-grid.tools-index-grid { grid-template-columns: 1fr; }
+      }
+    </style>
   </head>
-  <body class="landing">
+  <body class="landing q-shell-page">
     <div class="landing-bg" aria-hidden="true"></div>
+    <div data-q-shell><a class="q-shell-fallback" href="/">Quilo 홈</a></div>
 
-    <nav class="landing-nav">
-      <div class="landing-nav-inner">
-        <a href="/" class="brand">
-          <span class="brand-mark" aria-hidden="true">Q</span>
-          Quilo
-        </a>
-        <div class="landing-nav-actions">
-          <a href="/" class="nav-link">메인</a>
-          <a href="/guide.html" class="nav-link">이용 가이드</a>
-          <button type="button" id="themeToggle" class="theme-toggle" aria-label="다크 모드로 전환" title="다크 모드로 전환">
-            <span class="theme-icon-light" aria-hidden="true">🌙</span>
-            <span class="theme-icon-dark" aria-hidden="true">☀️</span>
-          </button>
-        </div>
-      </div>
-    </nav>
-
-    <main class="landing-shell">
+    <main class="landing-shell" id="main-content">
       <section class="section" style="border-top:0">
         <div class="tool-page-head">
           <h1>보고서 도구 모음</h1>
           <p>실험 보고서를 쓸 때 자주 필요한 작업을 빠르게 끝내는 도구들입니다. 모두 <b>브라우저 안에서만</b> 동작하고 입력 내용은 서버로 전송되지 않습니다.</p>
         </div>
 
-        <div class="feature-grid">
-          <a class="feature-card" href="/tools/word-count.html">
-            <div class="feature-ico">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
-            </div>
-            <h3>글자수 세기</h3>
-            <p>공백 포함/미포함 글자수, 단어수, 줄수, 바이트(UTF-8)를 실시간으로 셉니다. 보고서 분량 제한 맞출 때.</p>
-            <span class="feature-tag">텍스트 → 글자수·바이트</span>
-          </a>
-
-          <a class="feature-card" href="/tools/regression.html">
-            <div class="feature-ico">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><circle cx="8" cy="14" r="1.2"/><circle cx="12" cy="11" r="1.2"/><circle cx="16" cy="8" r="1.2"/><path d="M6 16l12-9"/></svg>
-            </div>
-            <h3>선형회귀·추세선</h3>
-            <p>(x, y) 데이터로 기울기·절편·R²을 구하고 추세선 그래프를 그려 PNG로 받습니다. 물리 실험에.</p>
-            <span class="feature-tag">데이터 → 회귀·추세선</span>
-          </a>
-
-          <a class="feature-card" href="/tools/graph.html">
-            <div class="feature-ico">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><rect x="7" y="11" width="3" height="6" rx="0.4"/><rect x="12" y="7" width="3" height="10" rx="0.4"/><rect x="17" y="9" width="3" height="8" rx="0.4"/></svg>
-            </div>
-            <h3>그래프 생성기</h3>
-            <p>데이터를 붙여넣어 산점도·꺾은선·막대 그래프를 그리고 PNG로 받습니다. 보고서에 바로 삽입.</p>
-            <span class="feature-tag">데이터 → 그래프 PNG</span>
-          </a>
-
+        <div class="feature-grid tools-index-grid">
           <a class="feature-card" href="/tools/convert.html">
             <div class="feature-ico">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 3h5v5"/><path d="M21 3l-8 8"/><path d="M8 21H3v-5"/><path d="M3 21l8-8"/></svg>
@@ -100,5 +64,6 @@
     </footer>
 
     <script src="/theme.js"></script>
+    <script src="/site-shell.js"></script>
   </body>
 </html>

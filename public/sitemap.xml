@@ -10,9 +10,6 @@
   <url><loc>https://quilolab.com/translate.html</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
   <url><loc>https://quilolab.com/changelog.html</loc><changefreq>weekly</changefreq><priority>0.4</priority></url>
   <url><loc>https://quilolab.com/tools/index.html</loc><changefreq>monthly</changefreq><priority>0.7</priority></url>
-  <url><loc>https://quilolab.com/tools/regression.html</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
-  <url><loc>https://quilolab.com/tools/graph.html</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
-  <url><loc>https://quilolab.com/tools/word-count.html</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
   <url><loc>https://quilolab.com/tools/convert.html</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>
   <url><loc>https://quilolab.com/tools/image.html</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>
   <url><loc>https://quilolab.com/tools/pdf-merge.html</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>

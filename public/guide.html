@@ -20,24 +20,13 @@
       })();
     </script>
     <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/site-shell.css" />
   </head>
-  <body class="landing">
+  <body class="landing q-shell-page">
     <div class="landing-bg" aria-hidden="true"></div>
-    <nav class="landing-nav">
-      <div class="landing-nav-inner">
-        <a href="/" class="brand"><span class="brand-mark" aria-hidden="true">Q</span> Quilo</a>
-        <div class="landing-nav-actions">
-          <a href="/" class="nav-link">메인</a>
-          <a href="/tools/index.html" class="nav-link">도구 모음</a>
-          <button type="button" id="themeToggle" class="theme-toggle" aria-label="다크 모드로 전환" title="다크 모드로 전환">
-            <span class="theme-icon-light" aria-hidden="true">🌙</span>
-            <span class="theme-icon-dark" aria-hidden="true">☀️</span>
-          </button>
-        </div>
-      </div>
-    </nav>
+    <div data-q-shell><a class="q-shell-fallback" href="/">Quilo 홈</a></div>
 
-    <main class="landing-shell">
+    <main class="landing-shell" id="main-content">
       <section class="section" style="border-top:0">
         <div class="tool-page-head">
           <h1>이용 가이드</h1>
@@ -137,7 +126,7 @@
                 <tr>
                   <th scope="row">부가 도구</th>
                   <td>도구 · <a href="/tools/index.html">도구 모음</a></td>
-                  <td>글자수 세기, 선형회귀·그래프, 파일 변환, 수식 변환</td>
+                  <td>파일 변환, 이미지·PDF 도구, 수식 변환</td>
                 </tr>
               </tbody>
             </table>
@@ -168,7 +157,7 @@
 
           <section id="chem-result">
             <h2>2. 화학 결과보고서</h2>
-            <p><b>넣는 자료:</b> 실험 데이터(엑셀/CSV/텍스트), 실험 사진, (선택) 사전보고서.</p>
+            <p><b>넣는 자료:</b> 사전보고서(PDF 또는 DOCX)는 필수이며, 실험 데이터(엑셀/CSV/텍스트)와 실험 사진·매뉴얼을 함께 넣을 수 있습니다.</p>
             <ol>
               <li>보고서 종류에서 <b>화학 결과보고서</b>를 고릅니다.</li>
               <li>측정 데이터와 사진을 업로드합니다. 데이터 표·그래프 스크린샷도 인식합니다.</li>
@@ -179,7 +168,7 @@
 
           <section id="phys-result">
             <h2>3. 물리 결과보고서</h2>
-            <p><b>넣는 자료:</b> PASCO Capstone <code>.cap</code>, 엑셀/CSV/텍스트, 매뉴얼 PDF, 실험 사진 중 하나 이상. 학번은 필수입니다.</p>
+            <p><b>넣는 자료:</b> PASCO Capstone <code>.cap</code>, 엑셀/CSV/텍스트, 데이터표·그래프 스크린샷 중 하나 이상. 매뉴얼 PDF는 선택이며, 학번은 필수입니다.</p>
             <ol>
               <li>보고서 종류에서 <b>물리 결과보고서</b>를 고릅니다.</li>
               <li><code>.cap</code> 또는 정리한 데이터, 사진을 업로드합니다. 캡스톤의 사용자 입력 표가 있으면 최우선으로 씁니다.</li>
@@ -260,8 +249,6 @@
             <h2>11. 도구 모음</h2>
             <p><a href="/tools/index.html">도구 모음</a>에서 보고서에 자주 필요한 작업을 빠르게 할 수 있습니다(모두 브라우저 전용):</p>
             <ul>
-              <li><b>글자수 세기</b> — 분량 제한 맞추기.</li>
-              <li><b>선형회귀·그래프</b> — 데이터로 추세선·그래프 PNG 생성.</li>
               <li><b>LaTeX → 한글 수식 변환기</b> — 수식을 HWP(HWPX) 수식으로.</li>
             </ul>
           </section>
@@ -292,6 +279,7 @@
     </footer>
 
     <script src="/theme.js"></script>
-      <script src="/chat-widget.js" defer></script>
+    <script src="/site-shell.js"></script>
+    <script src="/chat-widget.js" defer></script>
 </body>
 </html>

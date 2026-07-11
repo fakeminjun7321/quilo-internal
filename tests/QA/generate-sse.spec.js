@@ -141,7 +141,8 @@ async function mockFrontendApis(page) {
 }
 
 async function chooseReport(page, type) {
-  await page.locator(`label:has(input[name="reportType"][value="${type}"])`).click();
+  await page.locator(".nav-dd-btn").filter({ hasText: "제품" }).click();
+  await page.locator(`.nav-dd-menu a[data-report="${type}"]`).click();
   await expect(page.locator(`[data-report-form="${type}"]`)).toBeVisible();
   await expect(page.locator(`[data-report-form="${type}"]`)).toHaveAttribute("data-flow-step", "upload");
 }

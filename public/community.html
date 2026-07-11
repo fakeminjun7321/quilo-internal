@@ -18,6 +18,7 @@
       } catch (e) {}
     </script>
     <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/site-shell.css" />
     <style>
       .cmwrap { max-width: 860px; margin: 0 auto; padding: 18px 16px 80px; }
       .cmhead { display: flex; align-items: center; gap: 12px; margin: 8px 0 18px; }
@@ -85,14 +86,9 @@
       .cm-login-note a { color: var(--accent-text); font-weight: var(--fw-semibold); }
     </style>
   </head>
-  <body>
-    <div class="cmwrap">
-      <div class="cmhead">
-        <a class="logo" href="/"><span class="qmark">Q</span> Quilo</a>
-        <span class="muted">· 커뮤니티</span>
-        <span style="flex:1"></span>
-        <a href="/" class="muted" style="text-decoration:none">← 홈으로</a>
-      </div>
+  <body class="q-shell-page">
+    <div data-q-shell></div>
+    <main class="cmwrap" id="main-content">
 
       <section class="cmintro">
         <h1>커뮤니티</h1>
@@ -134,8 +130,9 @@
         <p class="muted" style="margin-top:0">개발자가 직접 공개하는 기술·구현 노트입니다.</p>
         <div id="labList" aria-live="polite"></div>
       </section>
-    </div>
+    </main>
 
+    <script src="/site-shell.js"></script>
     <script>
       // ── 랩(기술 공개): /api/lab 에서 목록·본문·코드 파일을 불러온다(GitHub식) ──
       let labLoaded = false;

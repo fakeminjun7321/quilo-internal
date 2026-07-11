@@ -5,97 +5,172 @@
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <meta name="theme-color" content="#243ba2" />
+    <meta name="theme-color" content="#2563eb" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex" />
-    <title>이메일 인증 — Quilo</title>
+    <title>학교 이메일 인증 — Quilo</title>
+    <meta
+      name="description"
+      content="Quilo 학생 계정의 학교 이메일 인증을 안전하게 완료하세요."
+    />
     <script>
       (function () {
         try {
           var t = localStorage.getItem("theme");
-          if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+          if (!t)
+            t = window.matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light";
           document.documentElement.setAttribute("data-theme", t);
         } catch (e) {}
       })();
     </script>
     <link rel="stylesheet" href="/style.css" />
+    <link rel="stylesheet" href="/auth-ui.css" />
   </head>
-  <body class="landing">
+  <body class="landing auth-page">
     <div class="landing-bg" aria-hidden="true"></div>
+    <a class="auth-skip" href="#authMain">이메일 인증으로 건너뛰기</a>
 
-    <nav class="landing-nav">
+    <nav class="landing-nav" aria-label="계정 페이지">
       <div class="landing-nav-inner">
-        <a href="/" class="brand">
+        <a href="/" class="brand" aria-label="Quilo 홈">
           <span class="brand-mark" aria-hidden="true">Q</span>
           Quilo
         </a>
+        <div class="landing-nav-actions">
+          <span class="auth-nav-copy">학교 이메일 인증</span>
+          <button
+            type="button"
+            id="themeToggle"
+            class="theme-toggle"
+            aria-label="다크 모드로 전환"
+            title="다크 모드로 전환"
+          >
+            테마
+          </button>
+        </div>
       </div>
     </nav>
 
-    <main class="landing-shell">
-      <section class="section" style="border-top:0;display:flex;justify-content:center">
-        <div class="login-card" style="width:100%;max-width:460px;text-align:center">
-          <div class="auth-head" style="margin-bottom:14px">
-            <h1>학교 이메일 인증</h1>
-            <p class="hint" id="lead">아래 버튼을 눌러 인증을 완료하세요.</p>
+    <main class="auth-page-main" id="authMain">
+      <section class="auth-page-layout" aria-labelledby="verifyPageTitle">
+        <aside class="auth-story">
+          <div class="auth-story__top">
+            <div class="auth-story__brand">
+              <img src="/favicon.png" alt="" width="36" height="36" />
+              <span>Quilo account</span>
+            </div>
+            <p class="auth-story__eyebrow">Student verification</p>
+            <h1>학교 계정 확인을 완료해 주세요.</h1>
+            <p class="auth-story__lead">
+              메일 링크를 연 기기에서 아래 버튼을 눌러야 토큰이 사용됩니다. 버튼을 누르기 전에는 인증이 완료되지 않습니다.
+            </p>
           </div>
-          <div id="iconWrap" style="font-size:42px;line-height:1;margin:6px 0 14px">🎓</div>
-          <div class="form-actions" style="justify-content:center">
-            <button type="button" id="confirmBtn" class="btn btn-primary btn-lg">이메일 인증하기</button>
+          <div class="auth-story__bottom">
+            <div class="auth-steps" aria-label="가입 절차">
+              <div class="auth-step is-complete"><span>1</span><strong>계정 생성 완료</strong></div>
+              <div class="auth-step is-active"><span>2</span><strong>학교 이메일 인증</strong></div>
+              <div class="auth-step"><span>3</span><strong>관리자 승인</strong></div>
+            </div>
           </div>
-          <p id="result" class="hint" style="margin:14px 0 0"></p>
-          <p class="hint" style="margin:14px 0 0">
-            <a href="/" id="homeLink">메인으로 돌아가기</a>
+        </aside>
+
+        <div class="auth-panel">
+          <div id="iconWrap" class="auth-state" aria-hidden="true">
+            <img src="/favicon.png" alt="" width="42" height="42" />
+          </div>
+          <div class="auth-panel__head auth-panel__head--center">
+            <p class="auth-kicker">Email confirmation</p>
+            <h1 id="verifyPageTitle">학교 이메일 인증</h1>
+            <p id="lead">인증 링크가 맞는지 확인한 뒤 아래 버튼을 눌러 주세요.</p>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" id="confirmBtn" class="btn btn-primary btn-lg auth-primary">
+              이메일 인증 완료하기
+            </button>
+          </div>
+          <p id="result" class="auth-status" role="status" aria-live="polite"></p>
+
+          <div class="auth-assurance" aria-label="인증 안내">
+            <div>
+              <strong>링크가 만료된 경우</strong>
+              <span>Quilo 로그인 후 학생 인증 안내에서 메일을 다시 보낼 수 있습니다.</span>
+            </div>
+            <div>
+              <strong>인증 완료 후</strong>
+              <span>관리자 승인까지 완료되면 보고서 생성을 사용할 수 있습니다.</span>
+            </div>
+          </div>
+
+          <p class="auth-alt">
+            <a href="/" id="homeLink">Quilo 메인으로 돌아가기</a>
           </p>
         </div>
       </section>
     </main>
 
     <footer class="site-footer">
-      <div class="footer-copy">© 2026 Quilo · MIT License</div>
+      <div class="footer-links">
+        <a href="/privacy.html">개인정보처리방침</a>
+        <a href="/guide.html">이용 가이드</a>
+      </div>
+      <div class="footer-copy">© 2026 Quilo · 인증 토큰은 버튼을 누를 때만 확인됩니다.</div>
     </footer>
 
     <script>
       (function () {
+        "use strict";
+
         const params = new URLSearchParams(location.search);
         const token = params.get("token") || "";
         const btn = document.getElementById("confirmBtn");
         const result = document.getElementById("result");
         const lead = document.getElementById("lead");
-        const icon = document.getElementById("iconWrap");
+        const state = document.getElementById("iconWrap");
+
+        function setState(kind, label) {
+          state.className = "auth-state" + (kind ? " is-" + kind : "");
+          if (kind) state.textContent = label;
+        }
 
         if (!token) {
           btn.disabled = true;
-          lead.textContent = "잘못된 인증 링크입니다. 메일의 버튼을 다시 눌러 주세요.";
-          icon.textContent = "⚠️";
+          lead.textContent = "잘못되었거나 토큰이 빠진 인증 링크입니다.";
+          result.classList.add("is-error");
+          result.textContent = "메일의 이메일 인증 버튼을 다시 누르거나, Quilo에서 인증 메일을 다시 요청해 주세요.";
+          setState("error", "링크 확인 필요");
           return;
         }
 
         btn.addEventListener("click", async () => {
           btn.disabled = true;
-          btn.textContent = "인증 중...";
-          result.style.color = "";
+          btn.textContent = "인증을 확인하는 중...";
+          result.className = "auth-status";
           result.textContent = "";
+
           try {
-            const res = await fetch("/api/verify-email/confirm", {
+            const response = await fetch("/api/verify-email/confirm", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ token }),
             });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || "인증 실패");
-            icon.textContent = "✅";
-            lead.textContent = "이메일 인증이 완료되었습니다.";
-            result.style.color = "var(--success,#16a34a)";
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || "인증 실패");
+
+            setState("success", "인증 완료");
+            lead.textContent = "학교 이메일 인증이 완료되었습니다.";
+            result.classList.add("is-success");
             result.textContent =
-              "이제 관리자 승인을 기다려 주세요. 승인되면 보고서 생성을 사용할 수 있습니다.";
+              "이제 관리자 승인을 기다려 주세요. 승인되면 보고서 생성을 사용할 수 있습니다. 잠시 후 메인으로 이동합니다.";
             btn.style.display = "none";
             setTimeout(() => {
               location.href = "/";
             }, 2500);
           } catch (ex) {
-            icon.textContent = "⚠️";
-            result.style.color = "var(--danger,#dc2626)";
+            setState("error", "다시 확인");
+            result.classList.add("is-error");
             result.textContent = ex.message;
             btn.textContent = "다시 시도";
             btn.disabled = false;

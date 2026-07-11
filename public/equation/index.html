@@ -12,7 +12,6 @@
     document.documentElement.classList.add("embed");
 </script>
 <style>
-  html.embed .site-topbar,
   html.embed footer { display: none !important; }
   html.embed .wrap { padding-top: 12px !important; }
   :root {
@@ -123,18 +122,11 @@
   }
   .copy-btn { white-space: nowrap; padding: 9px 14px; font-size: 0.85rem; }
 </style>
+<link rel="stylesheet" href="/site-shell.css" />
 </head>
-<body>
-<div class="site-topbar" style="border-bottom:1px solid var(--line);background:var(--card)">
-  <div style="max-width:720px;margin:0 auto;padding:12px 20px;display:flex;align-items:center;gap:10px">
-    <a href="/" style="display:inline-flex;align-items:center;gap:8px;color:var(--ink);text-decoration:none;font-weight:800;letter-spacing:-.01em">
-      <span style="display:grid;place-items:center;width:26px;height:26px;border-radius:8px;background:var(--brand);color:#fff;font-weight:800;font-size:14px">Q</span>
-      Quilo
-    </a>
-    <a href="/" style="margin-left:auto;color:var(--muted);text-decoration:none;font-size:.9rem">← 메인으로</a>
-  </div>
-</div>
-<div class="wrap">
+<body class="q-shell-page">
+<div data-q-shell><a class="q-shell-fallback" href="/">Quilo 홈</a></div>
+<div class="wrap" id="main-content">
   <header>
     <h1>HWP·HWPX LaTeX → 한글 수식 변환기</h1>
     <p>LaTeX 수식을 한글(HWP) 수식으로 바꿔 줍니다. 아래에 <b>텍스트를 붙여넣어</b> 한글 수식 스크립트를 받거나, <b>HWP·HWPX 파일</b> 속 수식을 한 번에 변환할 수 있습니다.</p>
@@ -506,5 +498,6 @@
   });
 })();
 </script>
+<script src="/site-shell.js"></script>
 </body>
 </html>

@@ -152,7 +152,46 @@ test("OpenAPI document is public and generated from the v1 route registry", asyn
   assert.equal(body.paths["/api/v1/pdf-translations"].post["x-quilo-scope"], "translations:write");
   assert.equal(body.paths["/api/v1/pdf-translations/estimate"].post["x-quilo-scope"], "translations:read");
   assert.equal(body.paths["/api/v1/conversions/docx-to-hwpx"].post["x-quilo-scope"], "conversions:write");
+  assert.equal(body.paths["/api/v1/api-requests"].get["x-quilo-scope"], "account:read");
   assert.ok(body.components.securitySchemes.bearerAuth["x-scopes"]["account:read"]);
+});
+
+test("API request telemetry records route, scope, status, and request id", async (t) => {
+  const rawToken = `quilo_deadbeef_${"E".repeat(43)}`;
+  let logged = null;
+  const tokenRow = { id: "token-5", user_id: "user-1", name: "telemetry", token_prefix: "deadbeef", scopes: ["account:read"], expires_at: new Date(Date.now() + 60000).toISOString() };
+  const authChain = {
+    select() { return this; }, eq() { return this; }, is() { return this; }, gt() { return this; }, update() { return this; },
+    maybeSingle() { return Promise.resolve({ data: tokenRow, error: null }); },
+    then(resolve) { return Promise.resolve(resolve({ data: null, error: null })); },
+  };
+  const client = {
+    from(table) {
+      if (table === "api_request_logs") return { insert(row) { logged = row; return Promise.resolve({ error: null }); } };
+      return Object.create(authChain);
+    },
+  };
+  const supa = {
+    getClient: () => client,
+    findUserById: async () => ({ id: "user-1", name: "민준", approved: true, email_verified: true }),
+    listApiRequestLogs: async () => [{ requestId: "old" }],
+  };
+  const app = express();
+  app.use(createExternalApiMiddleware({ supa }));
+  app.use("/api/v1", createV1Router({ supa }));
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => server.close());
+  const response = await fetch(`http://127.0.0.1:${server.address().port}/api/v1/api-requests`, {
+    headers: { authorization: `Bearer ${rawToken}`, "x-request-id": "request-custom-123" },
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).requests, [{ requestId: "old" }]);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(logged.request_id, "request-custom-123");
+  assert.equal(logged.path, "/api/v1/api-requests");
+  assert.equal(logged.scope, "account:read");
+  assert.equal(logged.status, 200);
 });
 
 test("PDF translation and conversion routes require their own scopes", async (t) => {

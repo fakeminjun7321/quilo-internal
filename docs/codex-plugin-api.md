@@ -20,6 +20,12 @@ Supabase SQL Editor에서 다음 마이그레이션을 적용한다.
 db/migrations/20260710_add_user_access_tokens.sql
 ```
 
+개발자 콘솔의 요청 감사 로그와 향후 idempotency 저장소에는 다음 마이그레이션도 사용한다.
+
+```text
+db/migrations/20260711_add_api_platform.sql
+```
+
 마이그레이션 전에는 카탈로그와 개발자 페이지는 동작하지만 토큰 발급은 `TOKEN_TABLE_MISSING` 또는 저장소 미사용 오류를 반환한다.
 
 ## 토큰 보안
@@ -37,6 +43,7 @@ db/migrations/20260710_add_user_access_tokens.sql
 | Method | Path | Scope | 기존 서버 흐름 |
 |---|---|---|---|
 | GET | `/api/v1/account` | `account:read` | 안전한 계정·등급·크레딧 요약 |
+| GET | `/api/v1/api-requests` | `account:read` | 본인의 최근 API 요청 상태·지연·오류 코드 |
 | GET | `/api/v1/jobs` | `jobs:read` | `/api/me/jobs` |
 | GET | `/api/v1/jobs/:id` | `jobs:read` | 메모리 작업 우선, 이후 `report_jobs` 영속 상태 조회 |
 | POST | `/api/v1/jobs/:id/abort` | `jobs:write` | `/api/jobs/:id/abort` |

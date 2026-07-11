@@ -4,8 +4,8 @@
 // lib/pipelines/pdf-translate/* 를 그대로 공유하고(단일 소스), 여기서는 얇은
 // 잡(job)/SSE/게이트/오케스트레이션만 둔다.
 //
-// 접근: 비밀번호/초대코드(TRANSLATE_ACCESS_CODES). 코드 미설정 + 비프로덕션이면
-// 개방(로컬 점검용), 프로덕션에서 코드 미설정이면 차단.
+// 접근: 비밀번호/초대코드(TRANSLATE_ACCESS_CODES). 코드 미설정 + 비프로덕션에서도
+// TRANSLATE_ALLOW_OPEN_DEV=1을 명시한 경우만 개방하며, 프로덕션은 항상 차단.
 //
 // 실행: node translate-server.js  (Render: 별도 서비스 start command)
 
@@ -21,16 +21,28 @@ const path = require("path");
 const { translatePdf } = require("./lib/pipelines/pdf-translate/translate");
 const { retypesetPdf } = require("./lib/pipelines/pdf-translate/latex-gen");
 const {
+  assertCompleteRasterization,
+  qualityFailure,
+} = require("./lib/pipelines/pdf-translate/quality-gate");
+const {
+  normalizeRequestedMode,
+  resolvePdfTranslationLimits,
+  resolvePdfTranslationMode,
+  assertPdfTranslationInputCoverage,
+  finalizePdfTranslationOutput,
+} = require("./lib/pipelines/pdf-translate/orchestration-contract");
+const {
   analyzePdf,
   splitPdf,
   rasterizePages,
   extractFigures,
+  extractPageTexts,
 } = require("./lib/pipelines/pdf-translate/pdf-tool");
 const {
-  prepareImageForAnthropic,
-  toAnthropicImageBlock,
-} = require("./lib/anthropic-media");
-const { assertGeneratedOutputMagic } = require("./lib/output-validate");
+  buildOcrRenderManifest,
+  prepareOcrModelInputs,
+  prepareStrictScanOcr,
+} = require("./lib/pipelines/pdf-translate/ocr-routing");
 
 const app = express();
 app.disable("x-powered-by");
@@ -193,28 +205,46 @@ async function extractFiguresForRetypeset(pdfBuffer, { signal, onProgress }) {
       parseInt(process.env.PDF_RETYPESET_MAX_FIGURES || "80", 10) || 80,
     );
     const meta = await extractFigures(pdfPath, tmpDir, { signal, maxFigures });
-    return (meta.figures || [])
-      .map((f) => {
-        try { return { n: f.n, page: f.page, caption: f.caption || "", buffer: fs.readFileSync(f.file) }; }
-        catch { return null; }
-      })
-      .filter(Boolean);
+    return (meta.figures || []).map((f) => {
+      try {
+        return {
+          id: f.id,
+          n: f.n,
+          page: f.page,
+          caption: f.caption || "",
+          anchor: f.anchor || "",
+          buffer: fs.readFileSync(f.file),
+        };
+      } catch (error) {
+        const readError = new Error(
+          `추출 그림 occurrence ${f && f.id ? f.id : "unknown"} 파일을 읽지 못했습니다: ${error.message}`,
+        );
+        readError.code = "PDF_FIGURE_EXTRACTION_INCOMPLETE";
+        throw readError;
+      }
+    });
   } catch (e) {
-    onProgress(`⚠ 그림 추출 건너뜀(텍스트만 재조판): ${e.message}`);
-    return [];
+    onProgress(`❌ 그림 추출 완전성 검증 실패: ${e.message}`);
+    throw e;
   } finally {
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
   }
 }
-async function prepareScannedRouting(pdfBuffer, { signal, onProgress }) {
+async function prepareScannedRouting(
+  pdfBuffer,
+  { signal, onProgress, ocrDependencies = {} } = {},
+) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdftr-"));
   const pdfPath = path.join(tmpDir, "in.pdf");
   try {
     fs.writeFileSync(pdfPath, pdfBuffer);
-    let scanned = false, mathDensity = 0, twoColumn = false, pageCount = 0;
+    let scanned = false, garbled = false, ocrLayer = false;
+    let mathDensity = 0, twoColumn = false, pageCount = 0;
     try {
       const a = await analyzePdf(pdfPath, { signal });
       scanned = !!a.scanned;
+      garbled = !!a.garbled;
+      ocrLayer = !!a.ocr_layer;
       mathDensity = Number(a.math_density) || 0;
       twoColumn = !!a.two_column;
       pageCount = Math.max(0, Number(a.page_count) || 0);
@@ -222,30 +252,72 @@ async function prepareScannedRouting(pdfBuffer, { signal, onProgress }) {
       onProgress(`⚠ 텍스트 레이어 분석을 건너뜁니다: ${e.message}`);
       return { scanned: false, imageBlocks: null, mathDensity: 0, twoColumn: false, pageCount: 0 };
     }
-    if (!scanned) return { scanned: false, imageBlocks: null, mathDensity, twoColumn, pageCount };
+    if (!scanned && !garbled) return { scanned: false, imageBlocks: null, mathDensity, twoColumn, pageCount };
+    scanned = true;
+    const { maxPages: overallMaxPages, ocrMaxPages } = resolvePdfTranslationLimits({
+      defaultMaxPages: 80,
+    });
+    const ocrPageLimit = Math.min(overallMaxPages, ocrMaxPages);
+    assertPdfTranslationInputCoverage({
+      routing: { pageCount, truncated: false },
+      maxPages: ocrPageLimit,
+    });
     onProgress("🖼️ 텍스트 레이어가 없는 스캔/이미지 PDF 감지 → 고해상도 OCR 재조판으로 전환");
-    const maxPages = parseInt(process.env.PDF_OCR_MAX_PAGES || "30", 10);
-    const meta = await rasterizePages(pdfPath, tmpDir, { maxPages, signal });
+    let hiddenOcrPageTexts = null;
+    if (ocrLayer) {
+      const pageTextResult = await extractPageTexts(pdfPath, { signal });
+      hiddenOcrPageTexts = Array.isArray(pageTextResult.pages) ? pageTextResult.pages : null;
+    }
+    onProgress("🔎 strict OCR source evidence 생성·검증 중...");
+    const strictOcr = await prepareStrictScanOcr({
+      pdfBuffer,
+      hiddenOcrPageTexts,
+      signal,
+      ...ocrDependencies,
+    });
+    assertPdfTranslationInputCoverage({
+      routing: { pageCount: strictOcr.evidence.page_count, truncated: false },
+      maxPages: ocrPageLimit,
+    });
+    const meta = await rasterizePages(pdfPath, tmpDir, {
+      maxPages: ocrPageLimit,
+      signal,
+    });
+    assertCompleteRasterization(meta, { context: "OCR 페이지 렌더링" });
     if (!meta.files || !meta.files.length) throw new Error("페이지 이미지를 생성하지 못했습니다.");
     onProgress(`🧩 페이지를 ${meta.tiles}개 이미지 조각으로 분할(읽기 좋게)`);
     const tileBuffers = meta.files.map((f) => fs.readFileSync(f));
-    const prepared = await Promise.all(
-      tileBuffers.map((buf, i) =>
-        prepareImageForAnthropic(
-          { buffer: buf, name: path.basename(meta.files[i]), mimetype: "image/png" },
-          { forceCompress: true },
-        ).catch(() => null),
-      ),
-    );
-    const blocks = [], keptTiles = [];
-    prepared.forEach((p, i) => {
-      if (p && p.ok) { blocks.push(toAnthropicImageBlock(p)); keptTiles.push(tileBuffers[i]); }
+    const prepared = await prepareOcrModelInputs({
+      rasterFiles: meta.files,
+      tileBuffers,
+      transformOptions: { forceCompress: true },
     });
-    if (!blocks.length) throw new Error("이미지를 Claude 입력 형식으로 준비하지 못했습니다.");
+    const blocks = prepared.imageBlocks;
+    assertCompleteRasterization(meta, {
+      preparedCount: blocks.length,
+      context: "OCR 모델 입력 준비",
+    });
+    const ocrRenderManifest = buildOcrRenderManifest({
+      sourcePdf: pdfBuffer,
+      pageCount: meta.page_count,
+      rasterFiles: meta.files,
+      rasterPages: meta.pages,
+      tileBuffers,
+      modelInputBlocks: blocks,
+      modelInputProofs: prepared.modelInputProofs,
+      expectedLocalPages: meta.rendered_pages,
+      visualAdjudicationInputSha256:
+        strictOcr.visualAdjudicationInputSha256 || null,
+    });
     return {
-      scanned: true, imageBlocks: blocks, tileBuffers: keptTiles,
+      scanned: true, imageBlocks: blocks, tileBuffers,
       truncated: !!meta.truncated, tiles: meta.tiles, pageCount: meta.page_count,
-      mathDensity, twoColumn,
+      mathDensity, twoColumn, ocrLayer,
+      pageTexts: strictOcr.pageTexts,
+      ocrEvidence: strictOcr.evidence,
+      visualAdjudicationInputSha256:
+        strictOcr.visualAdjudicationInputSha256 || null,
+      ocrRenderManifest,
     };
   } finally {
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
@@ -258,12 +330,14 @@ function estimateTime(meta, mode, modelId) {
   const chars = Math.max(0, Number(meta.text_chars) || 0);
   const scanned = !!meta.scanned;
   const density = Number(meta.math_density) || 0;
-  const TH = Number(process.env.PDF_AUTO_MATH_THRESHOLD || 12);
-  const needsRetypeset = scanned || density >= TH;
-  const resolvedMode = mode === "retypeset" ? "retypeset" : mode === "inplace" ? (scanned ? "retypeset" : "inplace") : needsRetypeset ? "retypeset" : "inplace";
+  const resolvedMode = resolvePdfTranslationMode({
+    requestedMode: mode,
+    routing: { scanned, mathDensity: density },
+  }).resolvedMode;
   const isOpus = /opus/i.test(modelId || "");
-  const ocrMax = parseInt(process.env.PDF_OCR_MAX_PAGES || "30", 10);
-  const maxPages = parseInt(process.env.PDF_TRANSLATE_MAX_PAGES || "80", 10);
+  const { maxPages, ocrMaxPages: ocrMax } = resolvePdfTranslationLimits({
+    defaultMaxPages: 80,
+  });
   let seconds = 0;
   if (scanned) {
     const procPages = Math.min(pages, ocrMax);
@@ -279,12 +353,15 @@ function estimateTime(meta, mode, modelId) {
   return {
     mode: resolvedMode, scanned, pages, chars,
     truncated: scanned && pages > ocrMax,
-    tooManyPages: !scanned && pages > maxPages, maxPages,
+    tooManyPages: pages > maxPages, maxPages,
     seconds: { lo: Math.round(seconds * 0.8), hi: Math.round(seconds * 1.55) },
   };
 }
 
-async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) {
+async function runPdfTranslation(
+  job,
+  { pdfBuffer, originalName, model, mode, ocrDependencies = {} },
+) {
   const t0 = Date.now();
   const timeoutMin = Math.round(PDF_TRANSLATE_TIMEOUT_MS / 60000);
   pushProgress(job, `🚀 PDF 통번역 시작 (timeout: ${timeoutMin}분)`);
@@ -299,21 +376,21 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) 
   try {
     pushProgress(job, `📥 PDF 수신 (${Math.round(pdfBuffer.length / 1024)}KB)`);
     const onProgress = (msg) => pushProgress(job, msg);
-    const routing = await prepareScannedRouting(pdfBuffer, { signal: ac.signal, onProgress });
-    const maxTextPages = parseInt(process.env.PDF_TRANSLATE_MAX_PAGES || "80", 10);
-    if (!routing.scanned && routing.pageCount > maxTextPages) {
-      throw new Error(
-        `페이지가 너무 많습니다 (${routing.pageCount}쪽 > 상한 ${maxTextPages}쪽). 파일을 나눠서 시도하세요.`,
-      );
-    }
-    const TH = Number(process.env.PDF_AUTO_MATH_THRESHOLD || 12);
-    const isAuto = mode !== "inplace" && mode !== "retypeset";
-    const needsRetypeset = routing.scanned || (routing.mathDensity || 0) >= TH;
-    let resolvedMode;
-    if (mode === "retypeset") resolvedMode = "retypeset";
-    else if (mode === "inplace") resolvedMode = routing.scanned ? "retypeset" : "inplace";
-    else resolvedMode = needsRetypeset ? "retypeset" : "inplace";
-    if (mode === "inplace" && routing.scanned)
+    const routing = await prepareScannedRouting(pdfBuffer, {
+      signal: ac.signal,
+      onProgress,
+      ocrDependencies,
+    });
+    const { maxPages } = resolvePdfTranslationLimits({ defaultMaxPages: 80 });
+    assertPdfTranslationInputCoverage({ routing, maxPages });
+    const modeDecision = resolvePdfTranslationMode({
+      requestedMode: mode,
+      routing,
+    });
+    const normalizedMode = modeDecision.requestedMode;
+    const isAuto = modeDecision.isAuto;
+    const resolvedMode = modeDecision.resolvedMode;
+    if (normalizedMode === "inplace" && routing.scanned)
       pushProgress(job, "⚠ 스캔본/이미지 PDF는 '빠른 번역'이 불가능 → 'OCR 재조판'으로 전환합니다.");
     else if (isAuto)
       pushProgress(job, `🔎 자동 변환방식 → ${resolvedMode === "retypeset" ? "재조판(수식·정밀)" : "빠른 번역(레이아웃 유지)"}` + (routing.scanned ? " · 스캔본 감지" : ` · 수식밀도 ${routing.mathDensity ?? 0}`));
@@ -321,8 +398,25 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) 
     let effectiveMode = resolvedMode;
     let result;
     if (routing.scanned && routing.imageBlocks) {
-      if (routing.truncated) pushProgress(job, `⚠ 분량이 많아 앞부분 위주로 처리합니다(이미지 ${routing.tiles}조각).`);
-      result = await retypesetPdf({ pdfBuffer, imageBlocks: routing.imageBlocks, tiles: routing.tileBuffers, model, signal: ac.signal, onProgress });
+      const ocrHint = routing.pageTexts
+        .map((page) => `[원본 ${page.page}쪽 OCR]\n${page.text}`)
+        .join("\n\n");
+      result = await retypesetPdf({
+        pdfBuffer,
+        imageBlocks: routing.imageBlocks,
+        tiles: routing.tileBuffers,
+        ocrHint,
+        ocrEvidence: routing.ocrEvidence,
+        ocrRenderManifest: routing.ocrRenderManifest,
+        ocrSourcePdf: pdfBuffer,
+        ocrEvidencePageIndices: Array.from(
+          { length: routing.pageCount },
+          (_, index) => index,
+        ),
+        model,
+        signal: ac.signal,
+        onProgress,
+      });
       effectiveMode = "retypeset";
       if (result.figures) pushProgress(job, `🖼️ 원본 그림 ${result.figures}개를 본문에 복원했습니다.`);
     } else if (resolvedMode === "retypeset") {
@@ -335,25 +429,49 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) 
         if (result.figures) pushProgress(job, `🖼️ 원본 그림 ${result.figures}개를 재조판본에 복원했습니다.`);
       } catch (e) {
         if (ac.signal.aborted || timedOut) throw e;
-        pushProgress(job, `⚠ 재조판 실패 → '빠른 번역(레이아웃 유지)'으로 대체합니다: ${String(e.message || e).slice(0, 160)}`);
-        effectiveMode = "inplace";
-        result = await translatePdf({ pdfBuffer, model, signal: ac.signal, onProgress });
+        const reason = String(e && (e.message || e)).slice(0, 240);
+        const retypesetContext =
+          normalizedMode === "retypeset"
+            ? "사용자가 선택한 재조판"
+            : "문서 품질 분석에서 필요하다고 판정된 재조판";
+        throw qualityFailure(
+          `${retypesetContext}을 완료하지 못했습니다: ${reason}. ` +
+            "빠른 번역으로 자동 변경하면 필요한 조판 방식과 결과 보존 수준이 달라지므로 작업을 중단했습니다.",
+          {
+            kind: "requested_retypeset_failed",
+            requestedMode: normalizedMode,
+            cause: reason,
+          },
+        );
       }
     } else {
       result = await translatePdf({ pdfBuffer, model, signal: ac.signal, onProgress });
     }
 
-    const pdfOutput = assertGeneratedOutputMagic(
-      result.buffer,
-      "pdf",
-      "PDF translation output",
-    );
-    job.result = pdfOutput;
+    const terminal = await finalizePdfTranslationOutput({
+      originalBuffer: pdfBuffer,
+      resultBuffer: result.buffer,
+      effectiveMode,
+      signal: ac.signal,
+      onProgress,
+      ocrEvidence: result.ocrEvidence || null,
+      ocrRenderManifest: result.ocrRenderManifest || null,
+      ocrSemanticReviewContext: routing.scanned
+        ? {
+            generationProvider: result.translationProvider,
+            generationModel: result.model || model,
+            generationRequestId: result.translationRequestId,
+          }
+        : null,
+      requireOcrEvidence: !!routing.scanned,
+    });
+    job.result = terminal.buffer;
     job.mimeType = "application/pdf";
-    job.filename = buildTranslatedFilename(originalName, effectiveMode === "retypeset" ? "_재조판" : "_KO");
+    job.filename = buildTranslatedFilename(originalName, terminal.suffix);
+    job.effectiveMode = terminal.effectiveMode;
     job.status = "done";
     const totalSec = Math.floor((Date.now() - t0) / 1000);
-    const outKB = Math.round(pdfOutput.length / 1024);
+    const outKB = Math.round(terminal.buffer.length / 1024);
     pushProgress(
       job,
       effectiveMode === "retypeset"
@@ -366,7 +484,7 @@ async function runPdfTranslation(job, { pdfBuffer, originalName, model, mode }) 
   } finally {
     clearTimeout(timer);
   }
-  job.listeners.forEach((r) => { sendSse(r, "done", { filename: job.filename }); r.end(); });
+  job.listeners.forEach((r) => { sendSse(r, "done", { filename: job.filename, effectiveMode: job.effectiveMode }); r.end(); });
   job.listeners = [];
 }
 
@@ -394,8 +512,7 @@ app.post("/api/translate-pdf", requireCode, upload.single("pdf"), (req, res) => 
     return res.status(400).json({ error: "PDF 파일만 업로드 가능합니다." });
   const requested = String(req.body.model || "").trim();
   const model = ALLOWED_MODELS.includes(requested) ? requested : DEFAULT_MODEL;
-  const reqMode = String(req.body.mode || "").trim();
-  const mode = ["inplace", "retypeset", "auto"].includes(reqMode) ? reqMode : "auto";
+  const mode = normalizeRequestedMode(req.body.mode);
   const job = createJob();
   res.json({ jobId: job.id });
   runPdfTranslation(job, { pdfBuffer: file.buffer, originalName: file.originalname || "document.pdf", model, mode }).catch((err) => {
@@ -418,7 +535,7 @@ app.get("/api/jobs/:id/stream", requireCode, (req, res) => {
   });
   res.flushHeaders?.();
   job.progress.forEach((p) => sendSse(res, "progress", p));
-  if (job.status === "done") { sendSse(res, "done", { filename: job.filename }); return res.end(); }
+  if (job.status === "done") { sendSse(res, "done", { filename: job.filename, effectiveMode: job.effectiveMode }); return res.end(); }
   if (job.status === "error") { sendSse(res, "error", job.error); return res.end(); }
   job.listeners.push(res);
   req.on("close", () => { job.listeners = job.listeners.filter((r) => r !== res); });

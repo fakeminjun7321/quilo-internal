@@ -752,8 +752,26 @@ const { generateToken, hashToken } = require("./lib/auth");
 const { getVersionInfo } = require("./lib/version-info");
 const { translatePdf, makeGate } = require("./lib/pipelines/pdf-translate/translate");
 const { retypesetPdf } = require("./lib/pipelines/pdf-translate/latex-gen");
+const {
+  assertCompleteRasterization,
+  assertCompleteChunkResults,
+  qualityFailure,
+} = require("./lib/pipelines/pdf-translate/quality-gate");
+const {
+  normalizeRequestedMode,
+  resolvePdfTranslationLimits,
+  resolvePdfTranslationMode,
+  assertPdfTranslationInputCoverage,
+  assertCanonicalOcrChunkSubset,
+  finalizePdfTranslationOutput,
+} = require("./lib/pipelines/pdf-translate/orchestration-contract");
 const { prewarmTectonic } = require("./lib/pipelines/pdf-translate/latex-pdf");
-const mistralOcr = require("./lib/pipelines/pdf-translate/mistral-ocr");
+const {
+  buildOcrRenderManifest,
+  mergeOcrRenderManifests,
+  prepareOcrModelInputs,
+  prepareStrictScanOcr,
+} = require("./lib/pipelines/pdf-translate/ocr-routing");
 const { convertDocxToHwpx } = require("./lib/pipelines/docx-to-hwpx");
 const {
   analyzePdf,
@@ -4182,15 +4200,17 @@ function estimatePdfTranslation(meta, mode, modelId) {
   const garbled = !!meta.garbled;
   const visionOcr = scanned || garbled;
   const density = Number(meta.math_density) || 0;
-  const AUTO_MATH_THRESHOLD = Number(process.env.PDF_AUTO_MATH_THRESHOLD || 12);
-  const needsRetypeset = visionOcr || density >= AUTO_MATH_THRESHOLD;
-  const resolvedMode =
-    mode === "retypeset" ? "retypeset" : needsRetypeset ? "retypeset" : "inplace";
+  const modeDecision = resolvePdfTranslationMode({
+    requestedMode: mode,
+    routing: { scanned: visionOcr, mathDensity: density },
+  });
+  const resolvedMode = modeDecision.resolvedMode;
   const isOpus = /opus/i.test(modelId || ""); // Opus 만 느린 티어(GPT·Sonnet 은 빠름)
   const charTok = chars / 3.5;
-  const ocrMax = parseInt(process.env.PDF_OCR_MAX_PAGES || "30", 10);
+  const { maxPages, ocrMaxPages: ocrMax } = resolvePdfTranslationLimits({
+    defaultMaxPages: 700,
+  });
   // 텍스트 PDF 상한. 이 이내면 빠른 번역은 50쪽씩 구간 분할·병렬 처리한다(초과만 거부).
-  const maxPages = parseInt(process.env.PDF_TRANSLATE_MAX_PAGES || "700", 10);
   const chunkPages = Math.max(
     1,
     parseInt(process.env.PDF_TRANSLATE_CHUNK_PAGES || "50", 10),
@@ -4502,10 +4522,7 @@ app.post(
 
     // auto(기본) / inplace / retypeset 그대로 전달 — runPdfTranslation 이 auto 를
     // 분석으로 해석한다(여기서 inplace 로 뭉개면 auto 분기가 죽고 안내가 틀려진다).
-    const reqMode = String(req.body.mode || "").trim();
-    const mode = ["inplace", "retypeset", "auto"].includes(reqMode)
-      ? reqMode
-      : "auto";
+    const mode = normalizeRequestedMode(req.body.mode);
     // 파일별 변환 방식(선택): 프런트가 파일 순서에 맞춘 JSON 배열('modes')을 보낼 수 있다
     // (예: 스캔본만 재조판, 나머지는 빠른 번역). 없거나 값이 이상하면 mode 를 적용.
     let reqModes = null;
@@ -4524,11 +4541,11 @@ app.post(
     );
 
     const fileItems = files.map((f, i) => {
-      const m = String((reqModes && reqModes[i]) || "").trim();
+      const m = reqModes && reqModes[i];
       return {
         buffer: f.buffer,
         originalName: f.originalname || "document.pdf",
-        mode: ["inplace", "retypeset", "auto"].includes(m) ? m : mode,
+        mode: normalizeRequestedMode(m, mode),
       };
     });
 
@@ -4583,7 +4600,8 @@ async function splitPdfToBuffers(pdfBuffer, { signal, onProgress, pagesPerChunk 
 }
 
 // 텍스트 PDF 재조판 시 원본 그림을 잘라 메모리 버퍼로 돌려준다(LaTeX 복원용).
-// 그림이 없거나 실패하면 빈 배열 — 재조판은 그대로 진행된다.
+// 실제로 그림이 없는 완전한 manifest만 빈 배열을 허용한다. 추출 상한·crop 실패·파일
+// 읽기 실패는 부분 재조판으로 강등하지 않고 그대로 품질 실패시킨다.
 async function extractFiguresForRetypeset(pdfBuffer, { signal, onProgress }) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdffig-"));
   const pdfPath = path.join(tmpDir, "in.pdf");
@@ -4594,25 +4612,28 @@ async function extractFiguresForRetypeset(pdfBuffer, { signal, onProgress }) {
       parseInt(process.env.PDF_RETYPESET_MAX_FIGURES || "80", 10) || 80,
     );
     const meta = await extractFigures(pdfPath, tmpDir, { signal, maxFigures });
-    const figs = (meta.figures || [])
-      .map((f) => {
-        try {
-          return {
-            n: f.n,
-            page: f.page,
-            caption: f.caption || "",
-            anchor: f.anchor || "", // 배치용 앵커(그림 바로 앞 문항/문단 텍스트)
-            buffer: fs.readFileSync(f.file),
-          };
-        } catch {
-          return null;
-        }
-      })
-      .filter(Boolean);
+    const figs = (meta.figures || []).map((f) => {
+      try {
+        return {
+          id: f.id,
+          n: f.n,
+          page: f.page,
+          caption: f.caption || "",
+          anchor: f.anchor || "", // 배치용 앵커(그림 바로 앞 문항/문단 텍스트)
+          buffer: fs.readFileSync(f.file),
+        };
+      } catch (error) {
+        const readError = new Error(
+          `추출 그림 occurrence ${f && f.id ? f.id : "unknown"} 파일을 읽지 못했습니다: ${error.message}`,
+        );
+        readError.code = "PDF_FIGURE_EXTRACTION_INCOMPLETE";
+        throw readError;
+      }
+    });
     return figs;
   } catch (e) {
-    onProgress(`⚠ 그림 추출 건너뜀(텍스트만 재조판): ${e.message}`);
-    return [];
+    onProgress(`❌ 그림 추출 완전성 검증 실패: ${e.message}`);
+    throw e;
   } finally {
     try {
       fs.rmSync(tmpDir, { recursive: true, force: true });
@@ -4630,42 +4651,57 @@ function buildTranslatedFilename(originalName, suffix = "_KO") {
 
 // 페이지들을 고해상도 PNG 타일로 렌더 → Claude 비전 image 블록 + 원본 타일 버퍼(그림 복원용).
 // 스캔본/깨진 PDF 의 단일 처리와 대용량 구간별 처리가 공통으로 쓴다.
-async function rasterizeBufferToBlocks(pdfBuffer, { maxPages, signal }) {
+async function rasterizeBufferToBlocks(pdfBuffer, {
+  maxPages,
+  signal,
+  manifestSourcePdf = pdfBuffer,
+  pageOffset = 0,
+  totalPageCount = null,
+  visualAdjudicationInputSha256 = null,
+} = {}) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdfras-"));
   const pdfPath = path.join(tmpDir, "in.pdf");
   try {
     fs.writeFileSync(pdfPath, pdfBuffer);
     const meta = await rasterizePages(pdfPath, tmpDir, { maxPages, signal });
+    // 페이지/타일 상한에 걸린 입력을 앞부분만 번역해 성공 처리하지 않는다.
+    assertCompleteRasterization(meta, { context: "OCR 페이지 렌더링" });
     if (!meta.files || !meta.files.length) {
       throw new Error("페이지 이미지를 생성하지 못했습니다.");
     }
     const tileBuffers = meta.files.map((f) => fs.readFileSync(f));
-    const prepared = await Promise.all(
-      tileBuffers.map((buf, i) =>
-        prepareImageForAnthropic(
-          { buffer: buf, name: path.basename(meta.files[i]), mimetype: "image/png" },
-          { forceCompress: true },
-        ).catch(() => null),
-      ),
-    );
-    // 준비 성공한 것만 블록으로 보내고, 대응 원본 버퍼를 같은 순서로 보관(image↔crop 정합).
-    const blocks = [];
-    const keptTiles = [];
-    prepared.forEach((p, i) => {
-      if (p && p.ok) {
-        blocks.push(toAnthropicImageBlock(p));
-        keptTiles.push(tileBuffers[i]);
-      }
+    // 같은 신뢰 경계에서 raw→실제 model block을 만들고 content-derived HMAC
+    // attestation을 발급한다. 이후 manifest/LaTeX/postflight는 이 대응을 재검증한다.
+    const prepared = await prepareOcrModelInputs({
+      rasterFiles: meta.files,
+      tileBuffers,
+      transformOptions: { forceCompress: true },
     });
-    if (!blocks.length) {
-      throw new Error("이미지를 Claude 입력 형식으로 준비하지 못했습니다.");
-    }
+    const blocks = prepared.imageBlocks;
+    // 변환 실패 타일을 조용히 버리면 해당 페이지 일부가 OCR 입력에서 사라진다.
+    assertCompleteRasterization(meta, {
+      preparedCount: blocks.length,
+      context: "OCR 모델 입력 준비",
+    });
+    const ocrRenderManifest = buildOcrRenderManifest({
+      sourcePdf: manifestSourcePdf,
+      pageCount: totalPageCount == null ? meta.page_count : totalPageCount,
+      rasterFiles: meta.files,
+      rasterPages: meta.pages,
+      tileBuffers,
+      modelInputBlocks: blocks,
+      modelInputProofs: prepared.modelInputProofs,
+      pageOffset,
+      expectedLocalPages: meta.rendered_pages,
+      visualAdjudicationInputSha256,
+    });
     return {
       imageBlocks: blocks,
-      tileBuffers: keptTiles,
+      tileBuffers,
       tiles: meta.tiles,
       truncated: !!meta.truncated,
       pageCount: meta.page_count,
+      ocrRenderManifest,
     };
   } finally {
     try {
@@ -4679,7 +4715,10 @@ async function rasterizeBufferToBlocks(pdfBuffer, { maxPages, signal }) {
 // 텍스트 레이어가 없는 스캔/이미지 PDF, 또는 텍스트층이 깨진 폰트로 박혀 추출이 불가능한
 // PDF 를 감지해 OCR(비전) 경로로 보낸다. 작은 문서는 여기서 바로 이미지 블록을 만들고,
 // 큰 문서는 largeVision 플래그만 돌려보내 실행 단계가 구간별로 나눠 처리한다(메모리·대용량).
-async function prepareScannedRouting(pdfBuffer, { signal, onProgress }) {
+async function prepareScannedRouting(
+  pdfBuffer,
+  { signal, onProgress, ocrDependencies = {} } = {},
+) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdftr-"));
   const pdfPath = path.join(tmpDir, "in.pdf");
   try {
@@ -4711,46 +4750,57 @@ async function prepareScannedRouting(pdfBuffer, { signal, onProgress }) {
     if (!needsVision)
       return { scanned: false, garbled: false, ocrLayer: false, imageBlocks: null, mathDensity, twoColumn, pageCount };
 
+    // Reject over-budget scans before uploading the document to the OCR
+    // provider.  Recheck canonical OCR page_count below to catch analyzer/OCR
+    // disagreement without paying for a document we already know is too large.
+    const { maxPages: overallMaxPages, ocrMaxPages } = resolvePdfTranslationLimits({
+      defaultMaxPages: 700,
+    });
+    const ocrPageLimit = Math.min(overallMaxPages, ocrMaxPages);
+    assertPdfTranslationInputCoverage({
+      routing: { pageCount, truncated: false },
+      maxPages: ocrPageLimit,
+    });
+
     onProgress(
       ocrLayer
-        ? "📷 사진 스캔 + 숨은 OCR 텍스트층 감지 — '글자 교체'는 사진 위 겹쳐쓰기가 되어 불가 → 고해상도 OCR 재조판으로 전환(내장 OCR 텍스트는 참고 힌트로 활용)"
+        ? "📷 사진 스캔 + 숨은 OCR 텍스트층 감지 — '글자 교체'는 사진 위 겹쳐쓰기가 되어 불가 → strict OCR 증거 기반 고해상도 재조판으로 전환(숨은 OCR층은 auxiliary hash만 사용)"
         : mathGarbled && !scanned
           ? "🧮 수학 기호가 깨진 폰트(Math Pi 계열, ToUnicode 없음)로 박힌 PDF 감지 — 글자 교체 시 [→3, /→> 처럼 수식이 훼손됩니다 → 고해상도 OCR 재조판으로 전환"
           : garbled && !scanned
             ? "🔤 본문 글자가 깨진 폰트로 박힌 PDF 감지 (글자 추출 불가) → 고해상도 OCR 재조판으로 전환"
             : "🖼️ 텍스트 레이어가 없는 스캔/이미지 PDF 감지 → 고해상도 OCR 재조판으로 전환",
     );
-    // 숨은 OCR 텍스트층은 페이지별로 덤프해 비전 프롬프트의 참고 힌트로 쓴다
-    // (고유명사·숫자·코드 철자 정확도↑). 덤프 실패는 힌트 없이 진행(치명 아님).
-    let pageTexts = null;
+    // 숨은 OCR 텍스트층은 authoritative source가 아니다. strict OCR evidence에
+    // auxiliary hash로만 묶고, 번역 힌트는 canonical provider blocks에서만 만든다.
+    let hiddenOcrPageTexts = null;
     if (ocrLayer) {
       try {
         const pt = await extractPageTexts(pdfPath, { signal });
-        pageTexts = Array.isArray(pt.pages) && pt.pages.length ? pt.pages : null;
+        hiddenOcrPageTexts = Array.isArray(pt.pages) && pt.pages.length ? pt.pages : null;
       } catch (e) {
-        onProgress(`⚠ OCR 텍스트층 덤프 실패(힌트 없이 진행): ${e.message}`);
+        onProgress(`⚠ 숨은 OCR 텍스트층 auxiliary hash 생성 건너뜀: ${e.message}`);
       }
     }
-    // 숨은 OCR 텍스트층이 없으면(순수 스캔·깨진 폰트) Mistral OCR 로 원문 텍스트를 뽑아
-    // 비전 프롬프트의 힌트로 쓴다(고유명사·숫자·코드 정확도↑·모델 부담↓).
-    // ⚠ 안전장치: 키 미설정·API 오류·과대용량이면 조용히 폴백해 기존 비전 OCR(모델이 이미지를
-    // 직접 판독) 그대로 진행한다 — Mistral 실패가 번역 전체를 막지 않는다.
-    if (!pageTexts && mistralOcr.mistralOcrConfigured()) {
-      try {
-        onProgress("🔎 Mistral OCR 로 원문 텍스트 추출 중(정확도 향상)...");
-        const pt = await mistralOcr.ocrPdfToPageTexts(pdfBuffer, { signal });
-        if (pt && pt.length) {
-          pageTexts = pt;
-          onProgress(`✅ Mistral OCR ${pt.length}쪽 추출 완료 — 번역 힌트로 사용합니다.`);
-        } else {
-          onProgress("ℹ Mistral OCR 사용 불가(용량/설정) — 기존 비전 OCR 로 진행합니다.");
-        }
-      } catch (e) {
-        onProgress(
-          `⚠ Mistral OCR 실패 — 기존 비전 OCR 로 진행합니다 (${String(e.message).slice(0, 80)})`,
-        );
-      }
-    }
+    onProgress("🔎 strict OCR source evidence 생성·검증 중...");
+    const strictOcr = await prepareStrictScanOcr({
+      pdfBuffer,
+      hiddenOcrPageTexts,
+      signal,
+      ...ocrDependencies,
+    });
+    const pageTexts = strictOcr.pageTexts;
+    const ocrEvidence = strictOcr.evidence;
+    const visualAdjudicationInputSha256 =
+      strictOcr.visualAdjudicationInputSha256 || null;
+    onProgress(`✅ strict OCR evidence ${ocrEvidence.page_count}쪽 검증 완료`);
+    // Keep the main site and standalone site on the same fail-closed OCR page
+    // budget.  Previously the main site's largeVision branch returned before
+    // rasterization and silently bypassed PDF_OCR_MAX_PAGES.
+    assertPdfTranslationInputCoverage({
+      routing: { pageCount: ocrEvidence.page_count, truncated: false },
+      maxPages: ocrPageLimit,
+    });
     // 큰 문서는 한 번에 래스터하지 않고(메모리), 구간별로 나눠 OCR 후 병합한다.
     const chunkPages = Math.max(
       1,
@@ -4763,6 +4813,8 @@ async function prepareScannedRouting(pdfBuffer, { signal, onProgress }) {
         mathGarbled,
         ocrLayer,
         pageTexts,
+        ocrEvidence,
+        visualAdjudicationInputSha256,
         largeVision: true,
         imageBlocks: null,
         pageCount,
@@ -4771,8 +4823,14 @@ async function prepareScannedRouting(pdfBuffer, { signal, onProgress }) {
       };
     }
     // 작은 문서: 한 번에 래스터 + 비전 블록.
-    const maxPages = parseInt(process.env.PDF_OCR_MAX_PAGES || "30", 10);
-    const r = await rasterizeBufferToBlocks(pdfBuffer, { maxPages, signal });
+    const { ocrMaxPages: maxPages } = resolvePdfTranslationLimits({
+      defaultMaxPages: 700,
+    });
+    const r = await rasterizeBufferToBlocks(pdfBuffer, {
+      maxPages,
+      signal,
+      visualAdjudicationInputSha256,
+    });
     onProgress(`🧩 페이지를 ${r.tiles}개 이미지 조각으로 분할(읽기 좋게)`);
     return {
       scanned: true,
@@ -4780,6 +4838,8 @@ async function prepareScannedRouting(pdfBuffer, { signal, onProgress }) {
       mathGarbled,
       ocrLayer,
       pageTexts,
+      ocrEvidence,
+      visualAdjudicationInputSha256,
       imageBlocks: r.imageBlocks,
       tileBuffers: r.tileBuffers,
       truncated: r.truncated,
@@ -4787,6 +4847,7 @@ async function prepareScannedRouting(pdfBuffer, { signal, onProgress }) {
       pageCount: r.pageCount,
       mathDensity,
       twoColumn,
+      ocrRenderManifest: r.ocrRenderManifest,
     };
   } finally {
     try {
@@ -4800,7 +4861,7 @@ async function prepareScannedRouting(pdfBuffer, { signal, onProgress }) {
 // 대용량 스캔/깨진 PDF: 페이지 구간으로 나눠 구간별 OCR 재조판(병렬) 후 하나로 합친다.
 // 단일 거대 비전 호출/단일 거대 Tectonic 컴파일을 피하고(메모리·실패 격리), 첫 구간 실패 시
 // 형제 구간을 즉시 중단한다(낭비 방지). 비용은 구간별 usage 를 합산해 한 번에 계산한다.
-// 스캔본의 숨은 OCR 텍스트층(pageTexts)을 비전 프롬프트에 붙일 힌트 문자열로 만든다.
+// strict OCR evidence의 canonical pageTexts를 비전 프롬프트용 힌트 문자열로 축약한다.
 // 페이지 범위로 잘라 구간별 프롬프트에 해당 페이지 것만 첨부한다. 힌트는 보조 자료이므로
 // 상한(문자)을 두어 이미지 판독을 압도하거나 토큰을 낭비하지 않게 한다.
 function buildOcrHint(pageTexts, startPage, endPage) {
@@ -4840,6 +4901,8 @@ async function translateLargeVisionPdf({
   signal,
   onProgress,
   pageTexts = null,
+  ocrEvidence,
+  visualAdjudicationInputSha256 = null,
   figures = null, // 디지털 PDF 정밀 추출 그림(수학 폰트 깨짐 문서) — 모델 bbox 크롭 대체
   restoreOnly = false,
   chartRedraw = false,
@@ -4869,6 +4932,9 @@ async function translateLargeVisionPdf({
       rasterizeBufferToBlocks(pdfBuffer, {
         maxPages: pageCount || chunkPages,
         signal,
+        manifestSourcePdf: pdfBuffer,
+        totalPageCount: pageCount,
+        visualAdjudicationInputSha256,
       }),
     );
     return retypesetPdf({
@@ -4877,6 +4943,13 @@ async function translateLargeVisionPdf({
       tiles: r.tileBuffers,
       figures,
       ocrHint: buildOcrHint(pageTexts, 1, Number.MAX_SAFE_INTEGER),
+      ocrEvidence,
+      ocrRenderManifest: r.ocrRenderManifest,
+      ocrSourcePdf: pdfBuffer,
+      ocrEvidencePageIndices: Array.from(
+        { length: pageCount },
+        (_, index) => index,
+      ),
       restoreOnly,
       chartRedraw,
       model,
@@ -4890,7 +4963,7 @@ async function translateLargeVisionPdf({
   );
 
   // 외부 signal(사용자/타임아웃 중단)을 구간 작업에 전파하기 위한 내부 컨트롤러.
-  // (구간 단위 실패는 재시도·폴백으로 흡수하며 형제 구간을 중단하지 않는다.)
+  // 재시도를 소진한 구간이 생기면 미번역 원문을 섞지 않고 형제 작업도 중단한다.
   const ctrl = new AbortController();
   const onAbort = () => ctrl.abort();
   if (signal) {
@@ -4904,9 +4977,9 @@ async function translateLargeVisionPdf({
     const results = new Array(chunks.length);
     let next = 0;
     let done = 0;
-    let failed = 0;
-    // 한 구간의 OCR/LaTeX 실패는 형제 구간을 죽이지 않는다(대용량은 한두 구간 실패가 흔함).
-    // 재시도 후에도 실패하면 그 구간만 원문(미번역) 페이지로 대체해 전체 실패를 막는다.
+    let fatalError = null;
+    // 일시적인 OCR/LaTeX 오류는 구간 안에서 재시도한다. 재시도 후에도 실패하면 전체
+    // 결과를 품질 실패로 판정한다(부분 번역 PDF를 정상 결과로 내보내지 않음).
     const retries = Math.max(
       0,
       parseInt(process.env.PDF_OCR_CHUNK_RETRIES || "1", 10),
@@ -4920,6 +4993,12 @@ async function translateLargeVisionPdf({
         let part = null;
         let cost = null;
         let figs = 0;
+        let boundOcrRenderManifest = null;
+        let boundOcrEvidenceSubset = null;
+        let translationProvider = null;
+        let translationRequestId = null;
+        let lastErr = null;
+        let attempts = 0;
         // 래스터는 구간당 1회만(CPU 게이트로 직렬화). 재시도는 모델/LaTeX 단계만 — 같은 타일
         // 을 재사용해 불필요한 재래스터를 없앤다.
         let blocks = null;
@@ -4928,11 +5007,15 @@ async function translateLargeVisionPdf({
             rasterizeBufferToBlocks(c.buffer, {
               maxPages: chunkPages + 4,
               signal: ctrl.signal,
+              manifestSourcePdf: pdfBuffer,
+              pageOffset: c.start - 1,
+              totalPageCount: pageCount,
+              visualAdjudicationInputSha256,
             }),
           );
         } catch (e) {
           if (ctrl.signal.aborted) throw e;
-          // 래스터 자체 실패 → 이 구간은 원문 폴백.
+          lastErr = e;
         }
         // 정밀 그림(디지털 PDF): 이 구간 페이지 범위의 그림만, 구간 내 상대 페이지로 전달
         // (모델은 구간의 이미지 1..N 만 보므로 목록의 위치 안내도 구간 기준이어야 한다).
@@ -4943,6 +5026,7 @@ async function translateLargeVisionPdf({
                 .map((f) => ({ ...f, page: f.page - c.start + 1 }))
             : null;
         for (let attempt = 0; blocks && attempt <= retries && !part; attempt++) {
+          attempts += 1;
           if (ctrl.signal.aborted) throw new Error("작업이 중단되었습니다.");
           try {
             const out = await retypesetPdf({
@@ -4951,7 +5035,14 @@ async function translateLargeVisionPdf({
               tiles: blocks.tileBuffers,
               figures: chunkFigs && chunkFigs.length ? chunkFigs : null,
               model,
-              ocrHint: buildOcrHint(pageTexts, c.start, c.end), // 이 구간 페이지의 숨은 OCR층 힌트
+              ocrHint: buildOcrHint(pageTexts, c.start, c.end), // 이 구간의 canonical OCR evidence 힌트
+              ocrEvidence,
+              ocrRenderManifest: blocks.ocrRenderManifest,
+              ocrSourcePdf: pdfBuffer,
+              ocrEvidencePageIndices: Array.from(
+                { length: c.end - c.start + 1 },
+                (_, index) => c.start - 1 + index,
+              ),
               restoreOnly,
               chartRedraw,
               pageNumbers: false, // 구간별 독립 컴파일 → 쪽번호가 재시작하므로 끔(병합 후 혼동 방지)
@@ -4962,42 +5053,83 @@ async function translateLargeVisionPdf({
             part = out.buffer;
             cost = out.cost;
             figs = out.figures || 0;
+            boundOcrRenderManifest = out.ocrRenderManifest || null;
+            boundOcrEvidenceSubset = out.ocrEvidenceSubset || null;
+            translationProvider = out.translationProvider || null;
+            translationRequestId = out.translationRequestId || null;
           } catch (e) {
             if (ctrl.signal.aborted) throw e; // 진짜 중단만 전파
-            // 그 외(이 구간의 비전/LaTeX 실패)는 재시도 → 폴백. 형제 구간은 계속 진행.
+            lastErr = e; // 그 외(이 구간의 비전/LaTeX 실패)는 지정 횟수만 재시도.
           }
         }
         const partPath = path.join(dir, `part-${i}.pdf`);
         if (part) {
           fs.writeFileSync(partPath, part);
-          results[i] = { partPath, cost, figures: figs, fellBack: false };
+          results[i] = {
+            partPath,
+            cost,
+            figures: figs,
+            fellBack: false,
+            ocrRenderManifest: boundOcrRenderManifest,
+            ocrEvidenceSubset: boundOcrEvidenceSubset,
+            translationProvider,
+            translationRequestId,
+          };
           done += 1;
           onProgress(`✅ 구간 ${done}/${chunks.length} 완료 (${c.start}–${c.end}쪽)`);
         } else {
-          // 폴백: 원문 페이지(번역 안 됨)를 그대로 끼워 넣어 전체 실패를 막는다.
-          fs.writeFileSync(partPath, c.buffer);
-          results[i] = { partPath, cost: null, figures: 0, fellBack: true };
-          done += 1;
-          failed += 1;
-          onProgress(
-            `⚠ 구간 ${done}/${chunks.length} (${c.start}–${c.end}쪽) 번역 실패 — 원문 유지`,
+          const reason = String((lastErr && lastErr.message) || "알 수 없는 OCR/LaTeX 오류").slice(
+            0,
+            240,
           );
+          const attemptDescription = blocks
+            ? `${attempts}회 시도했지만 완전한 번역본을 만들지 못했습니다`
+            : "페이지 이미지를 완전히 준비하지 못했습니다";
+          fatalError = qualityFailure(
+            `OCR 재조판 품질 검증 실패: ${c.start}–${c.end}쪽 구간은 ${attemptDescription} ` +
+              `(${reason}). 미번역 원문을 섞지 않고 작업을 중단했습니다.`,
+            {
+              kind: "ocr_chunk_failed",
+              chunk: i + 1,
+              startPage: c.start,
+              endPage: c.end,
+              attempts,
+            },
+          );
+          ctrl.abort(); // 이미 실패한 작업의 나머지 모델 호출·컴파일 비용을 막는다.
+          throw fatalError;
         }
       }
     };
-    await Promise.all(
-      Array.from({ length: Math.min(conc, chunks.length) }, () => worker()),
-    );
-    if (ctrl.signal.aborted) throw new Error("작업이 중단되었습니다.");
-    if (failed === chunks.length) {
-      throw new Error(
-        "모든 구간의 OCR 재조판이 실패했습니다(모델/네트워크 문제일 수 있음). 잠시 후 다시 시도하세요.",
+    try {
+      await Promise.all(
+        Array.from({ length: Math.min(conc, chunks.length) }, () => worker()),
       );
+    } catch (e) {
+      // 형제 작업이 abort 오류로 먼저 빠져도 실제 실패 구간의 구체적인 품질 오류를 보존한다.
+      if (fatalError) throw fatalError;
+      throw e;
     }
-    if (failed > 0) {
-      onProgress(
-        `⚠ ${failed}/${chunks.length}개 구간은 번역 실패로 원문(미번역) 페이지로 대체했습니다.`,
+    if (ctrl.signal.aborted) throw new Error("작업이 중단되었습니다.");
+    assertCompleteChunkResults(results, {
+      expectedCount: chunks.length,
+      context: "OCR 재조판 구간 병합",
+    });
+    for (let index = 0; index < results.length; index += 1) {
+      const subset = results[index] && results[index].ocrEvidenceSubset;
+      const manifest = results[index] && results[index].ocrRenderManifest;
+      const expectedPageIndices = Array.from(
+        { length: chunks[index].end - chunks[index].start + 1 },
+        (_, pageOffset) => chunks[index].start - 1 + pageOffset,
       );
+      assertCanonicalOcrChunkSubset({
+        reportedSubset: subset,
+        ocrEvidence,
+        ocrRenderManifest: manifest,
+        sourcePdf: pdfBuffer,
+        expectedPageIndices,
+        chunk: index + 1,
+      });
     }
 
     onProgress(`🧩 ${chunks.length}개 구간을 하나의 PDF로 합치는 중...`);
@@ -5029,7 +5161,38 @@ async function translateLargeVisionPdf({
       usage.cache_creation_input_tokens += c.cacheWriteTokens || 0;
       figureTotal += (r && r.figures) || 0;
     }
-    return { buffer, cost: pricing.calcCost({ usage, model }), pageCount, figures: figureTotal, model };
+    const ocrRenderManifest = mergeOcrRenderManifests({
+      sourcePdf: pdfBuffer,
+      pageCount,
+      manifests: results.map((entry) => entry.ocrRenderManifest),
+    });
+    const translationProviders = [
+      ...new Set(results.map((entry) => entry.translationProvider).filter(Boolean)),
+    ];
+    const translationRequestIds = results
+      .map((entry) => entry.translationRequestId)
+      .filter(Boolean);
+    if (translationProviders.length !== 1 || translationRequestIds.length !== results.length) {
+      throw qualityFailure(
+        "OCR 재조판 구간의 번역 request provenance가 불완전합니다.",
+        { kind: "ocr_translation_request_provenance_missing" },
+      );
+    }
+    const translationRequestId = `batch-${crypto
+      .createHash("sha256")
+      .update(JSON.stringify(translationRequestIds), "utf8")
+      .digest("hex")}`;
+    return {
+      buffer,
+      cost: pricing.calcCost({ usage, model }),
+      pageCount,
+      figures: figureTotal,
+      model,
+      ocrEvidence,
+      ocrRenderManifest,
+      translationProvider: translationProviders[0],
+      translationRequestId,
+    };
   } finally {
     if (signal) signal.removeEventListener("abort", onAbort);
     try {
@@ -5053,6 +5216,7 @@ async function translateOnePdfCore({
   signal,
   onProgress,
   isTimedOut = () => false,
+  ocrDependencies = {},
 }) {
   const sizeKB = Math.round(pdfBuffer.length / 1024);
   onProgress(`📥 PDF 수신 (${sizeKB}KB)`);
@@ -5062,16 +5226,13 @@ async function translateOnePdfCore({
   const routing = await prepareScannedRouting(pdfBuffer, {
     signal,
     onProgress,
+    ocrDependencies,
   });
   // 상한 이내면 in-place 경로가 자동으로 50쪽씩 구간 분할·병렬 번역 후 합친다
   // (translate.js translatePdf). 상한을 넘는 초대형 문서만 거부한다.
   // 상한은 in-place(구간 분할·병합)·OCR 재조판(구간 분할·병합) 양쪽 모두에 적용한다.
-  const maxTextPages = parseInt(process.env.PDF_TRANSLATE_MAX_PAGES || "700", 10);
-  if (routing.pageCount > maxTextPages) {
-    throw new Error(
-      `페이지가 너무 많습니다 (${routing.pageCount}쪽 > 상한 ${maxTextPages}쪽). 파일을 나눠서 시도하세요.`,
-    );
-  }
+  const { maxPages } = resolvePdfTranslationLimits({ defaultMaxPages: 700 });
+  assertPdfTranslationInputCoverage({ routing, maxPages });
 
   // 변환 방식 결정.
   // - 명시적 '재조판' → 그대로.
@@ -5080,20 +5241,16 @@ async function translateOnePdfCore({
   //   문서면 '재조판 권유' 확인창을 먼저 띄우므로(아래 estimate 기반), 여기까지 inplace
   //   로 온 건 사용자가 권유를 받고도 빠른 번역을 고른 것 → 그대로 둔다. 단 **스캔본은
   //   글자 교체할 텍스트 박스가 없어 in-place 가 물리적으로 불가능** → 재조판으로 전환.
-  const AUTO_MATH_THRESHOLD = Number(process.env.PDF_AUTO_MATH_THRESHOLD || 12);
-  const isAuto = mode !== "inplace" && mode !== "retypeset";
-  const needsRetypeset =
-    routing.scanned || (routing.mathDensity || 0) >= AUTO_MATH_THRESHOLD;
-  let resolvedMode;
-  if (mode === "retypeset") {
-    resolvedMode = "retypeset";
-  } else if (mode === "inplace") {
-    // 사용자가 명시적으로 빠른 번역 선택 → 스캔본만 재조판 강제, 수식 밀집은 존중.
-    resolvedMode = routing.scanned ? "retypeset" : "inplace";
-  } else {
-    resolvedMode = needsRetypeset ? "retypeset" : "inplace";
-  }
-  if (mode === "inplace" && routing.scanned) {
+  const modeDecision = resolvePdfTranslationMode({
+    requestedMode: mode,
+    routing,
+    restoreOnly,
+  });
+  const normalizedMode = modeDecision.requestedMode;
+  const isAuto = modeDecision.isAuto;
+  const needsRetypeset = modeDecision.needsRetypeset;
+  const resolvedMode = modeDecision.resolvedMode;
+  if (normalizedMode === "inplace" && routing.scanned) {
     onProgress(
       routing.ocrLayer
         ? "⚠ 사진 스캔 + 숨은 OCR 텍스트층 PDF는 '빠른 번역(글자 교체)' 시 기울어진 사진 위에 글자가 겹쳐 깨집니다 → 'OCR 재조판'으로 전환합니다."
@@ -5103,7 +5260,7 @@ async function translateOnePdfCore({
             ? "⚠ 본문 글자가 깨진 폰트로 박혀 추출 불가한 PDF는 '빠른 번역(글자 교체)'이 불가능합니다 → 'OCR 재조판'으로 전환합니다."
             : "⚠ 스캔본/이미지 PDF는 글자만 교체하는 '빠른 번역'이 불가능합니다 → 'OCR 재조판'으로 전환합니다.",
     );
-  } else if (mode === "inplace" && needsRetypeset) {
+  } else if (normalizedMode === "inplace" && needsRetypeset) {
     // 수식 많은 문서를 사용자가 빠른 번역으로 고른 경우(확인창에서 유지 선택).
     onProgress(
       `ℹ 수식이 많은 문서(수식밀도 ${routing.mathDensity ?? 0})를 '빠른 번역'으로 처리합니다 — 일부 수식이 깨질 수 있습니다(원하면 '재조판'으로 다시 시도).`,
@@ -5123,9 +5280,6 @@ async function translateOnePdfCore({
     );
   }
 
-  if (restoreOnly && resolvedMode !== "retypeset") {
-    resolvedMode = "retypeset"; // 번역 없는 '글자 교체'는 무의미 — 복원은 항상 재조판
-  }
   if (restoreOnly) {
     onProgress("🧾 복원 모드 — 번역 없이 원문 그대로 깨끗하게 재조판합니다.");
   }
@@ -5154,6 +5308,9 @@ async function translateOnePdfCore({
       pageCount: routing.pageCount,
       model,
       pageTexts: routing.pageTexts || null,
+      ocrEvidence: routing.ocrEvidence,
+      visualAdjudicationInputSha256:
+        routing.visualAdjudicationInputSha256 || null,
       figures: preciseFigs,
       restoreOnly,
       chartRedraw,
@@ -5165,17 +5322,19 @@ async function translateOnePdfCore({
       onProgress(`🖼️ 원본 그림 ${result.figures}개를 본문에 복원했습니다.`);
     }
   } else if (routing.scanned && routing.imageBlocks) {
-    if (routing.truncated) {
-      onProgress(
-        `⚠ 페이지/분량이 많아 앞부분 위주로 처리합니다(이미지 ${routing.tiles}조각).`,
-      );
-    }
     result = await retypesetPdf({
       pdfBuffer,
       imageBlocks: routing.imageBlocks,
       tiles: routing.tileBuffers, // 원본 타일 — 그림 복원 crop 용
       figures: preciseFigs,
       ocrHint: buildOcrHint(routing.pageTexts, 1, Number.MAX_SAFE_INTEGER),
+      ocrEvidence: routing.ocrEvidence,
+      ocrRenderManifest: routing.ocrRenderManifest,
+      ocrSourcePdf: pdfBuffer,
+      ocrEvidencePageIndices: Array.from(
+        { length: routing.pageCount },
+        (_, index) => index,
+      ),
       restoreOnly,
       chartRedraw,
       model,
@@ -5189,9 +5348,8 @@ async function translateOnePdfCore({
   } else if (resolvedMode === "retypeset") {
     // 텍스트 PDF 재조판: 원본 그림을 미리 잘라두고(복원용), 페이지 구간으로 분할해
     // 병렬 번역(Opus 품질 유지·속도↑). 그림은 %%FIG:n%% 마커 자리에 다시 끼워넣는다.
-    // 재조판은 LaTeX 조판·Tectonic 컴파일 등 실패 지점이 많다(미정의 명령어, 폰트,
-    // 환경). 실패해도 텍스트 PDF 는 '빠른 번역'으로 대체해 사용자가 빈손이 되지 않게
-    // 한다(하드 에러 방지). 스캔본은 위 분기에서 처리되므로 여기 폴백은 항상 가능.
+    // 재조판은 LaTeX 조판·Tectonic 컴파일 등 실패 지점이 많지만, 이 경로를 선택한 것은
+    // 수식·깨진 폰트 등 in-place가 안전하지 않다는 뜻이다. 실패 시 조용히 강등하지 않는다.
     try {
       const figures = await extractFiguresForRetypeset(pdfBuffer, {
         signal,
@@ -5229,17 +5387,22 @@ async function translateOnePdfCore({
       }
     } catch (e) {
       if (signal.aborted || isTimedOut()) throw e; // 사용자 중단/타임아웃은 폴백 안 함
-      onProgress(
-        `⚠ 재조판 실패 → '빠른 번역(레이아웃 유지)'으로 대체합니다: ${String(e.message || e).slice(0, 160)}`,
+      const reason = String(e && (e.message || e)).slice(0, 240);
+      const retypesetContext = restoreOnly
+        ? "요청한 원문 복원 재조판"
+        : normalizedMode === "retypeset"
+          ? "사용자가 선택한 재조판"
+          : "문서 품질 분석에서 필요하다고 판정된 재조판";
+      throw qualityFailure(
+        `${retypesetContext}을 완료하지 못했습니다: ${reason}. ` +
+          "빠른 번역으로 자동 변경하면 필요한 조판 방식과 결과 보존 수준이 달라지므로 작업을 중단했습니다.",
+        {
+          kind: "requested_retypeset_failed",
+          requestedMode: normalizedMode,
+          restoreOnly: !!restoreOnly,
+          cause: reason,
+        },
       );
-      effectiveMode = "inplace";
-      result = await translatePdf({
-        pdfBuffer,
-        model,
-        pageCount: routing.pageCount, // 재분석 생략 — 큰 문서면 내부에서 구간 분할·병합
-        signal,
-        onProgress,
-      });
     }
   } else {
     result = await translatePdf({
@@ -5251,16 +5414,36 @@ async function translateOnePdfCore({
     });
   }
 
-  const pdfOutput = assertGeneratedOutputMagic(
-    result.buffer,
-    "pdf",
-    "PDF translation output",
-  );
+  const terminal = await finalizePdfTranslationOutput({
+    originalBuffer: pdfBuffer,
+    resultBuffer: result.buffer,
+    effectiveMode,
+    restoreOnly,
+    signal,
+    onProgress,
+    ocrEvidence: result.ocrEvidence || null,
+    ocrRenderManifest: result.ocrRenderManifest || null,
+    ocrSemanticReviewContext:
+      routing.scanned
+        ? {
+            generationProvider: result.translationProvider,
+            generationModel: result.model || model,
+            generationRequestId: result.translationRequestId,
+          }
+        : null,
+    requireOcrEvidence: !!routing.scanned,
+  });
   const filename = buildTranslatedFilename(
     originalName,
-    restoreOnly ? "_복원" : effectiveMode === "retypeset" ? "_재조판" : "_KO",
+    terminal.suffix,
   );
-  return { buffer: pdfOutput, filename, effectiveMode, result };
+  return {
+    buffer: terminal.buffer,
+    filename,
+    effectiveMode: terminal.effectiveMode,
+    result,
+    qualityReport: terminal.qualityReport,
+  };
 }
 
 async function runPdfTranslation(
@@ -5331,6 +5514,7 @@ async function runPdfTranslation(
         mimeType: "application/pdf",
         buffer: out.buffer,
         fileId: null,
+        effectiveMode: out.effectiveMode,
       };
       const fileIndex = job.files.push(entry) - 1;
 
@@ -5391,6 +5575,7 @@ async function runPdfTranslation(
             index: fileIndex,
             filename: entry.filename,
             fileId: entry.fileId,
+            effectiveMode: entry.effectiveMode,
           }),
         );
       }
@@ -5483,6 +5668,7 @@ async function runPdfTranslation(
       job.mimeType = entry.mimeType;
       job.filename = entry.filename;
       job.fileId = entry.fileId;
+      job.effectiveMode = entry.effectiveMode;
     }
     job.status = "done";
     emitJobWebhook(job, "job.completed");
@@ -5517,10 +5703,12 @@ async function runPdfTranslation(
     sendSse(r, "done", {
       filename: job.filename,
       fileId: job.fileId,
+      effectiveMode: job.effectiveMode || null,
       files: job.files.map((f, i) => ({
         index: i,
         filename: f.filename,
         fileId: f.fileId,
+        effectiveMode: f.effectiveMode,
       })),
     });
     r.end();
@@ -6339,7 +6527,20 @@ app.get("/api/jobs/:id/stream", requireAuth, (req, res) => {
   job.progress.forEach((p) => sendSse(res, "progress", p));
 
   if (job.status === "done") {
-    sendSse(res, "done", { filename: job.filename, fileId: job.fileId, warnings: job.warnings || [], styleFont: job.styleFont || null, handoff: job.handoff || "", files: (job.files || []).map((f, i) => ({ index: i, filename: f.filename, fileId: f.fileId || null })) });
+    sendSse(res, "done", {
+      filename: job.filename,
+      fileId: job.fileId,
+      effectiveMode: job.effectiveMode || null,
+      warnings: job.warnings || [],
+      styleFont: job.styleFont || null,
+      handoff: job.handoff || "",
+      files: (job.files || []).map((f, i) => ({
+        index: i,
+        filename: f.filename,
+        fileId: f.fileId || null,
+        effectiveMode: f.effectiveMode || null,
+      })),
+    });
     return res.end();
   }
   if (job.status === "error") {

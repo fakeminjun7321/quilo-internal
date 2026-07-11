@@ -26,6 +26,7 @@ git push space main        # HF 토큰 인증(huggingface-cli login 또는 토�
 | 키 | 값 |
 |---|---|
 | `ANTHROPIC_API_KEY` | Claude 키 (필수) |
+| `MISTRAL_API_KEY` | Mistral OCR 4 키 (스캔·이미지 PDF strict OCR에 필수) |
 | `GPT_API_KEY` | OpenAI 키 (GPT 모델용, 선택) |
 | `TRANSLATE_ACCESS_CODES` | 초대코드 `code1,code2` (필수) |
 | `TRANSLATE_SESSION_SECRET` | 랜덤 문자열 (권장) |

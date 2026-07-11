@@ -9,16 +9,20 @@ DeepL 문서 번역과 같은 방식: 디지털 PDF(텍스트 레이어가 있�
 
   python translate_pdf.py extract <pdf_path>
       → stdout JSON: {"page_count": N, "scanned": bool,
-                      "blocks": [{"id": int, "page": int, "text": str}, ...]}
-      번역이 필요한 문단만 내보낸다. Node가 이걸 Claude로 번역한다.
+                      "blocks": [{"id": int|str, "page": int|null,
+                                  "text": str, "kind": str?}, ...]}
+      번역이 필요한 문단과 reader UI(목차/문서정보) 문자열을 내보낸다.
 
   python translate_pdf.py render <pdf_path> <out_path> <font_path>
       ← stdin JSON: {"translations": {"<id>": "<korean text>", ...}}
       → out_path 에 번역된 PDF 저장
-      → stdout JSON: {"ok": true, "replaced": int, "shrunk": int}
+      → stdout JSON: {"ok": bool, "replaced": int, "shrunk": int,
+                      "overflow": int, "failed": int,
+                      "overflow_ids": [id, ...], "failed_ids": [id, ...],
+                      "min_font": float|null, "min_glyph_font": float|null}
 
-블록 id는 두 모드에서 동일한 순서로 매겨진다(같은 파일 → 같은 get_text 순서).
-그래서 extract가 부여한 id를 render가 그대로 다시 계산해 매칭할 수 있다.
+페이지 블록 id는 두 모드에서 같은 get_text 순서로 매겨지고, 목차/문서정보는
+충돌하지 않는 deterministic string id를 쓴다. render가 같은 id를 재계산해 매칭한다.
 """
 
 import sys
@@ -27,7 +31,10 @@ import re
 import json
 import math
 import html
-from collections import defaultdict
+import copy
+import hashlib
+import io
+from collections import Counter, defaultdict
 
 
 def _isolate_stdout_for_json_protocol():
@@ -58,6 +65,74 @@ def _isolate_stdout_for_json_protocol():
 _JSON_STDOUT_FD = _isolate_stdout_for_json_protocol()
 
 import fitz  # PyMuPDF
+from lxml import etree
+
+
+SAFE_PIXMAP_MAX_DIMENSION = 4096
+SAFE_PIXMAP_MAX_AREA = 12_000_000
+
+
+def _predicted_pixmap_geometry(rect, zoom=1.0):
+    """Return bounded pre-allocation geometry for an untrusted page/clip."""
+
+    rect = fitz.Rect(rect)
+    width = abs(float(rect.width))
+    height = abs(float(rect.height))
+    zoom = float(zoom)
+    if (
+        not math.isfinite(width)
+        or not math.isfinite(height)
+        or not math.isfinite(zoom)
+        or width <= 0
+        or height <= 0
+        or zoom <= 0
+    ):
+        raise ValueError("invalid pixmap geometry")
+    pixel_width = max(1, math.ceil(width * zoom))
+    pixel_height = max(1, math.ceil(height * zoom))
+    pixel_area = pixel_width * pixel_height
+    return pixel_width, pixel_height, pixel_area
+
+
+def _pixmap_geometry_is_safe(rect, zoom=1.0):
+    try:
+        width, height, area = _predicted_pixmap_geometry(rect, zoom)
+    except (TypeError, ValueError, OverflowError):
+        return False
+    return (
+        width <= SAFE_PIXMAP_MAX_DIMENSION
+        and height <= SAFE_PIXMAP_MAX_DIMENSION
+        and area <= SAFE_PIXMAP_MAX_AREA
+    )
+
+
+def _assert_safe_pixmap_geometry(rect, zoom=1.0, context="pixmap"):
+    if not _pixmap_geometry_is_safe(rect, zoom):
+        raise ValueError(f"{context} exceeds the safe pixmap geometry budget")
+
+
+def _page_text_rect(page):
+    """Return the coordinate rectangle used by ``Page.get_text``.
+
+    PyMuPDF exposes ``page.rect`` in the *rotated* display coordinate system, but
+    text / drawing dictionaries use an unrotated CropBox-relative system.  On a
+    90-degree page this means ``page.rect.width`` is the text-space height.  Layout
+    bounds based on it can therefore cross a column or even the physical CropBox.
+    CropBox width / height are stable for every rotation and text coordinates start
+    at (0, 0), even when the PDF CropBox itself has a non-zero origin.
+    """
+    try:
+        crop = fitz.Rect(page.cropbox)
+        width = abs(float(crop.width))
+        height = abs(float(crop.height))
+        if width > 0 and height > 0:
+            return fitz.Rect(0.0, 0.0, width, height)
+    except Exception:
+        pass
+    rect = fitz.Rect(page.rect)
+    if int(getattr(page, "rotation", 0) or 0) % 180:
+        return fitz.Rect(0.0, 0.0, rect.height, rect.width)
+    return fitz.Rect(0.0, 0.0, rect.width, rect.height)
 
 
 def _disable_mupdf_diagnostics():
@@ -102,6 +177,10 @@ def _clean_ko(s):
             s = html.unescape(s)
         except Exception:
             pass
+    # U+00A0 / U+202F를 그대로 넣으면 MuPDF가 U+0020 공백을 NBSP로 역매핑하는
+    # ToUnicode CMap을 만들 수 있다. 검색·복사·pypdf 추출이 모두 같은 일반 공백을
+    # 보도록 모델 출력의 no-break space를 렌더 전에 정규화한다.
+    s = s.replace("\u00a0", " ").replace("\u202f", " ")
     return s
 
 
@@ -133,8 +212,13 @@ def _absorb_tiny_fragments(blocks):
         sp = _first_span(b)
         is_frag = bool(
             sp
-            and 0 < len(txt) <= 2
-            and (sp.get("size", 99) or 99) < 9.0  # 본문보다 작은 위/아래첨자
+            and 0 < len(txt) <= 3
+            # Paragraph engines commonly render a 13pt formula's charge at 11pt.
+            # The old absolute <9pt rule therefore dropped a separately encoded
+            # SO4 charge even though it was a normal superscript.  The host-relative
+            # size check below is the decisive guard; this ceiling only prevents a
+            # large standalone page number from becoming a fragment candidate.
+            and (sp.get("size", 99) or 99) < 14.0
             and all(c.isdigit() or c in "+-−" for c in txt)
         )
         (frags if is_frag else out).append(b)
@@ -143,12 +227,24 @@ def _absorb_tiny_fragments(blocks):
     for frag in frags:
         fr = fitz.Rect(frag["bbox"])
         fcx, fcy = (fr.x0 + fr.x1) / 2, (fr.y0 + fr.y1) / 2
-        host = None
+        frag_size = float((_first_span(frag) or {}).get("size", 99) or 99)
+        host_candidates = []
         for h in out:
             hr = fitz.Rect(h["bbox"])
-            if hr.y0 - 3 <= fcy <= hr.y1 + 3 and hr.x0 - 8 <= fcx <= hr.x1 + 8:
-                host = h
-                break
+            host_size = float(dominant_size_color(h)[0] or 0.0)
+            if (
+                host_size >= frag_size * 1.05
+                and hr.y0 - 3 <= fcy <= hr.y1 + 3
+                and hr.x0 - 8 <= fcx <= hr.x1 + 8
+            ):
+                horizontal_gap = max(0.0, hr.x0 - fcx, fcx - hr.x1)
+                vertical_gap = max(0.0, hr.y0 - fcy, fcy - hr.y1)
+                host_candidates.append((horizontal_gap + vertical_gap, hr.x1, h))
+        host = (
+            min(host_candidates, key=lambda item: (item[0], item[1]))[2]
+            if host_candidates
+            else None
+        )
         if host is None:
             out.append(frag)  # 맞는 host 없으면 독립 블록으로 유지
             continue
@@ -162,7 +258,13 @@ def _absorb_tiny_fragments(blocks):
             out.append(frag)
             continue
         is_digit = all(c.isdigit() for c in _block_raw_text(frag).strip())
-        for fsp in [s for fl in frag.get("lines", []) for s in fl.get("spans", [])]:
+        for original_span in [
+            s for fl in frag.get("lines", []) for s in fl.get("spans", [])
+        ]:
+            # Keep an explicit provenance bit so tag=True can preserve the rise even
+            # when the fragment is only ~15% smaller than its 13pt host.
+            fsp = copy.deepcopy(original_span)
+            fsp["_absorbed_tiny_fragment"] = True
             fbox = fsp.get("bbox") or [fcx, fcy, fcx, fcy]
             fx, fy0 = fbox[0], fbox[1]
             spans = line.setdefault("spans", [])
@@ -182,8 +284,131 @@ def _absorb_tiny_fragments(blocks):
                     pos = k
                     break
             spans.insert(pos, fsp)
+            # ``_nonfig_rect`` and the redaction pass intentionally derive their
+            # geometry from line bboxes rather than the block union.  Extend the
+            # host line as well, otherwise the absorbed charge is present in the
+            # translation payload but remains just outside the redaction rectangle
+            # and survives as a duplicated, content-order-first source glyph.
+            line["bbox"] = list(fitz.Rect(line.get("bbox") or host["bbox"]) | fitz.Rect(fbox))
         host["bbox"] = list(fitz.Rect(host["bbox"]) | fr)
     return out
+
+
+def _split_spatially_separated_runs(block, page_width):
+    """Split a MuPDF text block when it actually contains distant columns.
+
+    MuPDF can group independently positioned header / footer strings into one
+    block when their baselines overlap.  Joining that block produces text such
+    as ``left titleRIGHT ID`` and rendering it back into the union bbox moves
+    both strings to the left.  The same symptom occurs when one PDF text line
+    contains distant spans separated by a tab-like gap.
+
+    This splitter is deliberately conservative:
+
+    * it only considers a gap on vertically overlapping runs (the same visual
+      row),
+    * the gap must be large both absolutely and relative to the page width, and
+    * the proposed vertical divider must not cut through any other run in the
+      block.
+
+    Consequently wrapped prose remains one block because its long lines cross
+    any candidate divider, while genuinely independent left/right runs receive
+    separate ids and bboxes in both extract and render.
+    """
+    lines = block.get("lines") or []
+    if len(lines) < 2 and not any(len(line.get("spans") or []) > 1 for line in lines):
+        return [block]
+
+    min_gap = max(48.0, 0.12 * max(float(page_width or 0.0), 1.0))
+    fragments = []
+    for line_index, line in enumerate(lines):
+        spans = sorted(
+            (copy.deepcopy(span) for span in (line.get("spans") or [])),
+            key=lambda span: (span.get("bbox") or (0, 0, 0, 0))[0],
+        )
+        if not spans:
+            continue
+        groups = [[spans[0]]]
+        for span in spans[1:]:
+            prev_box = groups[-1][-1].get("bbox") or (0, 0, 0, 0)
+            box = span.get("bbox") or (0, 0, 0, 0)
+            font_gap = 4.0 * max(
+                float(groups[-1][-1].get("size", 0) or 0),
+                float(span.get("size", 0) or 0),
+                1.0,
+            )
+            if box[0] - prev_box[2] >= max(min_gap, font_gap):
+                groups.append([span])
+            else:
+                groups[-1].append(span)
+        for group_index, group in enumerate(groups):
+            rect = None
+            for span in group:
+                sr = fitz.Rect(span.get("bbox") or line.get("bbox") or (0, 0, 0, 0))
+                rect = sr if rect is None else (rect | sr)
+            if rect is None or rect.is_empty:
+                continue
+            fragment_line = copy.deepcopy(line)
+            fragment_line["spans"] = group
+            fragment_line["bbox"] = tuple(rect)
+            fragments.append(
+                {
+                    "line": fragment_line,
+                    "rect": rect,
+                    "order": (line_index, group_index),
+                }
+            )
+
+    if len(fragments) < 2:
+        return [block]
+
+    def candidate_dividers(group):
+        candidates = []
+        for index, left_item in enumerate(group):
+            left_rect = left_item["rect"]
+            for right_item in group[index + 1 :]:
+                right_rect = right_item["rect"]
+                first, second = (
+                    (left_rect, right_rect)
+                    if left_rect.x0 <= right_rect.x0
+                    else (right_rect, left_rect)
+                )
+                overlap_y = min(first.y1, second.y1) - max(first.y0, second.y0)
+                min_height = max(1.0, min(first.height, second.height))
+                gap = second.x0 - first.x1
+                if overlap_y >= 0.45 * min_height and gap >= min_gap:
+                    candidates.append((gap, (first.x1 + second.x0) / 2.0))
+        return sorted(candidates, reverse=True)
+
+    def split_group(group):
+        for _gap, divider in candidate_dividers(group):
+            left = [item for item in group if item["rect"].x1 <= divider]
+            right = [item for item in group if item["rect"].x0 >= divider]
+            crossing = [
+                item
+                for item in group
+                if item not in left and item not in right
+            ]
+            if left and right and not crossing:
+                return split_group(left) + split_group(right)
+        return [group]
+
+    groups = split_group(fragments)
+    if len(groups) == 1:
+        return [block]
+
+    separated = []
+    for group in groups:
+        ordered = sorted(group, key=lambda item: item["order"])
+        rect = ordered[0]["rect"]
+        for item in ordered[1:]:
+            rect = rect | item["rect"]
+        new_block = copy.deepcopy(block)
+        new_block["lines"] = [item["line"] for item in ordered]
+        new_block["bbox"] = tuple(rect)
+        separated.append((min(item["order"] for item in ordered), rect.x0, new_block))
+    separated.sort(key=lambda item: (item[0], item[1]))
+    return [item[2] for item in separated]
 
 
 def _has_word(block):
@@ -275,6 +500,37 @@ def _ends_midsentence(txt):
     return t[-1] not in _SENT_TERMINATORS
 
 
+def _formula_dense_block(block):
+    """Return whether a visual block must retain its own equation-row anchor.
+
+    Equation rows are often emitted as separate PDF paragraphs without terminal
+    punctuation.  Treating them as wrapped prose collapses multiple equations into
+    one translation box and changes both formula token boundaries and visual y
+    anchors.  Operators plus baseline-shifted numeric spans are conservative signals
+    that do not classify ordinary slash-containing prose as formula content.
+    """
+    raw = _block_raw_text(block)
+    if re.search(r"(?:<=>|<->|->|<-|=>|<=|>=|=)", raw) or _MATH_SIGN.search(raw):
+        return True
+    spans = [
+        span
+        for line in block.get("lines", [])
+        for span in line.get("spans", [])
+        if str(span.get("text", "")).strip()
+    ]
+    if len(spans) < 2 or not re.search(r"\d", raw):
+        return False
+    sizes = [float(span.get("size", 0) or 0) for span in spans]
+    largest = max(sizes, default=0.0)
+    if largest <= 0:
+        return False
+    return any(
+        size < 0.92 * largest
+        and re.search(r"[0-9+\-−]", str(span.get("text", "")))
+        for span, size in zip(spans, sizes)
+    )
+
+
 def _coalesce_paragraphs(blocks):
     """같은 단(column)에서 세로로 인접한 '본문 산문' 블록을, 앞 블록이 문장 중간에서
     끊겼을 때(종결부호 없이 끝남) 한 문단으로 합친다.
@@ -299,6 +555,19 @@ def _coalesce_paragraphs(blocks):
         if not (_has_word(prev) and _has_word(blk)):
             out.append(blk)
             continue
+        # Consecutive linked URI lines are independent interactive objects, not a
+        # wrapped paragraph.  Merging them moves the second label into the first
+        # annotation rectangle even though link actions / geometry remain exact.
+        raw_prev = _block_raw_text(prev).strip()
+        raw_next = _block_raw_text(blk).strip()
+        if _formula_dense_block(prev) or _formula_dense_block(blk):
+            out.append(blk)
+            continue
+        if re.match(r"^(?:https?|mailto):", raw_prev, re.I) or re.match(
+            r"^(?:https?|mailto):", raw_next, re.I
+        ):
+            out.append(blk)
+            continue
         ra = fitz.Rect(prev["bbox"])
         rb = fitz.Rect(blk["bbox"])
         # 같은 단: 가로로 충분히 겹침(2단 레이아웃의 좌/우 단은 안 겹쳐 병합 안 됨).
@@ -321,12 +590,12 @@ def _coalesce_paragraphs(blocks):
             out.append(blk)
             continue
         # 앞 블록이 문장 중간에서 끊겼을 때만 병합(종결부호로 끝나면 문단 경계 유지).
-        if not _ends_midsentence(_block_raw_text(prev)):
+        if not _ends_midsentence(raw_prev):
             out.append(blk)
             continue
         # 새 블록이 '절 번호'(6.3, 6.13 등)나 챕터 목차 항목으로 시작하면 병합 안 함
         # — 목차(TOC) 항목들이 한 줄로 뭉쳐 'X.Y 제목 X.Z 제목 …'처럼 섞이는 것 방지.
-        if re.match(r"\s*\d+\.\d+(\s|$)", _block_raw_text(blk)):
+        if re.match(r"\s*\d+\.\d+(\s|$)", raw_next):
             out.append(blk)
             continue
         # 병합: 줄 이어붙이고 bbox 합침(prev 는 out[-1] 과 동일 객체 → 제자리 갱신).
@@ -356,7 +625,12 @@ def iter_text_blocks(doc):
             for b in data.get("blocks", [])
             if b.get("type") == 0 and any(ln.get("spans") for ln in (b.get("lines") or []))
         ]
-        merged = _absorb_tiny_fragments(_merge_superscript_ions(text_blocks))
+        spatial_blocks = []
+        for block in text_blocks:
+            spatial_blocks.extend(
+                _split_spatially_separated_runs(block, page.rect.width)
+            )
+        merged = _absorb_tiny_fragments(_merge_superscript_ions(spatial_blocks))
         merged = _coalesce_paragraphs(merged)
         for block in merged:
             yield bid, pno, block
@@ -648,7 +922,8 @@ def block_text(block, figs=None, tag=False):
                 continue
             b = sp.get("bbox", (lb[0], ly0, lb[0], ly1))
             items.append({"x": b[0], "cy": (b[1] + b[3]) / 2.0,
-                          "sz": sp.get("size", 10.0) or 10.0, "t": t})
+                          "sz": sp.get("size", 10.0) or 10.0, "t": t,
+                          "absorbed": bool(sp.get("_absorbed_tiny_fragment"))})
         if not items:
             continue
         placed = False
@@ -673,7 +948,7 @@ def block_text(block, figs=None, tag=False):
             mcy = (sum(big) / len(big)) if big else its[0]["cy"]
             for i in its:
                 i["style"] = "normal"
-                if i["sz"] < 0.78 * main:  # 작은 글자 = 첨자 후보
+                if i["absorbed"] or i["sz"] < 0.90 * main:  # 작은 글자 = 첨자 후보
                     if i["cy"] > mcy + 0.06 * main:
                         i["style"] = "sub"
                     elif i["cy"] < mcy - 0.06 * main:
@@ -683,6 +958,13 @@ def block_text(block, figs=None, tag=False):
             its.sort(key=lambda i: (round(i["x"] / 4.0), rank[i["style"]]))
             s = ""
             for i in its:
+                if i["absorbed"] and i["style"] == "sup" and s and not s.endswith(" "):
+                    # Preserve the source extractor's token boundary between a
+                    # separately encoded formula base and its absorbed charge.  The
+                    # rich renderer emits this particular gap as a zero-advance
+                    # space glyph, so copied/searchable text sees ``SO4 2-`` while
+                    # the visual charge remains flush with SO4.
+                    s += " "
                 if i["style"] == "sub":
                     s += "<sub>" + i["t"] + "</sub>"
                 elif i["style"] == "sup":
@@ -858,6 +1140,7 @@ def _keep_original_block(block):
 # ── 배경색 샘플링 (그림/그래프 위 텍스트 판별 + 색 맞춤 redaction) ───────────────
 def _sample_pixmap(page):
     """배경색 샘플링용 페이지 픽스맵(zoom 1 → 1pt = 1px, 좌표 그대로 사용)."""
+    _assert_safe_pixmap_geometry(page.rect, 1.0, "background sample")
     return page.get_pixmap(matrix=fitz.Matrix(1, 1), alpha=False)
 
 
@@ -949,7 +1232,16 @@ def _cluster_rects(rects, gap=18.0):
         placed = False
         for c in clusters:
             cb = c["bbox"]
-            if fitz.Rect(cb.x0 - gap, cb.y0 - gap, cb.x1 + gap, cb.y1 + gap).intersects(r):
+            # PyMuPDF Rect.intersects는 가로/세로 선처럼 폭이나 높이가 0인 path와의
+            # 접촉을 False로 본다. 그래프 축·사각 프레임은 그런 선 path가 대부분이므로
+            # 좌표 거리로 직접 판정해 합법적 line-art cluster를 놓치지 않는다.
+            nearby = not (
+                r.x1 < cb.x0 - gap
+                or r.x0 > cb.x1 + gap
+                or r.y1 < cb.y0 - gap
+                or r.y0 > cb.y1 + gap
+            )
+            if nearby:
                 c["bbox"] = cb | r
                 c["n"] += 1
                 placed = True
@@ -962,23 +1254,37 @@ def _cluster_rects(rects, gap=18.0):
 def _figure_regions(page):
     """그림/그래프 영역 = 이미지 + '윤곽선' vector drawing(선·곡선·축·화살표·격자)을
     함께 묶은 클러스터. 배경 채움(fill-only) 사각형(색 배너 등)은 제외 → 배너 위 본문을
-    figure 로 오인하지 않는다. 얇은 선(축 등)도 포함해야 그래프가 잡힌다."""
-    elems = []
+    figure 로 오인하지 않는다. 임베디드 raster occurrence는 path 수와 무관하게 독립
+    후보이며, 같은 픽셀이 여러 위치에 배치되면 각 bbox를 별도 occurrence로 유지한다."""
+    image_regions = []
+    seen_image_rects = set()
     try:
         for im in page.get_images(full=True):
             for r in page.get_image_rects(im[0]):
-                elems.append(fitz.Rect(r))
+                rr = fitz.Rect(r)
+                key = tuple(round(v, 2) for v in (rr.x0, rr.y0, rr.x1, rr.y1))
+                if key not in seen_image_rects:
+                    seen_image_rects.add(key)
+                    image_regions.append(rr)
     except Exception:
         pass
+    drawing_elems = []
     try:
         for d in page.get_drawings():
             if "s" in (d.get("type") or ""):  # 윤곽선 path
-                elems.append(fitz.Rect(d["rect"]))
+                drawing_elems.append(fitz.Rect(d["rect"]))
     except Exception:
         pass
-    page_area = page.rect.width * page.rect.height
-    regions = []
-    for c in _cluster_rects(elems):
+    text_rect = _page_text_rect(page)
+    page_area = text_rect.width * text_rect.height
+    # 거의 전면을 덮는 raster는 스캔 페이지 배경일 가능성이 높아 텍스트-PDF의 본문
+    # 그림으로 취급하지 않는다. 실제 스캔 문서는 별도 OCR/비전 라우팅이 담당한다.
+    regions = [
+        r
+        for r in image_regions
+        if r.width > 0 and r.height > 0 and r.width * r.height < 0.88 * page_area
+    ]
+    for c in _cluster_rects(drawing_elems):
         b = c["bbox"]
         if (
             c["n"] >= 4
@@ -986,7 +1292,18 @@ def _figure_regions(page):
             and b.height > 50
             and b.width * b.height < 0.88 * page_area
         ):
-            regions.append(b)
+            # raster 위에 그려진 축/화살표 cluster라면 하나의 occurrence로 합친다.
+            # 그렇지 않으면 독립 vector figure로 보존한다.
+            merged = False
+            for i, existing in enumerate(regions):
+                inter = fitz.Rect(existing) & b
+                min_area = max(1.0, min(abs(existing), abs(b)))
+                if not inter.is_empty and abs(inter) >= 0.5 * min_area:
+                    regions[i] = fitz.Rect(existing) | b
+                    merged = True
+                    break
+            if not merged:
+                regions.append(b)
     return regions
 
 
@@ -995,8 +1312,39 @@ def _table_regions(page, min_rules=2):
     booktabs형(세로선 없이 가로줄만 있는) 표를 잡기 위함. 인접한(가로로 겹치고 가까운)
     가로줄 ≥2개가 만드는 세로 구간을 표로 본다 → in-place 가 표 셀을 줄글로 뭉개지
     않도록 그 영역 텍스트를 영어 원본 그대로 둔다(그림과 동일 취급)."""
-    W = page.rect.width
-    H = page.rect.height
+    text_rect = _page_text_rect(page)
+    W = text_rect.width
+    H = text_rect.height
+    # A browser-style hyperlink underline is also a horizontal drawing rule.  Two
+    # adjacent URL lines used to satisfy the booktabs heuristic and become a fake
+    # table, which excluded both URLs from redraw and put their residual source text
+    # ahead of every translated stream.  Link annotation geometry gives us a much
+    # stronger signal than stroke colour or width, so reject only rules which hug a
+    # URI annotation's lower edge and span the same horizontal interval.
+    uri_rects = []
+    try:
+        for link in page.get_links():
+            if int(link.get("kind", -1)) != int(fitz.LINK_URI):
+                continue
+            rect = fitz.Rect(link.get("from"))
+            if not rect.is_empty and rect.width > 0:
+                uri_rects.append(rect)
+    except Exception:
+        uri_rects = []
+
+    def _is_uri_underline(x0, y, x1):
+        width = max(1.0, x1 - x0)
+        for link_rect in uri_rects:
+            overlap = min(x1, link_rect.x1) - max(x0, link_rect.x0)
+            endpoint_error = abs(x0 - link_rect.x0) + abs(x1 - link_rect.x1)
+            if (
+                overlap >= 0.90 * min(width, link_rect.width)
+                and endpoint_error <= max(5.0, 0.06 * width)
+                and min(abs(y - link_rect.y0), abs(y - link_rect.y1)) <= 3.0
+            ):
+                return True
+        return False
+
     rules = []  # (x0, y, x1) 가로줄
     try:
         for dr in page.get_drawings():
@@ -1004,28 +1352,44 @@ def _table_regions(page, min_rules=2):
                 if it[0] == "l":  # line
                     p1, p2 = it[1], it[2]
                     if abs(p1.y - p2.y) < 1.6 and abs(p2.x - p1.x) > 0.22 * W:
-                        rules.append(
-                            (min(p1.x, p2.x), (p1.y + p2.y) / 2.0, max(p1.x, p2.x))
-                        )
+                        x0 = min(p1.x, p2.x)
+                        y = (p1.y + p2.y) / 2.0
+                        x1 = max(p1.x, p2.x)
+                        if not _is_uri_underline(x0, y, x1):
+                            rules.append((x0, y, x1))
                 elif it[0] == "re":  # 얇은 사각형 = 가로줄
                     r = fitz.Rect(it[1])
                     if r.height < 2.2 and r.width > 0.22 * W:
-                        rules.append((r.x0, (r.y0 + r.y1) / 2.0, r.x1))
+                        y = (r.y0 + r.y1) / 2.0
+                        if not _is_uri_underline(r.x0, y, r.x1):
+                            rules.append((r.x0, y, r.x1))
     except Exception:
         return []
     if len(rules) < min_rules:
         return []
     rules.sort(key=lambda t: t[1])
-    # 가로로 겹치고 세로로 가까운(<230pt) 줄들을 한 표로 묶는다.
-    groups = [[rules[0]]]
-    for r in rules[1:]:
-        prev = groups[-1][-1]
-        ox = min(r[2], prev[2]) - max(r[0], prev[0])
-        minw = max(1.0, min(r[2] - r[0], prev[2] - prev[0]))
-        if ox > 0.5 * minw and (r[1] - prev[1]) < 230:
-            groups[-1].append(r)
+    # 가로로 겹치고 세로로 가까운(<230pt) 줄들을 한 표로 묶는다. y 순서에서 서로
+    # 끼어드는 오른쪽 그래프 격자선이 왼쪽 표 그룹을 끊으면 안 되므로, 직전의 *전역*
+    # rule이 아니라 각 기존 x-band 그룹의 마지막 rule과 비교한다.
+    groups = []
+    for rule in rules:
+        candidates = []
+        for group_index, group in enumerate(groups):
+            previous = group[-1]
+            overlap = min(rule[2], previous[2]) - max(rule[0], previous[0])
+            minimum_width = max(
+                1.0, min(rule[2] - rule[0], previous[2] - previous[0])
+            )
+            vertical_gap = rule[1] - previous[1]
+            if overlap > 0.5 * minimum_width and 0 <= vertical_gap < 230:
+                candidates.append(
+                    (overlap / minimum_width, -vertical_gap, group_index)
+                )
+        if candidates:
+            _overlap, _gap, chosen = max(candidates)
+            groups[chosen].append(rule)
         else:
-            groups.append([r])
+            groups.append([rule])
     out = []
     for g in groups:
         if len(g) < min_rules:
@@ -1037,6 +1401,663 @@ def _table_regions(page, min_rules=2):
         if (x1 - x0) > 0.2 * W and 4 < (y1 - y0) < 0.85 * H:
             out.append(fitz.Rect(x0, y0, x1, y1))
     return out
+
+
+_TABLE_BLOCK_PREFIX = "__pdf_table_cell__:"
+
+
+def _rect_overlap_fraction(a, b):
+    """Intersection area divided by the smaller rectangle area."""
+    a = fitz.Rect(a)
+    b = fitz.Rect(b)
+    inter = a & b
+    if inter.is_empty:
+        return 0.0
+    return abs(inter) / max(1.0, min(abs(a), abs(b)))
+
+
+def _raw_table_region_has_repeated_multicolumn_evidence(page, rect):
+    """Prove that an otherwise ambiguous ruled region contains table-like rows.
+
+    Horizontal separators and rounded information panels are common in reports.
+    Protecting every pair of long rules as a table drops the prose between them
+    from extraction.  For a raw rule region which has no validated ``find_tables``
+    layout, require at least two visual rows with two stable, widely separated cell
+    starts.  Ordinary prose keeps normal inter-word gaps and therefore forms one
+    cell per line.
+    """
+    rect = fitz.Rect(rect)
+    try:
+        words = page.get_text("words", clip=rect, sort=False)
+    except TypeError:
+        try:
+            words = page.get_text("words", clip=rect)
+        except Exception:
+            return False
+    except Exception:
+        return False
+
+    items = []
+    for word in words or []:
+        if len(word) < 5 or not str(word[4]).strip():
+            continue
+        box = fitz.Rect(word[:4])
+        cx = (box.x0 + box.x1) / 2.0
+        cy = (box.y0 + box.y1) / 2.0
+        if not (rect.x0 - 0.5 <= cx <= rect.x1 + 0.5):
+            continue
+        if not (rect.y0 - 0.5 <= cy <= rect.y1 + 0.5):
+            continue
+        items.append({"rect": box, "cy": cy})
+    if len(items) < 4:
+        return False
+
+    # Cluster words by baseline band without trusting producer block IDs: table
+    # producers often merge an entire row into a single text block.
+    rows = []
+    for item in sorted(items, key=lambda value: (value["cy"], value["rect"].x0)):
+        candidates = []
+        for index, row in enumerate(rows):
+            tolerance = max(2.5, 0.45 * max(row["height"], item["rect"].height))
+            if abs(item["cy"] - row["cy"]) <= tolerance:
+                candidates.append((abs(item["cy"] - row["cy"]), index))
+        if candidates:
+            _distance, index = min(candidates)
+            row = rows[index]
+            row["items"].append(item)
+            row["cy"] = sum(value["cy"] for value in row["items"]) / len(row["items"])
+            row["height"] = max(row["height"], item["rect"].height)
+        else:
+            rows.append(
+                {"items": [item], "cy": item["cy"], "height": item["rect"].height}
+            )
+
+    multi_rows = []
+    for row in rows:
+        ordered = sorted(row["items"], key=lambda value: value["rect"].x0)
+        cell_starts = [ordered[0]["rect"].x0]
+        previous = ordered[0]["rect"]
+        for item in ordered[1:]:
+            current = item["rect"]
+            # A normal space is only a few points.  Requiring both an absolute and
+            # font-relative gap keeps wrapped / justified prose from masquerading
+            # as columns while accepting compact scientific tables.
+            minimum_gap = max(12.0, 1.25 * max(previous.height, current.height))
+            if current.x0 - previous.x1 >= minimum_gap:
+                cell_starts.append(current.x0)
+            previous = current
+        if len(cell_starts) >= 2:
+            multi_rows.append(cell_starts)
+    if len(multi_rows) < 2:
+        return False
+
+    tolerance = max(10.0, 0.035 * rect.width)
+    for index, first in enumerate(multi_rows):
+        for second in multi_rows[index + 1 :]:
+            available = list(second)
+            matches = 0
+            for anchor in first:
+                choices = [
+                    (abs(anchor - candidate), position)
+                    for position, candidate in enumerate(available)
+                    if abs(anchor - candidate) <= tolerance
+                ]
+                if not choices:
+                    continue
+                _distance, position = min(choices)
+                available.pop(position)
+                matches += 1
+            if matches >= 2:
+                return True
+    return False
+
+
+def _region_has_non_table_art(page, rect):
+    """Detect plotted curves/diagonals or raster art inside a table candidate."""
+    rect = fitz.Rect(rect)
+    try:
+        for image in page.get_images(full=True):
+            for image_rect in page.get_image_rects(image[0]):
+                if _rect_overlap_fraction(rect, image_rect) >= 0.20:
+                    return True
+    except Exception:
+        pass
+    try:
+        for drawing in page.get_drawings():
+            drawing_rect = fitz.Rect(drawing.get("rect") or (0, 0, 0, 0))
+            if _rect_overlap_fraction(rect, drawing_rect) <= 0.01:
+                continue
+            for item in drawing.get("items", []):
+                if item[0] in {"c", "qu"}:  # Bezier / quad: plotted curve or shape
+                    return True
+                if item[0] == "l":
+                    start, end = item[1], item[2]
+                    if abs(start.x - end.x) > 1.6 and abs(start.y - end.y) > 1.6:
+                        return True
+    except Exception:
+        pass
+    return False
+
+
+def _raw_text_block_in_rect(page, rect, raw_data=None):
+    """Build one synthetic text block from glyphs whose centres are in ``rect``.
+
+    Table producers frequently emit an entire row as one MuPDF block (and, in the
+    fixture corpus, as strings such as ``TrialTime sDistance m``).  Assigning raw
+    characters to a server-derived cell rectangle is deterministic and avoids
+    trusting whitespace or the model to rediscover the columns.  The returned
+    object uses the ordinary block/line/span schema so the existing decoder,
+    scientific-markup handling and font/style code can be reused unchanged.
+    """
+    rect = fitz.Rect(rect)
+    lines_out = []
+    block_rect = None
+    if raw_data is None:
+        try:
+            raw_data = page.get_text("rawdict")
+        except Exception:
+            return None
+    for block in raw_data.get("blocks", []):
+        if block.get("type") != 0:
+            continue
+        for line in block.get("lines", []):
+            spans_out = []
+            line_rect = None
+            for span in line.get("spans", []):
+                chars = []
+                char_rect = None
+                for char in span.get("chars", []):
+                    box = fitz.Rect(char.get("bbox") or (0, 0, 0, 0))
+                    cx = (box.x0 + box.x1) / 2.0
+                    cy = (box.y0 + box.y1) / 2.0
+                    if not (rect.x0 - 0.25 <= cx <= rect.x1 + 0.25):
+                        continue
+                    if not (rect.y0 - 0.25 <= cy <= rect.y1 + 0.25):
+                        continue
+                    chars.append(str(char.get("c", "")))
+                    char_rect = box if char_rect is None else (char_rect | box)
+                if not chars or char_rect is None:
+                    continue
+                text = "".join(chars)
+                if not text:
+                    continue
+                synthetic_span = {
+                    key: copy.deepcopy(value)
+                    for key, value in span.items()
+                    if key not in {"chars", "bbox", "origin"}
+                }
+                synthetic_span["text"] = text
+                synthetic_span["bbox"] = tuple(char_rect)
+                spans_out.append(synthetic_span)
+                line_rect = char_rect if line_rect is None else (line_rect | char_rect)
+            if not spans_out or line_rect is None:
+                continue
+            synthetic_line = {
+                key: copy.deepcopy(value)
+                for key, value in line.items()
+                if key not in {"spans", "bbox"}
+            }
+            synthetic_line["spans"] = spans_out
+            synthetic_line["bbox"] = tuple(line_rect)
+            lines_out.append(synthetic_line)
+            block_rect = line_rect if block_rect is None else (block_rect | line_rect)
+    if not lines_out or block_rect is None:
+        return None
+    lines_out.sort(key=lambda line: (line["bbox"][1], line["bbox"][0]))
+    return {"type": 0, "bbox": tuple(block_rect), "lines": lines_out}
+
+
+def _table_text_is_safe_candidate(
+    page, cells, table_rect, *, text_strategy=False, backed_by_rules=False
+):
+    """Reject chart grids and prose columns before exposing table-cell IDs.
+
+    A ruled table has strong geometry evidence.  A borderless table is accepted
+    only when at least three compact, consistently populated rows are present and
+    its cells look like labels/data rather than sentence columns.  Ambiguous
+    geometry remains in the protected table region, so untranslated-language
+    postflight fails closed instead of flattening it into prose.
+    """
+    populated = []
+    row_counts = Counter()
+    col_counts = Counter()
+    for cell in cells:
+        value = cell.get("value")
+        text = str(value).strip() if isinstance(value, str) else ""
+        if not text:
+            block = _raw_text_block_in_rect(page, cell["rect"])
+            text = block_text(block) if block is not None else ""
+        if not text.strip():
+            continue
+        populated.append(text.strip())
+        row_counts[cell["row"]] += 1
+        col_counts[cell["col"]] += 1
+    if len(populated) < 3 or len(row_counts) < 2 or len(col_counts) < 2:
+        return False
+    if len(populated) / max(1, len(cells)) < 0.35:
+        return False
+    if not any(any(char.isalpha() for char in text) for text in populated):
+        return False
+    page_rect = _page_text_rect(page)
+    table_rect = fitz.Rect(table_rect)
+    if (
+        table_rect.width <= 8
+        or table_rect.height <= 4
+        or table_rect.width > 0.96 * page_rect.width
+        or table_rect.height > 0.80 * page_rect.height
+    ):
+        return False
+    if not text_strategy or backed_by_rules:
+        return True
+
+    # Borderless inference must be deliberately strict.  This excludes two-column
+    # prose (long, punctuated cells) while retaining ordinary short data tables.
+    if len(row_counts) < 3 or table_rect.height > 0.38 * page_rect.height:
+        return False
+    column_count = max(2, len(col_counts))
+    well_populated = sum(1 for value in row_counts.values() if value >= 2)
+    if well_populated < max(2, int(math.ceil(0.75 * len(row_counts)))):
+        return False
+    if any(len(text) > 80 for text in populated):
+        return False
+    prose_like = sum(
+        1
+        for text in populated
+        if len(re.findall(r"[A-Za-z]{2,}|[\uac00-\ud7a3]{2,}", text)) >= 5
+        or bool(re.search(r"[.!?;:]\s*$", text))
+    )
+    return prose_like <= max(1, len(populated) // (2 * column_count))
+
+
+def _finder_table_cells(table, *, text_strategy=False, outer_rect=None):
+    """Normalize a PyMuPDF table (including merged cells) to stable rectangles."""
+    extracted = []
+    try:
+        values = table.extract()
+    except Exception:
+        values = []
+    raw_rows = []
+    for row_index, row in enumerate(getattr(table, "rows", []) or []):
+        row_values = values[row_index] if row_index < len(values) else []
+        entries = []
+        for col_index, cell_rect in enumerate(getattr(row, "cells", []) or []):
+            if cell_rect is None:
+                continue
+            value = row_values[col_index] if col_index < len(row_values) else None
+            entries.append((col_index, fitz.Rect(cell_rect), value))
+        if entries:
+            raw_rows.append((row_index, entries))
+    if not raw_rows:
+        return []
+
+    if not text_strategy:
+        seen = set()
+        for row_index, entries in raw_rows:
+            for col_index, rect, _value in entries:
+                key = tuple(round(number, 3) for number in rect)
+                if key in seen:
+                    continue
+                seen.add(key)
+                extracted.append(
+                    {
+                        "row": row_index,
+                        "col": col_index,
+                        "rect": rect,
+                        "value": _value,
+                    }
+                )
+        return extracted
+
+    # Text strategy inserts empty separator rows and uses the next word's x as a
+    # column edge.  Keep only rows with visible content and rebuild conservative
+    # row/outer-column bounds.  This also captures a trailing unit which MuPDF's
+    # tight last-cell bbox can otherwise omit.
+    populated_rows = []
+    for _source_row, entries in raw_rows:
+        nonempty = [
+            (column, rect, value)
+            for column, rect, value in entries
+            if isinstance(value, str) and value.strip()
+        ]
+        if nonempty:
+            populated_rows.append(nonempty)
+    if len(populated_rows) < 2:
+        return []
+    column_count = (
+        max(
+            max(column for column, _rect, _value in row)
+            for row in populated_rows
+        )
+        + 1
+    )
+    starts = [None] * column_count
+    ends = [None] * column_count
+    for row in populated_rows:
+        for column, rect, _value in row:
+            starts[column] = (
+                rect.x0
+                if starts[column] is None
+                else min(starts[column], rect.x0)
+            )
+            ends[column] = (
+                rect.x1
+                if ends[column] is None
+                else max(ends[column], rect.x1)
+            )
+    if sum(value is not None for value in starts) < 2:
+        return []
+    known_starts = [value for value in starts if value is not None]
+    gaps = [b - a for a, b in zip(known_starts, known_starts[1:]) if b - a > 2]
+    typical_gap = sorted(gaps)[len(gaps) // 2] if gaps else 50.0
+    table_box = fitz.Rect(outer_rect or getattr(table, "bbox", (0, 0, 0, 0)))
+    x_bounds = [
+        table_box.x0
+        if outer_rect is not None
+        else max(0.0, known_starts[0] - 0.35 * typical_gap)
+    ]
+    for column in range(1, column_count):
+        start = starts[column]
+        if start is None:
+            return []
+        x_bounds.append(start)
+    x_bounds.append(
+        table_box.x1
+        if outer_rect is not None
+        else max(
+            max(value for value in ends if value is not None) + 3.0,
+            known_starts[-1] + 0.65 * typical_gap,
+        )
+    )
+
+    row_centres = []
+    for row in populated_rows:
+        row_centres.append(
+            sum((rect.y0 + rect.y1) / 2.0 for _column, rect, _value in row) / len(row)
+        )
+    y_bounds = []
+    if outer_rect is not None:
+        y_bounds.append(table_box.y0)
+    else:
+        first_heights = [rect.height for _column, rect, _value in populated_rows[0]]
+        y_bounds.append(row_centres[0] - 0.65 * max(first_heights or [10.0]))
+    for previous, current in zip(row_centres, row_centres[1:]):
+        y_bounds.append((previous + current) / 2.0)
+    if outer_rect is not None:
+        y_bounds.append(table_box.y1)
+    else:
+        last_heights = [rect.height for _column, rect, _value in populated_rows[-1]]
+        y_bounds.append(row_centres[-1] + 0.65 * max(last_heights or [10.0]))
+
+    for row_index, row in enumerate(populated_rows):
+        present = {column for column, _rect, _value in row}
+        for column in range(column_count):
+            if column not in present:
+                continue
+            rect = fitz.Rect(
+                x_bounds[column], y_bounds[row_index],
+                x_bounds[column + 1], y_bounds[row_index + 1],
+            )
+            if rect.width > 3 and rect.height > 3:
+                value = next(
+                    (
+                        row_value
+                        for row_column, _row_rect, row_value in row
+                        if row_column == column
+                    ),
+                    None,
+                )
+                extracted.append(
+                    {"row": row_index, "col": column, "rect": rect, "value": value}
+                )
+    return extracted
+
+
+def _table_layouts(page):
+    """Return deterministic, independently renderable table-cell geometry.
+
+    Default line detection handles full grids and merged cells.  The text strategy
+    is a fallback for booktabs and borderless tables, guarded by the conservative
+    validator above.  Any ruled region which cannot be decomposed safely is omitted
+    here but remains in ``_skip_regions`` as protected source content.
+    """
+    rule_regions = _validate_regions(page, _table_regions(page))
+    candidates = []
+
+    def matching_rule_region(rect):
+        matches = [
+            region
+            for region in rule_regions
+            if _rect_overlap_fraction(rect, region) >= 0.60
+        ]
+        return (
+            max(matches, key=lambda region: _rect_overlap_fraction(rect, region))
+            if matches
+            else None
+        )
+
+    finder = getattr(page, "find_tables", None)
+    if callable(finder):
+        try:
+            for table in (finder().tables or []):
+                rect = fitz.Rect(table.bbox)
+                if _region_has_non_table_art(page, rect):
+                    continue
+                cells = _finder_table_cells(table)
+                backed = matching_rule_region(rect) is not None
+                if _table_text_is_safe_candidate(
+                    page, cells, rect, text_strategy=False, backed_by_rules=backed
+                ):
+                    candidates.append({"rect": rect, "cells": cells, "strong": True})
+        except Exception:
+            pass
+        try:
+            for table in (finder(strategy="text").tables or []):
+                rect = fitz.Rect(table.bbox)
+                if _region_has_non_table_art(page, rect):
+                    continue
+                if any(
+                    _rect_overlap_fraction(rect, item["rect"]) >= 0.65
+                    for item in candidates
+                ):
+                    continue
+                rule_rect = matching_rule_region(rect)
+                cells = _finder_table_cells(
+                    table,
+                    text_strategy=True,
+                    outer_rect=rule_rect,
+                )
+                effective_rect = fitz.Rect(rule_rect or rect)
+                if _table_text_is_safe_candidate(
+                    page,
+                    cells,
+                    effective_rect,
+                    text_strategy=True,
+                    backed_by_rules=rule_rect is not None,
+                ):
+                    candidates.append(
+                        {
+                            "rect": effective_rect,
+                            "cells": cells,
+                            "strong": rule_rect is not None,
+                        }
+                    )
+        except Exception:
+            pass
+
+    # Stable order is part of the extract/render ID contract.
+    candidates.sort(
+        key=lambda item: (
+            item["rect"].y0,
+            item["rect"].x0,
+            item["rect"].y1,
+            item["rect"].x1,
+        )
+    )
+    out = []
+    for candidate in candidates:
+        if any(
+            _rect_overlap_fraction(candidate["rect"], prior["rect"]) >= 0.70
+            for prior in out
+        ):
+            continue
+        candidate["cells"].sort(
+            key=lambda cell: (
+                cell["row"],
+                cell["col"],
+                cell["rect"].y0,
+                cell["rect"].x0,
+            )
+        )
+        out.append(candidate)
+    return out
+
+
+def _table_cell_alignment(text_rect, cell_rect):
+    """Infer the source cell's left/centre/right anchor from its glyph bbox."""
+    text_rect = fitz.Rect(text_rect)
+    cell_rect = fitz.Rect(cell_rect)
+    centre_error = abs(
+        (text_rect.x0 + text_rect.x1) / 2.0
+        - (cell_rect.x0 + cell_rect.x1) / 2.0
+    )
+    if centre_error <= max(2.0, 0.08 * cell_rect.width):
+        return fitz.TEXT_ALIGN_CENTER
+    left_gap = max(0.0, text_rect.x0 - cell_rect.x0)
+    right_gap = max(0.0, cell_rect.x1 - text_rect.x1)
+    if right_gap <= max(3.0, 0.45 * left_gap):
+        return fitz.TEXT_ALIGN_RIGHT
+    return fitz.TEXT_ALIGN_LEFT
+
+
+_TABLE_LITERAL_TOKENS = {
+    "s", "ms", "us", "ns", "m", "cm", "mm", "km", "kg", "g", "mg",
+    "l", "ml", "mol", "mmol", "hz", "khz", "mhz", "v", "mv", "a",
+    "ma", "w", "kw", "j", "kj", "pa", "kpa", "mpa", "rpm", "ph", "id",
+}
+_TABLE_TRANSLATABLE_STATUS_TOKENS = frozenset(
+    {
+        "PASS", "FAIL", "OK", "HOLD", "YES", "NO", "TRUE", "FALSE",
+        "OPEN", "CLOSED", "DONE", "ERROR", "HIGH", "LOW",
+    }
+)
+_CHEMICAL_ELEMENT_SYMBOLS = frozenset(
+    """H He Li Be B C N O F Ne Na Mg Al Si P S Cl Ar K Ca Sc Ti V Cr Mn Fe Co Ni
+    Cu Zn Ga Ge As Se Br Kr Rb Sr Y Zr Nb Mo Tc Ru Rh Pd Ag Cd In Sn Sb Te I Xe Cs
+    Ba La Ce Pr Nd Pm Sm Eu Gd Tb Dy Ho Er Tm Yb Lu Hf Ta W Re Os Ir Pt Au Hg Tl Pb
+    Bi Po At Rn Fr Ra Ac Th Pa U Np Pu Am Cm Bk Cf Es Fm Md No Lr Rf Db Sg Bh Hs Mt
+    Ds Rg Cn Nh Fl Mc Lv Ts Og""".split()
+)
+
+
+def _looks_like_table_chemical_formula(text):
+    """Recognize a standalone elemental formula, not arbitrary uppercase prose."""
+    compact = re.sub(r"\s+", "", str(text or ""))
+    match = re.fullmatch(
+        r"((?:[A-Z][a-z]?\d*)+)((?:\d*[+\-−])|(?:[+\-−]\d*))?",
+        compact,
+    )
+    if not match:
+        return False
+    body, charge = match.groups()
+    parts = re.findall(r"([A-Z][a-z]?)(\d*)", body)
+    if not parts or any(symbol not in _CHEMICAL_ELEMENT_SYMBOLS for symbol, _n in parts):
+        return False
+    # A lone element name such as ``A`` is handled as an identifier below.  A
+    # molecular formula has multiple elements, a stoichiometric count, or charge.
+    return len(parts) >= 2 or any(number for _symbol, number in parts) or bool(charge)
+
+
+def _table_cell_requires_translation(text):
+    """Natural-language cells translate; measurements and IDs stay byte-exact."""
+    plain = " ".join(_strip_tags(str(text or "")).split())
+    if not plain or re.search(r"[\uac00-\ud7a3]", plain):
+        return False
+    upper_plain = plain.upper()
+    if upper_plain in _TABLE_TRANSLATABLE_STATUS_TOKENS:
+        return True
+    if _looks_like_table_chemical_formula(plain):
+        return False
+    if re.fullmatch(r"[A-Za-z]", plain):
+        return False
+    # Common row/sample keys combine a short alphabetic prefix with a serial
+    # number.  They are stable identifiers rather than natural-language cells.
+    if re.fullmatch(r"[A-Za-z]{1,4}\d+[A-Za-z0-9_.-]*", plain):
+        return False
+    words = re.findall(r"[A-Za-z][A-Za-z-]*", plain)
+    if not words:
+        return False
+    meaningful = [
+        word
+        for word in words
+        if word.lower() not in _TABLE_LITERAL_TOKENS
+    ]
+    # Single-letter row keys (A/B/C), formulas (NaCl), unit-only cells and numeric
+    # measurements remain in their original content streams and exact coordinates.
+    return any(
+        len(word) >= 2
+        and not (
+            any(char.islower() for char in word)
+            and re.fullmatch(r"(?:[A-Z][a-z]?){2,}", word)
+        )
+        for word in meaningful
+    )
+
+
+def _table_cell_blocks(page, page_number, layouts=None):
+    """Extract independently translatable cells with deterministic string IDs."""
+    out = []
+    try:
+        raw_data = page.get_text("rawdict")
+    except Exception:
+        raw_data = None
+    for table_index, table in enumerate(
+        _table_layouts(page) if layouts is None else layouts
+    ):
+        for cell in table["cells"]:
+            block = _raw_text_block_in_rect(page, cell["rect"], raw_data=raw_data)
+            if block is None:
+                continue
+            text = block_text(block, tag=True)
+            if not text.strip():
+                continue
+            source_rect = fitz.Rect(block["bbox"])
+            block_id = (
+                f"{_TABLE_BLOCK_PREFIX}p{page_number + 1:04d}:"
+                f"t{table_index:03d}:r{cell['row']:03d}:c{cell['col']:03d}"
+            )
+            size, color, bold, italic = dominant_size_color(block)
+            out.append(
+                {
+                    "id": block_id,
+                    "page": page_number,
+                    "text": text,
+                    "source_rect": source_rect,
+                    "cell_rect": fitz.Rect(cell["rect"]),
+                    "table_rect": fitz.Rect(table["rect"]),
+                    "align": _table_cell_alignment(source_rect, cell["rect"]),
+                    "size": size,
+                    "color": color,
+                    "bold": bold,
+                    "italic": italic,
+                    "translate": _table_cell_requires_translation(text),
+                }
+            )
+    return out
+
+
+def _figure_translation_regions(page, table_regions):
+    """Figure regions with table-shaped vector clusters removed.
+
+    A ruled table also satisfies the generic line-art figure heuristic.  Table-cell
+    rendering is allowed through that particular cluster, while a neighbouring
+    chart/image remains protected byte-for-byte.
+    """
+    figures = _validate_regions(page, _figure_regions(page))
+    return [
+        figure
+        for figure in figures
+        if not any(_rect_overlap_fraction(figure, table) >= 0.70 for table in table_regions)
+    ]
 
 
 def _prose_block_rects(page):
@@ -1110,10 +2131,418 @@ def _validate_regions(page, regions):
     return out
 
 
-def _skip_regions(page):
-    """번역 제외 영역 = 그림/그래프 + 표. 두 경우 모두 영역 안 텍스트는 영어 원본 유지.
-    단, 본문 산문을 삼키는 오검출 region 은 _validate_regions 가 걸러낸다(미번역 방지)."""
-    return _validate_regions(page, _figure_regions(page) + _table_regions(page))
+def _skip_regions(page, table_layouts=None):
+    """Ordinary-block exclusion regions: figures plus safely decomposed tables.
+
+    Ruled regions that remain geometrically ambiguous are still protected, while
+    validated borderless tables are added from ``_table_layouts`` so their merged
+    row blocks cannot be translated a second time as prose.
+    """
+    raw_tables = list(_table_regions(page))
+    layout_rects = []
+    try:
+        layouts = _table_layouts(page) if table_layouts is None else table_layouts
+        layout_rects = [fitz.Rect(table["rect"]) for table in layouts]
+    except Exception:
+        layouts = []
+    # A geometric rule candidate is protected only when the independent table
+    # finder validated it or its text itself proves repeated multi-column rows.
+    # This keeps ambiguous content fail-closed without hiding single-column prose
+    # panels from the translation payload.
+    tables = [
+        fitz.Rect(region)
+        for region in raw_tables
+        if any(_rect_overlap_fraction(region, layout) >= 0.60 for layout in layout_rects)
+        or _raw_table_region_has_repeated_multicolumn_evidence(page, region)
+    ]
+    tables.extend(layout_rects)
+    deduped_tables = []
+    for table in tables:
+        if any(_rect_overlap_fraction(table, prior) >= 0.90 for prior in deduped_tables):
+            continue
+        deduped_tables.append(fitz.Rect(table))
+    return _validate_regions(page, _figure_regions(page) + deduped_tables)
+
+
+# Page text is not the only user-visible language in a PDF.  Bookmark titles and
+# selected document-info fields are shown by every mainstream reader, so expose
+# natural-language values as deterministic virtual translation blocks.  The
+# namespace cannot collide with the integer ids produced by iter_text_blocks().
+_OUTLINE_BLOCK_PREFIX = "__pdf_outline__:"
+_METADATA_BLOCK_PREFIX = "__pdf_metadata__:"
+_TRANSLATABLE_METADATA_FIELDS = ("title", "subject", "keywords")
+_XMP_MAX_BYTES = 4 * 1024 * 1024
+_XMP_RDF_NS = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+_XMP_DC_NS = "http://purl.org/dc/elements/1.1/"
+_XMP_PDF_NS = "http://ns.adobe.com/pdf/1.3/"
+_XMP_XML_NS = "http://www.w3.org/XML/1998/namespace"
+_XMP_DESCRIPTION = f"{{{_XMP_RDF_NS}}}Description"
+_XMP_ALT = f"{{{_XMP_RDF_NS}}}Alt"
+_XMP_BAG = f"{{{_XMP_RDF_NS}}}Bag"
+_XMP_SEQ = f"{{{_XMP_RDF_NS}}}Seq"
+_XMP_LI = f"{{{_XMP_RDF_NS}}}li"
+_XMP_LANG = f"{{{_XMP_XML_NS}}}lang"
+_XMP_TARGET_PROPERTIES = {
+    f"{{{_XMP_DC_NS}}}title": "title",
+    f"{{{_XMP_DC_NS}}}description": "subject",
+    f"{{{_XMP_PDF_NS}}}Keywords": "keywords",
+    f"{{{_XMP_DC_NS}}}subject": "keywords",
+}
+_DEFAULT_METADATA_PLACEHOLDERS = {
+    ("title", "untitled"),
+    ("subject", "unspecified"),
+}
+
+
+def _is_natural_language_document_label(value, *, metadata_field=None):
+    """Conservatively identify user-facing English prose in a short label.
+
+    URLs, paths, identifiers, acronyms and PDF-generator placeholders are kept
+    byte-for-byte.  A normal one-word heading such as ``Introduction`` remains
+    eligible, while opaque values such as ``RFC``, ``sec_1`` and ``/Fit`` do not.
+    """
+    if not isinstance(value, str):
+        return False
+    text = value.strip()
+    if not text or len(text) > 4096:
+        return False
+    if metadata_field and (metadata_field, text.lower()) in _DEFAULT_METADATA_PLACEHOLDERS:
+        return False
+    if any(ord(ch) < 0x20 and ch not in "\t\n\r" for ch in text):
+        return False
+    if re.fullmatch(r"(?i)(?:https?|ftp|mailto|tel|file):\S+", text):
+        return False
+    if re.fullmatch(r"(?i)www\.\S+", text) or re.fullmatch(
+        r"[^\s@]+@[^\s@]+\.[^\s@]+", text
+    ):
+        return False
+    # A single path / identifier token is not prose.  Natural phrases may still
+    # contain punctuation ("Part I - Results") and are handled below.
+    if not re.search(r"\s", text) and (
+        re.search(r"[/\\_]", text)
+        or re.fullmatch(r"[A-Za-z]:.*", text)
+        or re.fullmatch(r"[A-Za-z0-9-]+\.[A-Za-z0-9]{1,8}", text)
+    ):
+        return False
+    words = re.findall(r"[A-Za-z]+(?:['’][A-Za-z]+)?", text)
+    lexical_words = [
+        word
+        for word in words
+        if len(re.sub(r"[^A-Za-z]", "", word)) >= 3
+        # Short all-caps tokens are normally acronyms (RFC, API, GPU).  Longer
+        # all-caps headings such as INTRODUCTION or RESULTS are natural language
+        # and must not escape translation merely because of typography.
+        and not re.fullmatch(r"[A-Z]{2,4}", word)
+    ]
+    return bool(lexical_words)
+
+
+def _outline_block_id(index):
+    return f"{_OUTLINE_BLOCK_PREFIX}{int(index):06d}"
+
+
+def _metadata_block_id(field):
+    return f"{_METADATA_BLOCK_PREFIX}{field}"
+
+
+def _xmp_encryption_applies(doc):
+    """Return whether the PDF encryption dictionary covers its metadata stream."""
+    try:
+        if bool(getattr(doc, "needs_pass", False)):
+            return True
+        value_type, value = doc.xref_get_key(-1, "Encrypt")
+    except Exception as exc:
+        raise RuntimeError("cannot inspect PDF metadata encryption state") from exc
+    if value_type in {"null", "none"} or str(value).strip() in {"", "null"}:
+        return False
+    match = re.fullmatch(r"\s*(\d+)\s+\d+\s+R\s*", str(value))
+    if value_type != "xref" or match is None:
+        raise RuntimeError("unsupported PDF encryption dictionary reference")
+    encrypt_xref = int(match.group(1))
+    try:
+        flag_type, flag_value = doc.xref_get_key(encrypt_xref, "EncryptMetadata")
+    except Exception as exc:
+        raise RuntimeError("cannot inspect PDF EncryptMetadata policy") from exc
+    # ISO 32000 defaults EncryptMetadata to true when the key is absent.
+    return not (
+        flag_type == "bool" and str(flag_value).strip().lower() == "false"
+    )
+
+
+def _parse_document_xmp(doc):
+    """Safely parse the source XMP packet, or fail before any output is produced.
+
+    XMP is untrusted upload data.  External entities, DTDs, oversized packets,
+    encrypted/inaccessible metadata streams, and malformed XML are rejected rather
+    than being silently dropped by ``set_metadata`` or a garbage-collecting save.
+    """
+    try:
+        xref = int(doc.xref_xml_metadata() or 0)
+    except Exception as exc:
+        raise RuntimeError("cannot locate PDF XMP metadata stream") from exc
+    if xref <= 0:
+        return None
+    if _xmp_encryption_applies(doc):
+        raise RuntimeError("encrypted PDF XMP metadata stream is not supported")
+    try:
+        if not doc.xref_is_stream(xref):
+            raise RuntimeError("PDF XMP metadata object is not a stream")
+        raw = bytes(doc.xref_stream(xref) or b"")
+    except RuntimeError:
+        raise
+    except Exception as exc:
+        raise RuntimeError("cannot read PDF XMP metadata stream") from exc
+    if not raw:
+        raise RuntimeError("PDF XMP metadata stream is empty")
+    if len(raw) > _XMP_MAX_BYTES:
+        raise RuntimeError(
+            f"PDF XMP metadata exceeds {_XMP_MAX_BYTES} byte safety limit"
+        )
+    if re.search(br"<!\s*(?:DOCTYPE|ENTITY)\b", raw, flags=re.IGNORECASE):
+        raise RuntimeError("PDF XMP metadata contains forbidden DTD/entity markup")
+    parser = etree.XMLParser(
+        resolve_entities=False,
+        no_network=True,
+        load_dtd=False,
+        huge_tree=False,
+        recover=False,
+        remove_blank_text=False,
+        strip_cdata=False,
+    )
+    try:
+        tree = etree.parse(io.BytesIO(raw), parser)
+    except (etree.XMLSyntaxError, ValueError, OSError) as exc:
+        raise RuntimeError("malformed PDF XMP metadata") from exc
+    if tree.docinfo.doctype:
+        raise RuntimeError("PDF XMP metadata contains a forbidden DTD")
+    return {"xref": xref, "raw": raw, "tree": tree}
+
+
+def _xmp_lang(element):
+    return str(element.get(_XMP_LANG) or "").strip().lower()
+
+
+def _xmp_text_value(element):
+    if len(element):
+        return None
+    value = str(element.text or "").strip()
+    return value or None
+
+
+def _xmp_candidate_bindings(state):
+    """Enumerate deterministic semantic XMP values and their mutable nodes.
+
+    RDF Alt policy: x-default is the reader-priority source when it is natural
+    language.  Otherwise the first eligible non-Korean alternative is translated.
+    Rendering updates a natural x-default, adds/replaces a ko-KR alternative, and
+    leaves every non-target language alternative unchanged.
+    """
+    if state is None:
+        return []
+    candidates = []
+    root = state["tree"].getroot()
+    for description in root.iter(_XMP_DESCRIPTION):
+        for qname, field in _XMP_TARGET_PROPERTIES.items():
+            value = description.get(qname)
+            if value is not None:
+                candidates.append(
+                    {
+                        "field": field,
+                        "text": str(value),
+                        "source": "xmp",
+                        "mode": "attribute",
+                        "element": description,
+                        "attribute": qname,
+                    }
+                )
+        for prop in description:
+            field = _XMP_TARGET_PROPERTIES.get(prop.tag)
+            if field is None:
+                continue
+            container = prop[0] if len(prop) == 1 else None
+            if container is not None and container.tag == _XMP_ALT:
+                alternatives = [child for child in container if child.tag == _XMP_LI]
+                x_default = next(
+                    (child for child in alternatives if _xmp_lang(child) == "x-default"),
+                    None,
+                )
+                selected = None
+                if x_default is not None and _is_natural_language_document_label(
+                    _xmp_text_value(x_default), metadata_field=field
+                ):
+                    selected = x_default
+                if selected is None:
+                    selected = next(
+                        (
+                            child
+                            for child in alternatives
+                            if not _xmp_lang(child).startswith("ko")
+                            and _is_natural_language_document_label(
+                                _xmp_text_value(child), metadata_field=field
+                            )
+                        ),
+                        None,
+                    )
+                if selected is not None:
+                    candidates.append(
+                        {
+                            "field": field,
+                            "text": str(_xmp_text_value(selected)),
+                            "source": "xmp",
+                            "mode": "alt",
+                            "element": prop,
+                            "container": container,
+                            "selected": selected,
+                        }
+                    )
+                continue
+            if container is not None and container.tag in {_XMP_BAG, _XMP_SEQ}:
+                for item in container:
+                    if item.tag != _XMP_LI:
+                        continue
+                    value = _xmp_text_value(item)
+                    if value is None:
+                        continue
+                    candidates.append(
+                        {
+                            "field": field,
+                            "text": value,
+                            "source": "xmp",
+                            "mode": "list_item",
+                            "element": item,
+                            "property": prop,
+                        }
+                    )
+                continue
+            value = _xmp_text_value(prop)
+            if value is not None:
+                candidates.append(
+                    {
+                        "field": field,
+                        "text": value,
+                        "source": "xmp",
+                        "mode": "text",
+                        "element": prop,
+                    }
+                )
+    return candidates
+
+
+def _metadata_decision_key(value):
+    return " ".join(str(value or "").split()).casefold()
+
+
+def _metadata_translation_plan(doc):
+    """Bind equivalent Info and XMP values to one translation decision."""
+    xmp_state = _parse_document_xmp(doc)
+    metadata = doc.metadata or {}
+    candidates = []
+    for field in _TRANSLATABLE_METADATA_FIELDS:
+        value = metadata.get(field)
+        if _is_natural_language_document_label(value, metadata_field=field):
+            candidates.append(
+                {
+                    "field": field,
+                    "text": str(value),
+                    "source": "info",
+                    "mode": "info",
+                }
+            )
+    candidates.extend(
+        candidate
+        for candidate in _xmp_candidate_bindings(xmp_state)
+        if _is_natural_language_document_label(
+            candidate.get("text"), metadata_field=candidate.get("field")
+        )
+    )
+
+    groups = []
+    by_field_key = {}
+    per_field_count = defaultdict(int)
+    for candidate in candidates:
+        field = str(candidate["field"])
+        key = (field, _metadata_decision_key(candidate["text"]))
+        group = by_field_key.get(key)
+        if group is None:
+            occurrence = per_field_count[field]
+            block_id = _metadata_block_id(field)
+            if occurrence:
+                block_id = f"{block_id}:xmp:{occurrence:04d}"
+            per_field_count[field] += 1
+            group = {
+                "id": block_id,
+                "page": None,
+                "text": str(candidate["text"]),
+                "kind": "metadata",
+                "field": field,
+                "bindings": [],
+            }
+            by_field_key[key] = group
+            groups.append(group)
+        group["bindings"].append(candidate)
+
+    blocks = []
+    for group in groups:
+        block = {key: value for key, value in group.items() if key != "bindings"}
+        block["metadata_sources"] = sorted(
+            {str(binding["source"]) for binding in group["bindings"]}
+        )
+        blocks.append(block)
+    return {"blocks": blocks, "groups": groups, "xmp": xmp_state}
+
+
+def _document_virtual_blocks(doc):
+    """Return outline blocks first, then selected metadata blocks, deterministically."""
+    blocks = []
+    for index, item in enumerate(doc.get_toc(simple=False) or []):
+        if len(item) < 3:
+            continue
+        level, title, page = item[:3]
+        title = str(title or "")
+        if not _is_natural_language_document_label(title):
+            continue
+        blocks.append(
+            {
+                "id": _outline_block_id(index),
+                "page": int(page),  # TOC page numbering is intentionally 1-based.
+                "text": title,
+                "kind": "outline",
+                "index": index,
+                "level": int(level),
+            }
+        )
+
+    blocks.extend(_metadata_translation_plan(doc)["blocks"])
+    return blocks
+
+
+def _page_is_truly_blank(page):
+    """Conservatively prove that a page has no visible/translatable payload.
+
+    This is intentionally stricter than the existing low-text ``scanned`` hint.
+    A raster image, vector drawing, annotation, link, formula text, or an inspection
+    error means the page is *not* blank and must never be silently passed through as
+    an empty large-document chunk.
+    """
+    try:
+        if str(page.get_text("text") or "").strip():
+            return False
+        if page.get_images(full=True):
+            return False
+        if page.get_drawings():
+            return False
+        if _raw_annotation_xrefs(page.parent, page):
+            return False
+        # Shadings or other unsupported operators may not appear in get_drawings().
+        # A low-resolution white-page proof catches those without expensive output
+        # rendering.  Accept only an entirely white RGB raster.
+        if not _pixmap_geometry_is_safe(page.rect, 0.25):
+            return False
+        pix = page.get_pixmap(matrix=fitz.Matrix(0.25, 0.25), colorspace=fitz.csRGB, alpha=False)
+        samples = bytes(pix.samples)
+        return bool(samples) and min(samples) == 255
+    except Exception:
+        return False
 
 
 def cmd_extract(pdf_path):
@@ -1123,11 +2552,28 @@ def cmd_extract(pdf_path):
     total_text_chars = 0
     # 페이지별 figure 영역(이미지 + 그래프 라인아트) 캐시 — 그림 위 텍스트 판별용.
     page_cache = {}
+    table_cell_cache = {}
+    table_layout_cache = {}
+
+    def table_layouts(pno):
+        if pno not in table_layout_cache:
+            table_layout_cache[pno] = _table_layouts(doc[pno])
+        return table_layout_cache[pno]
 
     def regions(pno):
         if pno not in page_cache:
-            page_cache[pno] = _skip_regions(doc[pno])  # 그림 + 표
+            page_cache[pno] = _skip_regions(
+                doc[pno], table_layouts(pno)
+            )  # 그림 + 표
         return page_cache[pno]
+
+    def table_cells(pno):
+        if pno not in table_cell_cache:
+            _use_page(pno)
+            table_cell_cache[pno] = _table_cell_blocks(
+                doc[pno], pno, table_layouts(pno)
+            )
+        return table_cell_cache[pno]
 
     # 표시수식 band 선계산 — 식 [6.1] 처럼 본체(= 든 수식 줄)는 원본유지(KEEP)되지만
     # 분자/첨자 조각(en·nn·0·A·B·r 등 Sabon 일반폰트, 수식기호 없음)은 KEEP 에 안
@@ -1196,6 +2642,23 @@ def cmd_extract(pdf_path):
         # 태그 없는 clean text 로 한다(태그가 길이·단어수 판정을 흔들지 않게).
         text_tagged = block_text(block, regs, tag=True)
         blocks.append({"id": bid, "page": pno, "text": text_tagged})
+    # A table is not a figure: expose every non-empty cell as its own translation
+    # unit. Numeric / identifier / unit-only cells deliberately stay in their
+    # original streams, preserving exact values and coordinates.
+    table_cell_count = 0
+    for pno in range(len(doc)):
+        for cell in table_cells(pno):
+            if not cell["translate"]:
+                continue
+            blocks.append(
+                {"id": cell["id"], "page": pno, "text": cell["text"]}
+            )
+            total_text_chars += len(_strip_tags(cell["text"]))
+            table_cell_count += 1
+    page_block_count = len(blocks)
+    # Page blocks must remain first because existing prompt batching and diagnostics
+    # use visual reading order.  Reader UI strings follow in their stable namespace.
+    blocks.extend(_document_virtual_blocks(doc))
     # 텍스트가 거의 없으면 스캔본(글자가 이미지)일 가능성이 높다 → Node가 안내.
     scanned = len(doc) > 0 and total_text_chars < 20 * len(doc)
     # 진단: 그림/표 영역 감지 수 + PyMuPDF 버전(서버/로컬 동작 차이 추적용)
@@ -1211,12 +2674,19 @@ def cmd_extract(pdf_path):
         fitz_ver = fitz.version[0]
     except Exception:
         fitz_ver = "?"
+    truly_blank = bool(len(doc)) and page_block_count == 0 and all(
+        _page_is_truly_blank(doc[page_number]) for page_number in range(len(doc))
+    )
     out = {
         "page_count": len(doc),
         "scanned": scanned,
+        "truly_blank": truly_blank,
         "blocks": blocks,
+        "page_block_count": page_block_count,
+        "virtual_block_count": len(blocks) - page_block_count,
         "fig_regions": fig_regions,
         "table_regions": table_regions,
+        "table_cell_count": table_cell_count,
         "fitz": fitz_ver,
     }
     write_json_response(out)
@@ -1457,65 +2927,175 @@ def cmd_pagetext(pdf_path, max_chars_per_page=3500):
     doc.close()
 
 
+RASTER_TARGET_WIDTH_MIN = 600
+RASTER_TARGET_WIDTH_MAX = 2400
+RASTER_MIN_SAFE_ZOOM = 0.25
+RASTER_MAX_TILES_PER_PAGE = 30
+RASTER_MAX_TILES_TOTAL = 100
+RASTER_MAX_TILE_PIXEL_DIMENSION = SAFE_PIXMAP_MAX_DIMENSION
+RASTER_MAX_TILE_PIXEL_AREA = SAFE_PIXMAP_MAX_AREA
+RASTER_MAX_PAGE_PIXEL_AREA = 32_000_000
+RASTER_MAX_BATCH_PIXEL_AREA = 96_000_000
+
+
+def _plan_raster_page_tiles(w_pt, h_pt, target_width_px):
+    """Plan bounded OCR raster tiles without allocating a pixmap.
+
+    Untrusted PDFs can declare page boxes hundreds of thousands of points wide
+    or tall.  PyMuPDF would otherwise allocate that geometry before the later
+    compressed-byte checks run.  This planner is the pre-allocation boundary
+    shared by every page in :func:`cmd_rasterize`.
+    """
+
+    w_pt = float(w_pt)
+    h_pt = float(h_pt)
+    if (
+        not math.isfinite(w_pt)
+        or not math.isfinite(h_pt)
+        or w_pt <= 0
+        or h_pt <= 0
+    ):
+        raise ValueError("page has invalid OCR raster geometry")
+    target_width_px = max(
+        RASTER_TARGET_WIDTH_MIN,
+        min(int(target_width_px), RASTER_TARGET_WIDTH_MAX),
+    )
+    # Downscale wide pages instead of the historical zoom>=1 behavior that
+    # could request a 100,000px-wide pixmap.  Extremely small scales are
+    # rejected because they are neither numerically safe nor readable OCR.
+    zoom = min(target_width_px / w_pt, 4.0)
+    if not math.isfinite(zoom) or zoom < RASTER_MIN_SAFE_ZOOM:
+        raise ValueError("page geometry requires an unsafe OCR raster zoom")
+    predicted_width = max(1, math.ceil(w_pt * zoom))
+    if predicted_width > RASTER_MAX_TILE_PIXEL_DIMENSION:
+        raise ValueError("page requires an over-wide OCR raster pixmap")
+
+    tile_height_pt = 1800.0 / zoom
+    tile_count = max(1, math.ceil(h_pt / (tile_height_pt * 1.15)))
+    if tile_count > RASTER_MAX_TILES_PER_PAGE:
+        raise ValueError("page requires too many OCR raster tiles")
+    segment_height = h_pt / tile_count
+    tiles = []
+    page_pixels = 0
+    for tile_index in range(tile_count):
+        # OCR provenance requires an exact partition of the PDF page: every
+        # point is rendered once, with neither an unproved gap nor duplicated
+        # overlap.  The model prompt still treats consecutive images as one
+        # ordered page, so overlap is not needed for reading-order recovery.
+        y0 = segment_height * tile_index
+        y1 = h_pt if tile_index == tile_count - 1 else segment_height * (tile_index + 1)
+        predicted_height = max(1, math.ceil((y1 - y0) * zoom))
+        tile_pixels = predicted_width * predicted_height
+        if (
+            predicted_height > RASTER_MAX_TILE_PIXEL_DIMENSION
+            or tile_pixels > RASTER_MAX_TILE_PIXEL_AREA
+        ):
+            raise ValueError("page requires an oversized OCR raster tile")
+        page_pixels += tile_pixels
+        tiles.append(
+            {
+                "index": tile_index,
+                "y0": y0,
+                "y1": y1,
+                "predicted_width": predicted_width,
+                "predicted_height": predicted_height,
+                "predicted_pixels": tile_pixels,
+            }
+        )
+    if page_pixels > RASTER_MAX_PAGE_PIXEL_AREA:
+        raise ValueError("page exceeds the OCR raster pixel budget")
+    return {
+        "zoom": zoom,
+        "width": predicted_width,
+        "tiles": tiles,
+        "predicted_pixels": page_pixels,
+    }
+
+
 def cmd_rasterize(pdf_path, out_dir, target_width_px=1400, max_pages=20):
     """각 페이지를 가독 가능한 PNG 타일로 렌더링한다(스캔본을 Claude 비전으로 읽히기 위함).
 
     핵심: 일부 PDF(문제집 등)는 한 페이지가 세로로 매우 길다(예: 958×11833). 이를 한 장
     이미지로 보내면 Claude 가 긴 변을 1568px 로 줄여 글자가 다시 뭉개진다. 그래서 폭을
     가독 해상도(≈target_width_px)로 맞춰 렌더하되, 세로로 긴 페이지는 페이지 모양 타일로
-    잘라(겹침 포함) 각각 저장한다. clip 렌더라 거대한 픽스맵을 만들지 않는다."""
-    target_width_px = int(target_width_px)
+    잘라(빈틈·겹침 없이) 각각 저장한다. clip 렌더라 거대한 픽스맵을 만들지 않는다."""
+    target_width_px = max(
+        RASTER_TARGET_WIDTH_MIN,
+        min(int(target_width_px), RASTER_TARGET_WIDTH_MAX),
+    )
     max_pages = int(max_pages)
-    tile_h_px = 1800       # 타일 1장의 최대 높이(px)
-    overlap_px = 130       # 타일 경계에서 줄이 잘리지 않도록 겹침
-    max_tiles_per_page = 30
-    max_tiles_total = 100
     os.makedirs(out_dir, exist_ok=True)
     doc = fitz.open(pdf_path)
-    n = len(doc)
-    rendered = min(n, max_pages)
-    files = []
-    truncated = n > rendered
-    for i in range(rendered):
-        if len(files) >= max_tiles_total:
-            truncated = True
-            break
-        page = doc[i]
-        rect = page.rect
-        w_pt = rect.width or 612.0
-        h_pt = rect.height or 792.0
-        zoom = target_width_px / w_pt
-        zoom = max(1.0, min(zoom, 4.0))
-        mat = fitz.Matrix(zoom, zoom)
-        tile_h_pt = tile_h_px / zoom
-        overlap_pt = overlap_px / zoom
-        # 타일 수를 먼저 정해 '균등 분할'한다 → 얇은 자투리(앞 타일과 중복) 방지.
-        # 1.15 여유: 한 타일보다 조금 더 긴 페이지(일반 A4 등)는 자르지 않고 1장으로.
-        n_tiles = max(1, int(-(-h_pt // (tile_h_pt * 1.15))))  # ceil
-        n_tiles = min(n_tiles, max_tiles_per_page)
-        seg_pt = h_pt / n_tiles
-        for t in range(n_tiles):
-            if len(files) >= max_tiles_total:
+    try:
+        n = len(doc)
+        planned_pages = min(n, max_pages)
+        rendered_pages = 0
+        files = []
+        pages = []
+        truncated = n > planned_pages
+        batch_pixels = 0
+        for i in range(planned_pages):
+            page = doc[i]
+            rect = page.rect
+            plan = _plan_raster_page_tiles(
+                rect.width or 612.0,
+                rect.height or 792.0,
+                target_width_px,
+            )
+            if len(files) + len(plan["tiles"]) > RASTER_MAX_TILES_TOTAL:
                 truncated = True
                 break
-            y0 = max(0.0, seg_pt * t - overlap_pt / 2)
-            y1 = min(h_pt, seg_pt * (t + 1) + overlap_pt / 2)
-            clip = fitz.Rect(rect.x0, rect.y0 + y0, rect.x1, rect.y0 + y1)
-            pix = page.get_pixmap(matrix=mat, clip=clip, alpha=False)
-            out_path = os.path.join(out_dir, f"p-{i:03d}-{t:02d}.png")
-            pix.save(out_path)
-            files.append(out_path)
-    write_json_response(
-        {
-            "page_count": n,
-            "rendered_pages": rendered,
-            "tiles": len(files),
-            "truncated": truncated,
-            "target_width_px": target_width_px,
-            "files": files,
-        }
-    )
-    doc.close()
+            if batch_pixels + plan["predicted_pixels"] > RASTER_MAX_BATCH_PIXEL_AREA:
+                raise ValueError("OCR raster batch exceeds the pixel budget")
+            batch_pixels += plan["predicted_pixels"]
+            mat = fitz.Matrix(plan["zoom"], plan["zoom"])
+            page_tiles = []
+            for tile in plan["tiles"]:
+                clip = fitz.Rect(
+                    rect.x0,
+                    rect.y0 + tile["y0"],
+                    rect.x1,
+                    rect.y0 + tile["y1"],
+                )
+                pix = page.get_pixmap(matrix=mat, clip=clip, alpha=False)
+                out_path = os.path.join(
+                    out_dir,
+                    f"p-{i:03d}-{tile['index']:02d}.png",
+                )
+                pix.save(out_path)
+                files.append(out_path)
+                page_tiles.append(
+                    {
+                        "index": tile["index"],
+                        "bbox": [0.0, tile["y0"], float(rect.width), tile["y1"]],
+                        "width": int(pix.width),
+                        "height": int(pix.height),
+                        "file": out_path,
+                    }
+                )
+            pages.append(
+                {
+                    "index": i,
+                    "width": float(rect.width),
+                    "height": float(rect.height),
+                    "rotation": int(page.rotation or 0),
+                    "tiles": page_tiles,
+                }
+            )
+            rendered_pages += 1
+        write_json_response(
+            {
+                "page_count": n,
+                "rendered_pages": rendered_pages,
+                "tiles": len(files),
+                "truncated": truncated,
+                "target_width_px": target_width_px,
+                "files": files,
+                "pages": pages,
+            }
+        )
+    finally:
+        doc.close()
 
 
 def _color01(c):
@@ -1540,30 +3120,267 @@ def _detect_align(rect, page_width, single_line=False, is_heading=False):
     w = rect.x1 - rect.x0
     left = rect.x0
     right = page_width - rect.x1
-    if is_heading:
-        # 헤딩: justify 금지. 좌우 여백이 거의 대칭이면 가운데, 그 외엔 왼쪽.
-        if (
-            w < 0.9 * page_width
-            and left > 0.12 * page_width
-            and abs(left - right) < 0.10 * page_width
-        ):
-            return fitz.TEXT_ALIGN_CENTER
-        return fitz.TEXT_ALIGN_LEFT
+    # Tight glyph bboxes do not encode alignment directly, but their page anchors do:
+    # balanced margins imply centered text, while a narrow bbox touching the right
+    # page margin is a right-aligned running header / footer.  These checks happen
+    # before the heading / single-line branches so those anchors survive translation.
+    center_width_limit = (0.9 if is_heading else 0.62) * page_width
     if (
-        w < 0.62 * page_width
-        and left > 0.15 * page_width
-        and abs(left - right) < 0.06 * page_width
+        w < center_width_limit
+        and left > 0.08 * page_width
+        and right > 0.08 * page_width
+        and abs(left - right) < 0.08 * page_width
     ):
         return fitz.TEXT_ALIGN_CENTER
-    # 좁은 칼럼(저자·소속·짧은 라벨; 본문 단보다 좁음)은 justify 하면 단어가 크게
-    # 벌어진다('Google   Brain') → 가운데 정렬. 본문 단(2단≈0.4W, 1단≈0.7W)은 제외.
-    if w < 0.30 * page_width:
-        return fitz.TEXT_ALIGN_CENTER
+    if (
+        w < 0.62 * page_width
+        and right < 0.12 * page_width
+        and left > 0.38 * page_width
+    ):
+        return fitz.TEXT_ALIGN_RIGHT
+    if is_heading:
+        # 헤딩: justify 금지. 중앙/우측 정렬은 위의 기하 신호로 이미 처리했다.
+        return fitz.TEXT_ALIGN_LEFT
     if single_line:
-        return (
-            fitz.TEXT_ALIGN_CENTER if w < 0.5 * page_width else fitz.TEXT_ALIGN_LEFT
-        )
+        return fitz.TEXT_ALIGN_LEFT
+    # 좁은 왼쪽/오른쪽 column의 짧은 여러 줄도 강제 justify하지 않는다.
+    if w < 0.35 * page_width:
+        return fitz.TEXT_ALIGN_LEFT
     return fitz.TEXT_ALIGN_JUSTIFY
+
+
+def _is_prose_text(text):
+    """Conservative prose signal used only for layout bounds / alignment.
+
+    Identifiers, URLs, equations and short running labels must keep their dedicated
+    anchor behavior.  Ordinary sentences have either several lexical tokens or a
+    sufficiently long CJK run with sentence punctuation.
+    """
+    plain = " ".join(_strip_tags(str(text or "")).split())
+    if not plain or re.match(r"^(?:https?|mailto):", plain, re.I):
+        return False
+    words = re.findall(r"[A-Za-z]{2,}|[\uac00-\ud7a3]{2,}", plain)
+    if len(words) >= 4:
+        return True
+    letters = sum(1 for ch in plain if ch.isalpha())
+    return letters >= 24 and bool(re.search(r"[.!?;:。！？]", plain))
+
+
+def _infer_column_right_caps(items, page):
+    """Infer a fail-safe right edge for body prose in each source x-band.
+
+    A tight glyph bbox is not a license to expand all the way to the physical page
+    edge.  Doing so reduced fixture-01's right margin from 48pt to 6pt and allowed a
+    left-column paragraph to trespass into the right column.  We cluster body prose
+    with similar source ``x0`` values and cap redraw at that band's observed maximum
+    ``x1`` plus a small metric allowance.  A one-off narrow label is never treated as
+    a column; a single genuinely wide paragraph is.
+
+    Return ``{block_id: max_x}`` so callers can retain all other obstacle limits.
+    """
+    page_rect = _page_text_rect(page)
+    width = max(1.0, page_rect.width)
+    height = max(1.0, page_rect.height)
+    candidates = []
+    for item in items:
+        rect, text, _size, _color, _bold, _italic, block_id = item
+        rect = fitz.Rect(rect)
+        cy = (rect.y0 + rect.y1) / 2.0
+        if cy < page_rect.y0 + 0.07 * height or cy > page_rect.y1 - 0.07 * height:
+            continue
+        if not _is_prose_text(text):
+            continue
+        if rect.width < 0.16 * width and len(_strip_tags(str(text))) < 42:
+            continue
+        candidates.append((rect, block_id))
+    if not candidates:
+        return {}
+
+    tolerance = max(6.0, 0.025 * width)
+    groups = []
+    for rect, block_id in sorted(candidates, key=lambda value: value[0].x0):
+        chosen = None
+        for group in groups:
+            if abs(rect.x0 - group["anchor"]) <= tolerance:
+                chosen = group
+                break
+        if chosen is None:
+            chosen = {"anchor": rect.x0, "items": []}
+            groups.append(chosen)
+        chosen["items"].append((rect, block_id))
+        chosen["anchor"] = sum(r.x0 for r, _bid in chosen["items"]) / len(
+            chosen["items"]
+        )
+
+    eligible = []
+    for group in groups:
+        rects = [rect for rect, _bid in group["items"]]
+        if len(rects) >= 3 or max(rect.width for rect in rects) >= 0.42 * width:
+            eligible.append(group)
+    eligible.sort(key=lambda group: group["anchor"])
+    if not eligible:
+        return {}
+
+    allowance = max(4.0, min(8.0, 0.015 * width))
+    gutter = max(8.0, 0.02 * width)
+    caps = {}
+    for index, group in enumerate(eligible):
+        rects = [rect for rect, _bid in group["items"]]
+        observed_right = max(rect.x1 for rect in rects)
+        cap = min(page_rect.x1 - 6.0, observed_right + allowance)
+        # A left-anchored single column should at least preserve a symmetric outer
+        # margin.  ``min`` keeps the stricter observed-envelope cap for short lines.
+        if group["anchor"] <= page_rect.x0 + 0.25 * width:
+            symmetric = page_rect.x1 - max(6.0, group["anchor"] - page_rect.x0)
+            cap = min(cap, symmetric)
+        if index + 1 < len(eligible):
+            next_anchor = eligible[index + 1]["anchor"]
+            if next_anchor - group["anchor"] >= 0.20 * width:
+                cap = min(cap, next_anchor - gutter)
+        cap = max(observed_right, cap)
+        for _rect, block_id in group["items"]:
+            caps[block_id] = cap
+    return caps
+
+
+def _body_prose_must_not_be_right_aligned(rect, text, page):
+    """Guard against mistaking a right-column sentence for a running label."""
+    if not _is_prose_text(text):
+        return False
+    page_rect = _page_text_rect(page)
+    cy = (rect.y0 + rect.y1) / 2.0
+    return page_rect.y0 + 0.07 * page_rect.height <= cy <= page_rect.y1 - 0.07 * page_rect.height
+
+
+# GPOS/GSUB carry the shaping/positioning rules that must survive subsetting.
+# fontTools legitimately removes GDEF when no retained glyph participates in its
+# mark/ligature classes, so requiring an empty GDEF would reject plain Hangul text.
+_REQUIRED_FONT_LAYOUT_TABLES = frozenset({"GPOS", "GSUB"})
+
+
+def _font_unicode_coverage(ttfont):
+    """Return every Unicode scalar mapped by any Unicode cmap in ``ttfont``."""
+    coverage = set()
+    cmap = ttfont.get("cmap")
+    if cmap is None:
+        return coverage
+    for table in cmap.tables:
+        try:
+            if table.isUnicode():
+                coverage.update(int(cp) for cp in table.cmap)
+        except Exception:
+            continue
+    return coverage
+
+
+def _subset_font_bytes(font_path, requested_codepoints, label):
+    """Create a deterministic, in-memory Unicode subset for one bundled font.
+
+    Full CJK fonts make MuPDF emit invalid five-hex-digit ToUnicode destinations
+    for unused non-BMP cmap entries. Pre-subsetting to the exact text repertoire
+    prevents that corruption and keeps each rendered PDF small. A failed subset is
+    fatal: silently embedding the full font would recreate the broken CMap.
+    """
+    try:
+        from fontTools import subset
+        from fontTools.ttLib import TTFont
+    except Exception as exc:
+        raise RuntimeError(
+            "fontTools is required for safe PDF text-layer font subsetting"
+        ) from exc
+
+    path = os.path.abspath(font_path)
+    if not os.path.isfile(path):
+        raise RuntimeError(f"required {label} font is missing: {path}")
+    try:
+        with open(path, "rb") as handle:
+            source_bytes = handle.read()
+        source = TTFont(io.BytesIO(source_bytes), recalcTimestamp=False, lazy=False)
+        source_coverage = _font_unicode_coverage(source)
+        if 0x20 not in source_coverage:
+            raise RuntimeError("font does not map U+0020 SPACE")
+        original_layout = _REQUIRED_FONT_LAYOUT_TABLES.intersection(source.keys())
+        original_weight = int(source["OS/2"].usWeightClass)
+        original_mac_style = int(source["head"].macStyle)
+
+        options = subset.Options()
+        options.recalc_timestamp = False
+        options.layout_features = ["*"]
+        options.name_IDs = [0, 1, 2, 3, 4, 5, 6, 16, 17, 21, 22, 25]
+        options.name_legacy = True
+        options.name_languages = [0x409]
+        options.notdef_glyph = True
+        options.notdef_outline = True
+        options.glyph_names = True
+
+        wanted = set(int(cp) for cp in requested_codepoints)
+        wanted.discard(0x00A0)  # never reintroduce NBSP's duplicate space mapping
+        wanted.add(0x20)
+        present = wanted.intersection(source_coverage)
+        worker = subset.Subsetter(options=options)
+        worker.populate(unicodes=present)
+        worker.subset(source)
+
+        output = io.BytesIO()
+        source.save(output, reorderTables=True)
+        subset_bytes = output.getvalue()
+        source.close()
+
+        check = TTFont(io.BytesIO(subset_bytes), recalcTimestamp=False, lazy=False)
+        subset_coverage = _font_unicode_coverage(check)
+        missing = present.difference(subset_coverage)
+        lost_layout = original_layout.difference(check.keys())
+        if missing:
+            preview = ", ".join(f"U+{cp:04X}" for cp in sorted(missing)[:8])
+            raise RuntimeError(f"subset lost required glyph mappings: {preview}")
+        if lost_layout:
+            raise RuntimeError(
+                "subset lost required layout tables: " + ", ".join(sorted(lost_layout))
+            )
+        if int(check["OS/2"].usWeightClass) != original_weight:
+            raise RuntimeError("subset changed OS/2 font weight metadata")
+        if int(check["head"].macStyle) != original_mac_style:
+            raise RuntimeError("subset changed head.macStyle metadata")
+        check.close()
+        return subset_bytes, subset_coverage
+    except Exception as exc:
+        if isinstance(exc, RuntimeError) and str(exc).startswith("required "):
+            raise
+        raise RuntimeError(f"safe {label} font subsetting failed: {exc}") from exc
+
+
+def _contains_hangul(text):
+    return any(
+        (0x1100 <= ord(ch) <= 0x11FF)
+        or (0x3130 <= ord(ch) <= 0x318F)
+        or (0xA960 <= ord(ch) <= 0xA97F)
+        or (0xAC00 <= ord(ch) <= 0xD7AF)
+        or (0xD7B0 <= ord(ch) <= 0xD7FF)
+        for ch in text
+    )
+
+
+def _font_for_character(ch, primary, fallback_fonts=()):
+    """Choose a bundled subset font for one rendered character, fail closed."""
+    cp = ord(ch)
+    for candidate in (primary, *fallback_fonts):
+        if candidate is not None and candidate.has_glyph(cp):
+            return candidate
+    raise RuntimeError(f"bundled PDF fonts do not cover U+{cp:04X}")
+
+
+def _text_length_with_fonts(text, fontsize, primary, fallback_fonts=()):
+    total = 0.0
+    for ch in text:
+        if ch in "\r\n":
+            continue
+        chosen = _font_for_character(ch, primary, fallback_fonts)
+        total += chosen.text_length(ch, fontsize=fontsize)
+    return total
+
+
+def _font_covers_text(font, text):
+    return all(ch.isspace() or font.has_glyph(ord(ch)) for ch in text)
 
 
 def _has_leftover(ret):
@@ -1575,6 +3392,27 @@ def _has_leftover(ret):
     if isinstance(ret, (list, tuple)):
         return any(_has_leftover(x) for x in ret)
     return bool(ret)
+
+
+def _draw_result(
+    drawn=False,
+    complete=False,
+    shrunk=False,
+    min_font=None,
+    min_glyph_font=None,
+):
+    """텍스트 그리기 결과를 호출부가 손실 없이 판정할 수 있는 공통 형식으로 반환한다."""
+    return {
+        "drawn": bool(drawn),
+        "complete": bool(complete),
+        "shrunk": bool(shrunk),
+        "min_font": round(float(min_font), 2) if min_font is not None else None,
+        "min_glyph_font": (
+            round(float(min_glyph_font), 2)
+            if min_glyph_font is not None
+            else (round(float(min_font), 2) if min_font is not None else None)
+        ),
+    }
 
 
 def _draw_fit(
@@ -1605,8 +3443,9 @@ def _draw_fit(
     rect = fitz.Rect(rect)
     rect.normalize()
     if rect.width < 2 or rect.height < 1:
-        return False
-    page_rect = page.rect
+        return _draw_result()
+    page_rect = _page_text_rect(page)
+    writer_rect = fitz.Rect(page.rect)
     # 확장 상한 = 이웃 블록(없으면 페이지 여백). 최소 원래 크기는 보장.
     mx = max(rect.x1, max_x if max_x is not None else page_rect.x1 - 6)
     my = max(rect.y1, max_y if max_y is not None else page_rect.y1 - 6)
@@ -1641,7 +3480,11 @@ def _draw_fit(
 
     def _try_fill(r, fs):
         try:
-            tw = fitz.TextWriter(page_rect)
+            # TextWriter's mediabox must be ``page.rect`` (rotated display space),
+            # even though append / extraction coordinates are CropBox-relative.
+            # Passing the unrotated text rect makes 90-degree pages transform or
+            # clip inserted text incorrectly.
+            tw = fitz.TextWriter(writer_rect)
             leftover = tw.fill_textbox(r, text, font=font, fontsize=fs, align=align)
             return tw, leftover
         except (ValueError, RuntimeError):
@@ -1651,10 +3494,14 @@ def _draw_fit(
         if morph is not None:
             try:
                 tw.write_text(page, color=color, morph=morph)
-                return
+                return True
             except Exception:
                 pass  # morph 실패 시 일반 그리기로 폴백
-        tw.write_text(page, color=color)
+        try:
+            tw.write_text(page, color=color)
+            return True
+        except Exception:
+            return False
 
     fs = max(min_size, min(float(start_size), 400.0))
     # 가독성 바닥: 본문(원본 9pt+)은 원래 크기의 62% 아래로는 줄이지 않는다 — '깨알
@@ -1663,8 +3510,13 @@ def _draw_fit(
     while fs >= floor:
         res = _try_fill(_expand(rect, fs), fs)
         if res is not None and not _has_leftover(res[1]):
-            _commit(res[0])
-            return fs < float(start_size) - 0.01
+            drawn = _commit(res[0])
+            return _draw_result(
+                drawn=drawn,
+                complete=drawn,
+                shrunk=fs < float(start_size) - 0.01,
+                min_font=fs,
+            )
         fs -= 0.5
     # 바닥에서도 안 들어가면: 글자 잘림(내용 손실)이 깨알보다 나쁘므로 min_size 까지
     # 더 줄여 전부 담는다(이 경우는 F5 문단병합·F1 세로압축 후엔 드물다).
@@ -1672,18 +3524,39 @@ def _draw_fit(
     while fs >= min_size:
         res = _try_fill(_expand(rect, fs), fs)
         if res is not None and not _has_leftover(res[1]):
-            _commit(res[0])
-            return True
+            drawn = _commit(res[0])
+            return _draw_result(
+                drawn=drawn,
+                complete=drawn,
+                shrunk=True,
+                min_font=fs,
+            )
         fs -= 0.5
-    # 그래도 안 들어가면 들어가는 만큼이라도(예외 무시 → render 전체는 계속).
+    # 그래도 안 들어가면 기존처럼 들어가는 만큼은 그리되 complete=False 로 기록한다.
+    # Node 품질 게이트가 이 PDF를 사용자 결과로 내보내지 않는다.
     res = _try_fill(_expand(rect, min_size), min_size)
     if res is not None:
-        _commit(res[0])
-    return True
+        drawn = _commit(res[0])
+        return _draw_result(
+            drawn=drawn,
+            complete=drawn and not _has_leftover(res[1]),
+            shrunk=min_size < float(start_size) - 0.01,
+            min_font=min_size,
+        )
+    return _draw_result(
+        drawn=False,
+        complete=False,
+        shrunk=min_size < float(start_size) - 0.01,
+        min_font=min_size,
+    )
 
 
 _TAG_RE = re.compile(r"<(sub|sup)>(.*?)</\1>", re.DOTALL)
 _STRIP_TAG_RE = re.compile(r"</?(?:sub|sup)>")
+_RICH_ZERO_ADVANCE_GAP = "\x00"
+_CHARGE_GAP_RE = re.compile(
+    r"(?<=</sub>)[ \t]+(?=<sup>(?:\d+[+\-−]|[+\-−])</sup>)"
+)
 
 
 def _strip_tags(s):
@@ -1695,59 +3568,94 @@ def _has_tags(s):
     return "<sub>" in s or "<sup>" in s
 
 
+def _translation_codepoints(by_page):
+    """Exact printable repertoire that the renderer may place into the PDF."""
+    codepoints = {0x20}
+    for items in by_page.values():
+        for _rect, text, _size, _color, _bold, _ital, _bid in items:
+            for ch in _strip_tags(text):
+                if ch.isspace():
+                    codepoints.add(0x20)
+                    continue
+                cp = ord(ch)
+                if cp > 0xFFFF:
+                    raise ValueError(
+                        f"unsupported non-BMP translation character U+{cp:06X}; "
+                        "safe ToUnicode output is limited to BMP characters"
+                    )
+                codepoints.add(cp)
+    codepoints.discard(0x00A0)
+    codepoints.discard(0x202F)
+    codepoints.add(0x20)
+    return codepoints
+
+
 def _parse_richtext(s):
     """<sub>..</sub>/<sup>..</sup> 가 든 문자열을 (글자, style) 목록으로 분해.
     style ∈ {'normal','sub','sup'}. 태그 밖 < > & 는 그대로 글자로 둔다."""
+    # A separately encoded ionic charge has a semantic extraction boundary but no
+    # visual gap.  Mark only that exact subscript->charge pattern; ordinary spaces
+    # and H<sub>2</sub> O remain normal advancing word separators.
+    s = _CHARGE_GAP_RE.sub(_RICH_ZERO_ADVANCE_GAP, s)
     atoms = []
     pos = 0
     for m in _TAG_RE.finditer(s):
         for ch in s[pos:m.start()]:
-            atoms.append((ch, "normal"))
+            atoms.append(
+                (" ", "zero_space")
+                if ch == _RICH_ZERO_ADVANCE_GAP
+                else (ch, "normal")
+            )
         style = "sub" if m.group(1) == "sub" else "sup"
         for ch in m.group(2):
             atoms.append((ch, style))
         pos = m.end()
     for ch in s[pos:]:
-        atoms.append((ch, "normal"))
+        atoms.append(
+            (" ", "zero_space")
+            if ch == _RICH_ZERO_ADVANCE_GAP
+            else (ch, "normal")
+        )
     return atoms
 
 
 def _draw_rich(page, rect, html_text, color, font, start_size, align,
-               max_x=None, max_y=None, min_size=5.0):
+               max_x=None, max_y=None, min_size=5.0, fallback_fonts=()):
     """위/아래첨자(<sub>/<sup>)가 든 번역문을 진짜 첨자로 그린다(첨자는 0.66배 크기 +
     baseline 이동). TextWriter 한 개를 공유해 그리므로 insert_htmlbox 같은 OOM 이 없다.
     좌/가운데 정렬 + 탐욕적 줄바꿈 + 넘치면 폰트 축소. (수식 줄은 양끝맞춤 안 함.)
 
-    반환: 원래 크기보다 줄였으면 True."""
+    반환: drawn/complete/shrunk/min_font 상태 dict."""
     rect = fitz.Rect(rect)
     rect.normalize()
     if rect.width < 4 or rect.height < 2:
-        return False
-    pr = page.rect
+        return _draw_result()
+    pr = _page_text_rect(page)
+    writer_rect = fitz.Rect(page.rect)
     right = max(rect.x1, max_x if max_x is not None else pr.x1 - 6)
     bottom = max(rect.y1, max_y if max_y is not None else pr.y1 - 6)
     atoms = _parse_richtext(html_text)
     if not atoms:
-        return False
+        return _draw_result()
     centered = align == fitz.TEXT_ALIGN_CENTER
+    right_aligned = align == fitz.TEXT_ALIGN_RIGHT
     avail_w = (rect.width if centered else (right - rect.x0)) - 1.0
     avail_w = max(8.0, avail_w)
 
     def cw(ch, sz):
-        try:
-            return font.text_length(ch, fontsize=sz)
-        except Exception:
-            return sz * 0.5
+        chosen_font = _font_for_character(ch, font, fallback_fonts)
+        return chosen_font.text_length(ch, fontsize=sz)
 
-    # (글자,style) → 단어 단위로 묶기(공백 분리). 단어는 [(ch,style,size_factor)].
+    # (글자,style) → 단어 단위로 묶기. 공백은 줄 시작/끝에서 버리고 단어 사이에만
+    # 실제 U+0020 글리프로 한 번 넣는다. 좌표만 띄우던 이전 구현은 검색/복사 시
+    # 한국어 단어가 붙어 나왔고, NBSP를 쓰면 pypdf 추출 결과가 달라졌다.
     def build_words():
         words, w = [], []
         for ch, st in atoms:
-            if ch == " ":
+            if ch.isspace() and st != "zero_space":
                 if w:
                     words.append(w)
                     w = []
-                words.append([(" ", "normal")])
             else:
                 w.append((ch, st))
         if w:
@@ -1764,69 +3672,115 @@ def _draw_rich(page, rect, html_text, color, font, start_size, align,
         cur = []
         x = rect.x0
         for word in words:
-            wid = sum(cw(ch, fs * sub if st != "normal" else fs) for ch, st in word)
-            is_space = len(word) == 1 and word[0][0] == " "
-            if not is_space and cur and (x + wid) > rect.x0 + avail_w:
+            wid = sum(
+                0.0
+                if st == "zero_space"
+                else cw(ch, fs * sub if st in {"sub", "sup"} else fs)
+                for ch, st in word
+            )
+            space_w = cw(" ", fs) if cur else 0.0
+            if cur and (x + space_w + wid) > rect.x0 + avail_w:
                 lines.append(cur)
                 cur = []
                 x = rect.x0
-                if is_space:
-                    continue
+                space_w = 0.0
+            if cur:
+                cur.append((x, " ", fs, 0.0, "normal"))
+                x += space_w
             for ch, st in word:
-                sz = fs * sub if st != "normal" else fs
+                sz = fs * sub if st in {"sub", "sup"} else fs
                 dy = 0.0
                 if st == "sub":
                     dy = fs * 0.16
                 elif st == "sup":
                     dy = -fs * 0.34
                 cur.append((x, ch, sz, dy, st))
-                x += cw(ch, sz)
+                if st != "zero_space":
+                    x += cw(ch, sz)
         if cur:
             lines.append(cur)
         # 줄 끝 공백 트림 폭 계산 + 가운데 정렬 보정
         return lines, len(lines) * lh, lh
 
     fs = max(min_size, min(float(start_size), 200.0))
-    floor = max(min_size, round(0.62 * float(start_size), 1)) if start_size >= 9.0 else min_size
     chosen = None
-    while fs >= floor:
+    while fs >= min_size:
         lines, total_h, lh = layout(fs)
-        if rect.y0 + total_h <= bottom + 0.5:
-            chosen = (lines, lh, fs)
+        max_line_w = 0.0
+        for ln in lines:
+            if not ln:
+                continue
+            last = ln[-1]
+            max_line_w = max(
+                max_line_w,
+                (last[0] + cw(last[1], last[2])) - rect.x0,
+            )
+        fits = (
+            rect.y0 + total_h <= bottom + 0.5
+            and max_line_w <= avail_w + 0.5
+        )
+        if fits:
+            chosen = (lines, lh, fs, True)
             break
         fs -= 0.5
     if chosen is None:
-        # 바닥까지 줄여도 넘치면 바닥 크기로(잘려도 그림)
-        fs = floor
+        # 최소 크기에서도 넘치면 기존처럼 그리되 complete=False 로 보고한다.
+        fs = min_size
         lines, total_h, lh = layout(fs)
-        chosen = (lines, lh, fs)
-    lines, lh, fs = chosen
+        chosen = (lines, lh, fs, False)
+    lines, lh, fs, layout_complete = chosen
 
-    tw = fitz.TextWriter(pr)
+    tw = fitz.TextWriter(writer_rect)
     y = rect.y0 + fs
+    expected_chars = sum(len(line) for line in lines)
+    appended_chars = 0
+    append_failed = False
     for ln in lines:
         if not ln:
             y += lh
             continue
         # 가운데 정렬이면 줄 폭만큼 x 이동
         x_off = 0.0
-        if centered:
+        if centered or right_aligned:
             last = ln[-1]
             line_w = (last[0] + cw(last[1], last[2])) - ln[0][0]
-            x_off = max(0.0, (avail_w - line_w) / 2.0)
+            if centered:
+                x_off = max(0.0, (avail_w - line_w) / 2.0)
+            else:
+                x_off = max(0.0, avail_w - line_w)
         for (x, ch, sz, dy, st) in ln:
-            if ch == " ":
-                continue
             try:
-                tw.append(fitz.Point(x + x_off, y + dy), ch, font=font, fontsize=sz)
+                chosen_font = _font_for_character(ch, font, fallback_fonts)
+                tw.append(
+                    fitz.Point(x + x_off, y + dy),
+                    ch,
+                    font=chosen_font,
+                    fontsize=sz,
+                )
+                appended_chars += 1
             except Exception:
-                pass
+                append_failed = True
         y += lh
+    write_ok = False
     try:
         tw.write_text(page, color=color)
+        write_ok = True
     except Exception:
-        pass
-    return fs < float(start_size) - 0.01
+        write_ok = False
+    # append/write 예외가 있으면 일부 글자가 실제로 기록됐더라도 성공한 draw 로 보지 않는다.
+    drawn = write_ok and not append_failed and appended_chars == expected_chars
+    # 품질 게이트의 min_font는 본문 base 크기다. 첨자의 의도된 0.66배를 기준으로
+    # 거부하면 정상 수식까지 오탐하므로 실제 최소 글리프 크기는 별도 진단값으로 남긴다.
+    actual_min_font = (
+        fs * 0.66 if any(st in {"sub", "sup"} for _ch, st in atoms) else fs
+    )
+    return _draw_result(
+        drawn=drawn,
+        complete=drawn and layout_complete,
+        shrunk=fs < float(start_size) - 0.01,
+        min_font=fs,
+        min_glyph_font=actual_min_font,
+    )
 
 
 def _clip_out(rect, regions):
@@ -1937,7 +3891,8 @@ def _compact_columns(items, static_rects, figs, page_rect, font):
         이미 배치된 다른 번역 글자와 겹치면 그 블록은 원위치로 되돌린다 → 압축이
         절대 새 겹침을 만들지 않는다(복잡한 수식·그림 페이지에서도 안전).
       - 머리말/꼬리말·그림과 겹치는 블록(캡션)은 이동 제외(앵커로만 작용).
-    items: [(rect, ko, size, color, bold, ital), ...] (dedoverlap 후). 반환 동일 형식.
+    items: [(rect, ko, size, color, bold, ital, block_id), ...] (dedoverlap 후).
+    반환 동일 형식.
     """
     if os.environ.get("NO_COMPACT"):
         return items
@@ -2046,26 +4001,1439 @@ def _compact_columns(items, static_rects, figs, page_rect, font):
     return new_items
 
 
+# ── Safe content-stream ordering for preserved text ──────────────────────────
+#
+# Redaction leaves equations / labels which are intentionally not translated in
+# the original content stream, then appends each translated TextWriter stream.  A
+# visual PDF reader looks correct, but content-order extractors consequently return
+# every preserved equation before the page title.  The helpers below support only a
+# deliberately narrow subset: page-local, top-level BT..ET objects with their own
+# font and position, an identity CTM, device fill colour, no clipping / ExtGState /
+# Form XObject, and ordinary Tj/TJ showing.  Anything more complex is left untouched
+# for the strict postflight verifier to reject.  Applied rewrites additionally must
+# be pixel-identical or the original /Contents array is restored.
+
+_PDF_CONTENT_WHITESPACE = b"\x00\x09\x0a\x0c\x0d\x20"
+_PDF_CONTENT_DELIMITERS = b"()<>[]{}/%"
+_PDF_NUMBER_TOKEN = re.compile(rb"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$")
+_PDF_UNSAFE_REORDER_OPERATORS = frozenset(
+    {b"Do", b"BI", b"ID", b"EI", b"W", b"W*", b"gs", b"sh", b"cs", b"CS", b"sc", b"SC", b"scn", b"SCN"}
+)
+_PDF_TEXT_OPERATORS = frozenset(
+    {b"Tf", b"Tm", b"Td", b"TD", b"T*", b"Tj", b"TJ", b"Tc", b"Tw", b"Tz", b"TL", b"Tr", b"Ts"}
+)
+_PDF_TEXT_STATE_DEFAULTS = {
+    b"Tc": b"0",
+    b"Tw": b"0",
+    b"Tz": b"100",
+    b"TL": b"0",
+    b"Tr": b"0",
+    b"Ts": b"0",
+}
+
+
+def _pdf_content_tokens(data):
+    """Lex a PDF content stream without mistaking strings for operators.
+
+    Returned entries are ``(kind, raw, start, end)``.  This is intentionally not a
+    general PDF parser; it only establishes exact token boundaries needed by the
+    conservative BT/ET splitter.
+    """
+    data = bytes(data or b"")
+    out = []
+    length = len(data)
+    i = 0
+    while i < length:
+        byte = data[i]
+        if byte in _PDF_CONTENT_WHITESPACE:
+            i += 1
+            continue
+        if byte == 0x25:  # % comment
+            i += 1
+            while i < length and data[i] not in (0x0A, 0x0D):
+                i += 1
+            continue
+        start = i
+        if byte == 0x28:  # literal string, with nesting and escapes
+            depth = 1
+            i += 1
+            while i < length and depth:
+                current = data[i]
+                if current == 0x5C:  # escaped byte / escaped newline
+                    i += 2
+                    continue
+                if current == 0x28:
+                    depth += 1
+                elif current == 0x29:
+                    depth -= 1
+                i += 1
+            if depth:
+                raise ValueError("unterminated PDF literal string")
+            out.append(("operand", data[start:i], start, i))
+            continue
+        if byte == 0x3C and i + 1 < length and data[i + 1] != 0x3C:
+            # Hex string. Embedded ASCII 'BT' / 'ET' is data, never an operator.
+            i += 1
+            while i < length and data[i] != 0x3E:
+                i += 1
+            if i >= length:
+                raise ValueError("unterminated PDF hex string")
+            i += 1
+            out.append(("operand", data[start:i], start, i))
+            continue
+        if byte == 0x2F:  # name object
+            i += 1
+            while (
+                i < length
+                and data[i] not in _PDF_CONTENT_WHITESPACE
+                and data[i] not in _PDF_CONTENT_DELIMITERS
+            ):
+                i += 1
+            out.append(("operand", data[start:i], start, i))
+            continue
+        if byte in b"[]{}<>":
+            if byte in (0x3C, 0x3E) and i + 1 < length and data[i + 1] == byte:
+                i += 2
+            else:
+                i += 1
+            out.append(("operand", data[start:i], start, i))
+            continue
+        i += 1
+        while (
+            i < length
+            and data[i] not in _PDF_CONTENT_WHITESPACE
+            and data[i] not in _PDF_CONTENT_DELIMITERS
+        ):
+            i += 1
+        raw = data[start:i]
+        kind = "operand" if _PDF_NUMBER_TOKEN.match(raw) else "operator"
+        out.append((kind, raw, start, i))
+    return out
+
+
+def _pdf_number(raw):
+    if not _PDF_NUMBER_TOKEN.match(raw or b""):
+        raise ValueError("non-numeric PDF operand")
+    value = float(raw)
+    if not math.isfinite(value):
+        raise ValueError("non-finite PDF operand")
+    return value
+
+
+def _analyse_safe_text_object(tokens, current_text_state):
+    """Validate one BT..ET body and return anchor + next persistent text state."""
+    operands = []
+    # Text state survives ET / the next BT.  ReportLab relies on this and commonly
+    # emits ``Tf`` only for the first cell in a row, followed by independently
+    # positioned ``BT ... TD (...) Tj ET`` objects.  Treat an inherited font as
+    # sufficient only when it was established by a previously validated Tf.
+    has_font = b"Tf" in current_text_state
+    has_show = False
+    anchor = None
+    state = dict(current_text_state)
+    for kind, raw, _start, _end in tokens:
+        if kind == "operand":
+            operands.append(raw)
+            continue
+        if raw in _PDF_UNSAFE_REORDER_OPERATORS or raw in {b"BT", b"ET", b"q", b"Q", b"cm"}:
+            raise ValueError(f"unsafe operator in preserved text object: {raw!r}")
+        if raw not in _PDF_TEXT_OPERATORS:
+            # Marked content, compatibility sections, inline graphics, and custom
+            # operators are outside the proven byte-preserving subset.
+            raise ValueError(f"unsupported preserved text operator: {raw!r}")
+        if raw == b"Tf":
+            if len(operands) < 2 or not operands[-2].startswith(b"/"):
+                raise ValueError("preserved text object lacks a local font operand")
+            _pdf_number(operands[-1])
+            has_font = True
+            state[b"Tf"] = (operands[-2], operands[-1])
+        elif raw == b"Tm":
+            if len(operands) < 6:
+                raise ValueError("invalid Tm operand count")
+            values = [_pdf_number(value) for value in operands[-6:]]
+            if anchor is None:
+                anchor = (values[4], values[5])
+        elif raw in {b"Td", b"TD"}:
+            if len(operands) < 2:
+                raise ValueError("invalid text-position operand count")
+            values = [_pdf_number(value) for value in operands[-2:]]
+            if anchor is None:
+                anchor = (values[0], values[1])
+        elif raw in {b"Tj", b"TJ"}:
+            if not operands:
+                raise ValueError("text showing operator lacks an operand")
+            has_show = True
+        elif raw in _PDF_TEXT_STATE_DEFAULTS:
+            if not operands:
+                raise ValueError("text state operator lacks an operand")
+            value = operands[-1]
+            numeric = _pdf_number(value)
+            if raw == b"Tr" and abs(numeric) > 1e-9:
+                # Stroke / clip text depends on stroke graphics state and clipping.
+                raise ValueError("non-fill text rendering mode is not reorder-safe")
+            state[raw] = value
+        operands = []
+    if not has_font or not has_show or anchor is None:
+        raise ValueError("preserved text object is not independently positioned")
+    return anchor, state
+
+
+def _split_safe_residual_text_stream(data):
+    """Return ``(graphics_only, chunks)`` or ``None`` for an unsupported stream.
+
+    Each chunk is ``{"data": bytes, "anchor_pdf": (x, y)}``.  The raw text body is
+    retained byte-for-byte; only a local device fill colour and default/persistent
+    text-state prefix are added so the object no longer depends on an earlier BT.
+    """
+    try:
+        tokens = _pdf_content_tokens(data)
+        if not any(kind == "operator" and raw == b"BT" for kind, raw, _s, _e in tokens):
+            return bytes(data), []
+        if any(
+            kind == "operator" and raw in _PDF_UNSAFE_REORDER_OPERATORS
+            for kind, raw, _s, _e in tokens
+        ):
+            return None
+
+        fill = b"0 g"
+        graphics_state_stack = []
+        text_state = dict(_PDF_TEXT_STATE_DEFAULTS)
+        operands = []
+        chunks = []
+        removals = []
+        index = 0
+        while index < len(tokens):
+            kind, raw, start, end = tokens[index]
+            if kind == "operand":
+                operands.append(raw)
+                index += 1
+                continue
+            if raw == b"BT":
+                if operands:
+                    return None
+                depth = 1
+                stop = index + 1
+                while stop < len(tokens):
+                    skind, sraw, _ss, _se = tokens[stop]
+                    if skind == "operator" and sraw == b"BT":
+                        depth += 1
+                    elif skind == "operator" and sraw == b"ET":
+                        depth -= 1
+                        if depth == 0:
+                            break
+                    stop += 1
+                if stop >= len(tokens) or depth:
+                    return None
+                body_tokens = tokens[index + 1 : stop]
+                anchor, next_state = _analyse_safe_text_object(
+                    body_tokens, text_state
+                )
+                # Every separated stream starts with default text state.  Reapply
+                # the exact state active before this BT, then retain its body bytes.
+                state_parts = [
+                    text_state[operator] + b" " + operator
+                    for operator in (b"Tc", b"Tw", b"Tz", b"TL", b"Tr", b"Ts")
+                ]
+                inherited_font = text_state.get(b"Tf")
+                if inherited_font is not None:
+                    state_parts.append(
+                        inherited_font[0] + b" " + inherited_font[1] + b" Tf"
+                    )
+                state_prefix = b" ".join(state_parts)
+                et_end = tokens[stop][3]
+                body = bytes(data[end : tokens[stop][2]])
+                chunk = (
+                    b"q\n"
+                    + fill
+                    + b"\nBT\n"
+                    + state_prefix
+                    + b"\n"
+                    + body
+                    + b"\nET\nQ\n"
+                )
+                chunks.append({"data": chunk, "anchor_pdf": anchor})
+                removals.append((start, et_end))
+                text_state = next_state
+                index = stop + 1
+                continue
+            if raw == b"q":
+                # q/Q saves and restores the text state as part of the graphics
+                # state.  Do not let a font selected inside one saved scope leak
+                # into a later scope when the separated chunks are made standalone.
+                graphics_state_stack.append((fill, dict(text_state)))
+            elif raw == b"Q":
+                if not graphics_state_stack:
+                    return None
+                fill, text_state = graphics_state_stack.pop()
+            elif raw in {b"g", b"rg", b"k"}:
+                count = {b"g": 1, b"rg": 3, b"k": 4}[raw]
+                if len(operands) < count:
+                    return None
+                values = operands[-count:]
+                for value in values:
+                    _pdf_number(value)
+                fill = b" ".join(values + [raw])
+            elif raw == b"cm":
+                if len(operands) < 6:
+                    return None
+                matrix = [_pdf_number(value) for value in operands[-6:]]
+                if any(
+                    abs(actual - expected) > 1e-9
+                    for actual, expected in zip(matrix, (1, 0, 0, 1, 0, 0))
+                ):
+                    return None
+            elif raw in _PDF_UNSAFE_REORDER_OPERATORS or raw in {b"ET"}:
+                return None
+            operands = []
+            index += 1
+        if graphics_state_stack:
+            return None
+
+        graphics = bytearray(data)
+        for start, end in removals:
+            # Whitespace preserves token separation and every non-text byte offset.
+            graphics[start:end] = b"\n" + b" " * max(0, end - start - 1)
+        return bytes(graphics), chunks
+    except (ValueError, TypeError, OverflowError):
+        return None
+
+
+def _new_pdf_stream(doc, data):
+    xref = doc.get_new_xref()
+    doc.update_object(xref, "<<>>")
+    doc.update_stream(xref, bytes(data))
+    return xref
+
+
+def _set_page_content_xrefs(doc, page, xrefs):
+    value = "[" + " ".join(f"{int(xref)} 0 R" for xref in xrefs) + "]"
+    doc.xref_set_key(page.xref, "Contents", value)
+
+
+def _logical_key_for_anchor(anchor_pdf, page, logical_rects, sequence):
+    """Map a PDF-space baseline to the closest original logical text block."""
+    x, pdf_y = anchor_pdf
+    text_rect = _page_text_rect(page)
+    top_y = text_rect.height - pdf_y
+    candidates = []
+    for block_id, rect in logical_rects:
+        rect = fitz.Rect(rect)
+        if (
+            rect.x0 - 24.0 <= x <= rect.x1 + 24.0
+            and rect.y0 - 12.0 <= top_y <= rect.y1 + 12.0
+        ):
+            dx = 0.0 if rect.x0 <= x <= rect.x1 else min(abs(x - rect.x0), abs(x - rect.x1))
+            dy = 0.0 if rect.y0 <= top_y <= rect.y1 else min(abs(top_y - rect.y0), abs(top_y - rect.y1))
+            candidates.append((dx + dy, block_id))
+    if not candidates:
+        return None
+    _distance, block_id = min(candidates, key=lambda value: (value[0], value[1]))
+    return (int(block_id), round(float(top_y), 4), round(float(x), 4), sequence)
+
+
+def _interleave_safe_page_text_streams(
+    doc,
+    page,
+    residual_xrefs,
+    generated_order,
+    logical_rects,
+):
+    """Interleave preserved and generated text streams in source logical order.
+
+    Returns ``(reloaded_page, diagnostic)``. Unsupported streams and any raster
+    difference restore the exact original /Contents array and report ``applied``
+    false; strict postflight remains responsible for rejecting an actual inversion.
+    """
+    diagnostic = {
+        "applied": False,
+        "reason": "not_needed",
+        "objects": 0,
+        "original_streams": 0,
+        "residual_streams": len(residual_xrefs),
+        "generated_streams": len(generated_order),
+        "restored": False,
+    }
+    original_xrefs = list(page.get_contents())
+    diagnostic["original_streams"] = len(original_xrefs)
+    if not original_xrefs:
+        return page, diagnostic
+    # Raw stream baselines are only proven for unrotated, origin-zero CropBoxes.
+    crop = fitz.Rect(page.cropbox)
+    if int(page.rotation or 0) % 360 or abs(crop.x0) > 1e-6 or abs(crop.y0) > 1e-6:
+        diagnostic["reason"] = "unsupported_page_geometry"
+        return page, diagnostic
+    if not _pixmap_geometry_is_safe(page.rect, 1.0):
+        diagnostic["reason"] = "pixel_comparison_resource_limit"
+        return page, diagnostic
+    before = page.get_pixmap(colorspace=fitz.csRGB, alpha=False)
+    before_signature = (before.width, before.height, bytes(before.samples))
+
+    graphics_xrefs = []
+    text_entries = []
+    changed = False
+    sequence = 0
+    residual_set = {int(xref) for xref in residual_xrefs}
+    try:
+        for xref in original_xrefs:
+            xref = int(xref)
+            if xref in residual_set:
+                data = bytes(doc.xref_stream(xref) or b"")
+                split = _split_safe_residual_text_stream(data)
+                if split is None:
+                    diagnostic["reason"] = "unsupported_residual_stream"
+                    diagnostic["offending_xref"] = xref
+                    return page, diagnostic
+                graphics, chunks = split
+                if not chunks:
+                    graphics_xrefs.append(xref)
+                    continue
+                changed = True
+                graphics_xrefs.append(_new_pdf_stream(doc, graphics))
+                for chunk in chunks:
+                    key = _logical_key_for_anchor(
+                        chunk["anchor_pdf"], page, logical_rects, sequence
+                    )
+                    if key is None:
+                        diagnostic["reason"] = "unmapped_preserved_text"
+                        diagnostic["offending_xref"] = xref
+                        return page, diagnostic
+                    text_entries.append((key, _new_pdf_stream(doc, chunk["data"])))
+                    sequence += 1
+                continue
+            if xref in generated_order:
+                # Even when no preserved text remains, generated table-cell streams
+                # still need their source logical ordering proven and pixel-checked.
+                changed = True
+                generated_key = generated_order[xref]
+                if len(generated_key) == 3:
+                    block_id, source_y, suborder = generated_key
+                else:  # compatibility with focused direct helper tests
+                    block_id, suborder = generated_key
+                    source_y = float(block_id)
+                text_entries.append(
+                    (
+                        (
+                            int(block_id),
+                            round(float(source_y), 4),
+                            float(suborder),
+                            sequence,
+                        ),
+                        xref,
+                    )
+                )
+                sequence += 1
+                continue
+            data = bytes(doc.xref_stream(xref) or b"")
+            tokens = _pdf_content_tokens(data)
+            if any(
+                kind == "operator" and raw == b"BT"
+                for kind, raw, _start, _end in tokens
+            ):
+                diagnostic["reason"] = "untracked_text_stream"
+                diagnostic["offending_xref"] = xref
+                return page, diagnostic
+            graphics_xrefs.append(xref)
+        if not changed:
+            return page, diagnostic
+
+        ordered_text = [xref for _key, xref in sorted(text_entries, key=lambda item: item[0])]
+        _set_page_content_xrefs(doc, page, graphics_xrefs + ordered_text)
+        reloaded = doc.reload_page(page)
+        after = reloaded.get_pixmap(colorspace=fitz.csRGB, alpha=False)
+        after_signature = (after.width, after.height, bytes(after.samples))
+        if after_signature != before_signature:
+            _set_page_content_xrefs(doc, reloaded, original_xrefs)
+            restored = doc.reload_page(reloaded)
+            diagnostic["reason"] = "pixel_mismatch"
+            diagnostic["restored"] = True
+            return restored, diagnostic
+        diagnostic.update(
+            {
+                "applied": True,
+                "reason": "pixel_exact",
+                "objects": len(text_entries),
+            }
+        )
+        return reloaded, diagnostic
+    except Exception:
+        # New xrefs are unreachable after restoration and disappear under garbage=3.
+        try:
+            _set_page_content_xrefs(doc, page, original_xrefs)
+            page = doc.reload_page(page)
+            diagnostic["restored"] = True
+        except Exception:
+            pass
+        diagnostic["reason"] = "rewrite_error"
+        return page, diagnostic
+
+
+_SAFE_ACTIVE_URI_SCHEMES = {"http", "https", "mailto"}
+_LOCAL_DESTINATION_ARITY = {
+    "Fit": 0,
+    "FitB": 0,
+    "FitH": 1,
+    "FitBH": 1,
+    "FitV": 1,
+    "FitBV": 1,
+    "FitR": 4,
+    "XYZ": 3,
+}
+_PDF_DESTINATION_ARGUMENT = re.compile(
+    r"(?:null|[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[Ee][+-]?\d+)?)$"
+)
+
+
+def _safe_external_uri(uri):
+    """Return whether an existing URI action is safe to re-create after redaction.
+
+    Redaction can delete link annotations whose rectangles overlap replaced text. We
+    restore ordinary web / email links, but never turn file, script, OS handler, or
+    unknown custom schemes back into active annotations. LINK_LAUNCH and LINK_GOTOR
+    are filtered separately by ``_capture_safe_links``.
+    """
+    if not isinstance(uri, str) or not uri or uri != uri.strip():
+        return False
+    if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in uri):
+        return False
+    match = re.match(r"^([A-Za-z][A-Za-z0-9+.-]*):", uri)
+    if not match:
+        return False
+    return match.group(1).lower() in _SAFE_ACTIVE_URI_SCHEMES
+
+
+def _rounded_rect(rect):
+    rect = fitz.Rect(rect)
+    return tuple(round(float(value), 3) for value in (rect.x0, rect.y0, rect.x1, rect.y1))
+
+
+def _raw_local_destination(doc, annotation_xref):
+    """Return a local destination's raw value and storage container, if present."""
+    dest_type, dest_value = doc.xref_get_key(annotation_xref, "Dest")
+    if dest_type != "null":
+        return {"container": "Dest", "type": dest_type, "value": dest_value}
+    action_type, action_name = doc.xref_get_key(annotation_xref, "A/S")
+    if action_type == "name" and action_name == "/GoTo":
+        dest_type, dest_value = doc.xref_get_key(annotation_xref, "A/D")
+        if dest_type != "null":
+            return {"container": "A/D", "type": dest_type, "value": dest_value}
+    return None
+
+
+def _parse_explicit_local_destination(raw, page_by_xref):
+    """Parse only injection-safe, explicit local destination arrays.
+
+    The numeric arguments stay in native PDF coordinates. Replaying those exact
+    tokens preserves `/Fit*` behavior and `/XYZ` point / zoom semantics without a
+    lossy round trip through PyMuPDF's normalized page coordinates.
+    """
+    if not raw or raw.get("type") != "array":
+        return None
+    match = re.fullmatch(
+        r"\[\s*(\d+)\s+(\d+)\s+R\s*/([A-Za-z]+)(.*?)\s*\]",
+        raw.get("value", ""),
+        flags=re.DOTALL,
+    )
+    if not match:
+        return None
+    page_xref = int(match.group(1))
+    target_page = page_by_xref.get(page_xref)
+    view = match.group(3)
+    if target_page is None or view not in _LOCAL_DESTINATION_ARITY:
+        return None
+    argument_text = match.group(4).strip()
+    arguments = tuple(argument_text.split()) if argument_text else ()
+    if len(arguments) != _LOCAL_DESTINATION_ARITY[view]:
+        return None
+    if any(not _PDF_DESTINATION_ARGUMENT.fullmatch(value) for value in arguments):
+        return None
+    return {
+        "container": raw["container"],
+        "target_page": target_page,
+        "view": view,
+        "arguments": arguments,
+    }
+
+
+def _safe_link_key(link):
+    base = (link["source_page"], _rounded_rect(link["from"]), link["kind"])
+    if link["kind"] == "uri":
+        return base + (link["uri"],)
+    return base + (
+        int(link["target_page"]),
+        link["destination_container"],
+        link["destination_view"],
+        tuple(link.get("destination_arguments", ())),
+        link.get("opaque_destination", ""),
+    )
+
+
+_INDIRECT_REFERENCE_RE = re.compile(r"(?<!\d)(\d+)\s+(\d+)\s+R(?!\w)")
+
+
+def _raw_annotation_xrefs(doc, page):
+    """Return every indirect annotation reference from one raw ``/Annots`` array.
+
+    PyMuPDF's ``first_link`` / ``get_links`` intentionally omit action types it
+    does not understand (notably JavaScript and SubmitForm).  Security decisions
+    therefore cannot start from those high-level iterators.  PDF annotations are
+    required to be indirect objects; reject an opaque/direct array instead of
+    silently retaining an action we could not inspect.
+    """
+    value_type, raw_value = doc.xref_get_key(int(page.xref), "Annots")
+    if value_type == "null":
+        return []
+    if value_type == "xref":
+        try:
+            array_xref = int(str(raw_value).split()[0])
+            raw_value = doc.xref_object(array_xref, compressed=False)
+        except Exception as exc:
+            raise RuntimeError("cannot resolve raw PDF annotation array") from exc
+    elif value_type != "array":
+        raise RuntimeError("unsupported raw PDF annotation array representation")
+
+    text = str(raw_value or "").strip()
+    if not text.startswith("[") or not text.endswith("]"):
+        raise RuntimeError("malformed raw PDF annotation array")
+    matches = list(_INDIRECT_REFERENCE_RE.finditer(text))
+    if any(match.group(2) != "0" for match in matches):
+        raise RuntimeError("raw PDF annotation array uses an unsupported generation")
+    refs = [int(match.group(1)) for match in matches]
+    # After removing legal indirect references, only brackets, whitespace and PDF
+    # comments may remain.  Inline dictionaries or malformed tokens fail closed.
+    remainder = _INDIRECT_REFERENCE_RE.sub("", text)
+    remainder = re.sub(r"%[^\r\n]*", "", remainder)
+    if re.sub(r"[\[\]\s]", "", remainder):
+        raise RuntimeError("raw PDF annotation array contains a non-reference item")
+    if len(refs) != len(set(refs)):
+        raise RuntimeError("raw PDF annotation array contains duplicate references")
+    for xref in refs:
+        if xref <= 0 or xref >= doc.xref_length():
+            raise RuntimeError("raw PDF annotation array contains an invalid reference")
+    return refs
+
+
+def _set_raw_annotation_xrefs(doc, page, xrefs):
+    if xrefs:
+        raw_value = "[" + " ".join(f"{int(xref)} 0 R" for xref in xrefs) + "]"
+    else:
+        raw_value = "null"
+    doc.xref_set_key(int(page.xref), "Annots", raw_value)
+
+
+def _capture_safe_links(doc):
+    """Snapshot links which may safely be reconstructed after text redaction.
+
+    MuPDF represents explicit ``/Dest [... /Fit]`` links as LINK_NAMED in some
+    versions. We therefore inspect the annotation object directly and retain its
+    destination container, view mode, and validated raw arguments. Opaque but
+    resolvable named destinations may survive untouched; if redaction removes one,
+    restoration fails closed instead of silently changing its behavior.
+    """
+    captured = []
+    page_count = len(doc)
+    page_by_xref = {doc.page_xref(page): page for page in range(page_count)}
+    for source_page in range(page_count):
+        page = doc[source_page]
+        link = page.first_link
+        while link is not None:
+            next_link = link.next
+            try:
+                dest = link.dest
+                kind = int(dest.kind)
+                rect = fitz.Rect(link.rect)
+                uri = link.uri or ""
+            except Exception:
+                link = next_link
+                continue
+
+            action_type, action_name = doc.xref_get_key(int(link.xref), "A/S")
+            raw_uri_type, raw_uri = doc.xref_get_key(int(link.xref), "A/URI")
+            if (
+                kind == fitz.LINK_URI
+                and action_type == "name"
+                and action_name == "/URI"
+                and raw_uri_type == "string"
+                and _safe_external_uri(str(raw_uri))
+            ):
+                captured.append(
+                    {
+                        "_annotation_xref": int(link.xref),
+                        "source_page": source_page,
+                        "from": tuple(rect),
+                        "kind": "uri",
+                        "uri": str(raw_uri),
+                    }
+                )
+            elif kind in (fitz.LINK_GOTO, fitz.LINK_NAMED):
+                target_page = -1
+                raw_destination = _raw_local_destination(doc, int(link.xref))
+                explicit_destination = _parse_explicit_local_destination(
+                    raw_destination, page_by_xref
+                )
+                if explicit_destination is not None:
+                    target_page = explicit_destination["target_page"]
+                try:
+                    resolved_page, _x, _y = doc.resolve_link(uri)
+                    if target_page < 0:
+                        target_page = resolved_page
+                except Exception:
+                    pass
+                if kind == fitz.LINK_GOTO and not (0 <= target_page < page_count):
+                    try:
+                        target_page = int(link.page)
+                    except Exception:
+                        target_page = -1
+                if 0 <= target_page < page_count:
+                    if explicit_destination is None:
+                        # Only a named value stored in /Dest or a genuine /GoTo
+                        # action is eligible.  A high-level LINK_NAMED view with no
+                        # such raw local destination may actually be /Named,
+                        # JavaScript or another active action and is not safe.
+                        if not raw_destination or raw_destination.get("type") not in {
+                            "name",
+                            "string",
+                        }:
+                            link = next_link
+                            continue
+                        opaque = raw_destination
+                        destination_container = opaque["container"]
+                        destination_view = "opaque"
+                        destination_arguments = ()
+                        opaque_destination = (
+                            f"{opaque.get('type', '')}:{opaque.get('value', '')}"
+                        )
+                    else:
+                        destination_container = explicit_destination["container"]
+                        destination_view = explicit_destination["view"]
+                        destination_arguments = explicit_destination["arguments"]
+                        opaque_destination = ""
+                    captured.append(
+                        {
+                            "_annotation_xref": int(link.xref),
+                            "source_page": source_page,
+                            "from": tuple(rect),
+                            "kind": "goto",
+                            "target_page": target_page,
+                            "destination_container": destination_container,
+                            "destination_view": destination_view,
+                            "destination_arguments": destination_arguments,
+                            "opaque_destination": opaque_destination,
+                        }
+                    )
+            # Never recreate LINK_LAUNCH, LINK_GOTOR, or unresolved named actions.
+            link = next_link
+    return captured
+
+
+def _remove_unsafe_links(doc):
+    """Remove active file / launch-style annotations from the generated PDF.
+
+    These actions are never required for translation fidelity and can open local or
+    remote files when a reader follows them. Removing them before the safe snapshot
+    also guarantees that a non-overlapping action cannot simply survive redaction.
+    """
+    removed = 0
+    safe_link_xrefs_by_page = defaultdict(set)
+    for link in _capture_safe_links(doc):
+        safe_link_xrefs_by_page[int(link.get("source_page", -1))].add(
+            int(link.get("_annotation_xref", 0))
+    )
+    for page_number in range(len(doc)):
+        page = doc[page_number]
+        page_aa_type, _page_additional_actions = doc.xref_get_key(page.xref, "AA")
+        if page_aa_type != "null":
+            doc.xref_set_key(page.xref, "AA", "null")
+            removed += 1
+        annotation_xrefs = _raw_annotation_xrefs(doc, page)
+        if not annotation_xrefs:
+            continue
+        safe_link_xrefs = safe_link_xrefs_by_page.get(page_number, set())
+        retained = []
+        changed = False
+        for xref in annotation_xrefs:
+            subtype_type, subtype = doc.xref_get_key(xref, "Subtype")
+            action_type, _action = doc.xref_get_key(xref, "A")
+            aa_type, _additional_actions = doc.xref_get_key(xref, "AA")
+            has_action = action_type != "null"
+            has_additional_actions = aa_type != "null"
+            is_link = subtype_type == "name" and subtype == "/Link"
+
+            if is_link:
+                # A link is retained only when the exact same annotation was
+                # classified by _capture_safe_links as an allow-listed URI or
+                # resolvable local GoTo.  Unknown actions and every /AA are removed.
+                if xref not in safe_link_xrefs or has_additional_actions:
+                    removed += 1
+                    changed = True
+                    continue
+            elif has_action or has_additional_actions:
+                # Preserve non-link annotations and their /P back-reference, but
+                # strip active actions which are unrelated to translation fidelity.
+                if has_action:
+                    doc.xref_set_key(xref, "A", "null")
+                if has_additional_actions:
+                    doc.xref_set_key(xref, "AA", "null")
+                removed += 1
+                changed = True
+            retained.append(xref)
+
+        if changed:
+            _set_raw_annotation_xrefs(doc, page, retained)
+            try:
+                doc.reload_page(page)
+            except Exception:
+                pass
+    return removed
+
+
+def _insert_explicit_internal_destination(doc, link):
+    """Insert one local link and replay its validated destination view exactly."""
+    view = link.get("destination_view")
+    container = link.get("destination_container")
+    if view not in _LOCAL_DESTINATION_ARITY or container not in ("Dest", "A/D"):
+        raise RuntimeError(
+            "cannot safely reconstruct opaque internal PDF destination after redaction"
+        )
+    page = doc[int(link["source_page"])]
+    before_xrefs = {
+        int(item.get("xref", 0)) for item in page.get_links() if item.get("xref")
+    }
+    xref_floor = doc.xref_length()
+    target_page = int(link["target_page"])
+    page.insert_link(
+        {
+            "kind": fitz.LINK_GOTO,
+            "from": fitz.Rect(link["from"]),
+            "page": target_page,
+            "to": fitz.Point(doc[target_page].rect.tl),
+        }
+    )
+    after_xrefs = {
+        int(item.get("xref", 0)) for item in page.get_links() if item.get("xref")
+    }
+    candidates = sorted(after_xrefs - before_xrefs)
+    if len(candidates) != 1:
+        candidates = []
+        for xref in range(xref_floor, doc.xref_length()):
+            subtype_type, subtype = doc.xref_get_key(xref, "Subtype")
+            if subtype_type == "name" and subtype == "/Link":
+                candidates.append(xref)
+    if len(candidates) != 1:
+        raise RuntimeError("could not identify newly inserted internal PDF link")
+    annotation_xref = candidates[0]
+    arguments = " ".join(link.get("destination_arguments", ()))
+    destination = f"[{doc.page_xref(target_page)} 0 R /{view}"
+    if arguments:
+        destination += f" {arguments}"
+    destination += "]"
+    if container == "Dest":
+        doc.xref_set_key(annotation_xref, "A", "null")
+        doc.xref_set_key(annotation_xref, "Dest", destination)
+    else:
+        doc.xref_set_key(annotation_xref, "Dest", "null")
+        doc.xref_set_key(annotation_xref, "A/S", "/GoTo")
+        doc.xref_set_key(annotation_xref, "A/D", destination)
+
+
+def _restore_safe_links(doc, expected):
+    """Restore redaction-deleted safe links without losing or duplicating any."""
+    current = _capture_safe_links(doc)
+    current_counts = Counter(_safe_link_key(link) for link in current)
+    expected_counts = Counter(_safe_link_key(link) for link in expected)
+    restored = 0
+    encountered = Counter()
+
+    for link in expected:
+        key = _safe_link_key(link)
+        encountered[key] += 1
+        if current_counts[key] >= encountered[key]:
+            continue
+        page = doc[link["source_page"]]
+        if link["kind"] == "uri":
+            page.insert_link(
+                {
+                    "kind": fitz.LINK_URI,
+                    "from": fitz.Rect(link["from"]),
+                    "uri": link["uri"],
+                }
+            )
+        else:
+            _insert_explicit_internal_destination(doc, link)
+        current_counts[key] += 1
+        restored += 1
+
+    if current_counts != expected_counts:
+        raise RuntimeError("safe PDF link preservation count mismatch")
+    return restored
+
+
+def _page_geometry_signature(doc):
+    result = []
+    for page_number in range(len(doc)):
+        page = doc[page_number]
+        result.append(
+            (
+                _rounded_rect(page.mediabox),
+                _rounded_rect(page.cropbox),
+                int(page.rotation or 0) % 360,
+            )
+        )
+    return tuple(result)
+
+
+def _canonical_pdf_value(value):
+    """Make PyMuPDF destination values stable across save / re-open cycles."""
+    if isinstance(value, dict):
+        return tuple(
+            (str(key), _canonical_pdf_value(item))
+            for key, item in sorted(value.items(), key=lambda pair: str(pair[0]))
+            if str(key) != "xref"  # object numbers may change under garbage collection
+        )
+    if isinstance(value, (list, tuple)):
+        return tuple(_canonical_pdf_value(item) for item in value)
+    if isinstance(value, (fitz.Point, fitz.Rect)):
+        return tuple(round(float(item), 6) for item in value)
+    if isinstance(value, float):
+        return round(value, 6)
+    if value is None or isinstance(value, (str, int, bool)):
+        return value
+    return str(value)
+
+
+def _outline_signature(doc):
+    """Capture titles plus all reader-visible navigation / presentation semantics."""
+    result = []
+    for item in doc.get_toc(simple=False) or []:
+        level, title, page = item[:3]
+        destination = item[3] if len(item) > 3 and isinstance(item[3], dict) else {}
+        result.append(
+            (
+                int(level),
+                str(title),
+                int(page),
+                _canonical_pdf_value(destination),
+            )
+        )
+    return tuple(result)
+
+
+def _outline_navigation_signature(signature):
+    return tuple((item[0], item[2], item[3]) for item in signature)
+
+
+def _metadata_mapping_signature(metadata):
+    return tuple(
+        (str(key), _canonical_pdf_value(value))
+        for key, value in sorted((metadata or {}).items(), key=lambda pair: str(pair[0]))
+    )
+
+
+def _xmp_non_target_signature(state):
+    """Hash all XMP structure/content outside the explicitly translated values.
+
+    The canonical copy removes x-default / Korean Alt value nodes because adding a
+    Korean alternative is an intentional target-side structural change.  Other
+    language alternatives, custom attributes, rights, identifiers, processing
+    instructions, comments, and arbitrary extension namespaces remain in the hash.
+    """
+    if state is None:
+        return ("absent",)
+    tree = copy.deepcopy(state["tree"])
+    root = tree.getroot()
+    marker = "__QUILO_TRANSLATED_XMP_VALUE__"
+    for description in root.iter(_XMP_DESCRIPTION):
+        for qname in _XMP_TARGET_PROPERTIES:
+            if qname in description.attrib:
+                description.set(qname, marker)
+        for prop in description:
+            if prop.tag not in _XMP_TARGET_PROPERTIES:
+                continue
+            container = prop[0] if len(prop) == 1 else None
+            if container is not None and container.tag == _XMP_ALT:
+                for child in list(container):
+                    if child.tag != _XMP_LI:
+                        continue
+                    language = _xmp_lang(child)
+                    if language == "x-default" or language.startswith("ko"):
+                        # Bare target alternatives are normalized away so a newly
+                        # inserted ko-KR/x-default node does not look like custom
+                        # metadata drift.  Any custom attrs/children remain hashed.
+                        extra_attrs = {
+                            key: value
+                            for key, value in child.attrib.items()
+                            if key != _XMP_LANG
+                        }
+                        if not extra_attrs and len(child) == 0:
+                            container.remove(child)
+                        else:
+                            child.set(_XMP_LANG, "__target__")
+                            child.text = marker
+                continue
+            if container is not None and container.tag in {_XMP_BAG, _XMP_SEQ}:
+                for child in container:
+                    if child.tag == _XMP_LI and len(child) == 0:
+                        child.text = marker
+                continue
+            prop.text = marker
+    try:
+        canonical = etree.tostring(tree, method="c14n", with_comments=True)
+    except (etree.C14NError, ValueError) as exc:
+        raise RuntimeError("cannot canonicalize PDF XMP metadata") from exc
+    return ("sha256", hashlib.sha256(canonical).hexdigest(), len(canonical))
+
+
+def _xmp_packet_signature(state):
+    if state is None:
+        return ("absent",)
+    raw = bytes(state["raw"])
+    return ("sha256", hashlib.sha256(raw).hexdigest(), len(raw))
+
+
+def _metadata_signature(doc):
+    state = _parse_document_xmp(doc)
+    return (
+        ("info", _metadata_mapping_signature(doc.metadata or {})),
+        ("xmp", _xmp_packet_signature(state)),
+    )
+
+
+def _apply_xmp_binding(binding, translated):
+    mode = binding["mode"]
+    if mode == "attribute":
+        binding["element"].set(binding["attribute"], translated)
+        return
+    if mode in {"text", "list_item"}:
+        binding["element"].text = translated
+        return
+    if mode != "alt":
+        raise RuntimeError(f"unsupported XMP translation binding: {mode}")
+
+    container = binding["container"]
+    alternatives = [child for child in container if child.tag == _XMP_LI]
+    x_defaults = [child for child in alternatives if _xmp_lang(child) == "x-default"]
+    natural_default = next(
+        (
+            child
+            for child in x_defaults
+            if _is_natural_language_document_label(
+                _xmp_text_value(child), metadata_field=binding["field"]
+            )
+        ),
+        None,
+    )
+    if natural_default is not None:
+        natural_default.text = translated
+    elif not x_defaults:
+        default_node = etree.Element(_XMP_LI)
+        default_node.set(_XMP_LANG, "x-default")
+        default_node.text = translated
+        container.insert(0, default_node)
+
+    korean = [
+        child for child in alternatives if _xmp_lang(child).startswith("ko")
+    ]
+    if korean:
+        for child in korean:
+            child.text = translated
+    else:
+        korean_node = etree.Element(_XMP_LI)
+        korean_node.set(_XMP_LANG, "ko-KR")
+        korean_node.text = translated
+        container.append(korean_node)
+
+
+def _resolve_virtual_translations(doc, translations):
+    """Fail closed if a target reader-UI string has no non-empty translation."""
+    blocks = _document_virtual_blocks(doc)
+    resolved = {}
+    missing = []
+    for block in blocks:
+        block_id = str(block["id"])
+        value = translations.get(block_id)
+        if value is None:
+            value = translations.get(block["id"])
+        if not isinstance(value, str) or not value.strip():
+            missing.append(block_id)
+            continue
+        resolved[block_id] = _clean_ko(value).strip()
+    if missing:
+        raise RuntimeError(
+            "missing or empty required PDF outline/metadata translations: "
+            + ", ".join(missing[:12])
+            + (f" (+{len(missing) - 12} more)" if len(missing) > 12 else "")
+        )
+    return blocks, resolved
+
+
+def _apply_virtual_translations(doc, blocks, resolved, source_outline, source_metadata):
+    """Update reader UI text while preserving navigation and metadata provenance."""
+    expected_outline = list(source_outline)
+    expected_info = dict(source_metadata)
+    outline_replaced = 0
+    metadata_replaced = 0
+    toc_items = doc.get_toc(simple=False) or []
+    metadata_plan = _metadata_translation_plan(doc)
+    metadata_groups = {
+        str(group["id"]): group for group in metadata_plan["groups"]
+    }
+    source_xmp_non_target = _xmp_non_target_signature(metadata_plan["xmp"])
+    xmp_mutated = False
+    info_mutated = False
+
+    for block in blocks:
+        block_id = str(block["id"])
+        translated = resolved[block_id]
+        if block["kind"] == "outline":
+            index = int(block["index"])
+            original = expected_outline[index]
+            expected_outline[index] = (
+                original[0],
+                translated,
+                original[2],
+                original[3],
+            )
+            # PyMuPDF's high-level set_toc_item(title=...) currently clears the
+            # outline /F bold+italic flags for some named Fit destinations.  Write
+            # only /Title at the existing outline object instead: destination,
+            # hierarchy, collapse state, color and style keys remain untouched.
+            destination = toc_items[index][3] if len(toc_items[index]) > 3 else {}
+            xref = int(destination.get("xref", 0)) if isinstance(destination, dict) else 0
+            if xref <= 0:
+                raise RuntimeError("cannot locate existing PDF outline object for title update")
+            doc.xref_set_key(xref, "Title", fitz.get_pdf_str(translated))
+            outline_replaced += 1
+        elif block["kind"] == "metadata":
+            group = metadata_groups.get(block_id)
+            if group is None:
+                raise RuntimeError(f"PDF metadata translation binding disappeared: {block_id}")
+            for binding in group["bindings"]:
+                if binding["source"] == "info":
+                    expected_info[str(binding["field"])] = translated
+                    info_mutated = True
+                elif binding["source"] == "xmp":
+                    _apply_xmp_binding(binding, translated)
+                    xmp_mutated = True
+                else:
+                    raise RuntimeError("unknown PDF metadata translation source")
+            metadata_replaced += 1
+
+    if info_mutated:
+        # Feed every source field back so author / creator / producer / dates and
+        # non-target document information remain exact.
+        doc.set_metadata(expected_info)
+    if xmp_mutated:
+        try:
+            serialized = etree.tostring(
+                metadata_plan["xmp"]["tree"],
+                encoding="utf-8",
+                xml_declaration=False,
+            ).decode("utf-8")
+            doc.set_xml_metadata(serialized)
+        except (UnicodeError, etree.LxmlError, RuntimeError, ValueError) as exc:
+            raise RuntimeError("cannot write translated PDF XMP metadata") from exc
+        updated_xmp = _parse_document_xmp(doc)
+        if _xmp_non_target_signature(updated_xmp) != source_xmp_non_target:
+            raise RuntimeError("non-target PDF XMP metadata changed during translation")
+
+    expected_outline = tuple(expected_outline)
+    actual_outline = _outline_signature(doc)
+    if _outline_navigation_signature(actual_outline) != _outline_navigation_signature(
+        source_outline
+    ):
+        raise RuntimeError("PDF outline navigation semantics changed while translating titles")
+    if actual_outline != expected_outline:
+        raise RuntimeError("PDF outline title translation mismatch")
+    expected_metadata_signature = _metadata_signature(doc)
+    actual_info = _metadata_mapping_signature(doc.metadata or {})
+    if actual_info != _metadata_mapping_signature(expected_info):
+        raise RuntimeError("PDF metadata translation or preservation mismatch")
+    return {
+        "outline_replaced": outline_replaced,
+        "metadata_replaced": metadata_replaced,
+        "expected_outline": expected_outline,
+        "expected_metadata": expected_metadata_signature,
+    }
+
+
+_CMAP_HEX_TOKEN = re.compile(rb"<([^<>]*)>")
+
+
+def _validate_utf16_destination(token):
+    """Return a stable anomaly label for one ToUnicode destination token."""
+    if not token or re.fullmatch(rb"[0-9A-Fa-f]+", token) is None:
+        return "invalid_hex_destination"
+    if len(token) % 2:
+        return "odd_length_hex_destination"
+    raw = bytes.fromhex(token.decode("ascii"))
+    if len(raw) % 2:
+        return "odd_length_utf16_destination"
+    try:
+        decoded = raw.decode("utf-16-be", errors="strict")
+    except UnicodeDecodeError:
+        return "invalid_utf16_destination"
+    # Python's strict UTF-16 decoder rejects unpaired surrogates. Retain an
+    # explicit scalar check so future runtime behavior cannot admit > U+10FFFF.
+    if any(ord(ch) > 0x10FFFF for ch in decoded):
+        return "invalid_non_bmp_destination"
+    return None
+
+
+def _tounicode_stream_anomalies(stream):
+    """Inspect destination values in bfchar / bfrange CMap sections."""
+    anomalies = []
+    for match in re.finditer(rb"beginbfchar(.*?)endbfchar", stream, re.DOTALL):
+        tokens = [item.group(1) for item in _CMAP_HEX_TOKEN.finditer(match.group(1))]
+        if len(tokens) % 2:
+            anomalies.append("malformed_bfchar_arity")
+        for destination in tokens[1::2]:
+            issue = _validate_utf16_destination(destination)
+            if issue:
+                anomalies.append(issue)
+
+    for match in re.finditer(rb"beginbfrange(.*?)endbfrange", stream, re.DOTALL):
+        body = match.group(1)
+        tokens = re.findall(rb"<([^<>]*)>|(\[)|(\])", body)
+        flat = []
+        for hex_value, open_bracket, close_bracket in tokens:
+            if hex_value:
+                flat.append(("hex", hex_value))
+            elif open_bracket:
+                flat.append(("open", b""))
+            elif close_bracket:
+                flat.append(("close", b""))
+        index = 0
+        while index < len(flat):
+            if index + 2 >= len(flat) or flat[index][0] != "hex" or flat[index + 1][0] != "hex":
+                anomalies.append("malformed_bfrange_arity")
+                break
+            index += 2  # source range endpoints are character codes, not destinations
+            kind, value = flat[index]
+            if kind == "hex":
+                issue = _validate_utf16_destination(value)
+                if issue:
+                    anomalies.append(issue)
+                index += 1
+                continue
+            if kind != "open":
+                anomalies.append("malformed_bfrange_destination")
+                break
+            index += 1
+            found_close = False
+            while index < len(flat):
+                kind, value = flat[index]
+                index += 1
+                if kind == "close":
+                    found_close = True
+                    break
+                if kind != "hex":
+                    anomalies.append("malformed_bfrange_array")
+                    continue
+                issue = _validate_utf16_destination(value)
+                if issue:
+                    anomalies.append(issue)
+            if not found_close:
+                anomalies.append("unterminated_bfrange_array")
+                break
+    return tuple(sorted(Counter(anomalies).items()))
+
+
+def _font_xrefs(doc):
+    xrefs = set()
+    for page in doc:
+        try:
+            xrefs.update(int(font[0]) for font in page.get_fonts(full=True) if int(font[0]) > 0)
+        except Exception:
+            continue
+    return xrefs
+
+
+def _font_tounicode_stream(doc, font_xref):
+    key_type, value = doc.xref_get_key(font_xref, "ToUnicode")
+    if key_type != "xref":
+        return None
+    try:
+        stream_xref = int(str(value).split()[0])
+        return bytes(doc.xref_stream(stream_xref) or b"")
+    except Exception:
+        return None
+
+
+def _cmap_anomaly_inventory(doc):
+    """Count invalid CMaps by decompressed digest, independent of xref renumbering."""
+    inventory = Counter()
+    for font_xref in _font_xrefs(doc):
+        stream = _font_tounicode_stream(doc, font_xref)
+        if not stream:
+            continue
+        anomalies = _tounicode_stream_anomalies(stream)
+        if anomalies:
+            inventory[(hashlib.sha256(stream).hexdigest(), anomalies)] += 1
+    return inventory
+
+
+def _verify_saved_text_cmaps(path, source_anomalies, subset_font_digests, expect_generated):
+    """Fail on newly introduced CMap defects while tolerating unchanged source defects."""
+    saved = fitz.open(path)
+    try:
+        output_anomalies = _cmap_anomaly_inventory(saved)
+        introduced = output_anomalies - source_anomalies
+        if introduced:
+            labels = []
+            for (_digest, issues), count in introduced.items():
+                labels.append(f"{count}x {dict(issues)}")
+            raise RuntimeError(
+                "saved PDF introduced invalid ToUnicode mappings: " + "; ".join(labels)
+            )
+
+        matched_subset_fonts = 0
+        for font_xref in _font_xrefs(saved):
+            try:
+                embedded = saved.extract_font(font_xref)[3]
+            except Exception:
+                continue
+            if not embedded:
+                continue
+            digest = hashlib.sha256(embedded).hexdigest()
+            if digest not in subset_font_digests:
+                continue
+            matched_subset_fonts += 1
+            stream = _font_tounicode_stream(saved, font_xref)
+            if not stream:
+                raise RuntimeError("generated subset font is missing a ToUnicode CMap")
+            anomalies = _tounicode_stream_anomalies(stream)
+            if anomalies:
+                raise RuntimeError(
+                    f"generated subset font has invalid ToUnicode mappings: {dict(anomalies)}"
+                )
+        if expect_generated and matched_subset_fonts == 0:
+            raise RuntimeError("could not verify any generated subset font in saved PDF")
+        return {
+            "validated_subset_fonts": matched_subset_fonts,
+            "preserved_source_cmap_anomalies": sum(
+                (output_anomalies & source_anomalies).values()
+            ),
+        }
+    finally:
+        saved.close()
+
+
+def _verify_saved_pdf_structure(
+    path, safe_links, page_geometry, outline, metadata_signature
+):
+    """Re-open the saved file so object garbage collection cannot hide link loss."""
+    saved = fitz.open(path)
+    try:
+        expected_links = Counter(_safe_link_key(link) for link in safe_links)
+        actual_links = Counter(
+            _safe_link_key(link) for link in _capture_safe_links(saved)
+        )
+        if actual_links != expected_links:
+            raise RuntimeError("saved PDF safe link preservation mismatch")
+        if _page_geometry_signature(saved) != page_geometry:
+            raise RuntimeError("saved PDF page geometry preservation mismatch")
+        if _outline_signature(saved) != outline:
+            raise RuntimeError("saved PDF outline translation/preservation mismatch")
+        if _metadata_signature(saved) != metadata_signature:
+            raise RuntimeError("saved PDF metadata translation/preservation mismatch")
+    finally:
+        saved.close()
+
+
 def cmd_render(pdf_path, out_path, font_path):
     payload = json.loads(sys.stdin.read() or "{}")
     translations = payload.get("translations", {}) or {}
+    if not isinstance(translations, dict):
+        raise ValueError("render translations must be a JSON object")
 
     doc = fitz.open(pdf_path)
+    source_cmap_anomalies = _cmap_anomaly_inventory(doc)
     build_decoders(doc)  # 추출과 동일한 디코더 — 블록 텍스트/매칭 일관성 유지
+    # Resolve these before mutating any page.  Direct renderer callers therefore
+    # cannot silently leave an English bookmark / metadata field in the output;
+    # normal Node callers have already passed assertCompleteTranslations as well.
+    virtual_blocks, virtual_translations = _resolve_virtual_translations(
+        doc, translations
+    )
+    unsafe_links_removed = _remove_unsafe_links(doc)
+    safe_links = _capture_safe_links(doc)
+    page_geometry = _page_geometry_signature(doc)
+    source_outline = _outline_signature(doc)
+    source_metadata = dict(doc.metadata or {})
 
     # 페이지별 그림 영역 캐시(추출과 동일 기준) — 축 라벨 줄을 덮기/그리기에서 뺀다.
     fig_cache = {}
+    table_cell_cache = {}
+    table_layout_cache = {}
+    table_region_cache = {}
+    figure_translation_cache = {}
 
     def figs_for(pno):
         if pno not in fig_cache:
-            fig_cache[pno] = _skip_regions(doc[pno])  # 그림 + 표
+            fig_cache[pno] = _skip_regions(
+                doc[pno], table_layouts_for(pno)
+            )  # 그림 + 표
         return fig_cache[pno]
+
+    def table_layouts_for(pno):
+        if pno not in table_layout_cache:
+            table_layout_cache[pno] = _table_layouts(doc[pno])
+        return table_layout_cache[pno]
+
+    def table_cells_for(pno):
+        if pno not in table_cell_cache:
+            _use_page(pno)
+            table_cell_cache[pno] = _table_cell_blocks(
+                doc[pno], pno, table_layouts_for(pno)
+            )
+        return table_cell_cache[pno]
+
+    def table_regions_for(pno):
+        if pno not in table_region_cache:
+            table_region_cache[pno] = [
+                fitz.Rect(table["rect"]) for table in table_layouts_for(pno)
+            ]
+        return table_region_cache[pno]
+
+    def figure_translation_regions_for(pno):
+        if pno not in figure_translation_cache:
+            figure_translation_cache[pno] = _figure_translation_regions(
+                doc[pno], table_regions_for(pno)
+            )
+        return figure_translation_cache[pno]
 
     # 번역이 있는 블록만 (페이지별로) 모은다.
     by_page = defaultdict(list)
-    kept_by_page = defaultdict(list)  # 원본유지(표시수식·라벨) rect — redaction 보호용
+    kept_by_page = defaultdict(list)  # 번역하지 않는 원본 글리프 rect — redaction 보호용
     static_by_page = defaultdict(list)  # 번역 안 된 모든 블록(수식·라벨·미번역) — 압축 앵커
+    logical_rects_by_page = defaultdict(list)  # source content-order anchor map
+    logical_source_y_by_id = {}
+    table_layout_by_id = {}
+    table_translation_pages = set()
+    skipped_table_positions = defaultdict(list)
+    pending_table_logical = defaultdict(list)
     for bid, pno, block in iter_text_blocks(doc):
+        # Table-row source blocks have no ordinary translatable lines.  Their
+        # glyphs are handled below as cell-specific string IDs; do not turn the
+        # original merged row into a static clipping mask.  Figure/axis labels,
+        # however, remain logical preserved-text anchors for content ordering.
+        visible_text = block_text(block, figs_for(pno))
+        block_rect = fitz.Rect(block["bbox"])
+        block_centre = (
+            (block_rect.x0 + block_rect.x1) / 2.0,
+            (block_rect.y0 + block_rect.y1) / 2.0,
+        )
+        if not visible_text and any(
+            table.x0 <= block_centre[0] <= table.x1
+            and table.y0 <= block_centre[1] <= table.y1
+            for table in table_regions_for(pno)
+        ):
+            skipped_table_positions[pno].append(
+                (len(logical_rects_by_page[pno]), bid, block_rect)
+            )
+            continue
+        logical_rect = fitz.Rect(block["bbox"])
+        logical_rects_by_page[pno].append((bid, logical_rect))
+        logical_source_y_by_id[bid] = float(logical_rect.y0)
         ko = translations.get(str(bid))
         if ko is None:
             ko = translations.get(bid)
@@ -2073,53 +5441,158 @@ def cmd_render(pdf_path, out_path, font_path):
             # 번역 없는 블록은 원본이 그대로 남으므로(이동 불가) 세로압축의 '고정 앵커'다.
             r0 = fitz.Rect(_nonfig_rect(block, figs_for(pno)))
             static_by_page[pno].append(r0)
-            if _keep_original_block(block):  # 식·라벨 위치를 기억해 redaction 이 안 지우게
+            # ``cmd_extract`` deliberately omits displayed equations, isolated
+            # charges / coefficients, vector labels and table text.  Some of those
+            # fragments (for example a separately encoded SO4 charge) are not
+            # themselves classified by ``_keep_original_block`` but still overlap a
+            # translated prose block's union bbox.  Protect every untranslated
+            # visible block: incomplete callers then fail postflight with residual
+            # source language instead of silently deleting source glyphs, while
+            # intentional formula / figure fragments remain byte-for-byte intact.
+            if not r0.is_empty and r0.width > 0 and r0.height > 0:
                 kept_by_page[pno].append(r0)
             continue
         # 블록 전체 bbox 가 아니라 '그림 영역 줄을 뺀' bbox 만 덮는다.
         # → 캡션에 붙은 축 라벨(V(R_AB))을 지우지 않고 영어 그대로 남긴다.
         rect = _nonfig_rect(block, figs_for(pno))
         size, color, is_bold, is_ital = dominant_size_color(block)
-        by_page[pno].append((rect, _clean_ko(ko).strip(), size, color, is_bold, is_ital))
+        by_page[pno].append(
+            (rect, _clean_ko(ko).strip(), size, color, is_bold, is_ital, bid)
+        )
+    for pno in range(len(doc)):
+        for cell in table_cells_for(pno):
+            bid = cell["id"]
+            rect = fitz.Rect(cell["source_rect"])
+            rank_candidates = []
+            cx = (rect.x0 + rect.x1) / 2.0
+            cy = (rect.y0 + rect.y1) / 2.0
+            for _position, source_bid, source_rect in skipped_table_positions.get(pno, []):
+                sx = (source_rect.x0 + source_rect.x1) / 2.0
+                sy = (source_rect.y0 + source_rect.y1) / 2.0
+                if _rect_overlap_fraction(rect, source_rect) > 0.02 or (
+                    source_rect.y0 - 2 <= cy <= source_rect.y1 + 2
+                ):
+                    rank_candidates.append((abs(cx - sx) + 2.0 * abs(cy - sy), source_bid))
+            order_rank = (
+                min(rank_candidates, key=lambda value: (value[0], value[1]))[1]
+                if rank_candidates
+                else len(logical_rects_by_page[pno])
+            )
+            cell["order_rank"] = int(order_rank)
+            pending_table_logical[pno].append((cell, int(order_rank), rect))
+            logical_source_y_by_id[bid] = float(rect.y0)
+            if not cell["translate"]:
+                static_by_page[pno].append(rect)
+                kept_by_page[pno].append(rect)
+                continue
+            table_layout_by_id[bid] = cell
+            ko = translations.get(str(bid))
+            if ko is None:
+                ko = translations.get(bid)
+            if not ko or not str(ko).strip():
+                static_by_page[pno].append(rect)
+                kept_by_page[pno].append(rect)
+                continue
+            table_translation_pages.add(pno)
+            by_page[pno].append(
+                (
+                    rect,
+                    _clean_ko(ko).strip(),
+                    cell["size"],
+                    cell["color"],
+                    cell["bold"],
+                    cell["italic"],
+                    bid,
+                )
+            )
+    # Insert cell anchors where the original merged table-row streams occurred.
+    # This retains the producer's left-column/right-column content order while
+    # ordering cells row-major inside each table.
+    for pno, pending in pending_table_logical.items():
+        grouped = defaultdict(list)
+        for cell, order_rank, rect in pending:
+            key = tuple(round(value, 3) for value in cell["table_rect"])
+            grouped[key].append((cell, order_rank, rect))
+        insertions = []
+        for table_key, entries in grouped.items():
+            table_rect = fitz.Rect(table_key)
+            positions = [
+                position
+                for position, _source_bid, skipped_rect in skipped_table_positions.get(pno, [])
+                if _rect_overlap_fraction(skipped_rect, table_rect) > 0.05
+            ]
+            insert_at = min(positions) if positions else len(logical_rects_by_page[pno])
+            entries.sort(
+                key=lambda value: (
+                    value[0]["cell_rect"].y0,
+                    value[0]["cell_rect"].x0,
+                    int(value[1]),
+                )
+            )
+            insertions.append(
+                (
+                    insert_at,
+                    table_rect.y0,
+                    table_rect.x0,
+                    [(order_rank, rect) for _cell, order_rank, rect in entries],
+                )
+            )
+        offset = 0
+        for insert_at, _y, _x, entries in sorted(insertions):
+            actual = min(len(logical_rects_by_page[pno]), insert_at + offset)
+            logical_rects_by_page[pno][actual:actual] = entries
+            offset += len(entries)
+    page_expected = sum(len(items) for items in by_page.values())
 
-    # 폰트는 한 번만 로드해 모든 TextWriter 가 공유한다. (insert_htmlbox 는 호출마다
-    # 2MB 폰트를 Story 에 재적재해 24쪽/수백 블록에서 ~1.5GB OOM 을 냈다.)
-    font = fitz.Font(fontfile=font_path)
+    # 번역 전체에서 실제로 그릴 문자만 fontTools로 먼저 subset한다. 이 단계가 없으면
+    # Pretendard의 미사용 non-BMP cmap entry 때문에 MuPDF가 5자리 목적값을 가진 깨진
+    # ToUnicode를 생성한다. full-font 폴백은 같은 손상을 되살리므로 허용하지 않는다.
+    translation_codepoints = _translation_codepoints(by_page)
     _fdir = os.path.dirname(os.path.abspath(font_path))
+    regular_bytes, regular_coverage = _subset_font_bytes(
+        font_path, translation_codepoints, "Pretendard Regular"
+    )
+    bold_path = os.path.join(_fdir, "Pretendard-Bold.ttf")
+    bold_bytes, bold_coverage = _subset_font_bytes(
+        bold_path, translation_codepoints, "Pretendard Bold"
+    )
+    fallback_path = os.path.join(_fdir, "NanumGothic-Regular.ttf")
+    fallback_bytes, fallback_coverage = _subset_font_bytes(
+        fallback_path, translation_codepoints, "NanumGothic fallback"
+    )
+    covered = regular_coverage | bold_coverage | fallback_coverage
+    missing = translation_codepoints.difference(covered)
+    if missing:
+        preview = ", ".join(f"U+{cp:04X}" for cp in sorted(missing)[:12])
+        raise RuntimeError(f"bundled PDF fonts do not cover translation text: {preview}")
 
-    def _load_sibling(name):
-        try:
-            p = os.path.join(_fdir, name)
-            if os.path.exists(p) and os.path.abspath(p) != os.path.abspath(font_path):
-                return fitz.Font(fontfile=p)
-        except Exception:
-            pass
-        return None
-
-    # 볼드 글꼴(원문 굵게 → 번역본도 굵게). 없으면 본문 글꼴로 대체(graceful).
-    font_bold = _load_sibling("Pretendard-Bold.ttf") or font
-    # 폴백 글꼴: 주 글꼴에 없는 글리프(예: ∈)를 가진 블록은 그 블록만 NanumGothic 으로
-    # 그려 '두부(□)'를 방지한다.
-    font_fb = _load_sibling("NanumGothic-Regular.ttf")
-
-    def _pick_font(text, base):
-        """블록 글자를 가장 잘 렌더하는 글꼴 선택(base 우선, 빠진 글리프가 적은 쪽)."""
-        if not font_fb:
-            return base
-        miss_b = sum(
-            1 for c in set(text) if ord(c) > 0x7F and not base.has_glyph(ord(c))
-        )
-        if miss_b == 0:
-            return base
-        miss_f = sum(
-            1 for c in set(text) if ord(c) > 0x7F and not font_fb.has_glyph(ord(c))
-        )
-        return font_fb if miss_f < miss_b else base
+    # bytes 객체를 cmd_render가 끝날 때까지 보유한다. fitz.Font(fontbuffer=...)는 파일
+    # 충돌 없는 in-memory font를 사용하므로 동시 job끼리 subset 파일을 덮어쓰지 않는다.
+    subset_font_buffers = {
+        "regular": regular_bytes,
+        "bold": bold_bytes,
+        "fallback": fallback_bytes,
+    }
+    subset_font_digests = {
+        hashlib.sha256(data).hexdigest() for data in subset_font_buffers.values()
+    }
+    font = fitz.Font(fontbuffer=subset_font_buffers["regular"])
+    font_bold = fitz.Font(fontbuffer=subset_font_buffers["bold"])
+    font_fb = fitz.Font(fontbuffer=subset_font_buffers["fallback"])
 
     replaced = 0
     shrunk = 0
+    overflow = 0
+    failed = 0
+    overflow_ids = []
+    failed_ids = []
+    min_font = None
+    min_glyph_font = None
+    font_sizes = []
+    reading_order_diagnostics = {}
     for pno, items in by_page.items():
         page = doc[pno]
+        page_text_rect = _page_text_rect(page)
         sample = _sample_pixmap(page)  # redaction 색 맞춤용(원본 배경 샘플)
         page_bg = _page_bg(sample)
         figs = figs_for(pno)  # 그림 영역 — 덮기/그리기를 이 밖으로 자른다(캐시 재사용).
@@ -2130,24 +5603,58 @@ def cmd_render(pdf_path, out_path, font_path):
         # 막는다 — 번역문은 식과 안 겹치는 가장 큰 직사각형에만 그려진다.
         kept_here = kept_by_page.get(pno, [])
         clip_regions = list(figs) + list(kept_here)
-        clipped = []
-        for rect, ko, sz, col, bd, it in items:
-            cr = _clip_out(rect, clip_regions) if clip_regions else fitz.Rect(rect)
+        clipped_normal = []
+        clipped_table = []
+        for rect, ko, sz, col, bd, it, bid in items:
+            table_layout = table_layout_by_id.get(bid)
+            if table_layout is not None:
+                # The source glyph bbox is the redaction target.  A table-like
+                # vector cluster is deliberately not a clipping region for this
+                # cell, but an independently detected neighbouring chart/image is.
+                cr = fitz.Rect(rect)
+                if any(
+                    _rect_overlap_fraction(cr, figure) > 0.05
+                    for figure in figure_translation_regions_for(pno)
+                ):
+                    cr = None
+            else:
+                cr = _clip_out(rect, clip_regions) if clip_regions else fitz.Rect(rect)
             if cr is None or cr.width < 3 or cr.height < 3:
+                failed += 1
+                failed_ids.append(bid)
+                font_sizes.append(
+                    {
+                        "id": bid,
+                        "source": round(float(sz), 2),
+                        "rendered": None,
+                        "min_glyph": None,
+                    }
+                )
                 continue
-            clipped.append((cr, ko, sz, col, bd, it))
+            target = clipped_table if table_layout is not None else clipped_normal
+            target.append((cr, ko, sz, col, bd, it, bid))
+        # Infer source column envelopes before deduplication / vertical compaction.
+        # Those later operations may change y or trim overlapping boxes, but never
+        # establish permission to consume the page-edge margin or a neighbouring
+        # column.
+        column_right_caps = _infer_column_right_caps(clipped_normal, page)
         # redaction(원문 지우기)은 '겹침 분할 전' 각 블록의 제 bbox 전체로 한다.
         # dedoverlap 은 '번역문 그리기' 위치만 좁히는 용도 — 그 좁힌 rect 로 redaction 까지
         # 하면, 큰 문단 조각이 첫 줄로 잘려 뒷부분 원문(영어)이 안 지워지고 남는다
         # (인라인 수식이 한 줄을 쪼갠 문단에서 흔함). 그리기는 dedoverlap 결과를 쓴다.
-        redact_full = [(fitz.Rect(c[0]), c[3]) for c in clipped]  # (full rect, color)
-        clipped = _dedoverlap_column(clipped)
+        redact_full = [
+            (fitz.Rect(c[0]), c[3]) for c in (clipped_normal + clipped_table)
+        ]  # (source glyph rect, color)
+        clipped_normal = _dedoverlap_column(clipped_normal)
         # F1 세로압축: 한국어가 원문보다 짧아 생긴 문단 사이 빈칸을 없앤다(블록을 위로만
         # 끌어올림). redaction 은 위 redact_full(원위치)로 이미 잡아둬 영향 없다.
         # 앵커 = 번역 안 된 모든 블록(수식·라벨·미번역) + 그림 — 그 위로는 안 넘긴다.
-        clipped = _compact_columns(
-            clipped, static_by_page.get(pno, []), figs, page.rect, font
+        clipped_normal = _compact_columns(
+            clipped_normal, static_by_page.get(pno, []), figs, page_text_rect, font
         )
+        # Cell rectangles are immutable layout constraints: never deduplicate,
+        # compact, or grow them into an adjacent row / column.
+        clipped = clipped_normal + clipped_table
         # 각 블록의 확장 한계 = 오른쪽/아래 '이웃 블록'까지(없으면 페이지 여백). 제목·헤딩이
         # 번역으로 길어져 가로·세로로 늘어나도 이웃을 침범해 겹치지 않도록 막는다.
         crects = [it[0] for it in clipped]
@@ -2160,8 +5667,31 @@ def cmd_render(pdf_path, out_path, font_path):
         bounds = []
         for i in range(nC):
             ri = crects[i]
-            bx = page.rect.x1 - 6.0
-            by = page.rect.y1 - 6.0
+            table_layout = table_layout_by_id.get(clipped[i][6])
+            if table_layout is not None:
+                cell = fitz.Rect(table_layout["cell_rect"])
+                inset_x = min(2.0, max(0.75, 0.04 * cell.width))
+                inset_y = min(1.25, max(0.5, 0.06 * cell.height))
+                left = cell.x0 + inset_x
+                right = cell.x1 - inset_x
+                if table_layout["align"] == fitz.TEXT_ALIGN_LEFT:
+                    left = min(right - 3.0, max(left, ri.x0))
+                elif table_layout["align"] == fitz.TEXT_ALIGN_RIGHT:
+                    right = max(left + 3.0, min(right, ri.x1))
+                inner = fitz.Rect(
+                    left,
+                    max(cell.y0 + inset_y, ri.y0 - 0.5),
+                    right,
+                    cell.y1 - inset_y,
+                )
+                if inner.width < 3 or inner.height < 2:
+                    inner = fitz.Rect(cell)
+                table_layout["draw_rect"] = inner
+                bounds.append((inner.x0, inner.x1, inner.y1))
+                continue
+            lx = page_text_rect.x0 + 6.0
+            bx = page_text_rect.x1 - 6.0
+            by = page_text_rect.y1 - 6.0
             for rj in obstacles:
                 if rj is ri:
                     continue  # 자기 자신(번역 블록)만 제외
@@ -2170,6 +5700,9 @@ def cmd_render(pdf_path, out_path, font_path):
                 oy = min(ri.y1, rj.y1) - max(ri.y0, rj.y0)
                 if rj.x0 >= ri.x1 - 1 and oy > 0.10 * min(ri.height, max(rj.height, 1.0)):
                     bx = min(bx, rj.x0 - 2)
+                # 왼쪽 이웃 → 우측정렬 header/footer를 왼쪽으로 넓힐 수 있는 한계.
+                if rj.x1 <= ri.x0 + 1 and oy > 0.10 * min(ri.height, max(rj.height, 1.0)):
+                    lx = max(lx, rj.x1 + 2)
                 # 아래 이웃 → 세로 확장 한계(가로로 조금이라도 겹치면 막는다).
                 ox = min(ri.x1, rj.x1) - max(ri.x0, rj.x0)
                 if rj.y0 >= ri.y1 - 1 and ox > 0.10 * min(ri.width, max(rj.width, 1.0)):
@@ -2177,7 +5710,10 @@ def cmd_render(pdf_path, out_path, font_path):
             # 세로 확장은 원래 높이의 ~3배까지만(아래 이웃 미검출 시 runaway 방지 — 한
             # 블록이 페이지 절반을 덮어 다른 글자 위로 흐르는 일 차단).
             by = min(by, ri.y1 + 3.0 * max(ri.height, 8.0))
-            bounds.append((max(bx, ri.x1), max(by, ri.y1)))
+            source_cap = column_right_caps.get(clipped[i][6])
+            if source_cap is not None:
+                bx = min(bx, max(ri.x1, source_cap))
+            bounds.append((min(lx, ri.x0), max(bx, ri.x1), max(by, ri.y1)))
         # 1) 원문 글자만 지운다. images=NONE 으로 그림은 보존.
         #    밝은(흰색 계열) 글자 → fill 생략. 그 외엔 '바로 바깥' 정확 배경색으로 덮어
         #    경계가 안 보이게(상자 느낌 제거).
@@ -2194,21 +5730,31 @@ def cmd_render(pdf_path, out_path, font_path):
                     fill = (bbg[0] / 255.0, bbg[1] / 255.0, bbg[2] / 255.0)
                 page.add_redact_annot(sr, fill=fill)
         page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
+        # Streams present at this exact point are the graphics/redaction residue and
+        # any intentionally preserved source text.  Subsequent xref deltas belong to
+        # one translated block and can be mapped back to its logical source id.
+        residual_content_xrefs = list(page.get_contents())
+        generated_content_order = {}
         # 2) 같은(클리핑된) 박스에 번역문 삽입. 본문 양끝맞춤, 제목/한 줄은 가운데/왼쪽.
-        page_width = page.rect.width
+        page_width = page_text_rect.width
         # 페이지 본문 글자 크기(글자 수 최빈) — 헤딩(제목·섹션 제목) 판정 기준.
         _size_chars = defaultdict(float)
         for _it in items:
             _size_chars[round(_it[2], 1)] += max(1, len(_it[1]))
         body_size = max(_size_chars, key=_size_chars.get) if _size_chars else 10.0
-        for idx, (rect, ko, _size, color, is_bold, is_ital) in enumerate(clipped):
+        for idx, (rect, ko, _size, color, is_bold, is_ital, bid) in enumerate(clipped):
             base = font_bold if is_bold else font  # 원문 굵게 → 번역본도 굵게
-            bfont = _pick_font(ko, base)  # 글리프 빠짐 방지(∈ 등은 폴백 글꼴로)
-            mx, my = bounds[idx]
+            fallback_fonts = (
+                (font, font_fb) if is_bold else (font_fb, font_bold)
+            )
+            plain_text = _strip_tags(ko)
+            mnx, mx, my = bounds[idx]
+            table_layout = table_layout_by_id.get(bid)
             # 헤딩 = 본문보다 확실히 큰 글자, 또는 굵으면서 약간 큰 글자. 헤딩은
             # justify 금지(번역으로 길어져 두 줄이 되면 첫 줄 단어가 크게 벌어짐).
-            is_heading = (_size >= 1.18 * body_size) or (
-                is_bold and _size >= 1.08 * body_size
+            is_heading = table_layout is None and (
+                (_size >= 1.18 * body_size)
+                or (is_bold and _size >= 1.08 * body_size)
             )
             try:
                 # 가로로 넓힐 수 있는 최대 폭 기준 '한 줄 여부' 판정(넓혀서 1줄이면 justify
@@ -2218,52 +5764,406 @@ def cmd_render(pdf_path, out_path, font_path):
                     if rect.width >= 0.45 * page_width
                     else (mx - rect.x0)
                 )
-                one_line = bfont.text_length(_strip_tags(ko), fontsize=_size) <= (avail_w - 2)
+                one_line = _text_length_with_fonts(
+                    plain_text, _size, base, fallback_fonts
+                ) <= (avail_w - 2)
             except Exception:
                 one_line = False
-            align = _detect_align(
-                rect, page_width, single_line=one_line, is_heading=is_heading
+            align = (
+                table_layout["align"]
+                if table_layout is not None
+                else _detect_align(
+                    rect, page_width, single_line=one_line, is_heading=is_heading
+                )
             )
-            if _has_tags(ko):
-                # 위/아래첨자(<sub>/<sup>) 포함 → 진짜 첨자로 그리는 rich 드로어.
-                drew_shrunk = _draw_rich(
-                    page, rect, ko, _color01(color), bfont, _size, align,
-                    max_x=mx, max_y=my,
+            if (
+                table_layout is None
+                and
+                align == fitz.TEXT_ALIGN_RIGHT
+                and not is_heading
+                and _body_prose_must_not_be_right_aligned(rect, plain_text, page)
+            ):
+                align = fitz.TEXT_ALIGN_LEFT
+            # MuPDF의 JUSTIFY는 CJK 문장 첫 줄의 U+0020을 좌표 간격으로만 처리해
+            # 텍스트 추출 시 단어가 붙을 수 있다. 한글 target만 LEFT로 내려 실제 space
+            # glyph를 보존한다. 가운데/오른쪽/헤딩 정렬은 그대로 둔다.
+            if align == fitz.TEXT_ALIGN_JUSTIFY and _contains_hangul(plain_text):
+                align = fitz.TEXT_ALIGN_LEFT
+            # Right-aligned running headers / footers are anchored by their original
+            # x1.  The generic fit path expands a bbox to ``max_x`` for longer prose;
+            # doing that here would move a short right label all the way to the page
+            # edge and destroy its original margin.
+            draw_rect = (
+                fitz.Rect(table_layout["draw_rect"])
+                if table_layout is not None
+                else rect
+            )
+            draw_max_x = mx
+            if align == fitz.TEXT_ALIGN_RIGHT and table_layout is None:
+                # Grow to the left while keeping the source right edge fixed.  A
+                # 2pt allowance is needed even for identity text because extracted
+                # glyph bboxes can be a fraction narrower than font metrics.
+                try:
+                    required_width = _text_length_with_fonts(
+                        plain_text, _size, base, fallback_fonts
+                    ) + 2.0
+                except Exception:
+                    required_width = rect.width
+                width = min(
+                    max(rect.width, required_width),
+                    max(rect.width, rect.x1 - mnx),
+                )
+                draw_rect = fitz.Rect(
+                    rect.x1 - width, rect.y0, rect.x1, rect.y1
+                )
+                draw_max_x = rect.x1
+            needs_mixed_writer = not _font_covers_text(base, plain_text)
+            contents_before_draw = list(page.get_contents())
+            if _has_tags(ko) or needs_mixed_writer:
+                # 위/아래첨자 또는 주 글꼴에 없는 기호(예: ∈)는 글자별 bundled
+                # subset font를 고르는 rich 드로어로 처리한다.
+                draw_state = _draw_rich(
+                    page, draw_rect, ko, _color01(color), base, _size, align,
+                    max_x=draw_max_x, max_y=my,
+                    min_size=(
+                        5.0
+                        if table_layout is not None or _has_tags(ko)
+                        else 4.0
+                    ),
+                    fallback_fonts=fallback_fonts,
                 )
             else:
-                drew_shrunk = _draw_fit(
-                    page, rect, ko, _color01(color), bfont, _size, align,
-                    italic=is_ital, max_x=mx, max_y=my,
+                draw_state = _draw_fit(
+                    page, draw_rect, ko, _color01(color), base, _size, align,
+                    min_size=5.0 if table_layout is not None else 4.0,
+                    italic=is_ital, max_x=draw_max_x, max_y=my,
                 )
-            if drew_shrunk:
+            contents_after_draw = list(page.get_contents())
+            before_set = {int(xref) for xref in contents_before_draw}
+            new_content_xrefs = [
+                int(xref)
+                for xref in contents_after_draw
+                if int(xref) not in before_set
+            ]
+            if draw_state["drawn"]:
+                content_order_rank = (
+                    table_layout.get("order_rank", bid)
+                    if table_layout is not None
+                    else bid
+                )
+                for suborder, xref in enumerate(new_content_xrefs):
+                    generated_content_order[xref] = (
+                        content_order_rank,
+                        logical_source_y_by_id.get(bid, float(rect.y0)),
+                        suborder,
+                    )
+            if draw_state["shrunk"]:
                 shrunk += 1
-            replaced += 1
+            if draw_state["min_font"] is not None:
+                min_font = (
+                    draw_state["min_font"]
+                    if min_font is None
+                    else min(min_font, draw_state["min_font"])
+                )
+            if draw_state["min_glyph_font"] is not None:
+                min_glyph_font = (
+                    draw_state["min_glyph_font"]
+                    if min_glyph_font is None
+                    else min(min_glyph_font, draw_state["min_glyph_font"])
+                )
+            font_sizes.append(
+                {
+                    "id": bid,
+                    "source": round(float(_size), 2),
+                    "rendered": draw_state["min_font"],
+                    "min_glyph": draw_state["min_glyph_font"],
+                }
+            )
+            if draw_state["drawn"]:
+                replaced += 1
+            if not draw_state["drawn"]:
+                failed += 1
+                failed_ids.append(bid)
+            elif not draw_state["complete"]:
+                overflow += 1
+                overflow_ids.append(bid)
+
+        page, reading_order_diagnostic = _interleave_safe_page_text_streams(
+            doc,
+            page,
+            residual_content_xrefs,
+            generated_content_order,
+            logical_rects_by_page.get(pno, []),
+        )
+        reading_order_diagnostics[str(pno + 1)] = reading_order_diagnostic
+        if (
+            pno in table_translation_pages
+            and reading_order_diagnostic.get("reason") != "pixel_exact"
+        ):
+            reason = reading_order_diagnostic.get("reason", "unknown")
+            doc.close()
+            raise RuntimeError(
+                "table translation reading-order interleave was not proven "
+                f"pixel-exact on page {pno + 1}: {reason}"
+            )
+
+    page_replaced = replaced
+    virtual_stats = _apply_virtual_translations(
+        doc,
+        virtual_blocks,
+        virtual_translations,
+        source_outline,
+        source_metadata,
+    )
+    virtual_replaced = (
+        virtual_stats["outline_replaced"] + virtual_stats["metadata_replaced"]
+    )
+    replaced += virtual_replaced
+    expected = page_expected + len(virtual_blocks)
+
+    restored_links = _restore_safe_links(doc, safe_links)
+    if _page_geometry_signature(doc) != page_geometry:
+        raise RuntimeError("PDF page geometry changed while rendering translations")
+    if _outline_signature(doc) != virtual_stats["expected_outline"]:
+        raise RuntimeError("PDF outline changed after translating titles")
+    if _metadata_signature(doc) != virtual_stats["expected_metadata"]:
+        raise RuntimeError("PDF metadata changed after translating document information")
 
     doc.save(out_path, garbage=3, deflate=True)
     doc.close()
-    write_json_response({"ok": True, "replaced": replaced, "shrunk": shrunk})
+    try:
+        _verify_saved_pdf_structure(
+            out_path,
+            safe_links,
+            page_geometry,
+            virtual_stats["expected_outline"],
+            virtual_stats["expected_metadata"],
+        )
+        cmap_stats = _verify_saved_text_cmaps(
+            out_path,
+            source_cmap_anomalies,
+            subset_font_digests,
+            expect_generated=page_replaced > 0,
+        )
+    except Exception:
+        try:
+            os.remove(out_path)
+        except OSError:
+            pass
+        raise
+    write_json_response(
+        {
+            "ok": overflow == 0 and failed == 0,
+            "replaced": replaced,
+            "drawn": replaced,
+            "expected": expected,
+            "page_expected": page_expected,
+            "page_drawn": page_replaced,
+            "font_expected": page_expected,
+            "virtual_replaced": virtual_replaced,
+            "outline_expected": sum(
+                1 for block in virtual_blocks if block.get("kind") == "outline"
+            ),
+            "outline_replaced": virtual_stats["outline_replaced"],
+            "metadata_expected": sum(
+                1 for block in virtual_blocks if block.get("kind") == "metadata"
+            ),
+            "metadata_replaced": virtual_stats["metadata_replaced"],
+            "shrunk": shrunk,
+            "overflow": overflow,
+            "failed": failed,
+            "overflow_ids": overflow_ids,
+            "failed_ids": failed_ids,
+            "restored_links": restored_links,
+            "unsafe_links_removed": unsafe_links_removed,
+            "min_font": round(min_font, 2) if min_font is not None else None,
+            "min_glyph_font": (
+                round(min_glyph_font, 2) if min_glyph_font is not None else None
+            ),
+            "font_sizes": font_sizes,
+            "validated_subset_fonts": cmap_stats["validated_subset_fonts"],
+            "preserved_source_cmap_anomalies": cmap_stats[
+                "preserved_source_cmap_anomalies"
+            ],
+            "reading_order": reading_order_diagnostics,
+        }
+    )
+
+
+_SPLIT_PROVENANCE_VERSION = 1
+_SPLIT_DOCUMENT_KEY = "QuiloSplitDocument"
+_SPLIT_PAGE_KEY = "QuiloSourcePage"
+_SPLIT_TOKEN_KEY = "QuiloPageToken"
+_SPLIT_TOKEN_RE = re.compile(r"[0-9a-f]{32}\Z")
+
+
+def _set_split_page_provenance(doc, page, document_token, source_page, page_token):
+    doc.xref_set_key(page.xref, _SPLIT_DOCUMENT_KEY, fitz.get_pdf_str(document_token))
+    doc.xref_set_key(page.xref, _SPLIT_PAGE_KEY, str(int(source_page)))
+    doc.xref_set_key(page.xref, _SPLIT_TOKEN_KEY, fitz.get_pdf_str(page_token))
+
+
+def _read_split_page_provenance(doc, page):
+    document_type, document_token = doc.xref_get_key(page.xref, _SPLIT_DOCUMENT_KEY)
+    page_type, source_page = doc.xref_get_key(page.xref, _SPLIT_PAGE_KEY)
+    token_type, page_token = doc.xref_get_key(page.xref, _SPLIT_TOKEN_KEY)
+    if document_type != "string" or token_type != "string" or page_type not in {
+        "int",
+        "float",
+    }:
+        raise RuntimeError("merge part is missing PDF split provenance")
+    try:
+        source_page_number = int(float(source_page))
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError("merge part has invalid PDF source-page provenance") from exc
+    return str(document_token), source_page_number, str(page_token)
+
+
+def _validate_part_manifest(parts, manifest, source_page_count):
+    if not isinstance(manifest, dict):
+        raise RuntimeError("merge part manifest is required")
+    if manifest.get("version") != _SPLIT_PROVENANCE_VERSION:
+        raise RuntimeError("merge part manifest version is unsupported")
+    document_token = str(manifest.get("document_token") or "")
+    if not _SPLIT_TOKEN_RE.fullmatch(document_token):
+        raise RuntimeError("merge part manifest document token is invalid")
+    chunks = manifest.get("chunks")
+    if not isinstance(chunks, list) or len(chunks) != len(parts):
+        raise RuntimeError("merge part manifest count does not match parts")
+
+    expected_page = 1
+    all_tokens = set()
+    normalized = []
+    for index, (part_path, entry) in enumerate(zip(parts, chunks)):
+        if not isinstance(entry, dict):
+            raise RuntimeError("merge part manifest entry is invalid")
+        try:
+            start = int(entry.get("start"))
+            end = int(entry.get("end"))
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("merge part manifest range is invalid") from exc
+        tokens = entry.get("page_tokens")
+        if (
+            start != expected_page
+            or end < start
+            or not isinstance(tokens, list)
+            or len(tokens) != end - start + 1
+        ):
+            raise RuntimeError("merge part manifest ranges are not contiguous")
+        normalized_tokens = [str(token) for token in tokens]
+        if any(not _SPLIT_TOKEN_RE.fullmatch(token) for token in normalized_tokens):
+            raise RuntimeError("merge part manifest page token is invalid")
+        if any(token in all_tokens for token in normalized_tokens):
+            raise RuntimeError("merge part manifest contains duplicate page tokens")
+        all_tokens.update(normalized_tokens)
+
+        part = fitz.open(part_path)
+        try:
+            if part.needs_pass:
+                raise RuntimeError(f"merge part is encrypted: {part_path}")
+            if len(part) != len(normalized_tokens):
+                raise RuntimeError(
+                    f"merge part page count does not match manifest at part {index + 1}"
+                )
+            for local_index, expected_token in enumerate(normalized_tokens):
+                actual_document, actual_page, actual_token = _read_split_page_provenance(
+                    part, part[local_index]
+                )
+                expected_source_page = start + local_index
+                if (
+                    actual_document != document_token
+                    or actual_page != expected_source_page
+                    or actual_token != expected_token
+                ):
+                    raise RuntimeError(
+                        f"merge part provenance mismatch at source page {expected_source_page}"
+                    )
+        finally:
+            part.close()
+        normalized.append(
+            {"start": start, "end": end, "page_tokens": normalized_tokens}
+        )
+        expected_page = end + 1
+
+    if expected_page != source_page_count + 1:
+        raise RuntimeError("merge part manifest does not cover every source page")
+    return {
+        "version": _SPLIT_PROVENANCE_VERSION,
+        "document_token": document_token,
+        "chunks": normalized,
+    }
 
 
 def cmd_split(pdf_path, out_dir, pages_per_chunk=5):
     """텍스트 PDF 를 페이지 범위로 나눠 sub-PDF 들로 저장(재조판 병렬 처리용).
-    각 chunk 를 동시에 번역해 합치면 Opus 품질 그대로 벽시계 시간을 줄인다."""
+    각 chunk 를 동시에 번역해 합치면 Opus 품질 그대로 벽시계 시간을 줄인다.
+
+    outline/문서정보는 페이지 chunk에 복제하지 않고 전체 문서의 virtual
+    blocks로 한 번만 돌려준다. Node는 page chunks와 이 블록을 병렬
+    번역하고, merge가 원본 구조에 번역된 제목을 한 번만 적용한다.
+    """
     pages_per_chunk = max(1, int(pages_per_chunk))
     os.makedirs(out_dir, exist_ok=True)
     src = fitz.open(pdf_path)
     n = len(src)
+    virtual_blocks = _document_virtual_blocks(src)
+    outline_items = len(src.get_toc(simple=False) or [])
+    document_token = os.urandom(16).hex()
     chunks = []
+    manifest_chunks = []
     ci = 0
     for start in range(0, n, pages_per_chunk):
         end = min(start + pages_per_chunk, n)
         sub = fitz.open()
         sub.insert_pdf(src, from_page=start, to_page=end - 1)
+        page_tokens = []
+        for local_index in range(len(sub)):
+            page_token = os.urandom(16).hex()
+            _set_split_page_provenance(
+                sub,
+                sub[local_index],
+                document_token,
+                start + local_index + 1,
+                page_token,
+            )
+            page_tokens.append(page_token)
         path = os.path.join(out_dir, f"chunk-{ci}.pdf")
         sub.save(path, garbage=3, deflate=True)
         sub.close()
-        chunks.append({"path": path, "start": start + 1, "end": end})
+        chunks.append(
+            {
+                "path": path,
+                "start": start + 1,
+                "end": end,
+                "page_tokens": page_tokens,
+            }
+        )
+        manifest_chunks.append(
+            {"start": start + 1, "end": end, "page_tokens": page_tokens}
+        )
         ci += 1
     src.close()
-    write_json_response({"page_count": n, "chunks": chunks})
+    write_json_response(
+        {
+            "page_count": n,
+            "chunks": chunks,
+            "part_manifest": {
+                "version": _SPLIT_PROVENANCE_VERSION,
+                "document_token": document_token,
+                "chunks": manifest_chunks,
+            },
+            "virtual_blocks": virtual_blocks,
+            "structure": {
+                "outline_items": outline_items,
+                "outline_translation_blocks": sum(
+                    1 for block in virtual_blocks if block.get("kind") == "outline"
+                ),
+                "metadata_translation_blocks": sum(
+                    1 for block in virtual_blocks if block.get("kind") == "metadata"
+                ),
+            },
+        }
+    )
 
 
 def _figure_caption(tblocks, reg, gap=80.0):
@@ -2592,7 +6492,20 @@ def cmd_figures(pdf_path, out_dir, zoom=3.0, max_figures=80):
     # 여러 페이지 헤더/푸터에 반복되는 로고·워터마크 이미지 xref(그림 아님) → 제외.
     branding_xrefs = _branding_image_xrefs(doc)
     figs_out = []
-    n = 0
+    candidate_ids = []
+    discovered_ids = []
+    emitted_ids = []
+    truncated_ids = []
+    failed_ids = []
+    failures = []
+
+    def _record_failure(occurrence_id, reason, exc=None):
+        failed_ids.append(occurrence_id)
+        item = {"id": occurrence_id, "reason": reason}
+        if exc is not None:
+            item["detail"] = str(exc)[:160]
+        failures.append(item)
+
     for pno in range(len(doc)):
         page = doc[pno]
         regs = _figure_regions(page)
@@ -2617,6 +6530,11 @@ def cmd_figures(pdf_path, out_dir, zoom=3.0, max_figures=80):
         # 가로로 나란한 패널((a)(b)(c) 등)을 한 그림으로 병합 → 원본처럼 옆으로 배치.
         regs = _merge_panel_rows(regs, page)
         regs = sorted(regs, key=lambda r: (round(r.y0, 1), round(r.x0, 1)))
+        occurrences = []
+        for reg_index, reg in enumerate(regs):
+            occurrence_id = f"p{pno + 1}-r{reg_index + 1}"
+            candidate_ids.append(occurrence_id)
+            occurrences.append((occurrence_id, reg))
         try:
             tblocks = page.get_text("blocks")
         except Exception:
@@ -2625,9 +6543,7 @@ def cmd_figures(pdf_path, out_dir, zoom=3.0, max_figures=80):
         pr = page.rect
         pgH = pr.height or 1.0
         pgW = pr.width or 1.0
-        for reg in regs:
-            if n >= max_figures:
-                break
+        for occurrence_id, reg in occurrences:
             if reg.width < 45 or reg.height < 45:
                 continue  # 너무 작음(아이콘·기호 조각) → 그림으로 보지 않음
             # 페이지 최상단 여백의 작은 영역 = 로고/헤더 장식(벡터 로고 포함) → 그림 아님.
@@ -2638,6 +6554,12 @@ def cmd_figures(pdf_path, out_dir, zoom=3.0, max_figures=80):
                 and reg.height < 0.12 * pgH
                 and reg.width < 0.5 * pgW
             ):
+                continue
+            discovered_ids.append(occurrence_id)
+            # 상한 이후도 모든 페이지의 후보를 계속 조사해 잘린 occurrence ID를 남긴다.
+            # 예전처럼 즉시 break하면 '상한에 걸렸는지'조차 호출부가 알 수 없었다.
+            if len(figs_out) >= max_figures:
+                truncated_ids.append(occurrence_id)
                 continue
             # 벡터 드로잉 밖의 축 눈금 숫자·곡선 라벨·축 제목까지 크롭에 포함(잘림 방지).
             # 같은 페이지의 다른 그림 영역(regs)은 침범 금지 — 인접 다중 패널 상호 잠식 방지.
@@ -2650,21 +6572,36 @@ def cmd_figures(pdf_path, out_dir, zoom=3.0, max_figures=80):
                 min(pr.x1, reg2.x1 + pad),
                 min(pr.y1, reg2.y1 + pad),
             )
+            if rr.is_empty or rr.width <= 0 or rr.height <= 0:
+                _record_failure(occurrence_id, "invalid_crop_rect")
+                continue
+            if not _pixmap_geometry_is_safe(rr, zoom):
+                _record_failure(occurrence_id, "crop_resource_limit")
+                continue
             try:
                 pix = page.get_pixmap(matrix=mat, clip=rr, alpha=False)
-            except Exception:
+            except Exception as exc:
+                _record_failure(occurrence_id, "pixmap_failed", exc)
                 continue
             if pix.width < 12 or pix.height < 12:
+                _record_failure(occurrence_id, "crop_pixels_too_small")
                 continue
-            n += 1
+            n = len(figs_out) + 1
             fname = os.path.join(out_dir, f"fig-{n}.png")
             try:
                 pix.save(fname)
-            except Exception:
-                n -= 1
+            except Exception as exc:
+                try:
+                    if os.path.exists(fname):
+                        os.remove(fname)
+                except Exception:
+                    pass
+                _record_failure(occurrence_id, "crop_save_failed", exc)
                 continue
+            emitted_ids.append(occurrence_id)
             figs_out.append(
                 {
+                    "id": occurrence_id,
                     "n": n,
                     "page": pno + 1,
                     "bbox": [
@@ -2680,30 +6617,257 @@ def cmd_figures(pdf_path, out_dir, zoom=3.0, max_figures=80):
                     "h": pix.height,
                 }
             )
-        if n >= max_figures:
-            break
-    write_json_response({"page_count": len(doc), "figures": figs_out})
+    emitted_set = set(emitted_ids)
+    unresolved = [fid for fid in discovered_ids if fid not in emitted_set]
+    manifest = {
+        "complete": (
+            not truncated_ids
+            and not failed_ids
+            and not unresolved
+            and len(emitted_ids) == len(discovered_ids)
+        ),
+        "candidate_ids": candidate_ids,
+        "discovered_ids": discovered_ids,
+        "emitted_ids": emitted_ids,
+        "truncated_ids": truncated_ids,
+        "failed_ids": failed_ids,
+        "failures": failures,
+        "max_figures": max_figures,
+        "counts": {
+            "candidate": len(candidate_ids),
+            "discovered": len(discovered_ids),
+            "emitted": len(emitted_ids),
+            "truncated": len(truncated_ids),
+            "failed": len(failed_ids),
+        },
+    }
+    write_json_response(
+        {"page_count": len(doc), "figures": figs_out, "figure_manifest": manifest}
+    )
     doc.close()
+
+
+def _page_dictionary_static_signature(doc):
+    """Snapshot every source page key except translated content/resources.
+
+    This comparison runs inside one open document, before xref garbage collection,
+    so raw reference equality is meaningful and covers standard plus custom keys.
+    """
+    signatures = []
+    for page_number in range(len(doc)):
+        page_xref = int(doc.page_xref(page_number))
+        keys = sorted(
+            key
+            for key in (doc.xref_get_keys(page_xref) or ())
+            if key not in {"Contents", "Resources"}
+        )
+        signatures.append(
+            tuple((key, doc.xref_get_key(page_xref, key)) for key in keys)
+        )
+    return tuple(signatures)
+
+
+def _merge_parts_into_source_page_objects(
+    source_pdf, parts, translations, part_manifest
+):
+    """Replace source page dictionaries while retaining source page object identity.
+
+    Outline destinations often point directly at page object xrefs.  Appending parts
+    to a blank PDF and rebuilding a TOC changes those references and can also
+    normalize /Fit* or /XYZ arguments, collapse state, color and style.  Instead we
+    append the translated pages to the source document, copy each appended page
+    dictionary onto the corresponding *existing* source page xref, then delete the
+    appended page-tree entries.  The outline objects and their target page objects
+    therefore never move.
+
+    Sanitized source annotations are retained deliberately.  Split chunks cannot
+    represent a cross-chunk GoTo target and their annotations may point at temporary
+    appended page xrefs.  The source annotations have the original page identity,
+    exact destination mode/arguments and valid non-link /P references.  Unsafe link
+    actions are removed before this preservation step.
+    """
+    dst = fitz.open(source_pdf)
+    try:
+        source_page_count = len(dst)
+        if source_page_count <= 0:
+            raise RuntimeError("merge source PDF has no pages")
+
+        virtual_blocks, virtual_translations = _resolve_virtual_translations(
+            dst, translations
+        )
+        source_outline = _outline_signature(dst)
+        source_metadata = dict(dst.metadata or {})
+        source_geometry = _page_geometry_signature(dst)
+        unsafe_links_removed = _remove_unsafe_links(dst)
+        safe_links = _capture_safe_links(dst)
+        source_page_xrefs = [int(dst.page_xref(index)) for index in range(len(dst))]
+        source_page_static = _page_dictionary_static_signature(dst)
+
+        _validate_part_manifest(parts, part_manifest, source_page_count)
+        total = source_page_count
+
+        for part_path in parts:
+            part = fitz.open(part_path)
+            try:
+                dst.insert_pdf(part)
+            finally:
+                part.close()
+
+        appended_page_xrefs = [
+            int(dst.page_xref(source_page_count + index)) for index in range(total)
+        ]
+        if len(appended_page_xrefs) != len(source_page_xrefs):
+            raise RuntimeError("merge appended page mapping is incomplete")
+
+        for translated_xref, source_xref in zip(
+            appended_page_xrefs, source_page_xrefs
+        ):
+            # Preserve the complete source page dictionary and its original object
+            # identity.  Only the translated page's content streams and resource
+            # dictionary are grafted in; /Tabs, /Dur, /Trans, /StructParents,
+            # page-level metadata, custom keys and sanitized /Annots stay untouched.
+            for key in ("Contents", "Resources"):
+                _value_type, raw_value = dst.xref_get_key(translated_xref, key)
+                dst.xref_set_key(source_xref, key, raw_value)
+
+        dst.delete_pages(source_page_count, source_page_count + total - 1)
+        if len(dst) != source_page_count:
+            raise RuntimeError("merge failed to remove temporary appended pages")
+        if _page_dictionary_static_signature(dst) != source_page_static:
+            raise RuntimeError("merge changed a preserved source page dictionary key")
+        if _page_geometry_signature(dst) != source_geometry:
+            raise RuntimeError("merge changed PDF page geometry")
+        if _capture_safe_links(dst) != safe_links:
+            # List order is deterministic by page/annotation order here.  The saved
+            # validation below additionally compares a multiset signature.
+            raise RuntimeError("merge changed source safe-link navigation semantics")
+        if _remove_unsafe_links(dst):
+            raise RuntimeError("merge introduced an unsafe link action")
+
+        virtual_stats = _apply_virtual_translations(
+            dst,
+            virtual_blocks,
+            virtual_translations,
+            source_outline,
+            source_metadata,
+        )
+        return {
+            "doc": dst,
+            "page_count": source_page_count,
+            "safe_links": safe_links,
+            "page_geometry": source_geometry,
+            "virtual_blocks": virtual_blocks,
+            "virtual_stats": virtual_stats,
+            "unsafe_links_removed": unsafe_links_removed,
+        }
+    except Exception:
+        dst.close()
+        raise
 
 
 def cmd_merge(out_path, *parts):
     """여러 sub-PDF 를 인자 순서대로 이어붙여 하나의 PDF 로 저장한다.
-    대용량 PDF 를 페이지 구간으로 나눠 병렬 번역한 뒤 결과를 원래 순서로 합치는 용도.
-    insert_pdf 는 텍스트·글꼴·이미지·벡터 그래픽을 그대로 가져오므로 번역본 레이아웃이 보존된다."""
+
+    stdin에 ``source_pdf``와 virtual ``translations``가 오면 대용량 번역의
+    정식 경로다. 이 경우 원본 page xref/목차/문서정보를 명시적으로
+    복원하고, 저장된 파일을 다시 열어 목차 목적지·Fit/XYZ 인수·스타일·
+    metadata·링크·페이지 기하가 모두 일치할 때만 out_path로 원자적 교체한다.
+    """
     if not parts:
         raise ValueError("merge: 합칠 PDF 경로가 없습니다.")
-    dst = fitz.open()
-    total = 0
+    payload = json.loads(sys.stdin.read() or "{}")
+    if not isinstance(payload, dict):
+        raise ValueError("merge payload must be a JSON object")
+    source_pdf = payload.get("source_pdf")
+    translations = payload.get("translations", {}) or {}
+    part_manifest = payload.get("part_manifest")
+    if translations is not None and not isinstance(translations, dict):
+        raise ValueError("merge translations must be a JSON object")
+
+    # Legacy append-only mode remains for internal callers that do not request
+    # source-structure restoration.  Production large-PDF translation always sends
+    # source_pdf and rejects structure_restored=false in Node.
+    if not source_pdf:
+        dst = fitz.open()
+        total = 0
+        try:
+            for part_path in parts:
+                part = fitz.open(part_path)
+                try:
+                    dst.insert_pdf(part)
+                    total += len(part)
+                finally:
+                    part.close()
+            dst.save(out_path, garbage=3, deflate=True)
+        finally:
+            dst.close()
+        write_json_response(
+            {
+                "ok": True,
+                "page_count": total,
+                "parts": len(parts),
+                "structure_restored": False,
+                "virtual_replaced": 0,
+            }
+        )
+        return
+
+    if not os.path.isfile(source_pdf):
+        raise ValueError("merge source_pdf does not exist")
+
+    result = _merge_parts_into_source_page_objects(
+        source_pdf, parts, translations, part_manifest
+    )
+    dst = result["doc"]
+    virtual_stats = result["virtual_stats"]
+    virtual_blocks = result["virtual_blocks"]
+    temp_path = f"{out_path}.partial-{os.getpid()}-{os.urandom(6).hex()}"
     try:
-        for p in parts:
-            src = fitz.open(p)
-            dst.insert_pdf(src)
-            total += len(src)
-            src.close()
-        dst.save(out_path, garbage=3, deflate=True)
-    finally:
+        dst.save(temp_path, garbage=3, deflate=True)
         dst.close()
-    write_json_response({"ok": True, "page_count": total, "parts": len(parts)})
+        _verify_saved_pdf_structure(
+            temp_path,
+            result["safe_links"],
+            result["page_geometry"],
+            virtual_stats["expected_outline"],
+            virtual_stats["expected_metadata"],
+        )
+        os.replace(temp_path, out_path)
+    except Exception:
+        try:
+            dst.close()
+        except Exception:
+            pass
+        try:
+            os.unlink(temp_path)
+        except OSError:
+            pass
+        raise
+
+    outline_expected = sum(
+        1 for block in virtual_blocks if block.get("kind") == "outline"
+    )
+    metadata_expected = sum(
+        1 for block in virtual_blocks if block.get("kind") == "metadata"
+    )
+    virtual_replaced = (
+        virtual_stats["outline_replaced"] + virtual_stats["metadata_replaced"]
+    )
+    write_json_response(
+        {
+            "ok": True,
+            "page_count": result["page_count"],
+            "parts": len(parts),
+            "structure_restored": True,
+            "outline_items": len(virtual_stats["expected_outline"]),
+            "outline_expected": outline_expected,
+            "outline_replaced": virtual_stats["outline_replaced"],
+            "metadata_expected": metadata_expected,
+            "metadata_replaced": virtual_stats["metadata_replaced"],
+            "virtual_replaced": virtual_replaced,
+            "unsafe_links_removed": result["unsafe_links_removed"],
+        }
+    )
 
 
 def main():

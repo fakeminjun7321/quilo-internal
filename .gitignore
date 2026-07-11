@@ -13,6 +13,7 @@ dist/
 tmp/
 test-results/
 playwright-report/
+/output/pdf/evals/
 __pycache__/
 *.pyc
 .venv/

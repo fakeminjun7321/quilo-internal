@@ -269,6 +269,7 @@ let currentStudentId = "";
           if (typeof consumePendingReportType === "function") consumePendingReportType();
           // pending/딥링크가 없으면 마지막으로 만든 종류를 자동 선택(재방문 편의).
           if (typeof restoreLastReportType === "function") restoreLastReportType();
+          if (requestedAccountTab) showTab(requestedAccountTab);
         } else {
           applyReportTypeAccess([]);
           applyVerificationState(null);
@@ -444,6 +445,11 @@ let currentStudentId = "";
       }
       loadAnnouncements();
 
+      const ACCOUNT_TAB_NAMES = new Set(["files", "integrations", "settings", "feedback"]);
+      let requestedAccountTab = ACCOUNT_TAB_NAMES.has(location.hash.slice(1))
+        ? location.hash.slice(1)
+        : "";
+
       fetch("/api/me")
         .then((r) => (r.ok ? r.json() : Promise.reject()))
         .then((d) => applyAuth(true, d))
@@ -454,16 +460,20 @@ let currentStudentId = "";
         const _cloud = new URLSearchParams(location.search).get("cloud");
         if (_cloud === "connected") {
           alert("✅ Dropbox가 연결되었습니다. 이제 생성한 보고서가 Dropbox 앱 폴더에 영구 저장됩니다.");
-          history.replaceState({}, "", location.pathname);
+          requestedAccountTab = "integrations";
+          history.replaceState({}, "", `${location.pathname}#integrations`);
         } else if (_cloud === "google-connected") {
           alert("✅ Google Drive·Docs가 연결되었습니다.");
-          history.replaceState({}, "", location.pathname);
+          requestedAccountTab = "integrations";
+          history.replaceState({}, "", `${location.pathname}#integrations`);
         } else if (_cloud === "notion-connected") {
           alert("✅ Notion이 연결되었습니다.");
-          history.replaceState({}, "", location.pathname);
+          requestedAccountTab = "integrations";
+          history.replaceState({}, "", `${location.pathname}#integrations`);
         } else if (_cloud === "error") {
-          alert("Dropbox 연결에 실패했습니다. 잠시 후 다시 시도해 주세요.");
-          history.replaceState({}, "", location.pathname);
+          alert("외부 서비스 연결에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+          requestedAccountTab = "integrations";
+          history.replaceState({}, "", `${location.pathname}#integrations`);
         }
       } catch (_) {}
 
@@ -1011,10 +1021,8 @@ let currentStudentId = "";
           panel.classList.toggle("active", active);
           panel.hidden = !active;
         });
-        if (tabName === "files") {
-          loadFiles();
-          loadCloudStatus();
-        }
+        if (tabName === "files") loadFiles();
+        if (tabName === "integrations") loadCloudStatus();
         if (tabName === "settings") loadUsage();
       }
       tabButtons.forEach((btn) => {

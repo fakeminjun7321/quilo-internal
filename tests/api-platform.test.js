@@ -132,3 +132,34 @@ test("cloud OAuth credentials are authenticated-encrypted at rest", () => {
     else process.env.CLOUD_TOKEN_SECRET = previous;
   }
 });
+
+test("Google OAuth uses least-privilege Drive file access for Drive and Docs", () => {
+  const previous = {
+    clientId: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    tokenSecret: process.env.CLOUD_TOKEN_SECRET,
+  };
+  process.env.GOOGLE_CLIENT_ID = "client.apps.googleusercontent.com";
+  process.env.GOOGLE_CLIENT_SECRET = "client-secret";
+  process.env.CLOUD_TOKEN_SECRET = "test-cloud-token-secret";
+  try {
+    const url = new URL(cloudProviders.authorizationUrl("google", {
+      state: "state",
+      redirectUri: "https://quilolab.com/api/cloud/google/callback",
+    }));
+    const scopes = new Set((url.searchParams.get("scope") || "").split(" "));
+    assert.ok(scopes.has("https://www.googleapis.com/auth/drive.file"));
+    assert.ok(scopes.has("openid"));
+    assert.ok(scopes.has("email"));
+    assert.ok(scopes.has("profile"));
+    assert.equal(scopes.has("https://www.googleapis.com/auth/documents"), false);
+    assert.equal(scopes.has("https://www.googleapis.com/auth/drive"), false);
+  } finally {
+    if (previous.clientId == null) delete process.env.GOOGLE_CLIENT_ID;
+    else process.env.GOOGLE_CLIENT_ID = previous.clientId;
+    if (previous.clientSecret == null) delete process.env.GOOGLE_CLIENT_SECRET;
+    else process.env.GOOGLE_CLIENT_SECRET = previous.clientSecret;
+    if (previous.tokenSecret == null) delete process.env.CLOUD_TOKEN_SECRET;
+    else process.env.CLOUD_TOKEN_SECRET = previous.tokenSecret;
+  }
+});

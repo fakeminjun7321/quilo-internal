@@ -134,6 +134,7 @@
             <button type="button" class="nav-dd-btn" aria-expanded="false"><span id="user">내 계정</span> <span class="caret" aria-hidden="true">▾</span></button>
             <div class="nav-dd-menu">
               <a href="#" data-tab="files">내 파일</a>
+              <a href="#integrations" data-tab="integrations">외부 서비스 연결</a>
               <a href="#" data-tab="settings">개인 설정</a>
               <a href="#" data-tab="feedback">건의사항</a>
               <a href="/admin" id="adminLink" style="display: none">관리자</a>
@@ -2073,7 +2074,7 @@
     </section>
     </section>
 
-    <section id="filesPanel" class="tab-panel" data-tab-panel="files" hidden>
+    <section id="integrationsPanel" class="tab-panel" data-tab-panel="integrations" hidden>
       <div class="settings-card" id="cloudCard" hidden>
         <h2>외부 서비스 연결</h2>
         <p class="hint"><b>Dropbox</b>는 보고서를 영구 보관하고, <b>Google Drive·Docs</b>와 <b>Notion</b>은 개발자 API와 ChatGPT/Codex에서 파일·문서를 저장할 때 사용합니다.</p>
@@ -2081,6 +2082,9 @@
         <div id="cloudActions"></div>
         <p class="hint" style="margin-top:12px"><a href="/developers.html">API·ChatGPT·Codex 연동 설정 열기 →</a></p>
       </div>
+    </section>
+
+    <section id="filesPanel" class="tab-panel" data-tab-panel="files" hidden>
       <div class="settings-card">
         <h2>내 파일</h2>
         <p class="hint">생성된 보고서를 여기서 받을 수 있습니다. (기본 24시간 보관 · Dropbox 연결 시 영구 저장)</p>

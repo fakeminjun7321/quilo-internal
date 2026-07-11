@@ -86,6 +86,17 @@ async function mockLoggedInApis(page) {
     if (pathname === "/api/cloud/dropbox/status") {
       return route.fulfill({ json: { enabled: false } });
     }
+    if (pathname === "/api/cloud/providers/status") {
+      return route.fulfill({
+        json: {
+          integrations: {
+            dropbox: { configured: true, connected: false, connectUrl: "/api/cloud/dropbox/connect" },
+            google: { configured: true, connected: false, connectUrl: "/api/cloud/google/connect" },
+            notion: { configured: true, connected: false, connectUrl: "/api/cloud/notion/connect" },
+          },
+        },
+      });
+    }
     if (pathname === "/api/me/usage") {
       return route.fulfill({
         json: {
@@ -199,6 +210,20 @@ test("logged-in workspace and report form layout render cleanly", async ({ page 
   await page.screenshot({ path: path.join(SCREEN_DIR, "mobile-390.png"), fullPage: false });
 
   expect(errors).toEqual([]);
+});
+
+test("cloud providers use a separate account tab instead of the files panel", async ({ page }) => {
+  await mockLoggedInApis(page);
+  await page.goto(`${BASE_URL}/#integrations`, { waitUntil: "networkidle" });
+
+  await expect(page.locator("body")).toHaveAttribute("data-auth", "in");
+  await expect(page.locator('#acctDd a[data-tab="integrations"]')).toHaveText("외부 서비스 연결");
+  await expect(page.locator("#integrationsPanel")).toBeVisible();
+  await expect(page.locator("#cloudCard")).toBeVisible();
+  await expect(page.locator("#integrationsPanel")).toContainText("Google Drive·Docs");
+  await expect(page.locator("#integrationsPanel")).toContainText("Notion");
+  await expect(page.locator("#filesPanel #cloudCard")).toHaveCount(0);
+  await expect(page.locator("#filesPanel")).toBeHidden();
 });
 
 test("secondary UX pages render without console errors", async ({ page }) => {

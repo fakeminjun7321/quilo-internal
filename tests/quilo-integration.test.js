@@ -31,6 +31,9 @@ test("catalog represents the broad Quilo product, not only reports", () => {
   assert.equal(features.find((feature) => feature.id === "community").execution, "remote");
   assert.equal(features.find((feature) => feature.id === "cap-translate").status, "pro");
   assert.equal(features.find((feature) => feature.id === "cap-translate").execution, "remote");
+  for (const id of ["dropbox", "google-drive", "google-docs", "notion"]) {
+    assert.equal(features.find((feature) => feature.id === id).path, "/#integrations");
+  }
 });
 
 test("scope normalization rejects unknown permissions", () => {

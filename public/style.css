@@ -1704,6 +1704,7 @@ html[data-theme="dark"] .theme-toggle .theme-icon-light {
   }
 
   #filesPanel.active,
+  #integrationsPanel.active,
   #settingsPanel.active {
     grid-template-columns: 1fr;
   }
@@ -1750,18 +1751,22 @@ html[data-theme="dark"] .theme-toggle .theme-icon-light {
 }
 
 #filesPanel.active {
-  display: grid;
-  grid-template-columns: minmax(260px, 0.7fr) minmax(0, 1.3fr);
-  gap: 16px;
-  align-items: start;
+  display: block;
+}
+
+#integrationsPanel.active {
+  display: block;
+  max-width: 880px;
 }
 
 #filesPanel.active .settings-card,
+#integrationsPanel.active .settings-card,
 #settingsPanel.active .settings-card {
   margin: 0;
 }
 
 #filesPanel.active .settings-card + .settings-card,
+#integrationsPanel.active .settings-card + .settings-card,
 #settingsPanel.active .settings-card + .settings-card {
   margin-top: 0;
 }

@@ -5,6 +5,8 @@
     <link rel="canonical" href="https://quilolab.com/physics-studio.html" />
     <meta name="description" content="고급 물리 문제 스튜디오 — 주제·난이도를 고르면 AI가 풀이·힌트·검산이 있는 새로운 심화 물리 문제를 만들어 줍니다." />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/ui/foundation.css" />
+    <link rel="stylesheet" href="/ui/app-shell.css" />
     <meta name="theme-color" content="#2563eb" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <title>고급 물리 문제 스튜디오 — Quilo</title>
@@ -23,86 +25,39 @@
         startup: { typeset: false },
       };
     </script>
-    <link rel="stylesheet" href="/style.css" />
-    <script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js" id="MathJax-script" async></script>
-    <style>
-      * { box-sizing: border-box; }
-      /* style.css 는 body 를 가운데 1180px 컬럼으로 잡지만, 이 페이지는 전체폭 헤더 +
-         .wrap 가운데 정렬 구조라 body 폭/패딩을 초기화한다(안 그러면 좌측 쏠림). */
-      html, body { width: 100%; max-width: 100%; }
-      body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Apple SD Gothic Neo", "맑은 고딕", sans-serif; background: var(--bg); color: var(--text); }
-      .wrap { max-width: 1080px; margin: 0 auto; padding: 20px 16px 80px; }
-      .intro h1 { margin: 6px 0 6px; font-size: 26px; letter-spacing: -0.02em; }
-      .intro p { margin: 0; color: var(--text-muted); font-size: 14px; line-height: 1.6; }
-      .grid { display: grid; grid-template-columns: 360px 1fr; gap: 18px; align-items: start; margin-top: 18px; }
-      @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
-      .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
-      .field { margin-bottom: 12px; }
-      .field label { display: block; font-size: 13px; font-weight: var(--fw-semibold); color: var(--text-muted); margin-bottom: 5px; }
-      textarea, input[type="text"], select { width: 100%; padding: 9px 11px; border: 1px solid var(--border); border-radius: var(--radius-sm); font: inherit; background: var(--bg); color: var(--text); }
-      textarea { min-height: 70px; resize: vertical; line-height: 1.55; }
-      .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-      .toggles { display: flex; gap: 14px; flex-wrap: wrap; margin: 4px 0 10px; }
-      .toggles label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-muted); cursor: pointer; }
-      .toggles input { width: auto; }
-      .btn { background: var(--accent); color: var(--on-accent); border: 0; border-radius: var(--radius-sm); padding: 11px 16px; font: inherit; font-weight: var(--fw-bold); cursor: pointer; }
-      .btn:hover { background: var(--accent-hover); }
-      .btn:disabled { opacity: 0.55; cursor: default; }
-      .btn.ghost { background: transparent; color: var(--text-muted); border: 1px solid var(--border); font-weight: var(--fw-medium); }
-      .costline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; color: var(--text-muted); margin: 4px 0 10px; }
-      .pill { display: inline-block; font-size: 11.5px; padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-text); font-weight: var(--fw-bold); }
-      .muted { color: var(--text-faint); font-size: 13px; }
-      .err { color: var(--danger); font-size: 13px; margin: 8px 0; white-space: pre-wrap; }
-      .locked { border: 1px dashed var(--border-strong); border-radius: var(--radius); padding: 30px 18px; text-align: center; color: var(--text-muted); background: var(--surface); }
-      .setmeta h2 { font-size: 21px; margin: 0 0 2px; }
-      .setmeta p { color: var(--text-muted); font-size: 14px; margin: 0 0 6px; line-height: 1.6; }
-      .prob { border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 16px; background: var(--surface); }
-      .prob .ptop { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-      .prob h3 { font-size: 17px; margin: 0; color: var(--text); }
-      .prob .meta { font-size: 12px; color: var(--text-faint); }
-      .prob .statement { font-size: 15px; line-height: 1.8; margin: 10px 0; color: var(--text); }
-      .prob ol.tasks { margin: 8px 0; padding-left: 22px; line-height: 1.85; }
-      .prob ol.tasks li { margin: 4px 0; }
-      .sectitle { font-size: 12px; font-weight: var(--fw-heavy); letter-spacing: .04em; color: var(--accent-text); text-transform: uppercase; margin: 14px 0 6px; }
-      details { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0; margin: 8px 0; background: var(--bg); }
-      details > summary { cursor: pointer; padding: 9px 12px; font-weight: var(--fw-semibold); font-size: 14px; color: var(--text); list-style: none; }
-      details > summary::-webkit-details-marker { display: none; }
-      details > summary::before { content: "▸ "; color: var(--text-muted); }
-      details[open] > summary::before { content: "▾ "; }
-      details .inner { padding: 4px 14px 12px; }
-      .step { margin: 8px 0; }
-      .step b { display: block; font-size: 13.5px; color: var(--text); margin-bottom: 2px; }
-      .step .body { font-size: 14px; line-height: 1.8; color: var(--text-muted); }
-      .final { border-left: 3px solid var(--accent); background: var(--accent-soft); border-radius: var(--radius-sm); padding: 9px 13px; margin: 10px 0; font-size: 14.5px; line-height: 1.7; }
-      .hintitem { font-size: 14px; line-height: 1.7; color: var(--text-muted); margin: 6px 0; }
-      .hintitem b { color: var(--text); }
-      .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
-      .chip { font-size: 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 3px 9px; color: var(--text-muted); }
-      .mistakes { font-size: 13.5px; color: var(--text-muted); line-height: 1.7; }
-      .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
-      .disclaimer { font-size: 12px; color: var(--text-faint); margin: 4px 0 14px; }
-      .spinner { display: inline-block; width: 15px; height: 15px; border: 2px solid var(--on-accent); border-top-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: -2px; }
-      @keyframes spin { to { transform: rotate(360deg); } }
-      .placeholder { border: 1px dashed var(--border); border-radius: var(--radius); padding: 38px 18px; text-align: center; color: var(--text-faint); }
-    </style>
-    <link rel="stylesheet" href="/site-shell.css" />
-  </head>
-  <body class="q-shell-page">
-    <div data-q-shell><a class="q-shell-fallback" href="/">Quilo 홈</a></div>
-    <button type="button" id="themeToggle" hidden aria-hidden="true" tabindex="-1"></button>
-
-    <div class="wrap" id="main-content">
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js" id="MathJax-script" async></script>
+</head>
+  <body id="appShell" class="app-shell app-shell--physics-studio" data-app-shell>
+    <header class="app-commandbar" data-q-shell>
+      <div class="app-commandbar__inner">
+        <a class="app-brand" href="/" aria-label="Quilo 홈">
+          <span class="app-brand__mark" aria-hidden="true">Q</span>
+          <span>Quilo</span>
+        </a>
+        <span class="app-commandbar__divider" aria-hidden="true"></span>
+        <a class="app-back" href="/">← 홈</a>
+        <strong class="app-title">고급 물리 문제 스튜디오</strong>
+        <nav class="app-commandbar__actions" aria-label="계정 및 화면 설정">
+          <a href="/account.html">계정</a>
+          <button type="button" id="themeToggle" class="app-theme" aria-label="다크 모드로 전환" title="다크 모드로 전환">
+            <span class="app-theme__moon" aria-hidden="true">☾</span>
+            <span class="app-theme__sun" aria-hidden="true">☀</span>
+          </button>
+        </nav>
+      </div>
+    </header>
+<main class="wrap" id="main-content" aria-label="고급 물리 문제 스튜디오">
       <section class="intro">
         <h1>🧮 고급 물리 문제 스튜디오</h1>
         <p>주제·난이도·출제 스타일을 고르면 AI가 풀이·힌트·검산이 함께 있는 <b>새로운</b> 심화 물리 문제를 만들어 줍니다. 해석역학, 전자기학, 상대론 등 대학·올림피아드 수준 주제를 지원합니다.</p>
       </section>
 
-      <div id="gate" class="locked" style="display: none">
+      <div id="gate" class="locked app-inline-physics-studio-1" hidden>
         🔒 이 기능은 <b>로그인한 사용자</b>가 이용할 수 있어요.
-        <div style="margin-top: 12px"><a class="btn" href="/login.html" style="text-decoration: none">로그인하기</a></div>
+        <div class="app-inline-physics-studio-2"><a class="btn app-inline-physics-studio-3" href="/login.html">로그인하기</a></div>
       </div>
 
-      <div class="grid" id="app" style="display: none">
+      <div class="grid app-inline-physics-studio-1" id="app" hidden>
         <div class="card" id="formCard">
           <div class="field">
             <label for="topic">주제</label>
@@ -140,7 +95,7 @@
             <span>예상 차감 <span class="pill" id="cost">–</span></span>
             <span id="bal" class="muted"></span>
           </div>
-          <button class="btn" id="go" style="width: 100%">문제 생성</button>
+          <button class="btn app-inline-physics-studio-4" id="go">문제 생성</button>
           <div class="err" id="err"></div>
         </div>
 
@@ -148,7 +103,13 @@
           <div class="placeholder">왼쪽에서 주제를 적고 <b>문제 생성</b>을 누르면 여기에 문제가 나타납니다.</div>
         </div>
       </div>
-    </div>
+    </main>
+
+    <footer class="app-statusbar" aria-label="앱 상태">
+      <span class="app-statusbar__dot" aria-hidden="true"></span>
+      <span>준비됨</span>
+      <span class="app-statusbar__meta">고급 물리 문제 스튜디오 · Quilo</span>
+    </footer>
 
     <script>
       const $ = (id) => document.getElementById(id);
@@ -165,8 +126,8 @@
       async function boot() {
         let bal;
         try { bal = await api("/api/me/balance"); }
-        catch (e) { if (e.status === 401) { $("gate").style.display = "block"; return; } }
-        $("app").style.display = "grid";
+        catch (e) { if (e.status === 401) { $("gate").hidden = false; return; } }
+        $("app").hidden = false;
         modelCredits = (bal && bal.modelCredits) || {};
         if (bal && !bal.isAdmin && typeof bal.credits === "number") $("bal").textContent = "· 보유 크레딧 " + bal.credits;
         else if (bal && bal.isAdmin) $("bal").textContent = "· 관리자(무제한)";
@@ -193,7 +154,7 @@
         if (topic.length < 2) { $("err").textContent = "문제 주제를 입력해 주세요."; return; }
         $("err").textContent = "";
         $("go").disabled = true; $("go").innerHTML = '<span class="spinner"></span> 생성 중…';
-        $("out").innerHTML = '<div class="placeholder"><span class="spinner" style="border-color:var(--accent);border-top-color:transparent"></span> AI가 문제를 출제하고 검산하는 중… (보통 1~3분, 문항이 많으면 더 걸려요)</div>';
+        $("out").innerHTML = '<div class="placeholder"><span class="spinner app-runtime-spinner-accent"></span> AI가 문제를 출제하고 검산하는 중… (보통 1~3분, 문항이 많으면 더 걸려요)</div>';
         try {
           const j = await api("/api/physics-studio/generate", {
             method: "POST",
@@ -225,8 +186,8 @@
             ${hints}
             ${sol}
             ${(p.concepts || []).length ? `<div class="sectitle">핵심 개념</div><div class="chips">${p.concepts.map((c) => `<span class="chip">${esc(c)}</span>`).join("")}</div>` : ""}
-            ${(p.checks || []).length ? `<div class="sectitle">검산</div><div class="mistakes"><ul style="margin:0;padding-left:18px">${p.checks.map((c) => `<li>${esc(c)}</li>`).join("")}</ul></div>` : ""}
-            ${(p.commonMistakes || []).length ? `<div class="sectitle">흔한 오답</div><div class="mistakes"><ul style="margin:0;padding-left:18px">${p.commonMistakes.map((c) => `<li>${esc(c)}</li>`).join("")}</ul></div>` : ""}
+            ${(p.checks || []).length ? `<div class="sectitle">검산</div><div class="mistakes"><ul class="app-runtime-list">${p.checks.map((c) => `<li>${esc(c)}</li>`).join("")}</ul></div>` : ""}
+            ${(p.commonMistakes || []).length ? `<div class="sectitle">흔한 오답</div><div class="mistakes"><ul class="app-runtime-list">${p.commonMistakes.map((c) => `<li>${esc(c)}</li>`).join("")}</ul></div>` : ""}
           </div>`;
         }).join("");
         $("out").innerHTML = `<div class="card">
@@ -276,6 +237,6 @@
       boot();
     </script>
     <script src="/theme.js"></script>
-    <script src="/site-shell.js"></script>
+
   </body>
 </html>

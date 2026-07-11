@@ -176,14 +176,14 @@ test("guide desktop shell renders with real navigation destinations", async ({ p
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${baseUrl}/guide.html`, { waitUntil: "domcontentloaded" });
 
-  await expect(page.locator("[data-q-shell-root]")).toBeVisible();
-  await expect(page.locator(".q-shell__nav")).toBeVisible();
-  await expect(page.locator(".q-shell__actions")).toBeVisible();
-  await expect(page.locator(".q-shell__mobile")).toBeHidden();
+  await expect(page.locator("[data-ui-shell]")).toBeVisible();
+  await expect(page.locator(".ui-site-nav")).toBeVisible();
+  await expect(page.locator(".ui-site-actions")).toBeVisible();
+  await expect(page.locator(".ui-mobile-menu")).toBeHidden();
   await expect(page.locator("#main-content")).toBeVisible();
-  await expect(page.locator('.q-shell__skip[href="#main-content"]')).toHaveText("본문으로 건너뛰기");
+  await expect(page.locator('.ui-skip-link[href="#main-content"]')).toHaveText("본문으로 건너뛰기");
 
-  const desktopHrefs = await page.locator(".q-shell__nav a[href]").evaluateAll((links) =>
+  const desktopHrefs = await page.locator(".ui-site-nav a[href]").evaluateAll((links) =>
     links.map((link) => link.getAttribute("href")),
   );
   expect(desktopHrefs).toEqual([
@@ -196,8 +196,8 @@ test("guide desktop shell renders with real navigation destinations", async ({ p
     "/apps/quilo.html",
     "/apps/live-translator.html",
     "/developers.html",
-    "/developers.html#catalogSection",
-    "/developers.html#tokenSection",
+    "/developers.html#catalog",
+    "/developers.html#tokenCard",
     "/guide.html",
     "/examples.html",
     "/changelog.html",
@@ -206,10 +206,10 @@ test("guide desktop shell renders with real navigation destinations", async ({ p
     "/#balanceBox",
     "https://www.instagram.com/",
   ]);
-  await expect(page.locator('.q-shell__actions a[href="/?login=1"]')).toHaveText("로그인");
-  await expect(page.locator('.q-shell__actions .q-shell__cta[href="/?report=free"]')).toHaveText("무료로 시작하기");
+  await expect(page.locator('.ui-site-actions a[href="/?login=1"]')).toHaveText("로그인");
+  await expect(page.locator('.ui-site-actions .ui-site-cta[href="/?report=free"]')).toHaveText("무료로 시작하기");
 
-  const placeholderLinks = page.locator('[data-q-shell-root] a[href="#"], [data-q-shell-root] a:not([href])');
+  const placeholderLinks = page.locator('[data-ui-shell] a[href="#"], [data-ui-shell] a:not([href])');
   await expect(placeholderLinks).toHaveCount(0);
 });
 
@@ -217,19 +217,19 @@ test("guide 933px shell keeps the approved full navigation without overflow", as
   await page.setViewportSize({ width: 933, height: 844 });
   await page.goto(`${baseUrl}/guide.html`, { waitUntil: "domcontentloaded" });
 
-  await expect(page.locator(".q-shell__nav")).toBeVisible();
-  await expect(page.locator(".q-shell__actions")).toBeVisible();
-  await expect(page.locator(".q-shell__mobile")).toBeHidden();
-  await expect(page.locator(".q-shell__nav > details > summary")).toHaveText([
+  await expect(page.locator(".ui-site-nav")).toBeVisible();
+  await expect(page.locator(".ui-site-actions")).toBeVisible();
+  await expect(page.locator(".ui-mobile-menu")).toBeHidden();
+  await expect(page.locator(".ui-site-nav > details > summary")).toHaveText([
     "제품",
     "솔루션",
     "앱",
     "개발자",
     "리소스",
   ]);
-  await expect(page.locator(".q-shell__nav > a")).toHaveText(["요금", "Instagram ↗"]);
-  await expect(page.locator('.q-shell__actions a[href="/?login=1"]')).toHaveText("로그인");
-  await expect(page.locator(".q-shell__actions .q-shell__cta")).toHaveText("무료로 시작하기");
+  await expect(page.locator(".ui-site-nav > a")).toHaveText(["요금", "Instagram ↗"]);
+  await expect(page.locator('.ui-site-actions a[href="/?login=1"]')).toHaveText("로그인");
+  await expect(page.locator(".ui-site-actions .ui-site-cta")).toHaveText("무료로 시작하기");
 
   const overflow = await page.evaluate(() => ({
     viewport: window.innerWidth,
@@ -242,8 +242,8 @@ test("desktop disclosures keep one menu open and return focus on Escape", async 
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${baseUrl}/guide.html`, { waitUntil: "domcontentloaded" });
 
-  const productSummary = page.locator(".q-shell__nav > details > summary").filter({ hasText: /^제품$/ });
-  const resourceSummary = page.locator(".q-shell__nav > details > summary").filter({ hasText: /^리소스$/ });
+  const productSummary = page.locator(".ui-site-nav > details > summary").filter({ hasText: /^제품$/ });
+  const resourceSummary = page.locator(".ui-site-nav > details > summary").filter({ hasText: /^리소스$/ });
   const product = productSummary.locator("..");
   const resource = resourceSummary.locator("..");
 
@@ -253,14 +253,14 @@ test("desktop disclosures keep one menu open and return focus on Escape", async 
   await resourceSummary.click();
   await expect(resource).toHaveAttribute("open", "");
   await expect(product).not.toHaveAttribute("open", "");
-  await expect(page.locator(".q-shell__nav > details[open]")).toHaveCount(1);
+  await expect(page.locator(".ui-site-nav > details[open]")).toHaveCount(1);
 
   const focusedMenuLink = resource.locator('a[href="/guide.html"]');
   await focusedMenuLink.focus();
   await expect(focusedMenuLink).toBeFocused();
   await focusedMenuLink.press("Escape");
 
-  await expect(page.locator(".q-shell__nav > details[open]")).toHaveCount(0);
+  await expect(page.locator(".ui-site-nav > details[open]")).toHaveCount(0);
   await expect(resourceSummary).toBeFocused();
 });
 
@@ -268,23 +268,22 @@ test("guide mobile shell exposes the same real destinations", async ({ page }) =
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${baseUrl}/guide.html`, { waitUntil: "domcontentloaded" });
 
-  await expect(page.locator(".q-shell__nav")).toBeHidden();
-  await expect(page.locator(".q-shell__actions")).toBeHidden();
+  await expect(page.locator(".ui-site-nav")).toBeHidden();
+  await expect(page.locator(".ui-site-actions")).toBeHidden();
 
-  const mobile = page.locator(".q-shell__mobile");
+  const mobile = page.locator(".ui-mobile-menu");
   const mobileSummary = mobile.locator(":scope > summary");
-  const mobilePanel = mobile.locator(".q-shell__mobile-panel");
+  const mobilePanel = mobile.locator(".ui-mobile-panel");
   await expect(mobile).toBeVisible();
   await mobileSummary.click();
   await expect(mobile).toHaveAttribute("open", "");
   await expect(mobilePanel).toBeVisible();
-  await expect(page.locator("body")).toHaveClass(/q-shell-menu-open/);
 
   const mobileHrefs = await mobilePanel.locator("a[href]").evaluateAll((links) =>
     links.map((link) => link.getAttribute("href")),
   );
   expect(mobileHrefs).toEqual([
-    "/?report=chem-pre",
+    "/?report=free",
     "/tools/index.html",
     "/apps/quilo.html",
     "/developers.html",

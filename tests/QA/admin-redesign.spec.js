@@ -20,7 +20,8 @@ function loadPlaywrightTest() {
 
 const { test, expect } = loadPlaywrightTest();
 const PUBLIC_DIR = path.join(process.cwd(), "public");
-const screenshotPath = "/tmp/quilo-admin-redesign.png";
+const screenshotPath = "/tmp/quilo-admin-operations.png";
+const REQUIRED_IDS = ["aaChips","aaInput","aaModel","aaModelHint","aaMsgs","aaSend","addForm","addStatus","adminAiSection","adminAnnSection","adminAppealsSection","adminEditorSection","adminPageTitle","adminTabs","annAddBtn","annAdminList","annCat","annLink","annStatus","annTitle","appealsList","appealsRefresh","betaAddForm","betaAddStatus","betaKey","betaLabel","betaList","betaSection","betaStatus","bgSubsSection","caActions","caGo","caHint","caModel","caPrompt","caResult","caText","caUseCode","ceAi","ceArea","ceFrame","ceLang","ceOut","grantAddForm","grantAddStatus","grantDays","grantHours","grantList","grantName","grantNote","grantStatus","grantsSection","ide","ideFileInput","ideFiles","ideMiniCode","ideMiniView","ideMinimap","ideNewFile","ideOpenFile","ideOpenFolder","idePanel","idePanelClose","ideSide","ideTabs","isAdmin","listStatus","logStatus","logTable","logTbody","logout","name","openAudience","openFeatureSection","openForm","openHours","openKey","openList","openSetStatus","openStatus","password","proAddForm","proAddStatus","proList","proName","proStatus","proTierSection","problemsetSection","psLimitForm","psLimitInput","psLimitStatus","rateInfo","refresh","refreshBeta","refreshGrants","refreshLogs","refreshOpen","refreshProMembers","refreshPsLimit","refreshSchoolApps","refreshSubReqs","refreshSubs","schoolAppFilter","schoolAppsList","schoolAppsSection","stDownload","stMinimap","stMsg","stPos","stRun","stSave","stTheme","subAddForm","subAddStatus","subDays","subHours","subList","subName","subNote","subPermanent","subReqList","subStatus","themeToggle","userTable","userTbody"];
 let server;
 let baseUrl;
 
@@ -35,19 +36,35 @@ const contentTypes = {
 
 function fixture(pathname) {
   if (pathname === "/api/me") return { isAdmin: true, name: "관리자" };
-  if (pathname === "/api/admin/users") return { users: [], krwPerUsd: 1400 };
+  if (pathname === "/api/admin/users") {
+    return {
+      users: [
+        {
+          id: "qa-user",
+          name: "QA 사용자",
+          username: "qa-user",
+          is_admin: false,
+          approved: true,
+          email_verified: true,
+          email: "qa@ts.hs.kr",
+          credits: 8,
+          spent_usd: 0,
+          recent_gen_count: 0,
+          recent_gen_limit: 5,
+          created_at: "2026-07-01T00:00:00Z",
+          restricted_model: "",
+          blocked_report_types: [],
+        },
+      ],
+      krwPerUsd: 1400,
+    };
+  }
   if (pathname === "/api/admin/usage-logs") return { logs: [] };
   if (pathname === "/api/admin/problemset-limit") return { limit: 120 };
   if (pathname === "/api/admin/chat/models" || pathname === "/api/admin/code-assist/models") {
     return { models: [{ id: "default", label: "기본 모델" }] };
   }
-  if (pathname === "/api/admin/beta") {
-    return {
-      features: [
-        { key: "pro", label: "Pro 회원", enabled: true, testers: [], dailyLimit: 0 },
-      ],
-    };
-  }
+  if (pathname === "/api/admin/beta") return { features: [] };
   if (pathname === "/api/admin/beta/pro/testers") return { testers: [] };
   if (pathname === "/api/announcements/all" || pathname === "/api/announcements") {
     return { announcements: [] };
@@ -103,10 +120,33 @@ test("admin console keeps all operational groups reachable without write request
   page.on("request", (request) => {
     if (!['GET', 'HEAD'].includes(request.method())) writes.push(`${request.method()} ${request.url()}`);
   });
-  await page.setViewportSize({ width: 1536, height: 1024 });
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`${baseUrl}/admin.html`, { waitUntil: "networkidle" });
 
-  await expect(page.locator(".brand-copy strong")).toHaveText("Quilo");
+  const localStylesheets = await page.locator('link[rel="stylesheet"]').evaluateAll((links) =>
+    links
+      .map((link) => new URL(link.href))
+      .filter((url) => url.origin === window.location.origin)
+      .map((url) => url.pathname),
+  );
+  expect(localStylesheets).toEqual([
+    "/ui/foundation.css",
+    "/ui/admin.css",
+    "/ui/chat.css",
+  ]);
+  expect(localStylesheets).not.toEqual(
+    expect.arrayContaining(["/style.css", "/admin-redesign.css", "/site-shell.css"]),
+  );
+
+  const missingIds = await page.evaluate(
+    (ids) => ids.filter((id) => document.getElementById(id) === null),
+    REQUIRED_IDS,
+  );
+  expect(missingIds).toEqual([]);
+
+  await expect(page.locator(".operations-brand__copy strong")).toHaveText("Quilo");
+  await expect(page.locator("#themeToggle")).toHaveAttribute("aria-label", /모드로 전환/);
+  await expect(page.locator("#themeToggle .operations-theme__icon")).toHaveCount(2);
   await expect(page.locator("#adminTabs .atab.on")).toHaveAttribute("data-go", "ai");
   await expect(page.locator("#adminAiSection")).toBeVisible();
 
@@ -120,12 +160,79 @@ test("admin console keeps all operational groups reachable without write request
   await expect(page.locator("#adminTabs .atab.on")).toHaveCount(1);
   await expect(page.locator('#adminTabs .atab[data-go="ai"]')).toHaveCSS(
     "background-color",
-    "rgb(31, 79, 183)",
+    "rgb(35, 79, 168)",
   );
   await expect(page.locator('#adminTabs .atab[data-go="editor"]')).toHaveCSS(
     "background-color",
     "rgba(0, 0, 0, 0)",
   );
+
+  const unexpectedRuntimeStyles = await page.locator("[style]").evaluateAll((elements) =>
+    elements.flatMap((element) => {
+      if (element.closest(".CodeMirror")) return [];
+      const properties = [...element.style].filter(
+        (property) => !["--minimap-scale", "--minimap-top", "--minimap-height"].includes(property),
+      );
+      return properties.length
+        ? [{ tag: element.tagName, id: element.id, properties }]
+        : [];
+    }),
+  );
+  expect(unexpectedRuntimeStyles).toEqual([]);
+
   await page.screenshot({ path: screenshotPath, fullPage: true });
   expect(writes).toEqual([]);
+});
+
+test("destructive operations retain confirmation gates and cancel without writes", async ({ page }) => {
+  const writes = [];
+  page.on("request", (request) => {
+    if (!["GET", "HEAD"].includes(request.method())) {
+      writes.push(`${request.method()} ${request.url()}`);
+    }
+  });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(`${baseUrl}/admin.html`, { waitUntil: "networkidle" });
+  await page.locator('#adminTabs .atab[data-go="users"]').click();
+
+  let confirmationMessage = "";
+  page.once("dialog", async (dialog) => {
+    confirmationMessage = dialog.message();
+    await dialog.dismiss();
+  });
+  await page.locator('button[data-act="delete"][data-id="qa-user"]').click();
+  expect(confirmationMessage).toBe("정말 삭제할까요?");
+  expect(writes).toEqual([]);
+});
+
+test("all high-impact admin actions keep explicit source-level confirmations", () => {
+  const source = fs.readFileSync(path.join(PUBLIC_DIR, "admin.html"), "utf8");
+  expect(source.match(/\sstyle\s*=/gi) || []).toHaveLength(0);
+  expect(source.match(/\son(?:click|change|input|submit)\s*=/gi) || []).toHaveLength(0);
+  expect(source.match(/\.style\.(?!setProperty\b)[A-Za-z_$][\w$]*/g) || []).toHaveLength(0);
+  expect(source.match(/\.style\.cssText\b/g) || []).toHaveLength(0);
+  expect(source.match(/\.on[a-z]+\s*=/gi) || []).toHaveLength(0);
+
+  const variableWrites = [...source.matchAll(/\.style\.setProperty\(\s*["']([^"']+)["']/g)].map(
+    (match) => match[1],
+  );
+  expect(variableWrites).toEqual([
+    "--minimap-scale",
+    "--minimap-scale",
+    "--minimap-top",
+    "--minimap-height",
+  ]);
+
+  for (const message of [
+    "정말 삭제할까요?",
+    "기능을 삭제할까요?",
+    "이 공지를 삭제할까요?",
+    "이 위임을 회수할까요?",
+    "이 구독을 회수할까요?",
+    "이 신청을 거절할까요?",
+    "입금을 확인했나요?",
+    "Pro 권한을 즉시·완전히 해제할까요?",
+  ]) {
+    expect(source).toContain(message);
+  }
 });

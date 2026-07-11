@@ -2,167 +2,118 @@
 <html lang="ko">
   <head>
     <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#215fe5" />
+    <meta name="description" content="Quilo 계정에 로그인해 작업과 생성 파일을 안전하게 관리하세요." />
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <meta name="theme-color" content="#2563eb" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>로그인 — Quilo</title>
-    <meta
-      name="description"
-      content="Quilo 계정에 로그인해 보고서 작업과 생성 파일을 이어서 관리하세요."
-    />
     <script>
       (function () {
         try {
-          var t = localStorage.getItem("theme");
-          if (!t)
-            t = window.matchMedia("(prefers-color-scheme: dark)").matches
-              ? "dark"
-              : "light";
-          document.documentElement.setAttribute("data-theme", t);
-        } catch (e) {}
+          var theme = localStorage.getItem("theme");
+          if (!theme) theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+          document.documentElement.setAttribute("data-theme", theme);
+        } catch (_) {}
       })();
     </script>
-    <link rel="stylesheet" href="/style.css" />
-    <link rel="stylesheet" href="/auth-ui.css" />
+    <link rel="stylesheet" href="/ui/foundation.css" />
+    <link rel="stylesheet" href="/ui/auth.css" />
   </head>
-  <body class="landing auth-page">
-    <div class="landing-bg" aria-hidden="true"></div>
+  <body class="auth-page">
     <a class="auth-skip" href="#authMain">로그인 폼으로 건너뛰기</a>
 
-    <nav class="landing-nav" aria-label="계정 페이지">
-      <div class="landing-nav-inner">
-        <a href="/" class="brand" aria-label="Quilo 홈">
-          <span class="brand-mark" aria-hidden="true">Q</span>
-          Quilo
+    <header class="auth-header">
+      <div class="auth-header__inner">
+        <a class="auth-brand" href="/" aria-label="Quilo 홈">
+          <span class="auth-brand__mark" aria-hidden="true">Q</span>
+          <span>Quilo</span>
         </a>
-        <div class="landing-nav-actions">
-          <span class="auth-nav-copy">안전한 계정 접속</span>
-          <a href="/signup.html" class="nav-link">회원가입</a>
-          <button
-            type="button"
-            id="themeToggle"
-            class="theme-toggle"
-            aria-label="다크 모드로 전환"
-            title="다크 모드로 전환"
-          >
-            테마
+        <div class="auth-header__actions">
+          <span class="auth-header__copy">계정이 없으신가요?</span>
+          <a class="auth-header__link" href="/signup.html">회원가입</a>
+          <button type="button" id="themeToggle" class="auth-theme" aria-label="다크 모드로 전환" title="다크 모드로 전환">
+            <span class="auth-theme__moon" aria-hidden="true">☾</span>
+            <span class="auth-theme__sun" aria-hidden="true">☀</span>
           </button>
         </div>
       </div>
-    </nav>
+    </header>
 
-    <main class="auth-page-main" id="authMain">
-      <section class="auth-page-layout" aria-labelledby="loginTitle">
-        <aside class="auth-story">
-          <div class="auth-story__top">
-            <div class="auth-story__brand">
-              <img src="/favicon.png" alt="" width="36" height="36" />
-              <span>Quilo account</span>
-            </div>
-            <p class="auth-story__eyebrow">Continue your work</p>
-            <h1>작업의 맥락을 그대로 이어가세요.</h1>
-            <p class="auth-story__lead">
-              로그인하면 보고서 작업, 생성 파일, 크레딧과 개인 설정을 한곳에서 이어서 관리할 수 있습니다.
-            </p>
-          </div>
-          <div class="auth-story__bottom">
-            <ul class="auth-trust-list">
-              <li><b>01</b><span>생성 파일은 기본 24시간 동안 계정에서 확인합니다.</span></li>
-              <li><b>02</b><span>보고서 이용 권한은 학교 이메일 인증 상태와 함께 확인합니다.</span></li>
-              <li><b>03</b><span>공용 기기에서는 로그인 유지 선택을 해제할 수 있습니다.</span></li>
-            </ul>
-          </div>
+    <main class="auth-main" id="authMain">
+      <div class="auth-frame">
+        <aside class="auth-context" aria-label="Quilo 계정 안내">
+          <p class="auth-context__label">Secure workspace</p>
+          <h1>작업의 맥락을<br />안전하게 이어가세요.</h1>
+          <p class="auth-context__lead">
+            보고서 작업, 생성 파일, 크레딧과 개인 설정을 하나의 계정에서 이어서 관리합니다.
+          </p>
+          <ul class="auth-context__list">
+            <li>
+              <b>01</b>
+              <div><strong>작업 연속성</strong><span>최근 생성 파일과 설정을 로그인한 계정에서 확인합니다.</span></div>
+            </li>
+            <li>
+              <b>02</b>
+              <div><strong>학생 인증</strong><span>학교 이메일 인증과 승인 상태를 생성 전에 확인합니다.</span></div>
+            </li>
+            <li>
+              <b>03</b>
+              <div><strong>공용 기기 보호</strong><span>로그인 유지 여부를 기기마다 직접 선택할 수 있습니다.</span></div>
+            </li>
+          </ul>
         </aside>
 
-        <div class="auth-panel">
-          <div class="auth-panel__head">
-            <p class="auth-kicker">Account sign in</p>
-            <h1 id="loginTitle">다시 만나서 반가워요</h1>
-            <p>가입할 때 만든 아이디와 비밀번호를 입력하세요.</p>
-          </div>
+        <section class="auth-content" aria-labelledby="loginTitle">
+          <div class="auth-card">
+            <p class="auth-card__label">Account sign in</p>
+            <h1 id="loginTitle">로그인</h1>
+            <p class="auth-card__intro">가입할 때 만든 아이디와 비밀번호를 입력하세요.</p>
 
-          <form id="loginForm" class="auth-form">
-            <div class="field">
-              <label for="li_username">
-                <span class="field-label">아이디</span>
-              </label>
-              <input
-                id="li_username"
-                name="username"
-                required
-                maxlength="50"
-                autocomplete="username"
-                autofocus
-              />
-            </div>
+            <form id="loginForm" class="auth-form">
+              <div class="auth-field">
+                <label for="li_username">아이디</label>
+                <input id="li_username" name="username" required maxlength="50" autocomplete="username" autofocus />
+              </div>
 
-            <div class="field">
-              <label for="li_password">
-                <span class="field-label">비밀번호</span>
-              </label>
-              <span class="auth-password-wrap">
-                <input
-                  id="li_password"
-                  name="password"
-                  type="password"
-                  required
-                  autocomplete="current-password"
-                />
-                <button
-                  type="button"
-                  class="auth-password-toggle"
-                  data-password-toggle="li_password"
-                  aria-label="비밀번호 표시"
-                  aria-pressed="false"
-                >
-                  보기
-                </button>
-              </span>
-            </div>
+              <div class="auth-field">
+                <label for="li_password">비밀번호</label>
+                <span class="auth-password">
+                  <input id="li_password" name="password" type="password" required autocomplete="current-password" />
+                  <button
+                    type="button"
+                    class="auth-password__toggle"
+                    data-password-toggle="li_password"
+                    aria-label="비밀번호 표시"
+                    aria-pressed="false"
+                  >보기</button>
+                </span>
+              </div>
 
-            <div class="auth-form-row">
               <label class="auth-check">
                 <input id="li_remember" name="remember" type="checkbox" checked />
                 <span>이 기기에서 로그인 유지</span>
               </label>
-            </div>
 
-            <div class="form-actions">
-              <button type="submit" id="li_btn" class="btn btn-primary auth-primary">
-                로그인
-              </button>
-            </div>
-            <p id="li_err" class="form-error" role="alert" aria-live="polite"></p>
-          </form>
+              <button type="submit" id="li_btn" class="ui-button ui-button--primary auth-submit">로그인</button>
+              <p id="li_err" class="auth-error" role="alert" aria-live="polite"></p>
+            </form>
 
-          <div class="auth-assurance" aria-label="로그인 안내">
-            <div>
-              <strong>학교 인증 계정</strong>
-              <span>보고서 생성은 이메일 인증과 승인 후 사용할 수 있습니다.</span>
-            </div>
-            <div>
-              <strong>공용 기기 이용 시</strong>
-              <span>로그인 유지를 해제하고 사용 후 반드시 로그아웃하세요.</span>
-            </div>
+            <p class="auth-alternate">아직 계정이 없으신가요? <a href="/signup.html">회원가입</a></p>
           </div>
-
-          <p class="auth-alt">
-            아직 계정이 없으신가요? <a href="/signup.html">회원가입</a>
-          </p>
-        </div>
-      </section>
+        </section>
+      </div>
     </main>
 
-    <footer class="site-footer">
-      <div class="footer-links">
+    <footer class="auth-footer">
+      <div class="auth-footer__links">
         <a href="/terms.html">이용약관</a>
         <a href="/privacy.html">개인정보처리방침</a>
         <a href="/refund.html">환불정책</a>
         <a href="/guide.html">이용 가이드</a>
       </div>
-      <div class="footer-copy">© 2026 Quilo · 계정 정보는 서비스 이용 권한 확인에 사용됩니다.</div>
+      <span>© 2026 Quilo</span>
     </footer>
 
     <script src="/theme.js"></script>
@@ -200,8 +151,8 @@
           error.textContent = "";
           button.disabled = true;
           button.textContent = "로그인 중...";
-
           const keepSignedIn = remember.checked;
+
           try {
             const response = await fetch("/api/login", {
               method: "POST",
@@ -225,8 +176,8 @@
             } else {
               location.assign("/");
             }
-          } catch (ex) {
-            error.textContent = ex.message;
+          } catch (exception) {
+            error.textContent = exception.message;
             button.disabled = false;
             button.textContent = "로그인";
           }

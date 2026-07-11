@@ -8,6 +8,8 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="theme-color" content="#2563eb" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/ui/foundation.css" />
+    <link rel="stylesheet" href="/ui/app-shell.css" />
     <title>PDF 통번역 (Max) · Quilo</title>
     <meta name="description" content="PDF 문서를 그림·레이아웃 그대로 두고 텍스트만 한국어로 통번역합니다. (관리자 테스트 중)" />
     <script>
@@ -19,27 +21,30 @@
         } catch (e) {}
       })();
     </script>
-    <link rel="stylesheet" href="/style.css" />
-    <link rel="stylesheet" href="/site-shell.css" />
-    <style>
-      .tr-wrap { max-width: 760px; margin: 0 auto; }
-      .tr-note { font-size: 13px; line-height: 1.6; }
-      .tr-note ul { margin: 8px 0 0; padding-left: 18px; }
-      .beta-badge {
-        display: inline-block; font-size: 11px; font-weight: var(--fw-bold);
-        padding: 2px 8px; border-radius: var(--radius-full); vertical-align: middle;
-        background: var(--accent); color: var(--on-accent); margin-left: 8px;
-      }
-      #gate { text-align: center; padding: 48px 16px; }
-    </style>
-  </head>
-  <body class="landing q-shell-page">
-    <div class="landing-bg" aria-hidden="true"></div>
-    <div data-q-shell><a class="q-shell-fallback" href="/">Quilo 홈</a></div>
-    <button type="button" id="themeToggle" hidden aria-hidden="true" tabindex="-1"></button>
 
-    <main class="landing-shell" id="main-content">
-      <section class="section" style="border-top: 0">
+</head>
+  <body id="appShell" class="app-shell app-shell--translate" data-app-shell>
+    <div class="landing-bg" aria-hidden="true"></div>
+    <header class="app-commandbar" data-q-shell>
+      <div class="app-commandbar__inner">
+        <a class="app-brand" href="/" aria-label="Quilo 홈">
+          <span class="app-brand__mark" aria-hidden="true">Q</span>
+          <span>Quilo</span>
+        </a>
+        <span class="app-commandbar__divider" aria-hidden="true"></span>
+        <a class="app-back" href="/">← 홈</a>
+        <strong class="app-title">PDF 통번역 Max</strong>
+        <nav class="app-commandbar__actions" aria-label="계정 및 화면 설정">
+          <a href="/account.html">계정</a>
+          <button type="button" id="themeToggle" class="app-theme" aria-label="다크 모드로 전환" title="다크 모드로 전환">
+            <span class="app-theme__moon" aria-hidden="true">☾</span>
+            <span class="app-theme__sun" aria-hidden="true">☀</span>
+          </button>
+        </nav>
+      </div>
+    </header>
+<main class="landing-shell" id="main-content" aria-label="PDF 통번역 Max">
+      <section class="section app-inline-translate-1">
         <div class="tr-wrap">
           <div class="tool-page-head">
             <h1>PDF 통번역 <span class="beta-badge">Max</span></h1>
@@ -52,7 +57,7 @@
           </div>
 
           <!-- 도구 본체 (관리자만 노출) -->
-          <div id="tool" style="display: none">
+          <div id="tool" class="app-inline-translate-2" hidden>
             <form id="trForm" class="tool-card">
               <div class="field">
                 <span class="field-label">번역할 PDF <span class="req">*</span></span>
@@ -74,13 +79,13 @@
                     <option value="retypeset">고품질 재조판 — 문서를 다시 조판, 수식 복원·스캔본 OCR (논문·문제집, PDF 새로 생성)</option>
                   </select>
                 </label>
-                <p class="hint" id="trModeHint" style="margin:4px 0 0">PDF만 올리면 됩니다 — 일반 문서는 ‘빠른 번역’, 스캔본·수식 많은 문서는 ‘재조판’을 권유합니다(진행 전에 한 번 더 여쭤봐요). 원하면 직접 고를 수도 있어요.</p>
-                <label style="display:flex;gap:6px;align-items:flex-start;margin-top:10px;font-size:0.93em;cursor:pointer">
-                  <input type="checkbox" id="trRestoreOnly" style="margin-top:3px;width:auto;flex:0 0 auto" />
+                <p class="hint app-inline-translate-3" id="trModeHint">PDF만 올리면 됩니다 — 일반 문서는 ‘빠른 번역’, 스캔본·수식 많은 문서는 ‘재조판’을 권유합니다(진행 전에 한 번 더 여쭤봐요). 원하면 직접 고를 수도 있어요.</p>
+                <label class="app-inline-translate-4">
+                  <input type="checkbox" id="trRestoreOnly"  class="app-inline-translate-5"/>
                   <span>🧾 <b>복원만 (번역 안 함)</b> — 원문 언어 그대로 깨끗한 PDF로 재조판합니다 (기울어진 스캔북 → 새 문서, 그림 복원 포함). <b>한국어로 번역하려면 이 칸을 비워 두세요.</b></span>
                 </label>
-                <label style="display:flex;gap:6px;align-items:flex-start;margin-top:4px;font-size:0.93em;cursor:pointer">
-                  <input type="checkbox" id="trChartRedraw" checked style="margin-top:3px;width:auto;flex:0 0 auto" />
+                <label class="app-inline-translate-6">
+                  <input type="checkbox" id="trChartRedraw" checked  class="app-inline-translate-5"/>
                   <span>📈 <b>그래프 벡터 재생성</b> — 스캔 그래프의 축·수치가 확실히 읽힐 때만 선명한 차트로 다시 그립니다 (불확실하면 원본 크롭 유지)</span>
                 </label>
               </div>
@@ -98,31 +103,32 @@
                 </label>
               </div>
 
-              <div class="field" id="trBgField" style="display: none">
-                <label style="display: flex; gap: 8px; align-items: flex-start; cursor: pointer">
-                  <input type="checkbox" id="trBg" style="margin-top: 3px; width: auto; flex: 0 0 auto" />
+              <div class="field app-inline-translate-2" id="trBgField" hidden>
+                <label class="app-inline-translate-7">
+                  <input type="checkbox" id="trBg"  class="app-inline-translate-8"/>
                   <span>
-                    <span class="field-label" style="display: inline">🌙 백그라운드로 실행 (탭/창 닫아도 됨)</span>
-                    <span class="hint" style="display: block; margin-top: 2px">제출 후 창을 닫아도 서버가 끝까지 번역합니다. 완료되면 ‘내 파일’에서 받을 수 있어요(24시간 보관). 페이지 많은 PDF에 특히 유용합니다.</span>
+                    <span class="field-label app-inline-translate-9">🌙 백그라운드로 실행 (탭/창 닫아도 됨)</span>
+                    <span class="hint app-inline-translate-10">제출 후 창을 닫아도 서버가 끝까지 번역합니다. 완료되면 ‘내 파일’에서 받을 수 있어요(24시간 보관). 페이지 많은 PDF에 특히 유용합니다.</span>
                   </span>
                 </label>
-                <label id="trBgNotifyWrap" style="display: none; gap: 8px; align-items: center; cursor: pointer; margin-top: 8px; padding-left: 24px">
-                  <input type="checkbox" id="trBgNotify" style="width: auto; flex: 0 0 auto" />
-                  <span class="hint" style="margin: 0">완료되면 이메일로 알림 받기</span>
+                <label id="trBgNotifyWrap" class="app-inline-translate-11" hidden>
+                  <input type="checkbox" id="trBgNotify"  class="app-inline-translate-12"/>
+                  <span class="hint app-inline-translate-13">완료되면 이메일로 알림 받기</span>
                 </label>
               </div>
 
               <div
                 id="trEstimate"
-                class="hint"
+                class="hint app-inline-translate-14"
+                hidden
                 aria-live="polite"
-                style="display: none; margin: 4px 0 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); line-height: 1.7"
+
               ></div>
 
               <div class="form-actions">
                 <button type="submit" id="trBtn" class="btn btn-primary btn-lg">한국어로 번역</button>
               </div>
-              <p id="trError" class="form-error" style="display: none" role="alert" aria-live="assertive"></p>
+              <p id="trError" class="form-error app-inline-translate-2" role="alert" aria-live="assertive" hidden></p>
             </form>
 
             <div class="tool-card tr-note">
@@ -135,7 +141,7 @@
                 <li>긴 문서는 구간을 나눠 병렬로 빠르게 처리합니다.</li>
                 <li><b>여러 PDF를 한 번에</b>: 파일을 여러 개 선택하면(최대 10개) 순서대로 번역하고, 끝난 파일부터 바로 내려받을 수 있습니다(2개씩 겹쳐 처리).</li>
               </ul>
-              <b style="display:block;margin-top:10px">아직 안 되거나 제한되는 것</b>
+              <b class="app-inline-translate-15">아직 안 되거나 제한되는 것</b>
               <ul>
                 <li><b>긴 스캔본도 OK</b> — 구간으로 나눠 자동 OCR 재조판 후 합칩니다. 사진 위에 숨은 OCR 텍스트가 심긴 스캔(vFlat 등)도 자동 감지해 재조판으로 처리합니다.</li>
                 <li><b>3단 이상이거나 본문·표가 불규칙하게 섞인 레이아웃</b>은 단순화될 수 있습니다(2단까지는 유지).</li>
@@ -143,14 +149,14 @@
                 <li>스캔본의 그림 <b>위치</b>가 가끔 살짝 어긋날 수 있습니다.</li>
                 <li><b>손글씨, 암호 걸린 PDF, 한국어 외 다른 언어로의 번역</b>은 지원하지 않습니다.</li>
               </ul>
-              <p class="hint" style="margin:8px 0 0">결과물은 24시간 동안 다시 내려받을 수 있습니다(이 기기 기준).</p>
+              <p class="hint app-inline-translate-16">결과물은 24시간 동안 다시 내려받을 수 있습니다(이 기기 기준).</p>
             </div>
 
-            <div id="progressArea" style="display: none">
+            <div id="progressArea" class="app-inline-translate-2" hidden>
               <div class="status-head">
                 <span class="spinner" id="genSpinner" aria-hidden="true"></span>
                 <h2 id="statusTitle">번역 중...</h2>
-                <button type="button" id="stopBtn" class="stop-btn" style="display: none">중지</button>
+                <button type="button" id="stopBtn" class="stop-btn app-inline-translate-2" hidden>중지</button>
               </div>
               <pre id="progress" role="log" aria-live="polite" aria-label="번역 진행 로그"></pre>
               <div id="resultArea" aria-live="polite"></div>
@@ -169,6 +175,12 @@
       <div class="footer-copy">© 2026 Quilo · MIT License</div>
     </footer>
 
+    <footer class="app-statusbar" aria-label="앱 상태">
+      <span class="app-statusbar__dot" aria-hidden="true"></span>
+      <span>준비됨</span>
+      <span class="app-statusbar__meta">PDF 통번역 Max · Quilo</span>
+    </footer>
+
     <script src="/theme.js"></script>
     <script>
       const gate = document.getElementById("gate");
@@ -180,7 +192,7 @@
           const res = await fetch("/api/me");
           if (res.status === 401) {
             gate.innerHTML =
-              '<p class="hint">로그인이 필요합니다.</p><p style="margin-top:12px"><a class="btn btn-primary" href="/login.html">로그인</a></p>';
+              '<p class="hint">로그인이 필요합니다.</p><p class="app-runtime-gap-top"><a class="btn btn-primary" href="/login.html">로그인</a></p>';
             return;
           }
           const me = await res.json();
@@ -206,8 +218,8 @@
               '<p class="hint">이 기능은 <b>Max 회원 전용</b>입니다. 메인 화면 개인 설정에서 Max 업그레이드를 신청하거나 운영자에게 문의하세요.</p>';
             return;
           }
-          gate.style.display = "none";
-          tool.style.display = "block";
+          gate.hidden = true;
+          tool.hidden = false;
           initTool();
         } catch (e) {
           gate.innerHTML = '<p class="hint">권한 확인 중 오류가 발생했습니다.</p>';
@@ -221,11 +233,11 @@
             const s = await fetch("/api/subscriptions/me").then((r) => r.json());
             if (s && s.active) {
               const f = document.getElementById("trBgField");
-              if (f) f.style.display = "";
+              if (f) f.hidden = false;
               const bg = document.getElementById("trBg");
               const wrap = document.getElementById("trBgNotifyWrap");
               bg?.addEventListener("change", () => {
-                if (wrap) wrap.style.display = bg.checked ? "flex" : "none";
+                if (wrap) wrap.hidden = !bg.checked;
               });
             }
           } catch {}
@@ -396,11 +408,11 @@
           };
         }
         function renderEstimate(e) {
-          estEl.style.display = "block";
+          estEl.hidden = false;
           if (e.tooManyPages) {
             estEl.innerHTML =
-              `📄 <b>${e.pages}쪽</b> · ⚠ <b style="color:var(--warning)">처리 한도(약 ${e.maxPages}쪽) 초과</b>` +
-              `<br><span style="opacity:.7">PDF를 나눠서 업로드하면 번역할 수 있습니다.</span>`;
+              `📄 <b>${e.pages}쪽</b> · ⚠ <b class="app-runtime-warning">처리 한도(약 ${e.maxPages}쪽) 초과</b>` +
+              `<br><span class="app-runtime-dim">PDF를 나눠서 업로드하면 번역할 수 있습니다.</span>`;
             return;
           }
           const modeLabel = e.mathGarbled
@@ -417,14 +429,14 @@
           estEl.innerHTML =
             `📄 <b>${e.pages}쪽</b> · 변환 방식 <b>${modeLabel}</b>` +
             (e.truncated
-              ? ` <span style="color:var(--warning)">(앞 30쪽만 처리)</span>`
+              ? ` <span class="app-runtime-warning">(앞 30쪽만 처리)</span>`
               : ``) +
             (e.chunked
-              ? ` <span style="opacity:.7">· ${e.chunkPages}쪽씩 ${e.chunks}개 구간 병렬 번역 후 합침</span>`
+              ? ` <span class="app-runtime-dim">· ${e.chunkPages}쪽씩 ${e.chunks}개 구간 병렬 번역 후 합침</span>`
               : ``) +
             `<br>⏱ 예상 시간 <b>약 ${fmtDur(e.seconds.lo)} ~ ${fmtDur(e.seconds.hi)}</b>` +
             ` · 💰 예상 비용 <b>약 ₩${krwLo.toLocaleString()} ~ ₩${krwHi.toLocaleString()}</b>` +
-            `<br><span style="opacity:.65">문서 내용·서버 상황에 따라 달라질 수 있습니다(실제 비용은 완료 후 표시).</span>`;
+            `<br><span class="app-runtime-dimmer">문서 내용·서버 상황에 따라 달라질 수 있습니다(실제 비용은 완료 후 표시).</span>`;
         }
         const fileKey = (f) =>
           f ? `${f.name}|${f.size}|${f.lastModified}` : "";
@@ -441,12 +453,12 @@
             const meta = estMetas.get(fileKey(f));
             if (!meta) {
               unknown++;
-              return `${i + 1}. ${escHtml(f.name)} — <span style="opacity:.6">분석 지연/실패 (그대로 진행 가능)</span>`;
+              return `${i + 1}. ${escHtml(f.name)} — <span class="app-runtime-faint">분석 지연/실패 (그대로 진행 가능)</span>`;
             }
             const e = calcEstimate(meta, mode, model);
             if (e.tooManyPages) {
               over.push(f.name);
-              return `${i + 1}. ${escHtml(f.name)} — <span style="color:var(--warning)">⚠ ${e.pages}쪽 · 한도(약 ${e.maxPages}쪽) 초과</span>`;
+              return `${i + 1}. ${escHtml(f.name)} — <span class="app-runtime-warning">⚠ ${e.pages}쪽 · 한도(약 ${e.maxPages}쪽) 초과</span>`;
             }
             usdLo += e.costUsd.lo;
             usdHi += e.costUsd.hi;
@@ -464,15 +476,15 @@
                     : "빠른 번역";
             return `${i + 1}. ${escHtml(f.name)} — ${e.pages}쪽 · ${label}`;
           });
-          estEl.style.display = "block";
+          estEl.hidden = false;
           estEl.innerHTML =
             lines.join("<br>") +
-            `<br>📄 총 <b>${pages}쪽</b> · ⏱ 순차 합계 <b>약 ${fmtDur(secLo)} ~ ${fmtDur(secHi)}</b> <span style="opacity:.7">(2개씩 겹쳐 처리해 실제는 더 짧을 수 있어요)</span>` +
+            `<br>📄 총 <b>${pages}쪽</b> · ⏱ 순차 합계 <b>약 ${fmtDur(secLo)} ~ ${fmtDur(secHi)}</b> <span class="app-runtime-dim">(2개씩 겹쳐 처리해 실제는 더 짧을 수 있어요)</span>` +
             ` · 💰 <b>약 ₩${Math.round(usdLo * 1400).toLocaleString()} ~ ₩${Math.round(usdHi * 1400).toLocaleString()}</b>` +
             (over.length
-              ? `<br><span style="color:var(--warning)">⚠ 한도 초과 파일은 번역에 실패합니다 — 나눠서 올리세요: ${escHtml(over.join(", "))}</span>`
+              ? `<br><span class="app-runtime-warning">⚠ 한도 초과 파일은 번역에 실패합니다 — 나눠서 올리세요: ${escHtml(over.join(", "))}</span>`
               : "") +
-            `<br><span style="opacity:.65">파일은 순서대로 번역되고, 끝난 파일부터 바로 내려받을 수 있습니다.</span>`;
+            `<br><span class="app-runtime-dimmer">파일은 순서대로 번역되고, 끝난 파일부터 바로 내려받을 수 있습니다.</span>`;
         }
         // 캐시에 없는 파일들만 서버 분석을 받아 estMetas 를 채운다.
         async function ensureMetas(list, mode, model, seq) {
@@ -507,14 +519,14 @@
         async function updateEstimate() {
           const list = Array.from(fileInput.files || []);
           if (!list.length) {
-            estEl.style.display = "none";
+            estEl.hidden = true;
             return;
           }
           const mode = document.getElementById("trMode").value;
           const model = document.getElementById("trModel").value;
           const seq = ++estSeq;
           if (list.some((f) => !estMetas.has(fileKey(f)))) {
-            estEl.style.display = "block";
+            estEl.hidden = false;
             estEl.textContent =
               "⏳ 예상 비용·시간 계산 중..." +
               (list.length > 1 ? ` (${list.length}개 파일)` : "");
@@ -528,7 +540,7 @@
           const meta = estMetas.get(fileKey(list[0]));
           if (!meta) {
             estEl.innerHTML =
-              '<span style="opacity:.75">예상 계산이 지연됩니다(파일이 크거나 네트워크가 느림) — 그냥 번역을 진행해도 됩니다.</span>';
+              '<span class="app-runtime-soft">예상 계산이 지연됩니다(파일이 크거나 네트워크가 느림) — 그냥 번역을 진행해도 됩니다.</span>';
             return;
           }
           renderEstimate(calcEstimate(meta, mode, model));
@@ -550,8 +562,8 @@
           btn.disabled = busy;
           fileInput.disabled = busy;
           btn.textContent = busy ? "번역 중..." : "한국어로 번역";
-          genSpinner.style.display = busy ? "inline-block" : "none";
-          stopBtn.style.display = busy ? "inline-block" : "none";
+          genSpinner.hidden = !busy;
+          stopBtn.hidden = !busy;
         }
 
         // 재조판 권유 확인창. 사용자가 '재조판'을 명시하지 않았는데 문서가 재조판을
@@ -585,8 +597,8 @@
                 ? "이 PDF는 스캔본/이미지예요. 글자만 바꾸는 <b>빠른 번역</b>은 불가능하고, OCR로 새로 조판하는 <b>재조판</b>으로만 번역할 수 있습니다. (PDF를 새로 생성 · 시간·비용이 더 듭니다.)"
                 : `이 문서는 수식이 많습니다(수식밀도 <b>${density}</b>).<br><b>빠른 번역</b>은 레이아웃·그림은 그대로지만 복잡한 수식·전하·구조식이 깨질 수 있어요.<br><b>재조판</b>은 PDF를 새로 만들어 수식을 정확히 복원합니다(시간·비용↑, 레이아웃은 달라짐).`;
             card.innerHTML =
-              `<div id="retypesetDlgTitle" style="font-weight:var(--fw-bold);font-size:16px;margin-bottom:8px">${title}</div>` +
-              `<div id="retypesetDlgBody" style="margin-bottom:16px">${body}</div>`;
+              `<div id="retypesetDlgTitle" class="app-runtime-dialog-title">${title}</div>` +
+              `<div id="retypesetDlgBody" class="app-runtime-dialog-body">${body}</div>`;
             const row = document.createElement("div");
             row.style.cssText =
               "display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end";
@@ -661,8 +673,8 @@
               })
               .join("");
             card.innerHTML =
-              `<div id="retypesetMultiTitle" style="font-weight:var(--fw-bold);font-size:16px;margin-bottom:8px">재조판이 필요한 파일이 있습니다 (${affected.length}개)</div>` +
-              `<div id="retypesetMultiBody" style="margin-bottom:16px"><ul style="margin:0 0 10px;padding-left:18px">${items}</ul>` +
+              `<div id="retypesetMultiTitle" class="app-runtime-dialog-title">재조판이 필요한 파일이 있습니다 (${affected.length}개)</div>` +
+              `<div id="retypesetMultiBody" class="app-runtime-dialog-body"><ul class="app-runtime-dialog-list">${items}</ul>` +
               `재조판은 PDF를 새로 만들어 수식·스캔을 정확히 복원하지만 시간·비용이 더 듭니다. 나머지 파일은 선택한 방식 그대로 진행됩니다.</div>`;
             const row = document.createElement("div");
             row.style.cssText =
@@ -706,16 +718,16 @@
 
         form.addEventListener("submit", async (e) => {
           e.preventDefault();
-          errEl.style.display = "none";
+          errEl.hidden = true;
           const list = Array.from(fileInput.files || []);
           if (!list.length) {
             errEl.textContent = "PDF 파일을 선택하세요.";
-            errEl.style.display = "block";
+            errEl.hidden = false;
             return;
           }
           if (list.length > 10) {
             errEl.textContent = "한 번에 최대 10개 파일까지 번역할 수 있습니다.";
-            errEl.style.display = "block";
+            errEl.hidden = false;
             return;
           }
 
@@ -791,7 +803,7 @@
 
         // 번역 요청 전송(제출·재시도 공용). fd 는 File 핸들을 유지하므로 재사용 안전.
         async function startTranslate(fd, isBg) {
-          progressArea.style.display = "block";
+          progressArea.hidden = false;
           progressEl.textContent = "";
           resultArea.innerHTML = "";
           statusTitle.textContent = "번역 중...";
@@ -931,7 +943,7 @@
         }
       }
     </script>
-      <script src="/site-shell.js"></script>
+
       <script src="/chat-widget.js" defer></script>
 </body>
 </html>

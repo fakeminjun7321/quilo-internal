@@ -20,19 +20,28 @@ function loadPlaywrightTest() {
 
 const { test, expect } = loadPlaywrightTest();
 
-const widgetSource = fs.readFileSync(
-  path.join(process.cwd(), "public", "chat-widget.js"),
-  "utf8",
-);
+const publicDir = path.join(process.cwd(), "public");
+
+function publicFile(requestUrl) {
+  const pathname = decodeURIComponent(new URL(requestUrl, "http://localhost").pathname);
+  const relative = pathname.replace(/^\/+/, "");
+  const file = path.resolve(publicDir, relative);
+  if (!file.startsWith(`${publicDir}${path.sep}`)) return null;
+  return file;
+}
 
 let server;
 let baseUrl;
 
 test.beforeAll(async () => {
   server = http.createServer((request, response) => {
-    if (request.url === "/chat-widget.js") {
-      response.writeHead(200, { "Content-Type": "text/javascript; charset=utf-8" });
-      response.end(widgetSource);
+    const file = publicFile(request.url || "/");
+    if (file && fs.existsSync(file) && fs.statSync(file).isFile()) {
+      const contentType = file.endsWith(".css")
+        ? "text/css; charset=utf-8"
+        : "text/javascript; charset=utf-8";
+      response.writeHead(200, { "Content-Type": contentType });
+      response.end(fs.readFileSync(file));
       return;
     }
     response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
@@ -75,6 +84,9 @@ test("inline chat becomes one compact conversation surface after the first messa
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(baseUrl);
 
+  await expect(page.locator('link[data-quilo-chat-css][href="/ui/chat.css"]')).toHaveCount(1);
+  await expect(page.locator("style")).toHaveCount(0);
+
   const panel = page.locator("#qc-panel");
   await expect(panel).toHaveClass(/qc-idle/);
   await page.locator("#qc-in").fill("안녕");
@@ -102,9 +114,32 @@ test("inline chat becomes one compact conversation surface after the first messa
   await expect(actions.nth(0)).toHaveCSS("border-top-width", "0px");
 });
 
+test("home inline chat moves into the floating panel without duplicating the widget", async ({ page }) => {
+  await installChatFixtures(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(baseUrl);
+
+  const panel = page.locator("#qc-panel");
+  await expect(panel).toHaveClass(/qc-inline/);
+  await expect(panel).toHaveClass(/qc-idle/);
+  await expect(panel).toHaveClass(/open/);
+  expect(await panel.evaluate((node) => node.parentElement.id)).toBe("quiloBotMount");
+
+  await page.locator("#qc-launch").click();
+  await expect(panel).not.toHaveClass(/qc-inline/);
+  await expect(panel).not.toHaveClass(/qc-idle/);
+  await expect(panel).toHaveClass(/open/);
+  expect(await panel.evaluate((node) => node.parentElement.tagName)).toBe("BODY");
+  await expect(page.locator("#qc-panel")).toHaveCount(1);
+  await expect(page.locator("#qc-launch")).toHaveCount(1);
+  await expect(page.locator('link[data-quilo-chat-css]')).toHaveCount(1);
+  await expect(page.locator("#qc-in")).toHaveAttribute("placeholder", "메시지를 입력하세요…");
+});
+
 test("Korean IME Enter confirms composition without sending or leaving a syllable behind", async ({ page }) => {
   const getChatRequests = await installChatFixtures(page);
   await page.goto(baseUrl);
+  await expect(page.locator("#qc-in")).toBeVisible();
 
   await page.evaluate(() => {
     const input = document.querySelector("#qc-in");

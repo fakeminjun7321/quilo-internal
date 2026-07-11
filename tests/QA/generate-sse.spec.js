@@ -167,7 +167,7 @@ test("mocked SSE report generation smoke: chem-pre, chem-result, phys-result", a
   await mockFrontendApis(page);
   await page.goto(BASE_URL);
 
-  await expect(page.locator("body")).toHaveClass(/is-authenticated/);
+  await expect(page.locator("body")).toHaveAttribute("data-auth", "in");
   await expect(page.locator('#annTrack a[href^="javascript:"]')).toHaveCount(0);
 
   await chooseReport(page, "chem-pre");

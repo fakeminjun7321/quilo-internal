@@ -5,6 +5,8 @@
     <link rel="canonical" href="https://quilolab.com/study.html" />
     <meta name="description" content="공부 — 물리 개념을 도식으로 정리하는 학습 도구. 상대성이론 민코프스키 시공간 도표 생성 등 개념 시각화." />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/ui/foundation.css" />
+    <link rel="stylesheet" href="/ui/app-shell.css" />
     <meta name="theme-color" content="#2563eb" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" href="/favicon.png" />
@@ -19,429 +21,32 @@
         } catch (e) {}
       })();
     </script>
-    <link rel="stylesheet" href="/style.css" />
-    <link rel="stylesheet" href="/site-shell.css" />
-    <style>
-      .study-shell {
-        display: grid;
-        gap: 22px;
-        width: min(1320px, calc(100% - 40px));
-      }
-      .study-top {
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 16px;
-        flex-wrap: wrap;
-      }
-      .study-status {
-        display: inline-flex;
-        align-items: center;
-        min-height: 34px;
-        padding: 7px 11px;
-        border: 1px solid var(--border);
-        border-radius: 999px;
-        color: var(--text-muted);
-        background: var(--surface);
-        font-size: 12px;
-        font-weight: var(--fw-bold);
-      }
-      .study-lock {
-        padding: 28px 22px;
-        border: 1px dashed var(--border-strong);
-        border-radius: var(--radius);
-        background: var(--surface);
-        color: var(--text-muted);
-        text-align: center;
-      }
-      .study-lock strong {
-        display: block;
-        color: var(--text);
-        font-size: 17px;
-        margin-bottom: 7px;
-      }
-      #studyGate[hidden],
-      #studyMain[hidden] {
-        display: none !important;
-      }
-      .study-workbench {
-        display: grid;
-        grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
-        gap: 18px;
-        align-items: start;
-      }
-      .study-controls,
-      .study-output {
-        display: grid;
-        gap: 14px;
-        min-width: 0;
-      }
-      .study-output {
-        scroll-margin-top: 86px;
-      }
-      .study-control-group {
-        display: grid;
-        gap: 10px;
-        padding-bottom: 14px;
-        border-bottom: 1px solid var(--border);
-      }
-      .study-control-group:last-child {
-        padding-bottom: 0;
-        border-bottom: 0;
-      }
-      .study-mode {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
-      }
-      .study-mode label {
-        display: grid;
-        gap: 4px;
-        min-height: 72px;
-        padding: 10px 11px;
-        border: 1px solid var(--border);
-        border-radius: var(--radius-sm);
-        background: var(--surface-2);
-        color: var(--text);
-        cursor: pointer;
-      }
-      .study-mode input {
-        position: absolute;
-        opacity: 0;
-        pointer-events: none;
-      }
-      .study-mode label:has(input:checked) {
-        border-color: var(--accent-border);
-        background: var(--accent-soft);
-        color: var(--accent-text);
-      }
-      .study-mode label:has(input:focus-visible) {
-        outline: none;
-        box-shadow: 0 0 0 3px var(--ring);
-      }
-      .study-mode strong {
-        font-size: 13px;
-      }
-      .study-mode span {
-        color: var(--text-muted);
-        font-size: 12px;
-        line-height: 1.35;
-      }
-      .study-range {
-        display: grid;
-        grid-template-columns: 42px minmax(0, 1fr) 72px;
-        gap: 10px;
-        align-items: center;
-        color: var(--text-muted);
-        font-size: 12px;
-        font-weight: var(--fw-bold);
-      }
-      .study-range output {
-        text-align: right;
-        color: var(--text);
-        font-variant-numeric: tabular-nums;
-      }
-      .study-range input[type="range"] {
-        width: 100%;
-      }
-      .study-chip-row {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 6px;
-      }
-      .study-chip-label {
-        margin-right: 2px;
-        color: var(--text-muted);
-        font-size: 12px;
-        font-weight: var(--fw-bold);
-      }
-      .study-chip {
-        min-height: 30px;
-        padding: 5px 11px;
-        border: 1px solid var(--border);
-        border-radius: 999px;
-        background: var(--surface);
-        color: var(--text);
-        font: inherit;
-        font-size: 12px;
-        font-weight: var(--fw-bold);
-        line-height: 1.2;
-        cursor: pointer;
-        font-variant-numeric: tabular-nums;
-      }
-      .study-chip:hover {
-        border-color: var(--accent-border);
-        background: var(--accent-soft);
-        color: var(--accent-text);
-      }
-      .study-chip:focus-visible {
-        outline: none;
-        box-shadow: 0 0 0 3px var(--ring);
-      }
-      .study-example-hint {
-        margin: 0;
-        color: var(--text-muted);
-        font-size: 12px;
-        line-height: 1.4;
-      }
-      .study-actions {
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-      }
-      .study-actions button {
-        min-height: 44px;
-        padding: 8px 14px;
-        border-radius: var(--radius-sm);
-        font: inherit;
-        font-size: 14px;
-        font-weight: var(--fw-bold);
-        cursor: pointer;
-      }
-      .study-actions .primary {
-        border: 1px solid var(--accent);
-        background: var(--accent);
-        color: var(--on-accent);
-      }
-      .study-actions .secondary {
-        border: 1px solid var(--border);
-        background: var(--surface);
-        color: var(--text);
-      }
-      .study-actions button:disabled {
-        opacity: 0.55;
-        cursor: default;
-      }
-      .study-canvas-wrap {
-        position: relative;
-        overflow: hidden;
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        background: var(--surface);
-      }
-      .study-canvas-tools {
-        position: absolute;
-        top: 10px;
-        right: 10px;
-        z-index: 2;
-        display: inline-flex;
-        gap: 6px;
-      }
-      .study-canvas-tools button,
-      .study-zoom-actions button {
-        min-height: 44px;
-        min-width: 44px;
-        padding: 8px 12px;
-        border: 1px solid var(--border);
-        border-radius: var(--radius-sm);
-        background: var(--surface);
-        color: var(--text);
-        font: inherit;
-        font-size: 12px;
-        font-weight: var(--fw-bold);
-        cursor: pointer;
-        box-shadow: var(--shadow-sm);
-      }
-      #minkowskiCanvas {
-        display: block;
-        width: 100%;
-        aspect-ratio: 1.62;
-        min-height: 520px;
-        background: #fff;
-      }
-      .study-caption {
-        display: grid;
-        gap: 5px;
-        padding: 12px 14px 14px;
-        border-top: 1px solid var(--border);
-        background: var(--surface);
-      }
-      .study-caption h2 {
-        margin: 0;
-        color: var(--text);
-        font-size: 15px;
-        line-height: 1.35;
-      }
-      .study-caption p {
-        margin: 0;
-        color: var(--text-muted);
-        line-height: 1.55;
-        font-size: 13px;
-      }
-      .study-details {
-        border-top: 1px solid var(--border);
-        padding-top: 8px;
-      }
-      .study-details summary {
-        color: var(--text-muted);
-        cursor: pointer;
-        font-size: 12px;
-        font-weight: var(--fw-bold);
-        user-select: none;
-      }
-      .study-list {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 10px;
-        margin-top: 10px;
-      }
-      .study-list section {
-        min-width: 0;
-        border-top: 1px solid var(--border);
-        padding-top: 10px;
-      }
-      .study-list h3 {
-        margin: 0 0 6px;
-        color: var(--text-muted);
-        font-size: 12px;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-      }
-      .study-list ul {
-        margin: 0;
-        padding-left: 18px;
-        color: var(--text-muted);
-        font-size: 13px;
-        line-height: 1.55;
-      }
-      .study-message {
-        min-height: 20px;
-        color: var(--text-muted);
-        font-size: 13px;
-        line-height: 1.55;
-      }
-      .study-message.error {
-        color: var(--danger);
-      }
-      .study-model-hint {
-        display: block;
-        margin-top: 5px;
-        color: var(--text-muted);
-        font-size: 12px;
-        line-height: 1.45;
-      }
-      .study-zoom-modal {
-        position: fixed;
-        inset: 0;
-        z-index: 120;
-        display: grid;
-        padding: 24px;
-        background: rgba(15, 23, 42, 0.72);
-      }
-      .study-zoom-modal[hidden] {
-        display: none !important;
-      }
-      .study-zoom-panel {
-        display: grid;
-        grid-template-rows: auto minmax(0, 1fr);
-        min-width: 0;
-        min-height: 0;
-        border-radius: var(--radius);
-        background: var(--surface);
-        box-shadow: 0 24px 90px rgba(15, 23, 42, 0.32);
-        overflow: hidden;
-      }
-      .study-zoom-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        padding: 12px 14px;
-        border-bottom: 1px solid var(--border);
-        color: var(--text);
-      }
-      .study-zoom-actions {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        flex-wrap: wrap;
-      }
-      .study-zoom-actions output {
-        min-width: 50px;
-        color: var(--text-muted);
-        font-size: 12px;
-        font-variant-numeric: tabular-nums;
-        text-align: center;
-      }
-      .study-zoom-stage {
-        min-width: 0;
-        min-height: 0;
-        overflow: auto;
-        padding: 18px;
-        background: var(--surface-2);
-      }
-      #minkowskiZoomCanvas {
-        display: block;
-        max-width: none;
-        background: #fff;
-        border: 1px solid var(--border);
-        border-radius: var(--radius-sm);
-      }
-      .study-gate-btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 40px;
-        margin-top: 8px;
-        padding: 8px 16px;
-        border-radius: var(--radius-sm);
-        background: var(--accent);
-        color: var(--on-accent);
-        font-size: 14px;
-        font-weight: var(--fw-bold);
-        text-decoration: none;
-      }
-      .study-gate-btn:hover {
-        background: var(--accent-hover);
-        color: var(--on-accent);
-        text-decoration: none;
-      }
-      .study-gate-btn:focus-visible {
-        outline: none;
-        box-shadow: 0 0 0 3px var(--ring);
-      }
-      @media (max-width: 880px) {
-        .study-workbench {
-          grid-template-columns: 1fr;
-        }
-        #minkowskiCanvas {
-          min-height: 420px;
-        }
-      }
-      @media (max-width: 560px) {
-        .study-mode,
-        .study-list {
-          grid-template-columns: 1fr;
-        }
-        .study-range {
-          grid-template-columns: 34px minmax(0, 1fr) 64px;
-        }
-        .tool-card {
-          padding: 18px;
-        }
-        #minkowskiCanvas {
-          min-height: 420px;
-        }
-        .study-zoom-modal {
-          padding: 10px;
-        }
-        .study-zoom-head {
-          align-items: flex-start;
-          flex-direction: column;
-        }
-      }
-    </style>
-  </head>
-  <body class="landing q-shell-page">
-    <div class="landing-bg" aria-hidden="true"></div>
-    <div data-q-shell><a class="q-shell-fallback" href="/">Quilo 홈</a></div>
-    <button type="button" id="themeToggle" hidden aria-hidden="true" tabindex="-1"></button>
 
-    <main class="landing-shell study-shell" id="main-content">
-      <section class="section" style="border-top:0">
+</head>
+  <body id="appShell" class="app-shell app-shell--study" data-app-shell>
+    <div class="landing-bg" aria-hidden="true"></div>
+    <header class="app-commandbar" data-q-shell>
+      <div class="app-commandbar__inner">
+        <a class="app-brand" href="/" aria-label="Quilo 홈">
+          <span class="app-brand__mark" aria-hidden="true">Q</span>
+          <span>Quilo</span>
+        </a>
+        <span class="app-commandbar__divider" aria-hidden="true"></span>
+        <a class="app-back" href="/">← 홈</a>
+        <strong class="app-title">공부</strong>
+        <nav class="app-commandbar__actions" aria-label="계정 및 화면 설정">
+          <a href="/account.html">계정</a>
+          <button type="button" id="themeToggle" class="app-theme" aria-label="다크 모드로 전환" title="다크 모드로 전환">
+            <span class="app-theme__moon" aria-hidden="true">☾</span>
+            <span class="app-theme__sun" aria-hidden="true">☀</span>
+          </button>
+        </nav>
+      </div>
+    </header>
+<main class="landing-shell study-shell" id="main-content" aria-label="공부">
+      <section class="section app-inline-study-1">
         <div class="study-top">
-          <div class="tool-page-head" style="margin:0">
+          <div class="tool-page-head app-inline-study-2">
             <h1>공부</h1>
             <p>상대론 문제 사진이나 상황 설명을 AI가 해석하고, 민코프스키 평면은 브라우저가 직접 계산해 그립니다.</p>
           </div>
@@ -590,6 +195,12 @@
         </div>
       </div>
     </div>
+
+    <footer class="app-statusbar" aria-label="앱 상태">
+      <span class="app-statusbar__dot" aria-hidden="true"></span>
+      <span>준비됨</span>
+      <span class="app-statusbar__meta">공부 · Quilo</span>
+    </footer>
 
     <script src="/theme.js"></script>
     <script>
@@ -1380,6 +991,6 @@
         initAccess();
       })();
     </script>
-    <script src="/site-shell.js"></script>
+
   </body>
 </html>

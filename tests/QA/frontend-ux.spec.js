@@ -149,7 +149,7 @@ test("home keeps the approved desktop header at the real 933px viewport", async 
   expect(overflow).toBe(0);
 });
 
-test("logged-in workspace and report form layout render cleanly", async ({ page }) => {
+test("authentication stays on landing until an explicit report opens the workspace", async ({ page }) => {
   fs.mkdirSync(SCREEN_DIR, { recursive: true });
   const errors = [];
   page.on("console", (msg) => {
@@ -161,18 +161,22 @@ test("logged-in workspace and report form layout render cleanly", async ({ page 
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(BASE_URL, { waitUntil: "networkidle" });
   await expect(page.locator("body")).toHaveAttribute("data-auth", "in");
-  await expect(page.locator("#reportTypes")).toBeVisible();
-  await expect(page.locator("#workspaceSummary")).toBeVisible();
+  await expect(page.locator("body")).toHaveAttribute("data-view", "landing");
+  await expect(page.locator("#landingSurface")).toBeVisible();
+  await expect(page.locator("#workspaceSurface")).toBeHidden();
+  await expect(page.locator("#reportTypes")).toBeHidden();
   await expect(page.locator("#reportTypeFieldset")).toBeHidden();
   await expect(page.locator("#loginDd")).toBeHidden();
   await expect(page.locator("#acctDd")).toBeVisible();
-  await expect(page.locator("#homeHero")).toBeHidden();
+  await expect(page.locator("#homeHero")).toBeVisible();
 
-  await expect(page.locator('input[name="reportType"][value="free"]')).toBeChecked();
-  await expect(page.locator('#freeForm[data-report-form="free"]')).toBeVisible();
   await page.locator('.nav-dd-btn').filter({ hasText: "제품" }).click();
   await page.locator('.nav-dd-menu a[data-report="chem-pre"]').click();
   await page.waitForTimeout(350);
+  await expect(page.locator("body")).toHaveAttribute("data-view", "workspace");
+  await expect(page.locator("#landingSurface")).toBeHidden();
+  await expect(page.locator("#workspaceSurface")).toBeVisible();
+  await expect(page.locator("#workspaceSummary")).toBeVisible();
   await expect(page.locator("#form.report-flow.active")).toBeVisible();
   await expect(page.locator("#form")).toHaveAttribute("data-flow-step", "upload");
   let stepVisibility = await page.evaluate(() => ({
@@ -219,12 +223,14 @@ test("logged-in workspace and report form layout render cleanly", async ({ page 
     const form = document.querySelector("#form").getBoundingClientRect();
     return { reportTypesBottom: reportTypes.bottom, formTop: form.top, scrollY: window.scrollY };
   });
-  expect(selectedLayout.formTop - selectedLayout.reportTypesBottom).toBeLessThan(40);
-  expect(selectedLayout.formTop).toBeLessThan(140);
+  // The 94px desktop shell is intentionally taller than the legacy header.
+  // Keep the selected form inside the first content band without coupling the
+  // contract to the old 140px header geometry.
+  expect(selectedLayout.formTop).toBeLessThan(180);
   await page.screenshot({ path: path.join(SCREEN_DIR, "desktop-1280.png"), fullPage: false });
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(BASE_URL, { waitUntil: "networkidle" });
+  await page.goto(`${BASE_URL}/?report=chem-pre`, { waitUntil: "networkidle" });
   await expect(page.locator("#workspaceSummary")).toBeVisible();
   await expect(page.locator("#reportTypeFieldset")).toBeHidden();
   await page.screenshot({ path: path.join(SCREEN_DIR, "mobile-390.png"), fullPage: false });
@@ -250,12 +256,31 @@ test("report entry links bypass the removed intermediary and open the free repor
   await mockLoggedInApis(page);
   await page.goto(`${BASE_URL}/?report=free`, { waitUntil: "networkidle" });
 
+  await expect(page.locator("body")).toHaveAttribute("data-view", "workspace");
   await expect(page.locator('input[name="reportType"][value="free"]')).toBeChecked();
   await expect(page.locator('#freeForm[data-report-form="free"]')).toBeVisible();
   await expect(page.locator("#reportsPanel")).toHaveClass(/workspace-mode/);
   await expect(page.locator("#choosePrompt")).toHaveCount(0);
-  await expect(page.locator('.home-hero-categories a[href="/?report=free"]')).toHaveText("보고서");
+  await expect(page.locator(".home-hero-categories")).toHaveCount(0);
+  await expect(page.locator('.nav-dd-menu a[data-report="free"]')).toHaveText("자유 보고서");
   await expect(page.locator('.home-start-cta[href="/?report=free"]')).toHaveText("무료로 시작하기");
+});
+
+test("all five core report routes resolve to their preserved form contracts", async ({ page }) => {
+  await mockLoggedInApis(page);
+  const cases = [
+    ["chem-pre", "form"],
+    ["chem-result", "chemResultForm"],
+    ["phys-result", "physResultForm"],
+    ["free", "freeForm"],
+    ["reading-log", "readingLogForm"],
+  ];
+  for (const [type, formId] of cases) {
+    await page.goto(`${BASE_URL}/?report=${type}`, { waitUntil: "networkidle" });
+    await expect(page.locator("body")).toHaveAttribute("data-view", "workspace");
+    await expect(page.locator(`input[name="reportType"][value="${type}"]`)).toBeChecked();
+    await expect(page.locator(`#${formId}[data-report-form="${type}"]`)).toBeVisible();
+  }
 });
 
 test("secondary UX pages render without console errors", async ({ page }) => {

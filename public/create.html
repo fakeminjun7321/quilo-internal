@@ -5,6 +5,8 @@
     <link rel="canonical" href="https://quilolab.com/create.html" />
     <meta name="description" content="창작 — AI로 미니 웹앱·시각자료를 대화로 만들고 공유하는 바이브 코딩 스튜디오." />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/ui/foundation.css" />
+    <link rel="stylesheet" href="/ui/app-shell.css" />
     <title>창작 — AI로 만들고 공유하기</title>
     <script>
       (function () {
@@ -15,78 +17,45 @@
         } catch (e) {}
       })();
     </script>
-    <link rel="stylesheet" href="/style.css" />
-    <style>
-      :root { --card:var(--surface); --bd:var(--border); --ink:var(--text); --mut:var(--text-muted); --acc:var(--accent); --accd:var(--accent-hover); }
-      * { box-sizing: border-box; }
-      /* style.css 의 body{width:min(1180px);margin:0 auto} 를 아래 margin:0 가 덮어써
-         폭 1180px 가 좌측정렬로 남던 문제 → 전체폭 헤더 + .container 가운데정렬로 복구. */
-      html, body { width:100%; max-width:100%; }
-      body { margin:0; padding:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Apple SD Gothic Neo","맑은 고딕",sans-serif; background:var(--bg); color:var(--ink); }
-      .container { max-width:1200px; margin:0 auto; padding:18px 16px 60px; }
-      .card { background:var(--card); border:1px solid var(--bd); border-radius:var(--radius); padding:16px; }
-      button { background:var(--acc); color:var(--on-accent); border:0; border-radius:var(--radius-sm); padding:9px 14px; font:inherit; font-weight:var(--fw-semibold); cursor:pointer; }
-      button:hover { background:var(--accd); }
-      button.sec { background:var(--accent-soft); color:var(--accent-text); }
-      button.ghost { background:transparent; color:var(--mut); border:1px solid var(--bd); }
-      .muted { color:var(--mut); font-size:13px; }
-      .gallery { display:grid; grid-template-columns: repeat(auto-fill, minmax(240px,1fr)); gap:14px; }
-      .g-card { background:var(--card); border:1px solid var(--bd); border-radius:var(--radius); overflow:hidden; text-decoration:none; color:inherit; transition:transform .12s, box-shadow .12s; display:flex; flex-direction:column; }
-      .g-card:hover { transform:translateY(-3px); box-shadow:0 10px 24px #1c233314; }
-      .g-thumb { height:150px; border-bottom:1px solid var(--bd); background:var(--surface-2); overflow:hidden; position:relative; }
-      .g-thumb iframe { border:0; width:200%; height:300px; transform:scale(.5); transform-origin:top left; pointer-events:none; background:#fff; }
-      .g-meta { padding:10px 12px; }
-      .g-meta .t { font-weight:var(--fw-bold); font-size:14px; margin-bottom:3px; }
-      .g-meta .b { color:var(--mut); font-size:12px; }
-      .secthead { display:flex; align-items:center; gap:10px; margin:22px 0 12px; }
-      .secthead h2 { font-size:16px; margin:0; }
-      .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-      .notice { background:var(--accent-soft); border:1px solid var(--accent-border); color:var(--accent-text); border-radius:var(--radius-sm); padding:12px 14px; font-size:14px; margin-bottom:20px; }
-      .create-intro { margin:6px 0 18px; }
-      .create-intro h1 { margin:0 0 6px; font-size:28px; letter-spacing:-0.02em; }
-      .create-intro p { margin:0; color:var(--mut); font-size:14px; line-height:1.6; }
-      .empty { border:1px dashed var(--bd); border-radius:var(--radius); padding:18px 16px; background:var(--surface-2); color:var(--mut); font-size:14px; }
-      .empty strong { display:block; color:var(--ink); margin-bottom:4px; }
-      .gallery > .empty { grid-column:1 / -1; }
-      .myrow { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
-      .myrow button { padding:8px 11px; min-height:44px; font-size:12px; font-weight:var(--fw-medium); }
-      .item { border:1px solid var(--bd); border-radius:var(--radius-sm); padding:8px 10px; font-size:13px; margin-top:8px; background:var(--card); }
-      .pill { display:inline-block; font-size:11px; padding:1px 7px; border-radius:99px; background:var(--accent-soft); color:var(--accent-text); }
-      .pill.priv { background:var(--danger-soft); color:var(--danger); }
-      /* 스튜디오 런처 히어로 */
-      .launch { background:linear-gradient(135deg,var(--accent),#6f86ff); color:#fff; border-radius:16px; padding:22px 22px; display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
-      .launch .lt { flex:1; min-width:220px; }
-      .launch h1 { margin:0 0 4px; font-size:22px; }
-      .launch p { margin:0; opacity:.92; font-size:14px; line-height:1.5; }
-      .launch .go { background:#fff; color:var(--accd); font-weight:var(--fw-heavy); font-size:15px; padding:12px 20px; border-radius:var(--radius-sm); text-decoration:none; white-space:nowrap; }
-      .launch .go:hover { background:#eef1ff; }
-      .launch-req { display:inline-block; margin-top:8px; font-size:12px; font-weight:var(--fw-semibold); color:#fff; background:#ffffff2e; border:1px solid #ffffff52; border-radius:99px; padding:2px 10px; }
-      select { padding:8px 10px; border:1px solid var(--bd); border-radius:var(--radius-sm); font:inherit; }
-    </style>
-    <link rel="stylesheet" href="/site-shell.css" />
-  </head>
-  <body class="q-shell-page">
-    <div data-q-shell><a class="q-shell-fallback" href="/">Quilo 홈</a></div>
-    <button type="button" id="themeToggle" hidden aria-hidden="true" tabindex="-1"></button>
 
-    <div class="container" id="main-content">
+</head>
+  <body id="appShell" class="app-shell app-shell--create" data-app-shell>
+    <header class="app-commandbar" data-q-shell>
+      <div class="app-commandbar__inner">
+        <a class="app-brand" href="/" aria-label="Quilo 홈">
+          <span class="app-brand__mark" aria-hidden="true">Q</span>
+          <span>Quilo</span>
+        </a>
+        <span class="app-commandbar__divider" aria-hidden="true"></span>
+        <a class="app-back" href="/">← 홈</a>
+        <strong class="app-title">창작 갤러리</strong>
+        <nav class="app-commandbar__actions" aria-label="계정 및 화면 설정">
+          <a href="/account.html">계정</a>
+          <button type="button" id="themeToggle" class="app-theme" aria-label="다크 모드로 전환" title="다크 모드로 전환">
+            <span class="app-theme__moon" aria-hidden="true">☾</span>
+            <span class="app-theme__sun" aria-hidden="true">☀</span>
+          </button>
+        </nav>
+      </div>
+    </header>
+<main class="container" id="main-content" aria-label="창작 갤러리">
       <section class="create-intro">
         <h1>창작 갤러리</h1>
         <p>스튜디오로 만든 웹앱과 도구를 모아 보는 공간입니다. Pro 권한이 있으면 직접 만들고, 없으면 공개 갤러리를 둘러볼 수 있습니다.</p>
       </section>
 
       <!-- 바이브 코딩 생성기 런처 (로그인 사용자 + 크레딧) -->
-      <a class="launch" href="/vibe-coding.html" style="text-decoration:none;background:linear-gradient(135deg,#ee6b58,#f0a04b);margin-bottom:14px">
+      <a class="launch app-inline-create-1" href="/vibe-coding.html">
         <div class="lt">
           <h1>✨ 바이브 코딩 생성기</h1>
           <p>만들고 싶은 걸 한 문장으로 적으면 AI가 프로젝트 설계·MVP·첫 작업·검증 루틴과 AI 코딩 도구용 작업 지시문까지 만들어 줘요.</p>
           <span class="launch-req">🔑 로그인 · 크레딧 필요</span>
         </div>
-        <span class="go" style="color:#c2410c">아이디어 정리하기 →</span>
+        <span class="go app-inline-create-2">아이디어 정리하기 →</span>
       </a>
 
       <!-- 스튜디오 런처 (만들기 권한 있을 때) -->
-      <a id="launch" class="launch" href="/studio.html" style="display:none;text-decoration:none">
+      <a id="launch" class="launch app-inline-create-3" href="/studio.html" hidden>
         <div class="lt">
           <h1>✨ 스튜디오</h1>
           <p>대화하듯 AI에게 말하면 웹앱·위젯·도구를 만들어 줘요. 미리보기를 보며 "더 예쁘게", "다크모드로" 처럼 고쳐 나가세요.</p>
@@ -96,39 +65,45 @@
       </a>
 
       <!-- 비베타/비로그인 안내 -->
-      <div id="betaNotice" class="notice" style="display:none">
+      <div id="betaNotice" class="notice app-inline-create-4" hidden>
         🔒 <b>만들기</b>는 현재 <b>Pro 회원</b>에게만 열려 있어요. 아래 갤러리는 누구나 구경할 수 있습니다. Pro 참여를 원하면 관리자에게 요청하세요.
       </div>
 
       <!-- 내 창작 (관리) -->
-      <div id="mineWrap" style="display:none">
+      <div id="mineWrap" class="app-inline-create-4" hidden>
         <div class="secthead"><h2>🗂 내 창작</h2><span class="muted" id="whoami"></span></div>
         <div id="mylist"><div class="empty"><strong>내 창작을 불러오는 중입니다.</strong>잠시만 기다려 주세요.</div></div>
       </div>
 
       <!-- 갤러리 (모두 공개) -->
       <div class="secthead"><h2>🌐 모두의 창작</h2><span class="muted" id="galcount"></span>
-        <select id="sort" aria-label="정렬 기준" title="정렬 기준" style="margin-left:auto"><option value="new">최신순</option><option value="likes">인기순(좋아요)</option><option value="views">조회순</option></select>
+        <select id="sort" aria-label="정렬 기준" title="정렬 기준" class="app-inline-create-5"><option value="new">최신순</option><option value="likes">인기순(좋아요)</option><option value="views">조회순</option></select>
       </div>
-      <div id="chips" class="row" style="margin-bottom:12px"></div>
+      <div id="chips" class="row app-inline-create-6"></div>
       <div class="gallery" id="gallery"><div class="empty"><strong>갤러리를 불러오는 중입니다.</strong>잠시만 기다려 주세요.</div></div>
-    </div>
+    </main>
 
     <!-- 댓글 모달 -->
-    <div id="cmtModal" role="dialog" aria-modal="true" aria-labelledby="cmtTitle" style="display:none;position:fixed;inset:0;background:#0008;z-index:50;align-items:center;justify-content:center;padding:16px">
-      <div class="card" style="width:min(520px,100%);max-height:84vh;display:flex;flex-direction:column">
-        <div class="row" style="justify-content:space-between;align-items:center">
+    <div id="cmtModal" role="dialog" aria-modal="true" aria-labelledby="cmtTitle" class="app-inline-create-7" hidden>
+      <div class="card app-inline-create-8">
+        <div class="row app-inline-create-9">
           <b id="cmtTitle">💬 댓글</b>
-          <button id="cmtClose" class="ghost" style="padding:3px 10px" aria-label="댓글 닫기" title="닫기">✕</button>
+          <button id="cmtClose" class="ghost app-inline-create-10" aria-label="댓글 닫기" title="닫기">✕</button>
         </div>
         <input type="hidden" id="cmtSlug" />
-        <div id="cmtList" style="flex:1;overflow:auto;margin:10px 0;min-height:120px;max-height:46vh"></div>
-        <div class="row" style="gap:8px">
-          <input id="cmtText" placeholder="댓글을 입력하세요 (로그인 필요)" aria-label="댓글 입력" maxlength="1000" style="flex:1;padding:8px 10px;border:1px solid var(--bd);border-radius:var(--radius-sm);font:inherit" />
+        <div id="cmtList" class="app-inline-create-11"></div>
+        <div class="row app-inline-create-12">
+          <input id="cmtText" placeholder="댓글을 입력하세요 (로그인 필요)" aria-label="댓글 입력" maxlength="1000"  class="app-inline-create-13"/>
           <button id="cmtSend">등록</button>
         </div>
       </div>
     </div>
+
+    <footer class="app-statusbar" aria-label="앱 상태">
+      <span class="app-statusbar__dot" aria-hidden="true"></span>
+      <span>준비됨</span>
+      <span class="app-statusbar__meta">창작 갤러리 · Quilo</span>
+    </footer>
 
     <script>
       const $ = (id) => document.getElementById(id);
@@ -149,8 +124,8 @@
           canCreate = !!b.admin || (Array.isArray(b.features) && b.features.includes("create"));
           if (b.admin) $("whoami").textContent = "· 관리자";
         } catch (e) { canCreate = false; }
-        if (canCreate) { $("launch").style.display = "flex"; $("mineWrap").style.display = "block"; loadMine(); }
-        else { $("betaNotice").style.display = "block"; }
+        if (canCreate) { $("launch").hidden = false; $("mineWrap").hidden = false; loadMine(); }
+        else { $("betaNotice").hidden = false; }
         loadGallery();
       }
 
@@ -179,7 +154,7 @@
       }
       function renderChips(){
         const cats=["전체",...CATS.filter((c)=>galItems.some((x)=>(x.category||"기타")===c))];
-        $("chips").innerHTML=cats.map((c)=>`<button class="${c===curCat?'sec':'ghost'}" data-cat="${esc(c)}" style="padding:5px 12px;font-size:13px">${esc(c)}</button>`).join("");
+        $("chips").innerHTML=cats.map((c)=>`<button class="${c===curCat?'sec':'ghost'} app-runtime-filter-chip" data-cat="${esc(c)}">${esc(c)}</button>`).join("");
         $("chips").querySelectorAll("[data-cat]").forEach((b)=>b.onclick=()=>{ curCat=b.dataset.cat; renderChips(); renderGallery(); });
       }
       function renderGallery(){
@@ -190,16 +165,16 @@
         if(!items.length){ $("gallery").innerHTML=`<div class="empty"><strong>아직 공개된 창작물이 없습니다.</strong>필터를 바꾸거나 나중에 다시 확인해 주세요.</div>`; return; }
         $("gallery").innerHTML = items.map((x)=>`
           <div class="g-card">
-            <a href="/p/${encodeURIComponent(x.slug)}" target="_blank" style="text-decoration:none;color:inherit">
+            <a href="/p/${encodeURIComponent(x.slug)}" target="_blank" class="app-runtime-card-link">
               <div class="g-thumb"><iframe loading="lazy" sandbox="allow-scripts" title="${esc(x.title)} 미리보기" data-src="/p/${encodeURIComponent(x.slug)}"></iframe></div>
               <div class="g-meta"><div class="t">${esc(x.title)}${x.forked_from?' <span class="pill">리믹스</span>':''}</div><div class="b">${esc(x.owner||"")} · <span class="pill">${esc(x.category||"기타")}</span> · 👁 ${x.views||0}</div></div>
             </a>
-            <div class="myrow" style="padding:0 12px 10px">
+            <div class="myrow app-runtime-card-row">
               <button class="ghost" data-like="${esc(x.slug)}" aria-label="좋아요" title="좋아요">❤ <span>${x.likes||0}</span></button>
               ${canCreate?`<a href="/studio.html?remix=${encodeURIComponent(x.slug)}"><button class="ghost" aria-label="리믹스" title="리믹스">🔀 리믹스</button></a>`:""}
               <button class="ghost" data-cmt="${esc(x.slug)}" data-title="${esc(x.title)}" aria-label="댓글" title="댓글">💬</button>
               <button class="ghost" data-embed="${esc(x.slug)}" aria-label="임베드 코드 복사" title="임베드 코드 복사">📋 임베드</button>
-              <button class="ghost" data-report="${esc(x.slug)}" aria-label="신고" title="신고" style="margin-left:auto">🚩</button>
+              <button class="ghost app-runtime-push" data-report="${esc(x.slug)}" aria-label="신고" title="신고">🚩</button>
             </div>
           </div>`).join("");
         $("gallery").querySelectorAll("[data-like]").forEach((b)=>b.onclick=()=>like(b.dataset.like,b));
@@ -232,7 +207,7 @@
       async function openComments(slug,title){
         $("cmtTitle").textContent="💬 "+(title||"댓글");
         $("cmtSlug").value=slug; $("cmtList").innerHTML='<span class="muted">불러오는 중…</span>';
-        $("cmtModal").style.display="flex";
+        $("cmtModal").hidden = false;
         await loadComments(slug);
       }
       async function loadComments(slug){
@@ -240,9 +215,9 @@
           const j=await api("/api/artifacts/"+encodeURIComponent(slug)+"/comments");
           const cs=j.comments||[];
           $("cmtList").innerHTML = cs.length ? cs.map((c)=>`
-            <div style="padding:8px 0;border-bottom:1px solid var(--bd)">
-              <div style="font-weight:var(--fw-semibold);font-size:13px">${esc(c.author||"익명")} <span class="muted" style="font-weight:var(--fw-regular)">· ${esc((c.at||"").slice(0,10))}</span></div>
-              <div style="white-space:pre-wrap;font-size:14px;margin-top:2px">${esc(c.text||"")}</div>
+            <div class="app-runtime-comment">
+              <div class="app-runtime-comment-author">${esc(c.author||"익명")} <span class="muted app-runtime-comment-meta">· ${esc((c.at||"").slice(0,10))}</span></div>
+              <div class="app-runtime-comment-text">${esc(c.text||"")}</div>
             </div>`).join("") : '<span class="muted">첫 댓글을 남겨보세요.</span>';
           $("cmtList").scrollTop=$("cmtList").scrollHeight;
         }catch(e){ $("cmtList").innerHTML='<span class="muted">불러오지 못했습니다.</span>'; }
@@ -271,19 +246,19 @@
         }catch{}
       }
       function embed(slug){
-        const code=`<iframe src="${location.origin}/p/${encodeURIComponent(slug)}" style="width:100%;height:600px;border:0"></iframe>`;
+        const code=`<iframe src="${location.origin}/p/${encodeURIComponent(slug)}" width="100%" height="600" frameborder="0"></iframe>`;
         navigator.clipboard?.writeText(code).then(()=>alert("임베드 코드를 복사했어요:\n\n"+code),()=>prompt("임베드 코드",code));
       }
 
       $("sort").onchange=renderGallery;
-      $("cmtClose").onclick=()=>$("cmtModal").style.display="none";
-      $("cmtModal").onclick=(e)=>{ if(e.target===$("cmtModal")) $("cmtModal").style.display="none"; };
-      document.addEventListener("keydown",(e)=>{ if(e.key==="Escape"&&$("cmtModal").style.display!=="none") $("cmtModal").style.display="none"; });
+      $("cmtClose").onclick=()=>$("cmtModal").hidden = true;
+      $("cmtModal").onclick=(e)=>{ if(e.target===$("cmtModal")) $("cmtModal").hidden = true; };
+      document.addEventListener("keydown",(e)=>{ if(e.key==="Escape"&&!$("cmtModal").hidden) $("cmtModal").hidden = true; });
       $("cmtSend").onclick=sendComment;
       $("cmtText").onkeydown=(e)=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); sendComment(); } };
       init();
     </script>
     <script src="/theme.js"></script>
-    <script src="/site-shell.js"></script>
+
   </body>
 </html>

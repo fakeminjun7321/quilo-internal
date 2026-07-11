@@ -15,97 +15,32 @@
         } catch (e) {}
       })();
     </script>
-    <link rel="stylesheet" href="/style.css" />
-    <link rel="stylesheet" href="/site-shell.css" />
-    <style>
-      .mode-tabs { display: flex; flex-wrap: wrap; gap: 8px; }
-      .mode-tabs button {
-        padding: 9px 14px; border: 1px solid var(--border-strong); border-radius: 10px;
-        background: var(--surface); color: var(--text-muted); font: inherit; font-weight: 650; font-size: 14px; cursor: pointer;
-      }
-      .mode-tabs button.on { background: var(--accent); color: var(--on-accent); border-color: transparent; }
-      .drop-z { border: 2px dashed var(--border-strong); border-radius: 12px; padding: 28px 20px; text-align: center; cursor: pointer; color: var(--text-muted); }
-      .drop-z .big { font-weight: 650; color: var(--text); }
-      .drop-z .sub { font-size: 13px; margin-top: 4px; }
-      .panel { display: none; gap: 16px; }
-      .panel.on { display: grid; }
-      /* 상위 탭(파일·표 / 이미지 / PDF병합 / 수식) */
-      .conv-tabs {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 6px;
-        margin-bottom: 16px;
-      }
-      .conv-tabs button {
-        border: 1px solid var(--border);
-        background: var(--surface);
-        color: var(--text-muted);
-        font-weight: 700;
-        font-size: 14px;
-        padding: 9px 16px;
-        border-radius: 999px;
-        cursor: pointer;
-      }
-      .conv-tabs button:hover { background: var(--surface-2); color: var(--text); }
-      .conv-tabs button.on {
-        background: var(--accent);
-        color: var(--on-accent);
-        border-color: var(--accent);
-      }
-      .conv-panel { display: none; }
-      .conv-panel.on { display: block; }
-      .conv-frame {
-        width: 100%;
-        height: 78vh;
-        min-height: 560px;
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        background: var(--surface);
-      }
-      /* PDF 도구 카드 그리드 (iLovePDF 식) */
-      .pdf-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-        gap: 12px;
-      }
-      .pdf-tile {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 6px;
-        text-align: left;
-        padding: 16px;
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        background: var(--surface);
-        cursor: pointer;
-        font: inherit;
-        transition: border-color 0.12s, transform 0.12s, box-shadow 0.12s;
-      }
-      .pdf-tile:hover {
-        border-color: var(--accent);
-        transform: translateY(-2px);
-        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
-      }
-      .pdf-tile-ic { font-size: 26px; line-height: 1; }
-      .pdf-tile-t { font-weight: 750; font-size: 15px; color: var(--text); }
-      .pdf-tile-d { font-size: 12.5px; color: var(--text-muted); }
-      .pdf-view-head {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin-bottom: 12px;
-        flex-wrap: wrap;
-      }
-      .pdf-view-head h2 { margin: 0; font-size: 18px; }
-    </style>
+
+    <link rel="stylesheet" href="/ui/foundation.css" />
+    <link rel="stylesheet" href="/ui/shell.css" />
+    <link rel="stylesheet" href="/ui/pages.css" />
   </head>
-  <body class="landing q-shell-page">
+  <body class="landing q-shell-page ui-page">
     <div class="landing-bg" aria-hidden="true"></div>
-    <div data-q-shell><a class="q-shell-fallback" href="/">Quilo 홈</a></div>
+    <a class="ui-skip-link" href="#main-content">본문으로 건너뛰기</a>
+    <header class="ui-site-header" data-ui-shell>
+      <div class="ui-site-header__inner">
+        <a class="ui-site-brand" href="/" aria-label="Quilo 홈"><img src="/favicon.png" alt="" width="42" height="42" /><span>Quilo</span></a>
+        <nav class="ui-site-nav" aria-label="주요 메뉴">
+          <details><summary>제품</summary><div class="ui-site-menu"><a href="/?report=chem-pre"><strong>화학 사전보고서</strong><span>매뉴얼 PDF에서 사전보고서 초안 생성</span></a><a href="/?report=chem-result"><strong>화학 결과보고서</strong><span>데이터와 사진에서 결과 추가분 생성</span></a><a href="/?report=phys-result"><strong>물리 결과보고서</strong><span>Capstone·엑셀 기반 결과보고서 생성</span></a><a href="/?report=free"><strong>자유 보고서</strong><span>지시와 자료를 원하는 형식으로 정리</span></a></div></details>
+          <details><summary>솔루션</summary><div class="ui-site-menu"><a href="/tools/index.html"><strong>보고서 도구</strong><span>파일·이미지·PDF·수식 도구</span></a><a href="/translate.html"><strong>PDF 통번역</strong><span>문서 구조를 지키는 번역 작업</span></a></div></details>
+          <details><summary>앱</summary><div class="ui-site-menu ui-site-menu--narrow"><a href="/apps/quilo.html"><strong>Quilo Desktop</strong><span>Mac과 Windows용 작업 공간</span></a><a href="/apps/live-translator.html"><strong>Live Translator</strong><span>실시간 음성 번역 앱</span></a></div></details>
+          <details><summary>개발자</summary><div class="ui-site-menu ui-site-menu--narrow"><a href="/developers.html"><strong>개발자 플랫폼</strong><span>API·ChatGPT·Codex 연결</span></a><a href="/developers.html#catalog"><strong>기능 카탈로그</strong><span>연결 가능한 Quilo 기능</span></a><a href="/developers.html#tokenCard"><strong>API 토큰</strong><span>범위 제한 토큰 관리</span></a></div></details>
+          <details><summary>리소스</summary><div class="ui-site-menu ui-site-menu--narrow"><a href="/guide.html"><strong>가이드</strong><span>기능별 시작 방법과 사용 원칙</span></a><a href="/examples.html"><strong>예시</strong><span>Quilo로 만든 결과물 살펴보기</span></a><a href="/changelog.html"><strong>업데이트</strong><span>새 기능과 개선 내역</span></a><a href="/community.html"><strong>커뮤니티</strong><span>작업 사례와 질문 나누기</span></a><a href="/school-apply.html"><strong>학교 도입</strong><span>기관용 도입 문의</span></a></div></details>
+          <a href="/#balanceBox">요금</a><a href="https://www.instagram.com/" target="_blank" rel="noopener">Instagram ↗</a>
+        </nav>
+        <div class="ui-site-actions"><a class="ui-site-action" href="/?login=1">로그인</a><a class="ui-site-action ui-site-cta" href="/?report=free">무료로 시작하기</a></div>
+        <details class="ui-mobile-menu"><summary class="ui-mobile-trigger">메뉴</summary><nav class="ui-mobile-panel" aria-label="모바일 메뉴"><a href="/?report=free">보고서 만들기</a><a href="/tools/index.html">도구</a><a href="/apps/quilo.html">앱</a><a href="/developers.html">개발자</a><a href="/guide.html">가이드</a><button type="button" data-ui-theme>다크 테마</button><a href="/?login=1">로그인</a><a class="ui-site-cta" href="/?report=free">무료로 시작하기</a></nav></details>
+      </div>
+    </header>
 
     <main class="landing-shell" id="main-content">
-      <section class="section" style="border-top:0">
+      <section class="section ui-inline-tools-convert-1">
         <div class="tool-page-head">
           <h1>파일 변환기</h1>
           <p>표·이미지·PDF·수식을 한 곳에서 변환합니다. 파일·이미지·PDF는 브라우저 안에서, 수식 변환은 우리 서버에서 처리합니다.</p>
@@ -140,43 +75,43 @@
           <div class="panel on" data-p="table">
             <div class="drop-z" data-pick="tb"><div class="big">엑셀/CSV 파일을 끌어다 놓기</div><div class="sub">.xlsx · .xls · .csv · .tsv</div></div>
             <input type="file" data-in="tb" accept=".xlsx,.xls,.csv,.tsv,.txt" hidden />
-            <div class="tool-row" data-show="tb" style="display:none">
+            <div class="tool-row ui-inline-tools-convert-2" data-show="tb">
               <label class="tool-label">출력 형식<select class="tool-input" id="tbFmt"><option value="xlsx">Excel (.xlsx)</option><option value="csv">CSV (.csv)</option><option value="tsv">TSV (.tsv)</option></select></label>
-              <label class="tool-label" id="tbSheetWrap" style="display:none">내보낼 시트<select class="tool-input" id="tbSheet"></select></label>
+              <label class="tool-label ui-inline-tools-convert-3" id="tbSheetWrap">내보낼 시트<select class="tool-input" id="tbSheet"></select></label>
             </div>
-            <a class="btn-lg btn-primary" data-dl="tb" style="display:none;min-height:44px;justify-self:start" download>↓ 변환해서 내려받기</a>
+            <a class="btn-lg btn-primary ui-inline-tools-convert-4" data-dl="tb" download>↓ 변환해서 내려받기</a>
           </div>
 
           <!-- 이미지 → PDF -->
           <div class="panel" data-p="img2pdf">
             <div class="drop-z" data-pick="ip"><div class="big">이미지들을 끌어다 놓기</div><div class="sub">JPG · PNG · WebP · 여러 장 (순서대로 페이지가 됩니다)</div></div>
             <input type="file" data-in="ip" accept="image/*" multiple hidden />
-            <ul id="ipList" style="list-style:none;margin:0;padding:0;display:grid;gap:6px"></ul>
-            <div class="actions" data-show="ip" style="display:none"><button class="btn-primary" id="ipGo">PDF로 만들기</button></div>
-            <a class="btn-lg btn-primary" data-dl="ip" style="display:none;min-height:44px;justify-self:start" download>↓ PDF 내려받기</a>
+            <ul id="ipList" class="ui-inline-tools-convert-5" ></ul>
+            <div class="actions ui-inline-tools-convert-6" data-show="ip"><button class="btn-primary" id="ipGo">PDF로 만들기</button></div>
+            <a class="btn-lg btn-primary ui-inline-tools-convert-7" data-dl="ip" download>↓ PDF 내려받기</a>
           </div>
 
           <!-- PDF → 이미지 -->
           <div class="panel" data-p="pdf2img">
             <div class="drop-z" data-pick="pi"><div class="big">PDF 파일을 끌어다 놓기</div><div class="sub">각 페이지를 PNG로 (여러 페이지면 ZIP)</div></div>
             <input type="file" data-in="pi" accept="application/pdf,.pdf" hidden />
-            <label class="tool-label" data-show="pi" style="display:none">해상도 배율: <span id="piScaleV">2×</span><input type="range" id="piScale" min="1" max="4" step="0.5" value="2" style="width:100%" /></label>
-            <div class="actions" data-show="pi" style="display:none"><button class="btn-primary" id="piGo">이미지로 변환</button></div>
-            <a class="btn-lg btn-primary" data-dl="pi" style="display:none;min-height:44px;justify-self:start" download>↓ 내려받기</a>
+            <label class="tool-label ui-inline-tools-convert-8" data-show="pi">해상도 배율: <span id="piScaleV">2×</span><input type="range" id="piScale" min="1" max="4" step="0.5" value="2" class="ui-inline-tools-convert-9" /></label>
+            <div class="actions ui-inline-tools-convert-10" data-show="pi"><button class="btn-primary" id="piGo">이미지로 변환</button></div>
+            <a class="btn-lg btn-primary ui-inline-tools-convert-11" data-dl="pi" download>↓ 내려받기</a>
           </div>
 
           <!-- 이미지 형식 -->
           <div class="panel" data-p="imgfmt">
             <div class="drop-z" data-pick="if"><div class="big">이미지를 끌어다 놓기</div><div class="sub">JPG · PNG · WebP</div></div>
             <input type="file" data-in="if" accept="image/*" hidden />
-            <div class="tool-row" data-show="if" style="display:none">
+            <div class="tool-row ui-inline-tools-convert-12" data-show="if">
               <label class="tool-label">출력 형식<select class="tool-input" id="ifFmt"><option value="image/png">PNG</option><option value="image/jpeg">JPG</option><option value="image/webp">WebP</option></select></label>
-              <label class="tool-label">품질(JPG·WebP): <span id="ifQv">0.9</span><input type="range" id="ifQ" min="0.3" max="1" step="0.05" value="0.9" style="width:100%" /></label>
+              <label class="tool-label">품질(JPG·WebP): <span id="ifQv">0.9</span><input type="range" id="ifQ" min="0.3" max="1" step="0.05" value="0.9" class="ui-inline-tools-convert-13" /></label>
             </div>
-            <a class="btn-lg btn-primary" data-dl="if" style="display:none;min-height:44px;justify-self:start" download>↓ 내려받기</a>
+            <a class="btn-lg btn-primary ui-inline-tools-convert-14" data-dl="if" download>↓ 내려받기</a>
           </div>
 
-          <p class="hint" id="cvMsg" style="margin:0"></p>
+          <p class="hint ui-inline-tools-convert-15" id="cvMsg"></p>
         </div>
         </div>
 
@@ -239,7 +174,7 @@
             </button>
           </div>
           <!-- 선택한 도구 화면 -->
-          <div id="pdfView" style="display:none">
+          <div id="pdfView" class="ui-inline-tools-convert-16" >
             <div class="pdf-view-head">
               <button id="pdfBack" class="btn-ghost" type="button">← PDF 도구 목록</button>
               <h2 id="pdfViewTitle"></h2>
@@ -254,34 +189,28 @@
 
         <div class="conv-panel" data-panel="docx2hwpx">
           <div class="tool-card">
-            <h3 style="margin:0 0 6px">Word(.docx) → 한글(.hwpx)</h3>
-            <p class="hint" style="margin:0 0 14px">
+            <h3 class="ui-inline-tools-convert-17" >Word(.docx) → 한글(.hwpx)</h3>
+            <p class="hint ui-inline-tools-convert-18">
               Word 문서를 한컴오피스에서 바로 열리는 <b>.hwpx</b>로 변환합니다(한컴에서 <b>.hwp</b>로 다시 저장 가능).
               제목·표·목록·굵게/기울임·이미지는 그대로 옮기되, 정밀한 서식(자간 등)은 일부 달라질 수 있습니다.
               변환은 우리 서버에서 처리합니다(로그인 필요).
             </p>
             <input type="file" id="d2hFile" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" aria-label="변환할 DOCX" />
-            <div style="margin-top:12px">
+            <div class="ui-inline-tools-convert-19" >
               <button id="d2hBtn" class="btn btn-primary" type="button">한글(.hwpx)로 변환</button>
             </div>
-            <p id="d2hStatus" class="hint" style="margin-top:10px; min-height:1.2em"></p>
+            <p id="d2hStatus" class="hint ui-inline-tools-convert-20"></p>
           </div>
         </div>
       </section>
     </main>
-
-    <footer class="site-footer">
-      <div class="footer-links">
-        <a href="/">메인</a>
-        <a href="/tools/index.html">도구 모음</a>
-        <a href="/guide.html">이용 가이드</a>
-        <a href="https://blog.naver.com/physicjun1905" target="_blank" rel="noopener">블로그</a>
+    <footer class="ui-site-footer">
+      <div class="ui-site-footer__inner">
+        <nav class="ui-site-footer__links" aria-label="푸터 메뉴"><a href="/terms.html">이용약관</a><a href="/privacy.html">개인정보처리방침</a><a href="/refund.html">환불정책</a><a href="/guide.html">이용 가이드</a><a href="/community.html">커뮤니티</a><a href="https://github.com/fakeminjun7321/lab-report-generator-web" target="_blank" rel="noopener">GitHub</a></nav>
+        <div class="ui-site-footer__copy">© 2026 Quilo · <span data-site-version>버전 확인 중...</span></div>
       </div>
-      <div class="footer-copy">© 2026 Quilo · MIT License · SheetJS(Apache-2.0) · pdf-lib(MIT) · pdf.js(Apache-2.0) · JSZip(MIT)</div>
     </footer>
-
-    <script src="/theme.js"></script>
-    <script src="/site-shell.js"></script>
+    <script src="/ui/shell.js"></script>
     <script>
       // 상위 탭 전환 + iframe 지연 로드(처음 누를 때만 src 설정)
       (function () {
@@ -461,7 +390,7 @@
         var ipFiles = [];
         wireDrop("ip", function (fl) { for (var i = 0; i < fl.length; i++) if (/^image\//.test(fl[i].type) || /\.(jpe?g|png|webp|gif|bmp)$/i.test(fl[i].name)) ipFiles.push(fl[i]); ipRender(); });
         function ipRender() {
-          document.getElementById("ipList").innerHTML = ipFiles.map(function (f, i) { return '<li style="font-size:13px;color:var(--text-muted)">' + (i + 1) + ". " + esc(f.name) + "</li>"; }).join("");
+          document.getElementById("ipList").innerHTML = ipFiles.map(function (f, i) { return '<li class="runtime-small-muted">' + (i + 1) + ". " + esc(f.name) + "</li>"; }).join("");
           if (ipFiles.length) show("ip");
         }
         async function toPngBytes(file) {

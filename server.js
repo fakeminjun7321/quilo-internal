@@ -15,6 +15,7 @@ const {
 } = require("./lib/document-fonts");
 const styleRef = require("./lib/style-ref");
 const { assertGeneratedOutputMagic } = require("./lib/output-validate");
+const { registerAppDownloadRoutes } = require("./lib/app-downloads");
 
 // 프로세스 전역 안전망: 처리되지 않은 예외/거부가 서버 프로세스 전체를 죽여
 // 진행 중인 다른 사용자 작업까지 같이 날리지 않도록, 최후 백스톱으로 로깅만 한다.
@@ -7701,6 +7702,8 @@ app.get("/api/admin/exchange-rate", requireAdmin, async (req, res) => {
 });
 
 // ── Static + index ──────────────────────────────────────────────────────────
+
+registerAppDownloadRoutes(app);
 
 // express.static 의 extensions:["html"] 가 /admin -> public/admin.html 로 먼저
 // 해석하지 않도록, 관리자 페이지는 정적 파일 서빙보다 앞에서 인증한다.

@@ -81,10 +81,26 @@
 - **공부(상대론)** (`/study.html`, 베타) — 상대성이론 민코프스키 평면 학습 도식 생성·렌더링
 - **파일 챗봇** (`/filechat.html`, 베타) — 파일 업로드 후 Claude와 대화
 - **AI 채팅 도우미** — 보고서 폼에 내장. 메모 작성·사용법을 돕는 라이트 챗봇
+- **Quilo Desktop** (`/apps/quilo.html`) — macOS·Windows용 Quilo 데스크톱 앱
+- **Live Translator** (`/apps/live-translator.html`) — macOS·Windows용 로컬 실시간 음성 번역 앱
 - **예시 모음** (`/examples.html`), **이용 가이드** (`/guide.html`), **패치노트** (`/changelog.html`)
+
+### 앱 직접 다운로드 API
+
+앱 소개 페이지는 외부 배포 페이지로 이동하지 않고 Quilo 서버의 고정 allowlist endpoint에서 설치 파일을 직접 내려받습니다.
+
+```text
+GET /api/apps/quilo/download?platform=mac
+GET /api/apps/quilo/download?platform=windows
+GET /api/apps/live-translator/download?platform=mac
+GET /api/apps/live-translator/download?platform=windows
+```
+
+등록되지 않은 앱은 `404`, 지원하지 않는 platform은 `400`을 반환합니다. 서버는 허용된 릴리스 asset만 확인해 스트리밍하며 Range 요청을 전달합니다.
 
 ## 기술 스택
 
+- Frontend: 정적 HTML + ES modules, `/public/ui`의 surface별 CSS 아키텍처, Playwright QA
 - Backend: Node.js, Express
 - AI: Anthropic Claude API (Opus 4.8 / Sonnet 5 / Fable 5), OpenAI GPT (5.5 / 5.4 / 5.4-mini)
 - DB/Auth/File records: Supabase
@@ -107,6 +123,22 @@
 - 화학 결과보고서 파이프라인: [`docs/chem-result-pipeline.md`](./docs/chem-result-pipeline.md)
 - 물리 결과보고서 파이프라인: [`docs/phys-result-pipeline.md`](./docs/phys-result-pipeline.md)
 - 보고서 생성기용 AI 참고 메모 작성 프롬프트: [`docs/report-generator-note-prompt.md`](./docs/report-generator-note-prompt.md)
+- 프론트엔드 토큰·shell·페이지군·QA 계약: [`docs/design-system.md`](./docs/design-system.md)
+
+## 프론트엔드 구조
+
+모든 화면은 `/public/ui/foundation.css`의 의미론 토큰과 라이트·다크 테마를 기반으로 합니다. 화면군은 필요한 surface stylesheet만 추가로 로드합니다.
+
+| 화면군 | 스타일 |
+|---|---|
+| 공개 사이트·가이드·도구·앱 소개 | `foundation.css` + `shell.css` + `pages.css` |
+| 로그인·회원가입·이메일 인증 | `foundation.css` + `auth.css` |
+| 메인·보고서 작성·생성 진행 | `foundation.css` + `workspace.css` + `forms.css` + `generation.css` |
+| 관리자 | `foundation.css` + `admin.css` |
+| 편집기·스튜디오·번역·학습 앱 | `foundation.css` + `app-shell.css` |
+| Quilo Bot | `chat.css` + `/public/chat/{api,voice,view,index}.js` |
+
+`public/chat-widget.js`는 기존 페이지 호환을 위한 작은 loader이며, 채팅 CSS를 한 번만 연결하고 ES module 진입점을 동적 import합니다. HTML의 `<style>`/`style=` 및 일반 UI의 JavaScript `style.display` 토글은 사용하지 않고, `hidden`·ARIA·상태 클래스를 사용합니다.
 
 ## 로컬 실행
 
@@ -192,6 +224,11 @@ Quilo/
 ├── public/
 │   ├── index.html            # 메인(Quilo) — 보고서 작성 + 개인 설정
 │   ├── login / signup / verify-email / admin / changelog / guide / examples
+│   ├── ui/                    # foundation + shell/pages/auth/workspace/forms/
+│   │                          # generation/admin/app-shell/chat surface CSS
+│   ├── chat/                  # Quilo Bot API/voice/view/index ES modules
+│   ├── chat-widget.js         # 채팅 CSS + module 호환 loader
+│   ├── apps/                  # Quilo Desktop / Live Translator 소개·직접 다운로드
 │   ├── translate.html        # PDF 통번역 (베타)
 │   ├── community.html         # 커뮤니티 + 랩
 │   ├── create.html / studio.html / vibe-coding.html / physics-studio.html

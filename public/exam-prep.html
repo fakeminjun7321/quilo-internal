@@ -5,6 +5,8 @@
     <link rel="canonical" href="https://quilolab.com/exam-prep.html" />
     <meta name="description" content="수행평가 도움 — 물리·수학 수행평가 보고서 초안과 독서활동 기록지(독서록)를 학교 양식(.hwpx)으로 한곳에서 만듭니다." />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/ui/foundation.css" />
+    <link rel="stylesheet" href="/ui/app-shell.css" />
     <meta name="theme-color" content="#2563eb" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" href="/favicon.png" />
@@ -17,140 +19,51 @@
         if (t) document.documentElement.setAttribute("data-theme", t);
       } catch (e) {}
     </script>
-    <link rel="stylesheet" href="/style.css" />
-    <!-- Monaco(VS Code 엔진) — Quilo Code 와 동일 -->
+<!-- Monaco(VS Code 엔진) — Quilo Code 와 동일 -->
     <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs/loader.js"></script>
-    <style>
-      html, body { width: 100%; max-width: 100%; }
-      body { margin: 0; padding: 0; }
-      .epwrap { max-width: 1100px; margin: 0 auto; padding: 18px 16px 80px; }
-      .ephead { display: flex; align-items: center; gap: 12px; margin: 8px 0 16px; flex-wrap: wrap; }
-      .ephead a.logo { display: flex; align-items: center; gap: 8px; text-decoration: none; color: inherit; font-weight: var(--fw-heavy); font-size: 19px; }
-      .ephead .qmark { width: 30px; height: 30px; border-radius: var(--radius-sm); background: var(--accent); color: var(--on-accent); display: grid; place-items: center; font-weight: var(--fw-heavy); }
-      .eptabs { display: flex; gap: 6px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
-      .eptabs button { background: none; border: 0; padding: 10px 14px; font-size: 15px; font-weight: var(--fw-semibold); color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; display: inline-flex; align-items: center; gap: 6px; }
-      .eptabs button.active { color: var(--accent-text); border-bottom-color: var(--accent); }
-      .ep-beta { font-size: 10.5px; padding: 1px 6px; border-radius: 999px; background: var(--warning-soft); color: var(--warning); font-weight: var(--fw-bold); vertical-align: middle; }
-      .ep-tabbadge { font-size: 10px; padding: 1px 6px; border-radius: 999px; font-weight: var(--fw-bold); vertical-align: middle; line-height: 1.5; }
-      .ep-tabbadge.lock { background: var(--surface-2); color: var(--text-faint); }
-      .ep-tabbadge.beta { background: var(--warning-soft); color: var(--warning); }
-      .muted { color: var(--text-faint); font-size: 13px; }
-      .err { color: var(--danger); font-size: 13px; margin: 6px 0; }
-      .locked { border: 1px dashed var(--border-strong); border-radius: var(--radius); padding: 28px 18px; text-align: center; color: var(--text-muted); background: var(--surface); }
-
-      /* ── 코딩 테스트 레이아웃 ── */
-      .ct { display: grid; grid-template-columns: 290px 1fr; gap: 16px; align-items: start; }
-      @media (max-width: 820px) { .ct { grid-template-columns: 1fr; } }
-      .ct-list { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); overflow: hidden; max-height: 78vh; overflow-y: auto; }
-      @media (max-width: 820px) { .ct-list { max-height: 320px; } }
-      .ct-week { padding: 10px 13px 4px; font-size: 12px; font-weight: var(--fw-heavy); letter-spacing: .04em; color: var(--accent-text); text-transform: uppercase; border-top: 1px solid var(--border); }
-      .ct-week:first-child { border-top: 0; }
-      .ct-week small { color: var(--text-faint); font-weight: var(--fw-semibold); text-transform: none; letter-spacing: 0; }
-      .ct-item { display: flex; align-items: center; gap: 8px; padding: 8px 13px; min-height: 44px; box-sizing: border-box; cursor: pointer; border-left: 3px solid transparent; font-size: 14px; color: var(--text-muted); }
-      .ct-item:hover { background: var(--surface-2); }
-      .ct-item.on { background: var(--accent-soft); border-left-color: var(--accent); font-weight: var(--fw-semibold); }
-      .ct-item .solved { color: var(--success); font-weight: var(--fw-heavy); }
-      .ct-diff { font-size: 10.5px; padding: 1px 7px; border-radius: 999px; white-space: nowrap; }
-      .d-쉬움 { background: var(--success-soft); color: var(--success); }
-      .d-보통 { background: var(--accent-soft); color: var(--accent-text); }
-      .d-어려움 { background: var(--danger-soft); color: var(--danger); }
-      .ct-it-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-      .ct-detail { min-width: 0; }
-      .ct-empty { border: 1px dashed var(--border); border-radius: var(--radius); padding: 40px 18px; text-align: center; color: var(--text-faint); }
-      .ct-titlerow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
-      .ct-titlerow h2 { font-size: 19px; margin: 0; color: var(--text); }
-      .ct-tags { display: flex; gap: 6px; flex-wrap: wrap; margin: 6px 0 10px; }
-      .ct-tag { font-size: 11px; color: var(--text-muted); background: var(--surface-2); border-radius: 6px; padding: 2px 8px; }
-      .ct-prose { font-size: 14px; color: var(--text-muted); line-height: 1.7; }
-      .ct-prose h3, .ct-prose h4 { margin: 14px 0 6px; color: var(--text); }
-      .ct-prose h3 { font-size: 16px; } .ct-prose h4 { font-size: 14px; }
-      .ct-prose p { margin: 7px 0; }
-      .ct-prose ul { margin: 6px 0 10px; padding-left: 18px; }
-      .ct-prose li { margin: 3px 0; }
-      .ct-prose code { background: var(--surface-2); border-radius: 5px; padding: 1px 5px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: #b91c5c; }
-      .ct-prose pre { background: var(--console-bg); color: var(--console-text); border-radius: var(--radius-sm); padding: 11px 13px; overflow-x: auto; margin: 9px 0; }
-      .ct-prose pre code { background: none; color: inherit; padding: 0; font-size: 12px; white-space: pre; }
-      .ct-constraints { border: 1px solid var(--warning-border); background: var(--warning-soft); border-radius: var(--radius-sm); padding: 8px 13px; margin: 12px 0; }
-      .ct-constraints .ct-prose { color: var(--warning); }
-      .ct-section-h { font-size: 13px; font-weight: var(--fw-heavy); color: var(--text-muted); margin: 16px 0 7px; }
-      .ct-ex { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 9px 12px; margin-bottom: 8px; background: var(--surface-2); }
-      .ct-ex .lab { font-size: 12px; font-weight: var(--fw-bold); color: var(--text-muted); margin-bottom: 3px; }
-      .ct-ex pre { margin: 0 0 6px; background: var(--console-bg); color: var(--console-text); border-radius: var(--radius-sm); padding: 8px 11px; overflow-x: auto; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
-
-      .ct-editor-wrap { margin-top: 14px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); overflow: hidden; }
-      .ct-editor-bar { background: var(--console-bg); color: var(--console-text); font-size: 12px; padding: 6px 11px; display: flex; align-items: center; gap: 10px; }
-      .ct-editor { height: 340px; }
-      .ct-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
-      .ct-btns .btn { font-size: 14px; }
-      .qbtn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; box-sizing: border-box; background: var(--surface); color: var(--accent-text); border: 1px solid var(--accent-border); border-radius: var(--radius-sm); padding: 8px 13px; font: inherit; font-size: 14px; cursor: pointer; }
-      .qbtn:hover { background: var(--accent-soft); }
-      .qbtn.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
-      .qbtn.primary:hover { background: var(--accent-hover); }
-      .qbtn:disabled { opacity: .55; cursor: default; }
-
-      .ct-results { margin-top: 14px; }
-      .ct-summary { font-weight: var(--fw-bold); font-size: 14px; margin-bottom: 8px; padding: 9px 13px; border-radius: var(--radius-sm); }
-      .ct-summary.pass { background: var(--success-soft); color: var(--success); border: 1px solid var(--success); }
-      .ct-summary.fail { background: var(--danger-soft); color: var(--danger); border: 1px solid var(--danger-border); }
-      .ct-summary.run { background: var(--accent-soft); color: var(--accent-text); border: 1px solid var(--accent-border); }
-      .ct-case { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 12px; margin-bottom: 6px; font-size: 13px; }
-      .ct-case .ttl { display: flex; align-items: center; gap: 7px; font-weight: var(--fw-semibold); color: var(--text-muted); }
-      .ct-case .det { margin-top: 6px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: var(--text-muted); white-space: pre-wrap; word-break: break-word; }
-      .ct-case .det b { color: var(--text); }
-      .ct-case.ok { border-color: var(--success); }
-      .ct-case.no { border-color: var(--danger-border); }
-
-      /* ── AI 코딩 도우미(튜터) ── */
-      .ct-assist { margin-top: 18px; border: 1px solid var(--accent-border); border-radius: var(--radius); background: var(--accent-soft); overflow: hidden; }
-      .ct-assist-head { padding: 9px 13px; font-size: 13px; font-weight: var(--fw-bold); color: var(--accent-text); background: var(--accent-soft); border-bottom: 1px solid var(--accent-border); display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
-      .ct-assist-head .muted { font-weight: var(--fw-medium); font-size: 12px; }
-      .ct-assist-msgs { max-height: 320px; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 9px; }
-      .ct-assist-empty { color: var(--text-faint); font-size: 13px; text-align: center; padding: 10px 6px; line-height: 1.7; }
-      .ct-amsg { max-width: 92%; padding: 8px 11px; border-radius: var(--radius); font-size: 14px; line-height: 1.6; word-break: break-word; }
-      .ct-amsg.user { align-self: flex-end; background: var(--accent); color: var(--on-accent); white-space: pre-wrap; }
-      .ct-amsg.ai { align-self: flex-start; background: var(--surface); border: 1px solid var(--border); color: var(--text); }
-      .ct-amsg.ai p { margin: 5px 0; }
-      .ct-amsg.ai code { background: var(--surface-2); border-radius: 4px; padding: 1px 5px; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: #b91c5c; }
-      .ct-amsg.ai pre { background: var(--console-bg); color: var(--console-text); border-radius: var(--radius-sm); padding: 8px 10px; overflow-x: auto; font-size: 12px; }
-      .ct-amsg.ai pre code { background: none; color: inherit; padding: 0; }
-      .ct-assist-input { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--accent-border); background: var(--surface); }
-      .ct-assist-input textarea { flex: 1; resize: none; min-height: 38px; max-height: 130px; box-sizing: border-box; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 9px 11px; font: inherit; font-size: 14px; }
-      .ct-assist-input button { flex: 0 0 auto; align-self: flex-end; }
-
-      /* ── 물리 수행평가 탭 ── */
-      .pi-card { border: 1px solid var(--border); border-radius: var(--radius); padding: 22px; background: var(--surface); }
-      .pi-card h2 { margin: 0 0 6px; font-size: 19px; color: var(--text); }
-      .pi-card p { color: var(--text-muted); line-height: 1.7; font-size: 14px; }
-      .pi-card ul { color: var(--text-muted); line-height: 1.7; font-size: 14px; }
-    </style>
-    <link rel="stylesheet" href="/site-shell.css" />
-  </head>
-  <body class="q-shell-page">
-    <div data-q-shell><a class="q-shell-fallback" href="/">Quilo 홈</a></div>
-    <main class="epwrap" id="main-content">
+</head>
+  <body id="appShell" class="app-shell app-shell--exam-prep" data-app-shell>
+    <header class="app-commandbar" data-q-shell>
+      <div class="app-commandbar__inner">
+        <a class="app-brand" href="/" aria-label="Quilo 홈">
+          <span class="app-brand__mark" aria-hidden="true">Q</span>
+          <span>Quilo</span>
+        </a>
+        <span class="app-commandbar__divider" aria-hidden="true"></span>
+        <a class="app-back" href="/">← 홈</a>
+        <strong class="app-title">수행평가 도움</strong>
+        <nav class="app-commandbar__actions" aria-label="계정 및 화면 설정">
+          <a href="/account.html">계정</a>
+          <button type="button" id="themeToggle" class="app-theme" aria-label="다크 모드로 전환" title="다크 모드로 전환">
+            <span class="app-theme__moon" aria-hidden="true">☾</span>
+            <span class="app-theme__sun" aria-hidden="true">☀</span>
+          </button>
+        </nav>
+      </div>
+    </header>
+<main class="epwrap" id="main-content" aria-label="수행평가 도움">
 
       <div class="eptabs" role="tablist" aria-label="수행평가 도움 탭">
         <!-- 코딩 테스트 탭 — 비활성화(노출 제거). JS·#paneCoding 코드는 보존하되 화면에 나오지 않는다.
              .eptabs button 규칙(display:inline-flex)이 [hidden]을 덮으므로 인라인 display:none 으로 확실히 숨긴다. -->
-        <button id="tabCoding" role="tab" aria-selected="false" aria-controls="paneCoding" onclick="showTab('coding')" hidden style="display:none !important">💻 코딩 테스트 <span class="muted" style="font-weight:var(--fw-medium)">(정보)</span><span id="badgeCoding" class="ep-tabbadge" hidden></span></button>
+        <button id="tabCoding" role="tab" aria-selected="false" aria-controls="paneCoding" hidden class="app-inline-exam-prep-1">💻 코딩 테스트 <span class="muted app-inline-exam-prep-2">(정보)</span><span id="badgeCoding" class="ep-tabbadge" hidden></span></button>
         <!-- 물리·수학 수행평가 탭 — 일시 중단(2026-07-03, 서버 RETIRED_TYPES 동기).
              JS·pane 코드는 보존, 재공개 시 hidden 제거 + 서버 집합에서 빼면 된다. -->
-        <button id="tabPhys" role="tab" aria-selected="false" aria-controls="panePhys" onclick="showTab('phys')" hidden style="display:none !important">🔭 물리 수행평가<span id="badgePhys" class="ep-tabbadge" hidden></span></button>
-        <button id="tabMath" role="tab" aria-selected="false" aria-controls="paneMath" onclick="showTab('math')" hidden style="display:none !important">📐 수학 수행평가<span id="badgeMath" class="ep-tabbadge" hidden></span></button>
-        <button id="tabReading" class="active" role="tab" aria-selected="true" aria-controls="paneReading" onclick="showTab('reading')">📖 독서록<span id="badgeReading" class="ep-tabbadge" hidden></span></button>
+        <button id="tabPhys" role="tab" aria-selected="false" aria-controls="panePhys" hidden class="app-inline-exam-prep-1">🔭 물리 수행평가<span id="badgePhys" class="ep-tabbadge" hidden></span></button>
+        <button id="tabMath" role="tab" aria-selected="false" aria-controls="paneMath" hidden class="app-inline-exam-prep-1">📐 수학 수행평가<span id="badgeMath" class="ep-tabbadge" hidden></span></button>
+        <button id="tabReading" class="active" role="tab" aria-selected="true" aria-controls="paneReading">📖 독서록<span id="badgeReading" class="ep-tabbadge" hidden></span></button>
       </div>
 
       <!-- ── 코딩 테스트 (노출 제거 — 코드 보존, 화면에는 안 나옴) ── -->
-      <section id="paneCoding" role="tabpanel" aria-labelledby="tabCoding" style="display:none">
-        <div id="codingGate" class="locked" style="display:none"></div>
-        <div id="codingMain" style="display:none">
-          <p class="muted" style="margin-top:0">
+      <section id="paneCoding" role="tabpanel" aria-labelledby="tabCoding" hidden>
+        <div id="codingGate" class="locked" hidden></div>
+        <div id="codingMain" hidden>
+          <p class="muted app-inline-exam-prep-4">
             정보 수행평가(프로그래밍 실습) 대비 — 함수를 작성하고 <b>제출</b>하면 숨은 테스트까지
             브라우저 안에서 바로 채점합니다(백준식). 파이썬으로 풉니다.
           </p>
           <div class="ct">
-            <aside class="ct-list" id="ctList"><p class="muted" style="padding:14px">불러오는 중…</p></aside>
+            <aside class="ct-list" id="ctList"><p class="muted app-inline-exam-prep-5">불러오는 중…</p></aside>
             <div class="ct-detail" id="ctDetail">
               <div class="ct-empty">← 왼쪽에서 문제를 선택하세요.</div>
             </div>
@@ -159,9 +72,9 @@
       </section>
 
       <!-- ── 물리 수행평가 ── -->
-      <section id="panePhys" role="tabpanel" aria-labelledby="tabPhys" style="display:none">
+      <section id="panePhys" role="tabpanel" aria-labelledby="tabPhys" hidden>
         <!-- 고급 물리 문제 스튜디오 카드 — 노출 제거(코드는 보존). 진입은 /physics-studio.html 직접.
-        <div class="pi-card" style="margin-bottom:14px;border-color:var(--accent-border);background:var(--accent-soft)">
+        <div class="pi-card app-inline-exam-prep-6">
           <h2>🧮 고급 물리 문제 스튜디오</h2>
           <p>
             주제·난이도·출제 스타일을 고르면 AI가 풀이·힌트·검산이 함께 있는 <b>새로운</b> 심화 물리 문제를
@@ -175,8 +88,8 @@
           <a class="qbtn primary" href="/physics-studio.html">고급 물리 문제 만들기 →</a>
         </div>
         -->
-        <div id="physGate" class="locked" style="display:none"></div>
-        <div id="physMain" class="pi-card" style="display:none">
+        <div id="physGate" class="locked" hidden></div>
+        <div id="physMain" class="pi-card" hidden>
           <h2>물리 수행평가 「일반물리학 탐구 및 사고 과정 성찰 보고서」</h2>
           <p>
             탐구 주제와 필기 노트(PDF)를 올리면 AI가 오개념 → 해결 과정 → 성찰 흐름의
@@ -192,9 +105,9 @@
       </section>
 
       <!-- ── 수학 수행평가 ── -->
-      <section id="paneMath" role="tabpanel" aria-labelledby="tabMath" style="display:none">
-        <div id="mathGate" class="locked" style="display:none"></div>
-        <div id="mathMain" class="pi-card" style="display:none">
+      <section id="paneMath" role="tabpanel" aria-labelledby="tabMath" hidden>
+        <div id="mathGate" class="locked" hidden></div>
+        <div id="mathMain" class="pi-card" hidden>
           <h2>수학 수행평가 「수학Ⅲ 급수 탐구보고서」</h2>
           <p>
             급수(수열의 극한·무한급수) 관련 탐구 주제만 입력하면 AI가 정확한 수학 전개와
@@ -211,9 +124,9 @@
       </section>
 
       <!-- ── 독서록 ── -->
-      <section id="paneReading" role="tabpanel" aria-labelledby="tabReading" style="display:none">
-        <div id="readingGate" class="locked" style="display:none"></div>
-        <div id="readingMain" class="pi-card" style="display:none">
+      <section id="paneReading" role="tabpanel" aria-labelledby="tabReading" hidden>
+        <div id="readingGate" class="locked" hidden></div>
+        <div id="readingMain" class="pi-card" hidden>
           <h2>📖 독서록 「독서활동 기록지」</h2>
           <p>
             읽은 책의 정보를 입력하면 AI가 <b>선택 계기 → 내용 요약 → 느낀 점</b>을 써서
@@ -229,6 +142,12 @@
       </section>
     </main>
 
+    <footer class="app-statusbar" aria-label="앱 상태">
+      <span class="app-statusbar__dot" aria-hidden="true"></span>
+      <span>준비됨</span>
+      <span class="app-statusbar__meta">수행평가 도움 · Quilo</span>
+    </footer>
+
     <script>
       // ───────────────────────── 공통 ─────────────────────────
       var me = null, beta = { features: [], admin: false };
@@ -238,10 +157,10 @@
         });
       }
       function showTab(t) {
-        document.getElementById("paneCoding").style.display = t === "coding" ? "" : "none";
-        document.getElementById("panePhys").style.display = t === "phys" ? "" : "none";
-        document.getElementById("paneMath").style.display = t === "math" ? "" : "none";
-        document.getElementById("paneReading").style.display = t === "reading" ? "" : "none";
+        document.getElementById("paneCoding").hidden = t !== "coding";
+        document.getElementById("panePhys").hidden = t !== "phys";
+        document.getElementById("paneMath").hidden = t !== "math";
+        document.getElementById("paneReading").hidden = t !== "reading";
         document.getElementById("tabCoding").classList.toggle("active", t === "coding");
         document.getElementById("tabPhys").classList.toggle("active", t === "phys");
         document.getElementById("tabMath").classList.toggle("active", t === "math");
@@ -252,13 +171,17 @@
         document.getElementById("tabReading").setAttribute("aria-selected", t === "reading" ? "true" : "false");
         if (t === "coding") initCoding();
       }
+      [["tabCoding", "coding"], ["tabPhys", "phys"], ["tabMath", "math"], ["tabReading", "reading"]]
+        .forEach(function (entry) {
+          document.getElementById(entry[0]).addEventListener("click", function () { showTab(entry[1]); });
+        });
       function lockedHtml(name) {
         if (!me)
           return '<p>🔒 <b>' + name + '</b>은 로그인 후 Pro 회원에게 열립니다.</p>' +
-            '<p style="margin-top:10px"><a class="qbtn primary" href="/login.html">로그인</a></p>';
+            '<p class="app-runtime-gap-top"><a class="qbtn primary" href="/login.html">로그인</a></p>';
         return '<p>🧩 <b>' + name + '</b>은 현재 <b>Pro 회원</b>에게만 열려 있습니다.<br>' +
           '사용을 원하면 운영자에게 요청하세요.</p>' +
-          '<p style="margin-top:10px"><a class="qbtn" href="/">메인으로</a></p>';
+          '<p class="app-runtime-gap-top"><a class="qbtn" href="/">메인으로</a></p>';
       }
       function hasBeta(key) { return beta.admin === true || (beta.features || []).indexOf(key) >= 0; }
 
@@ -337,12 +260,12 @@
         if (codingInit) return;
         codingInit = true;
         if (!hasBeta("coding-test")) {
-          document.getElementById("codingGate").style.display = "";
+          document.getElementById("codingGate").hidden = false;
           document.getElementById("codingGate").innerHTML = lockedHtml("코딩 테스트");
           codingInit = false; // 권한 생기면 다시 시도 가능
           return;
         }
-        document.getElementById("codingMain").style.display = "";
+        document.getElementById("codingMain").hidden = false;
         loadProblems();
       }
 
@@ -356,12 +279,12 @@
             weeks = x.j.weeks || {};
             renderList();
           })
-          .catch(function (e) { listEl.innerHTML = '<p class="err" style="padding:14px">' + esc(e.message) + "</p>"; });
+          .catch(function (e) { listEl.innerHTML = '<p class="err app-runtime-pad">' + esc(e.message) + "</p>"; });
       }
 
       function renderList() {
         var listEl = document.getElementById("ctList");
-        if (!problems.length) { listEl.innerHTML = '<p class="muted" style="padding:14px">문제가 없습니다.</p>'; return; }
+        if (!problems.length) { listEl.innerHTML = '<p class="muted app-runtime-pad">문제가 없습니다.</p>'; return; }
         var byWeek = {};
         problems.forEach(function (p) { (byWeek[p.week] = byWeek[p.week] || []).push(p); });
         var html = "";
@@ -370,7 +293,7 @@
           html += '<div class="ct-week">' + wk + "주차 · " + esc(weeks[wk] || "") +
             " <small>(" + done + "/" + byWeek[wk].length + ")</small></div>";
           byWeek[wk].forEach(function (p) {
-            html += '<div class="ct-item" role="button" tabindex="0" aria-label="' + esc(p.difficulty) + " · " + esc(p.title) + (solved[p.id] ? " · 해결됨" : "") + '" data-id="' + esc(p.id) + '"' + (curProblem && curProblem.id === p.id ? ' style=""' : "") + '>' +
+            html += '<div class="ct-item" role="button" tabindex="0" aria-label="' + esc(p.difficulty) + " · " + esc(p.title) + (solved[p.id] ? " · 해결됨" : "") + '" data-id="' + esc(p.id) + '">' +
               '<span class="ct-diff d-' + esc(p.difficulty) + '">' + esc(p.difficulty) + "</span>" +
               '<span class="ct-it-title">' + esc(p.title) + "</span>" +
               (solved[p.id] ? '<span class="solved">✓</span>' : "") +
@@ -436,20 +359,20 @@
         html += '<div class="ct-titlerow">' +
           '<span class="ct-diff d-' + esc(p.difficulty) + '">' + esc(p.difficulty) + "</span>" +
           "<h2>" + esc(p.week) + ". " + esc(p.title) + "</h2>" +
-          (solved[p.id] ? '<span class="solved" style="color:var(--success);font-weight:var(--fw-heavy)">✓ 해결</span>' : "") +
+          (solved[p.id] ? '<span class="solved app-runtime-solved">✓ 해결</span>' : "") +
           "</div>";
         if (p.tags && p.tags.length) {
           html += '<div class="ct-tags">' + p.tags.map(function (t) { return '<span class="ct-tag">#' + esc(t) + "</span>"; }).join("") + "</div>";
         }
         html += '<div class="ct-prose">' + mdToHtml(p.statement_md) + "</div>";
         if (p.constraints_md) {
-          html += '<div class="ct-constraints"><div class="lab" style="font-size:12px;font-weight:var(--fw-heavy);color:var(--warning);margin-bottom:2px">제약 조건</div><div class="ct-prose">' + mdToHtml(p.constraints_md) + "</div></div>";
+          html += '<div class="ct-constraints"><div class="lab app-runtime-constraint-label">제약 조건</div><div class="ct-prose">' + mdToHtml(p.constraints_md) + "</div></div>";
         }
         html += '<div class="ct-section-h">예시 (' + examples.length + "개)" + (hiddenCount ? " · 숨은 테스트 " + hiddenCount + "개는 비공개" : "") + "</div>";
         examples.forEach(function (t) { html += exampleHtml(p, t); });
 
         html += '<div class="ct-editor-wrap">' +
-          '<div class="ct-editor-bar"><span>🐍 Python</span><span style="flex:1"></span><span class="muted" style="color:var(--text-faint)">' + esc(p.entry) + "() 함수를 완성하세요</span></div>" +
+          '<div class="ct-editor-bar"><span>🐍 Python</span><span class="app-runtime-flex-spacer"></span><span class="muted app-runtime-faint-text">' + esc(p.entry) + "() 함수를 완성하세요</span></div>" +
           '<div class="ct-editor" id="ctEditor"></div></div>';
         html += '<div class="ct-btns">' +
           '<button class="qbtn primary" id="btnSubmit">✅ 제출 (공개 테스트)</button>' +
@@ -538,7 +461,7 @@
           .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
           .then(function (x) {
             if (!x.ok) {
-              bubble.innerHTML = '<span style="color:var(--danger)">⚠ ' + esc((x.j && x.j.error) || "오류") + "</span>";
+              bubble.innerHTML = '<span class="app-runtime-error">⚠ ' + esc((x.j && x.j.error) || "오류") + "</span>";
               return;
             }
             var ans = (x.j && x.j.answer) || "(빈 응답)";
@@ -547,7 +470,7 @@
             var box = document.getElementById("ctAssistMsgs");
             if (box) box.scrollTop = box.scrollHeight;
           })
-          .catch(function () { bubble.innerHTML = '<span style="color:var(--danger)">⚠ 요청 실패</span>'; })
+          .catch(function () { bubble.innerHTML = '<span class="app-runtime-error">⚠ 요청 실패</span>'; })
           .finally(function () { assistBusy = false; if (btn) btn.disabled = false; });
       }
 
@@ -575,7 +498,7 @@
       function mountEditor(code, p) {
         var host = document.getElementById("ctEditor");
         if (!host) return;
-        host.innerHTML = '<div style="color:var(--text-faint);padding:14px;font-size:13px">에디터 로딩 중…</div>';
+        host.innerHTML = '<div class="app-runtime-editor-loading">에디터 로딩 중…</div>';
         loadMonaco().then(function (monaco) {
           host.innerHTML = "";
           var dark = true;
@@ -601,7 +524,7 @@
           });
           editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, function () { judgeProblem(p, false); });
         }).catch(function (e) {
-          host.innerHTML = '<textarea id="ctFallback" aria-label="Python 코드 편집기" style="width:100%;height:320px;font-family:monospace;font-size:13px;border:0;padding:10px;background:var(--console-bg);color:var(--console-text)">' + esc(code || "") + "</textarea>";
+          host.innerHTML = '<textarea id="ctFallback" class="app-runtime-editor-fallback" aria-label="Python 코드 편집기">' + esc(code || "") + "</textarea>";
           editor = { getValue: function () { return document.getElementById("ctFallback").value; }, setValue: function (v) { document.getElementById("ctFallback").value = v; } };
         });
       }
@@ -750,10 +673,10 @@
       // ───────────────────────── 물리 수행평가 ─────────────────────────
       function initPhys() {
         if (hasBeta("phys-inquiry")) {
-          document.getElementById("physMain").style.display = "";
-          document.getElementById("physGate").style.display = "none";
+          document.getElementById("physMain").hidden = false;
+          document.getElementById("physGate").hidden = true;
         } else {
-          document.getElementById("physGate").style.display = "";
+          document.getElementById("physGate").hidden = false;
           document.getElementById("physGate").innerHTML = lockedHtml("물리 수행평가");
         }
       }
@@ -761,10 +684,10 @@
       // ───────────────────────── 수학 수행평가 ─────────────────────────
       function initMath() {
         if (hasBeta("math-inquiry")) {
-          document.getElementById("mathMain").style.display = "";
-          document.getElementById("mathGate").style.display = "none";
+          document.getElementById("mathMain").hidden = false;
+          document.getElementById("mathGate").hidden = true;
         } else {
-          document.getElementById("mathGate").style.display = "";
+          document.getElementById("mathGate").hidden = false;
           document.getElementById("mathGate").innerHTML = lockedHtml("수학 수행평가");
         }
       }
@@ -773,8 +696,8 @@
       // 독서록은 전 사용자 공개(크레딧 과금). 잠금 없이 항상 안내를 보여 준다.
       // 로그인·크레딧 검증은 실제 생성 시점(/api/generate)에서 처리된다.
       function initReading() {
-        document.getElementById("readingMain").style.display = "";
-        document.getElementById("readingGate").style.display = "none";
+        document.getElementById("readingMain").hidden = false;
+        document.getElementById("readingGate").hidden = true;
       }
 
       // ───────────────────────── 초기화 ─────────────────────────
@@ -798,6 +721,7 @@
           });
       })();
     </script>
-    <script src="/site-shell.js"></script>
+
+      <script src="/theme.js"></script>
   </body>
 </html>

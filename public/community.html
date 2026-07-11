@@ -17,77 +17,28 @@
         if (t) document.documentElement.setAttribute("data-theme", t);
       } catch (e) {}
     </script>
-    <link rel="stylesheet" href="/style.css" />
-    <link rel="stylesheet" href="/site-shell.css" />
-    <style>
-      .cmwrap { max-width: 860px; margin: 0 auto; padding: 18px 16px 80px; }
-      .cmhead { display: flex; align-items: center; gap: 12px; margin: 8px 0 18px; }
-      .cmhead a.logo { display: flex; align-items: center; gap: 8px; text-decoration: none; color: inherit; font-weight: var(--fw-heavy); font-size: 19px; }
-      .cmhead .qmark { width: 30px; height: 30px; border-radius: var(--radius-sm); background: var(--accent); color: var(--on-accent); display: grid; place-items: center; font-weight: var(--fw-heavy); }
-      .cmtabs { display: flex; gap: 6px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
-      .cmtabs button { background: none; border: 0; padding: 10px 14px; min-height: 44px; font-size: 15px; font-weight: var(--fw-semibold); color: var(--text-muted); cursor: pointer; border-bottom: 2px solid transparent; }
-      .cmtabs button.active { color: var(--accent-text); border-bottom-color: var(--accent); }
-      .cmcard { border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 12px; background: var(--surface); }
-      .cmpost-title { font-weight: var(--fw-bold); font-size: 16px; margin: 0 0 4px; }
-      .cmpost-body { white-space: pre-wrap; word-break: break-word; color: var(--text); font-size: 14px; line-height: 1.6; }
-      .cmmeta { font-size: 12px; color: var(--text-faint); margin-top: 8px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-      .cmbadge { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-text); font-weight: var(--fw-semibold); }
-      .cmbadge.suggestion { background: var(--warning-soft); color: var(--warning); }
-      .vote { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--border-strong); border-radius: 999px; padding: 3px 11px; min-height: 36px; background: none; cursor: pointer; font-size: 13px; color: var(--text-muted); }
-      .vote.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
-      .linkbtn { background: none; border: 0; color: var(--accent-text); cursor: pointer; font-size: 13px; padding: 6px 4px; min-height: 44px; display: inline-flex; align-items: center; }
-      .cmtextarea, .cminput { width: 100%; box-sizing: border-box; border: 1px solid var(--border-strong); border-radius: var(--radius-sm); padding: 9px 11px; font: inherit; font-size: 14px; }
-      .cmtextarea { min-height: 90px; resize: vertical; }
-      .cmrow { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
-      .comments { margin-top: 12px; border-top: 1px dashed var(--border); padding-top: 10px; }
-      .comment { font-size: 14px; padding: 6px 0; border-bottom: 1px solid var(--border); }
-      .comment .who { color: var(--text-muted); font-size: 12px; }
-      .muted { color: var(--text-faint); font-size: 13px; }
-      .err { color: var(--danger); font-size: 13px; margin: 6px 0; }
-      .cmintro { margin: 8px 0 18px; padding: 12px 0 4px; }
-      .cmintro h1 { margin: 0 0 6px; font-size: 28px; letter-spacing: -0.02em; }
-      .cmintro p { margin: 0; color: var(--text-muted); font-size: 14px; line-height: 1.6; }
-      .cmempty { border: 1px dashed var(--border-strong); border-radius: var(--radius); padding: 18px 16px; background: var(--surface-2); color: var(--text-muted); font-size: 14px; }
-      .cmempty strong { display: block; color: var(--text); font-size: 15px; margin-bottom: 4px; }
-      .pill-filter { display: flex; gap: 6px; margin-bottom: 12px; }
-      .pill-filter button { border: 1px solid var(--border-strong); background: none; border-radius: 999px; padding: 4px 12px; min-height: 36px; font-size: 13px; cursor: pointer; color: var(--text-muted); }
-      .pill-filter button.active { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
-      .labbody { white-space: pre-wrap; word-break: break-word; line-height: 1.7; font-size: 14px; color: var(--text); }
-      .labtag { font-size: 12px; color: var(--accent-text); font-weight: var(--fw-bold); letter-spacing: .02em; }
-      /* 랩(기술 공개) 아코디언 + 마크다운 + 코드 */
-      .labitem { border:1px solid var(--border); border-radius:var(--radius); margin-bottom:10px; overflow:hidden; background:var(--surface); }
-      .labhead { width:100%; text-align:left; background:none; border:0; padding:13px 15px; cursor:pointer; display:flex; align-items:center; gap:10px; flex-wrap:wrap; font:inherit; }
-      .labhead:hover { background:var(--surface-2); }
-      .labhead .labtag { font-size:11px; color:var(--accent-text); font-weight:var(--fw-bold); background:var(--accent-soft); border-radius:999px; padding:2px 9px; white-space:nowrap; }
-      .labhead .labtitle { font-weight:var(--fw-bold); font-size:16px; color:var(--text); }
-      .labhead .labsummary { color:var(--text-faint); font-size:12px; flex-basis:100%; margin-left:2px; }
-      .labhead .labchevron { margin-left:auto; color:var(--text-faint); transition:transform .15s; }
-      .labitem.open .labhead .labchevron { transform:rotate(90deg); }
-      .labbodywrap { padding:4px 16px 16px; border-top:1px solid var(--border); }
-      .md-h { margin:16px 0 6px; font-weight:var(--fw-bold); color:var(--text); }
-      h3.md-h { font-size:16px; } h4.md-h { font-size:14px; color:var(--text); }
-      .labbodywrap p { line-height:1.7; font-size:14px; color:var(--text); margin:7px 0; }
-      .labbodywrap ul { margin:6px 0 10px 2px; padding-left:18px; }
-      .labbodywrap li { line-height:1.6; font-size:14px; color:var(--text); margin:3px 0; }
-      .labbodywrap code { background:var(--surface-2); border-radius:5px; padding:1px 5px; font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px; color:var(--danger); }
-      pre.md-code { background:var(--console-bg); color:var(--console-text); border-radius:var(--radius-sm); padding:12px 14px; overflow-x:auto; margin:10px 0; }
-      pre.md-code code { background:none; color:inherit; padding:0; font-size:12px; line-height:1.55; white-space:pre; }
-      .labfiles { margin-top:14px; border-top:1px dashed var(--border); padding-top:12px; }
-      .labfiles h4 { margin:0 0 8px; font-size:14px; color:var(--text-muted); }
-      .labfile { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:6px 0; border-bottom:1px solid var(--border); }
-      .labfile .fpath { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px; color:var(--text); }
-      .labfile .flabel { color:var(--text-faint); font-size:12px; }
-      .labfile .fsize { color:var(--text-faint); font-size:12px; }
-      .labfile .fspring { flex:1; }
-      .labfile a.dl, .labfile button.fview { font-size:12px; border:1px solid var(--border-strong); background:var(--surface); color:var(--accent-text); border-radius:7px; padding:4px 10px; cursor:pointer; text-decoration:none; }
-      .labfile a.dl:hover, .labfile button.fview:hover { background:var(--accent-soft); }
-      /* 비로그인 사용자에게 보여줄 통일된 로그인 안내 */
-      .cm-login-note { color: var(--text-muted); font-size: 13px; line-height: 1.6; }
-      .cm-login-note a { color: var(--accent-text); font-weight: var(--fw-semibold); }
-    </style>
+
+    <link rel="stylesheet" href="/ui/foundation.css" />
+    <link rel="stylesheet" href="/ui/shell.css" />
+    <link rel="stylesheet" href="/ui/pages.css" />
   </head>
-  <body class="q-shell-page">
-    <div data-q-shell></div>
+  <body class="q-shell-page ui-page">
+    <a class="ui-skip-link" href="#main-content">본문으로 건너뛰기</a>
+    <header class="ui-site-header" data-ui-shell>
+      <div class="ui-site-header__inner">
+        <a class="ui-site-brand" href="/" aria-label="Quilo 홈"><img src="/favicon.png" alt="" width="42" height="42" /><span>Quilo</span></a>
+        <nav class="ui-site-nav" aria-label="주요 메뉴">
+          <details><summary>제품</summary><div class="ui-site-menu"><a href="/?report=chem-pre"><strong>화학 사전보고서</strong><span>매뉴얼 PDF에서 사전보고서 초안 생성</span></a><a href="/?report=chem-result"><strong>화학 결과보고서</strong><span>데이터와 사진에서 결과 추가분 생성</span></a><a href="/?report=phys-result"><strong>물리 결과보고서</strong><span>Capstone·엑셀 기반 결과보고서 생성</span></a><a href="/?report=free"><strong>자유 보고서</strong><span>지시와 자료를 원하는 형식으로 정리</span></a></div></details>
+          <details><summary>솔루션</summary><div class="ui-site-menu"><a href="/tools/index.html"><strong>보고서 도구</strong><span>파일·이미지·PDF·수식 도구</span></a><a href="/translate.html"><strong>PDF 통번역</strong><span>문서 구조를 지키는 번역 작업</span></a></div></details>
+          <details><summary>앱</summary><div class="ui-site-menu ui-site-menu--narrow"><a href="/apps/quilo.html"><strong>Quilo Desktop</strong><span>Mac과 Windows용 작업 공간</span></a><a href="/apps/live-translator.html"><strong>Live Translator</strong><span>실시간 음성 번역 앱</span></a></div></details>
+          <details><summary>개발자</summary><div class="ui-site-menu ui-site-menu--narrow"><a href="/developers.html"><strong>개발자 플랫폼</strong><span>API·ChatGPT·Codex 연결</span></a><a href="/developers.html#catalog"><strong>기능 카탈로그</strong><span>연결 가능한 Quilo 기능</span></a><a href="/developers.html#tokenCard"><strong>API 토큰</strong><span>범위 제한 토큰 관리</span></a></div></details>
+          <details><summary>리소스</summary><div class="ui-site-menu ui-site-menu--narrow"><a href="/guide.html"><strong>가이드</strong><span>기능별 시작 방법과 사용 원칙</span></a><a href="/examples.html"><strong>예시</strong><span>Quilo로 만든 결과물 살펴보기</span></a><a href="/changelog.html"><strong>업데이트</strong><span>새 기능과 개선 내역</span></a><a href="/community.html"><strong>커뮤니티</strong><span>작업 사례와 질문 나누기</span></a><a href="/school-apply.html"><strong>학교 도입</strong><span>기관용 도입 문의</span></a></div></details>
+          <a href="/#balanceBox">요금</a><a href="https://www.instagram.com/" target="_blank" rel="noopener">Instagram ↗</a>
+        </nav>
+        <div class="ui-site-actions"><a class="ui-site-action" href="/?login=1">로그인</a><a class="ui-site-action ui-site-cta" href="/?report=free">무료로 시작하기</a></div>
+        <details class="ui-mobile-menu"><summary class="ui-mobile-trigger">메뉴</summary><nav class="ui-mobile-panel" aria-label="모바일 메뉴"><a href="/?report=free">보고서 만들기</a><a href="/tools/index.html">도구</a><a href="/apps/quilo.html">앱</a><a href="/developers.html">개발자</a><a href="/guide.html">가이드</a><button type="button" data-ui-theme>다크 테마</button><a href="/?login=1">로그인</a><a class="ui-site-cta" href="/?report=free">무료로 시작하기</a></nav></details>
+      </div>
+    </header>
     <main class="cmwrap" id="main-content">
 
       <section class="cmintro">
@@ -96,8 +47,8 @@
       </section>
 
       <div class="cmtabs" role="tablist" aria-label="커뮤니티 탭">
-        <button id="tabSuggest" class="active" role="tab" aria-selected="true" onclick="showTab('suggest')">건의 · 기능요청</button>
-        <button id="tabLab" role="tab" aria-selected="false" onclick="showTab('lab')">랩 (기술 공개)</button>
+        <button id="tabSuggest" class="active" role="tab" aria-selected="true">건의 · 기능요청</button>
+        <button id="tabLab" role="tab" aria-selected="false">랩 (기술 공개)</button>
       </div>
 
       <!-- 건의 · 기능요청 -->
@@ -108,31 +59,38 @@
           <button data-cat="suggestion" role="tab" aria-selected="false">건의사항</button>
         </div>
 
-        <div id="writeBox" class="cmcard" style="display:none">
+        <div id="writeBox" class="cmcard" hidden>
           <input id="newTitle" class="cminput" maxlength="200" placeholder="제목" aria-label="제목" />
-          <textarea id="newBody" class="cmtextarea" maxlength="5000" placeholder="개발자에게 추가했으면 하는 기능이나 건의사항을 적어주세요." aria-label="내용" style="margin-top:8px"></textarea>
+          <textarea id="newBody" class="cmtextarea ui-inline-community-2" maxlength="5000" placeholder="개발자에게 추가했으면 하는 기능이나 건의사항을 적어주세요." aria-label="내용"></textarea>
           <div class="cmrow">
-            <select id="newCat" class="cminput" aria-label="분류" style="max-width:160px">
+            <select id="newCat" class="cminput ui-inline-community-3" aria-label="분류">
               <option value="feature">기능 요청</option>
               <option value="suggestion">건의사항</option>
             </select>
-            <button id="postBtn" class="btn btn-primary" onclick="submitPost()">등록</button>
+            <button id="postBtn" class="btn btn-primary">등록</button>
             <span id="postErr" class="err"></span>
           </div>
         </div>
-        <div id="loginHint" class="cmcard" style="display:none"></div>
+        <div id="loginHint" class="cmcard" hidden></div>
 
         <div id="postList" aria-live="polite" aria-busy="true"><div class="cmempty"><strong>게시글을 불러오는 중입니다.</strong>잠시만 기다려 주세요.</div></div>
       </section>
 
       <!-- 랩 -->
-      <section id="paneLab" style="display:none">
-        <p class="muted" style="margin-top:0">개발자가 직접 공개하는 기술·구현 노트입니다.</p>
+      <section id="paneLab" hidden>
+        <p class="muted ui-inline-community-6">개발자가 직접 공개하는 기술·구현 노트입니다.</p>
         <div id="labList" aria-live="polite"></div>
       </section>
     </main>
 
-    <script src="/site-shell.js"></script>
+    <footer class="ui-site-footer">
+      <div class="ui-site-footer__inner">
+        <nav class="ui-site-footer__links" aria-label="푸터 메뉴"><a href="/terms.html">이용약관</a><a href="/privacy.html">개인정보처리방침</a><a href="/refund.html">환불정책</a><a href="/guide.html">이용 가이드</a><a href="/community.html">커뮤니티</a><a href="https://github.com/fakeminjun7321/lab-report-generator-web" target="_blank" rel="noopener">GitHub</a></nav>
+        <div class="ui-site-footer__copy">© 2026 Quilo · <span data-site-version>버전 확인 중...</span></div>
+      </div>
+    </footer>
+
+    <script src="/ui/shell.js"></script>
     <script>
       // ── 랩(기술 공개): /api/lab 에서 목록·본문·코드 파일을 불러온다(GitHub식) ──
       let labLoaded = false;
@@ -163,8 +121,8 @@
         }
       }
       function showTab(t) {
-        document.getElementById("paneSuggest").style.display = t === "suggest" ? "" : "none";
-        document.getElementById("paneLab").style.display = t === "lab" ? "" : "none";
+        document.getElementById("paneSuggest").hidden = t !== "suggest";
+        document.getElementById("paneLab").hidden = t !== "lab";
         document.getElementById("tabSuggest").classList.toggle("active", t === "suggest");
         document.getElementById("tabLab").classList.toggle("active", t === "lab");
         document.getElementById("tabSuggest").setAttribute("aria-selected", t === "suggest" ? "true" : "false");
@@ -247,7 +205,7 @@
                 '<span class="labchevron">▸</span>' +
                 (e.summary ? '<span class="labsummary">' + esc(e.summary) + "</span>" : "") +
               "</button>" +
-              '<div class="labbodywrap" style="display:none"></div>';
+              '<div class="labbodywrap runtime-hidden"></div>';
             item.querySelector(".labhead").addEventListener("click", () => toggleLab(e.id, item));
             el.appendChild(item);
           });
@@ -260,9 +218,9 @@
       async function toggleLab(id, item) {
         const wrap = item.querySelector(".labbodywrap");
         const isOpen = item.classList.contains("open");
-        if (isOpen) { item.classList.remove("open"); wrap.style.display = "none"; return; }
+        if (isOpen) { item.classList.remove("open"); wrap.classList.add("runtime-hidden"); return; }
         item.classList.add("open");
-        wrap.style.display = "";
+        wrap.classList.remove("runtime-hidden");
         if (wrap.dataset.loaded) return;
         wrap.innerHTML = '<p class="muted">본문을 불러오는 중…</p>';
         try {
@@ -283,7 +241,7 @@
                   '<button class="fview" data-path="' + esc(f.path) + '">코드 보기</button>' +
                   '<a class="dl" href="' + q + '&download=1">⬇ 다운로드</a>' +
                 "</div>" +
-                '<div class="fcode" style="display:none"></div>';
+                '<div class="fcode runtime-hidden"></div>';
             });
             html += "</div>";
           }
@@ -299,9 +257,9 @@
 
       async function viewLabFile(btn) {
         const codeBox = btn.closest(".labfile").nextElementSibling;
-        if (codeBox.style.display !== "none") { codeBox.style.display = "none"; btn.textContent = "코드 보기"; return; }
+        if (!codeBox.classList.contains("runtime-hidden")) { codeBox.classList.add("runtime-hidden"); btn.textContent = "코드 보기"; return; }
         btn.textContent = "닫기";
-        codeBox.style.display = "";
+        codeBox.classList.remove("runtime-hidden");
         if (codeBox.dataset.loaded) return;
         codeBox.innerHTML = '<p class="muted">불러오는 중…</p>';
         try {
@@ -320,9 +278,9 @@
           const r = await fetch("/api/me");
           if (r.ok) { const d = await r.json(); me = { id: d.id, isAdmin: !!d.isAdmin, name: d.user }; }
         } catch (e) {}
-        document.getElementById("writeBox").style.display = me ? "" : "none";
+        document.getElementById("writeBox").hidden = !me;
         const hint = document.getElementById("loginHint");
-        hint.style.display = me ? "none" : "";
+        hint.hidden = !!me;
         if (!me) hint.innerHTML = loginNoteHtml("글을 쓰려면");
       }
 
@@ -359,9 +317,9 @@
             `<button class="vote ${p.voted ? "on" : ""}" data-id="${p.id}">▲ 공감 <b>${p.upvotes || 0}</b></button>` +
             `<button class="linkbtn toggle-comments" data-id="${p.id}">💬 댓글 ${p.comment_count || 0}</button>` +
             `<span>${esc(p.author_name || "익명")}</span><span>${fmtDate(p.created_at)}</span>` +
-            (canDel ? `<button class="linkbtn del-post" data-id="${p.id}" style="color:var(--danger)">삭제</button>` : "") +
+            (canDel ? `<button class="linkbtn del-post runtime-danger" data-id="${p.id}">삭제</button>` : "") +
           `</div>` +
-          `<div class="comments" id="cm-${p.id}" style="display:none"></div>`;
+          `<div class="comments runtime-hidden" id="cm-${p.id}"></div>`;
         card.querySelector(".vote").addEventListener("click", () => votePost(p.id, card));
         card.querySelector(".toggle-comments").addEventListener("click", () => toggleComments(p.id));
         const dp = card.querySelector(".del-post");
@@ -389,8 +347,8 @@
 
       async function toggleComments(id) {
         const box = document.getElementById("cm-" + id);
-        if (box.style.display !== "none") { box.style.display = "none"; return; }
-        box.style.display = "";
+        if (!box.classList.contains("runtime-hidden")) { box.classList.add("runtime-hidden"); return; }
+        box.classList.remove("runtime-hidden");
         box.innerHTML = '<p class="muted">댓글 불러오는 중…</p>';
         try {
           const r = await fetch(`/api/community/posts/${id}/comments`);
@@ -401,12 +359,12 @@
             cs.map((c) => {
               const canDel = me && (me.isAdmin || me.id === c.user_id);
               return `<div class="comment"><span class="who">${esc(c.author_name || "익명")} · ${fmtDate(c.created_at)}</span>` +
-                (canDel ? ` <button class="linkbtn del-cm" data-cid="${c.id}" style="color:var(--danger);font-size:11px">삭제</button>` : "") +
+                (canDel ? ` <button class="linkbtn del-cm runtime-danger-small" data-cid="${c.id}">삭제</button>` : "") +
                 `<div>${esc(c.body)}</div></div>`;
             }).join("") +
             (me
-              ? `<div class="cmrow"><input class="cminput cm-input" maxlength="2000" placeholder="댓글 달기" aria-label="댓글 달기" style="flex:1" /><button class="btn cm-send">등록</button></div><span class="err cm-err"></span>`
-              : `<p style="margin:6px 0 0">${loginNoteHtml("댓글을 쓰려면")}</p>`);
+              ? `<div class="cmrow"><input class="cminput cm-input runtime-flex-1" maxlength="2000" placeholder="댓글 달기" aria-label="댓글 달기" /><button class="btn cm-send">등록</button></div><span class="err cm-err"></span>`
+              : `<p class="runtime-comment-note">${loginNoteHtml("댓글을 쓰려면")}</p>`);
           box.querySelectorAll(".del-cm").forEach((b) =>
             b.addEventListener("click", async () => {
               if (!confirm("댓글을 삭제할까요?")) return;
@@ -430,7 +388,7 @@
                 if (!r2.ok) {
                   errEl.textContent = d2.error || "등록 실패";
                   if (d2.profanity) showAppeal(errEl.parentNode, "comment", body);
-                } else { box.style.display = "none"; toggleComments(id); loadPosts(); }
+                } else { box.classList.add("runtime-hidden"); toggleComments(id); loadPosts(); }
               } catch (e) { errEl.textContent = "등록 실패"; }
               send.disabled = false;
             });
@@ -442,11 +400,9 @@
         if (!container || container.querySelector(".appeal-box")) return;
         const box = document.createElement("div");
         box.className = "appeal-box";
-        box.style.cssText =
-          "margin-top:10px;padding:11px 12px;border:1px dashed #e7a3c0;border-radius:var(--radius-sm);background:#fff7fb";
         box.innerHTML =
-          '<div class="muted" style="margin-bottom:6px">욕설이 아닌데 차단됐다면, 상황을 적어 <b>해명</b>을 보낼 수 있어요. 관리자가 검토 후 해제합니다.</div>' +
-          '<textarea class="cmtextarea appeal-reason" maxlength="2000" placeholder="예: \'시발점\'이라는 단어였는데 욕설로 잘못 감지된 것 같습니다." style="min-height:60px"></textarea>' +
+          '<div class="muted runtime-appeal-note">욕설이 아닌데 차단됐다면, 상황을 적어 <b>해명</b>을 보낼 수 있어요. 관리자가 검토 후 해제합니다.</div>' +
+          '<textarea class="cmtextarea appeal-reason runtime-appeal-input" maxlength="2000" placeholder="예: \'시발점\'이라는 단어였는데 욕설로 잘못 감지된 것 같습니다."></textarea>' +
           '<div class="cmrow"><button type="button" class="btn appeal-send">해명 보내기</button><span class="appeal-msg muted"></span></div>';
         container.appendChild(box);
         box.querySelector(".appeal-send").addEventListener("click", async () => {
@@ -494,6 +450,10 @@
         } catch (e) { errEl.textContent = "등록 실패"; }
         btn.disabled = false;
       }
+
+      document.getElementById("tabSuggest").addEventListener("click", () => showTab("suggest"));
+      document.getElementById("tabLab").addEventListener("click", () => showTab("lab"));
+      document.getElementById("postBtn").addEventListener("click", submitPost);
 
       // 카테고리 필터
       document.querySelectorAll(".pill-filter button").forEach((b) =>

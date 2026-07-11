@@ -17,34 +17,51 @@
         } catch (e) {}
       })();
     </script>
-    <link rel="stylesheet" href="/style.css" />
-    <link rel="stylesheet" href="/site-shell.css" />
+
+    <link rel="stylesheet" href="/ui/foundation.css" />
+    <link rel="stylesheet" href="/ui/shell.css" />
+    <link rel="stylesheet" href="/ui/pages.css" />
   </head>
-  <body class="landing q-shell-page">
+  <body class="landing q-shell-page ui-page">
     <div class="landing-bg" aria-hidden="true"></div>
-    <div data-q-shell><a class="q-shell-fallback" href="/">Quilo 홈</a></div>
+    <a class="ui-skip-link" href="#main-content">본문으로 건너뛰기</a>
+    <header class="ui-site-header" data-ui-shell>
+      <div class="ui-site-header__inner">
+        <a class="ui-site-brand" href="/" aria-label="Quilo 홈"><img src="/favicon.png" alt="" width="42" height="42" /><span>Quilo</span></a>
+        <nav class="ui-site-nav" aria-label="주요 메뉴">
+          <details><summary>제품</summary><div class="ui-site-menu"><a href="/?report=chem-pre"><strong>화학 사전보고서</strong><span>매뉴얼 PDF에서 사전보고서 초안 생성</span></a><a href="/?report=chem-result"><strong>화학 결과보고서</strong><span>데이터와 사진에서 결과 추가분 생성</span></a><a href="/?report=phys-result"><strong>물리 결과보고서</strong><span>Capstone·엑셀 기반 결과보고서 생성</span></a><a href="/?report=free"><strong>자유 보고서</strong><span>지시와 자료를 원하는 형식으로 정리</span></a></div></details>
+          <details><summary>솔루션</summary><div class="ui-site-menu"><a href="/tools/index.html"><strong>보고서 도구</strong><span>파일·이미지·PDF·수식 도구</span></a><a href="/translate.html"><strong>PDF 통번역</strong><span>문서 구조를 지키는 번역 작업</span></a></div></details>
+          <details><summary>앱</summary><div class="ui-site-menu ui-site-menu--narrow"><a href="/apps/quilo.html"><strong>Quilo Desktop</strong><span>Mac과 Windows용 작업 공간</span></a><a href="/apps/live-translator.html"><strong>Live Translator</strong><span>실시간 음성 번역 앱</span></a></div></details>
+          <details><summary>개발자</summary><div class="ui-site-menu ui-site-menu--narrow"><a href="/developers.html"><strong>개발자 플랫폼</strong><span>API·ChatGPT·Codex 연결</span></a><a href="/developers.html#catalog"><strong>기능 카탈로그</strong><span>연결 가능한 Quilo 기능</span></a><a href="/developers.html#tokenCard"><strong>API 토큰</strong><span>범위 제한 토큰 관리</span></a></div></details>
+          <details><summary>리소스</summary><div class="ui-site-menu ui-site-menu--narrow"><a href="/guide.html"><strong>가이드</strong><span>기능별 시작 방법과 사용 원칙</span></a><a href="/examples.html"><strong>예시</strong><span>Quilo로 만든 결과물 살펴보기</span></a><a href="/changelog.html"><strong>업데이트</strong><span>새 기능과 개선 내역</span></a><a href="/community.html"><strong>커뮤니티</strong><span>작업 사례와 질문 나누기</span></a><a href="/school-apply.html"><strong>학교 도입</strong><span>기관용 도입 문의</span></a></div></details>
+          <a href="/#balanceBox">요금</a><a href="https://www.instagram.com/" target="_blank" rel="noopener">Instagram ↗</a>
+        </nav>
+        <div class="ui-site-actions"><a class="ui-site-action" href="/?login=1">로그인</a><a class="ui-site-action ui-site-cta" href="/?report=free">무료로 시작하기</a></div>
+        <details class="ui-mobile-menu"><summary class="ui-mobile-trigger">메뉴</summary><nav class="ui-mobile-panel" aria-label="모바일 메뉴"><a href="/?report=free">보고서 만들기</a><a href="/tools/index.html">도구</a><a href="/apps/quilo.html">앱</a><a href="/developers.html">개발자</a><a href="/guide.html">가이드</a><button type="button" data-ui-theme>다크 테마</button><a href="/?login=1">로그인</a><a class="ui-site-cta" href="/?report=free">무료로 시작하기</a></nav></details>
+      </div>
+    </header>
 
     <main class="landing-shell" id="main-content">
-      <section class="section" style="border-top:0">
+      <section class="section ui-inline-tools-pdf-pagenum-1">
         <div class="tool-page-head">
           <h1>PDF 페이지 번호</h1>
           <p>페이지 번호를 새깁니다. 모든 처리는 브라우저 안에서만 이뤄지고 파일은 서버로 전송되지 않습니다.</p>
         </div>
 
         <div class="tool-card">
-          <div id="pnDrop" role="button" tabindex="0" style="border:2px dashed var(--border-strong);border-radius:12px;padding:30px 20px;text-align:center;cursor:pointer;color:var(--text-muted)">
-            <div style="font-weight:650;color:var(--text)">PDF 파일을 끌어다 놓기</div>
-            <div style="font-size:13px;margin-top:4px">또는 클릭해서 선택</div>
+          <div id="pnDrop" role="button" tabindex="0" class="ui-inline-tools-pdf-pagenum-2" >
+            <div class="ui-inline-tools-pdf-pagenum-3" >PDF 파일을 끌어다 놓기</div>
+            <div class="ui-inline-tools-pdf-pagenum-4" >또는 클릭해서 선택</div>
           </div>
-          <input type="file" id="pnFile" accept="application/pdf,.pdf" style="display:none" />
+          <input type="file" id="pnFile" accept="application/pdf,.pdf" class="ui-inline-tools-pdf-pagenum-5" />
 
-          <div id="pnInfo" style="display:none;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:10px;font-size:14px;margin-top:2px">
-            <span style="flex:1;word-break:break-all" id="pnName"></span>
-            <span style="color:var(--text-muted);white-space:nowrap" id="pnSize"></span>
-            <button type="button" data-rm class="btn-ghost" style="padding:4px 9px" title="삭제">✕</button>
+          <div id="pnInfo" class="ui-inline-tools-pdf-pagenum-6" >
+            <span id="pnName" class="ui-inline-tools-pdf-pagenum-7" ></span>
+            <span id="pnSize" class="ui-inline-tools-pdf-pagenum-8" ></span>
+            <button type="button" data-rm class="btn-ghost ui-inline-tools-pdf-pagenum-9" title="삭제">✕</button>
           </div>
 
-          <div style="display:grid;gap:14px;margin-top:4px">
+          <div class="ui-inline-tools-pdf-pagenum-10" >
             <div>
               <label class="tool-label" for="pnPos">위치</label>
               <select id="pnPos" class="tool-input">
@@ -53,7 +70,7 @@
                 <option value="tr">위 오른쪽</option>
               </select>
             </div>
-            <div style="display:grid;gap:14px;grid-template-columns:1fr 1fr">
+            <div class="ui-inline-tools-pdf-pagenum-11" >
               <div>
                 <label class="tool-label" for="pnStart">시작 번호</label>
                 <input type="number" id="pnStart" class="tool-input" value="1" min="0" step="1" inputmode="numeric" />
@@ -63,8 +80,8 @@
                 <input type="number" id="pnSize2" class="tool-input" value="11" min="6" max="48" step="1" inputmode="numeric" />
               </div>
             </div>
-            <label style="display:flex;align-items:center;gap:9px;font-size:14px;color:var(--text);cursor:pointer">
-              <input type="checkbox" id="pnTotal" style="width:16px;height:16px;flex:none" />
+            <label class="ui-inline-tools-pdf-pagenum-12" >
+              <input type="checkbox" id="pnTotal" class="ui-inline-tools-pdf-pagenum-13" />
               총 페이지 수 함께 표시 (예: 3 / 12)
             </label>
           </div>
@@ -73,28 +90,23 @@
             <button class="btn-primary" id="pnRun" disabled>페이지 번호 넣기</button>
             <button class="btn-ghost" id="pnClear">비우기</button>
           </div>
-          <div id="pnOut" class="tool-result" style="display:none">
-            <div class="badge ok" id="pnStat" style="display:inline-flex;align-items:center;gap:7px;padding:10px 14px;border-radius:11px;background:var(--accent-soft);color:var(--accent-text);font-weight:600;font-size:14px"></div>
-            <a id="pnDl" class="btn-lg btn-primary" style="display:inline-flex;min-height:44px;justify-self:start" download>↓ PDF 내려받기</a>
+          <div id="pnOut" class="tool-result ui-inline-tools-pdf-pagenum-14">
+            <div class="badge ok ui-inline-tools-pdf-pagenum-15" id="pnStat"></div>
+            <a id="pnDl" class="btn-lg btn-primary ui-inline-tools-pdf-pagenum-16" download>↓ PDF 내려받기</a>
           </div>
-          <p class="hint" id="pnMsg" style="margin:0"></p>
+          <p class="hint ui-inline-tools-pdf-pagenum-17" id="pnMsg"></p>
         </div>
       </section>
     </main>
-
-    <footer class="site-footer">
-      <div class="footer-links">
-        <a href="/">메인</a>
-        <a href="/tools/index.html">도구 모음</a>
-        <a href="/guide.html">이용 가이드</a>
-        <a href="https://blog.naver.com/physicjun1905" target="_blank" rel="noopener">블로그</a>
+    <footer class="ui-site-footer">
+      <div class="ui-site-footer__inner">
+        <nav class="ui-site-footer__links" aria-label="푸터 메뉴"><a href="/terms.html">이용약관</a><a href="/privacy.html">개인정보처리방침</a><a href="/refund.html">환불정책</a><a href="/guide.html">이용 가이드</a><a href="/community.html">커뮤니티</a><a href="https://github.com/fakeminjun7321/lab-report-generator-web" target="_blank" rel="noopener">GitHub</a></nav>
+        <div class="ui-site-footer__copy">© 2026 Quilo · <span data-site-version>버전 확인 중...</span></div>
       </div>
-      <div class="footer-copy">© 2026 Quilo · MIT License · PDF: pdf-lib (MIT)</div>
     </footer>
 
     <script src="/tools/vendor/pdf-lib.min.js"></script>
-    <script src="/theme.js"></script>
-    <script src="/site-shell.js"></script>
+    <script src="/ui/shell.js"></script>
     <script>
       (function () {
         var drop = document.getElementById("pnDrop"), input = document.getElementById("pnFile");

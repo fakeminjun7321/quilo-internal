@@ -58,20 +58,14 @@ const TOOL_ROUTES = Object.freeze([
 const GENERAL_PUBLIC_ROUTES = Object.freeze([
   "/changelog.html",
   "/community.html",
-  "/create.html",
   "/developers.html",
   "/equation/index.html",
-  "/exam-prep.html",
   "/examples.html",
-  "/filechat.html",
   "/guide.html",
-  "/physics-studio.html",
   "/privacy.html",
   "/refund.html",
   "/school-apply.html",
-  "/study.html",
   "/terms.html",
-  "/translate.html",
 ]);
 
 const APP_ROUTES = Object.freeze([
@@ -85,24 +79,62 @@ const COMMON_SHELL_ROUTES = Object.freeze([
   ...APP_ROUTES,
 ]);
 
+const NEW_STATIC_SHELL_ROUTES = new Set([
+  ...TOOL_ROUTES,
+  "/changelog.html",
+  "/community.html",
+  "/developers.html",
+  "/equation/index.html",
+  "/examples.html",
+  "/guide.html",
+  "/privacy.html",
+  "/refund.html",
+  "/school-apply.html",
+  "/terms.html",
+  ...APP_ROUTES,
+]);
+
+const APP_SHELL_ROUTES = Object.freeze([
+  "/create.html",
+  "/editor.html",
+  "/exam-prep.html",
+  "/filechat.html",
+  "/physics-studio.html",
+  "/studio.html",
+  "/study.html",
+  "/translate-app.html",
+  "/translate.html",
+  "/vibe-coding.html",
+]);
+const APP_SHELL_ROUTE_SET = new Set(APP_SHELL_ROUTES);
+
 // These surfaces intentionally keep dedicated authentication, administration,
-// or full-screen application chrome and are not part of the marketing shell matrix.
+// or CompactAppShell chrome and are not part of the marketing shell matrix.
 const EXCLUDED_ROUTES = Object.freeze({
   auth: Object.freeze(["/login.html", "/signup.html", "/verify-email.html"]),
   admin: Object.freeze(["/admin.html"]),
   fullscreenApps: Object.freeze([
+    "/create.html",
     "/editor.html",
+    "/exam-prep.html",
+    "/filechat.html",
+    "/physics-studio.html",
     "/studio.html",
+    "/study.html",
     "/translate-app.html",
+    "/translate.html",
     "/vibe-coding.html",
   ]),
 });
 
 const VIEWPORTS = Object.freeze([
-  { name: "desktop-1280", width: 1280, height: 900 },
+  { name: "desktop-1440", width: 1440, height: 900 },
   { name: "desktop-933", width: 933, height: 844 },
   { name: "mobile-390", width: 390, height: 844 },
 ]);
+// Work surfaces are intentionally desktop-first in this rewrite. The product
+// owner deferred mobile layout; 933px remains the required compact desktop floor.
+const APP_SHELL_VIEWPORTS = Object.freeze(VIEWPORTS.filter((viewport) => viewport.width >= 933));
 
 let staticServer;
 let baseUrl;
@@ -164,9 +196,7 @@ function createStaticServer() {
 
 function readOnlyApiFixture(pathname) {
   if (pathname === "/api/me") {
-    // An empty successful response follows each page's existing parse-error path
-    // into its logged-out state without adding an expected 401 to the console.
-    return { status: 200, rawBody: "" };
+    return { status: 401, body: { error: "로그인이 필요합니다." } };
   }
 
   const fixtures = {
@@ -213,6 +243,21 @@ async function installReadOnlyNetworkGuard(page) {
     }
 
     if (url.origin === baseUrl && url.pathname.startsWith("/api/")) {
+      if (/^\/api\/apps\/(?:quilo|live-translator)\/download$/.test(url.pathname)) {
+        const extension = url.searchParams.get("platform") === "windows" ? "exe" : "dmg";
+        await route.fulfill({
+          status: 200,
+          headers: {
+            "Accept-Ranges": "bytes",
+            "Content-Disposition": `attachment; filename="qa-installer.${extension}"`,
+            "Content-Length": "32",
+            "Content-Type": "application/octet-stream",
+            "X-Quilo-App-Version": "qa",
+          },
+          body: "0123456789abcdefghijklmnopqrstuv",
+        });
+        return;
+      }
       const fixture = readOnlyApiFixture(url.pathname);
       await route.fulfill({
         status: fixture.status,
@@ -243,7 +288,12 @@ async function installReadOnlyNetworkGuard(page) {
 function collectConsoleErrors(page) {
   const errors = [];
   page.on("console", (message) => {
-    if (message.type() === "error") errors.push(`console: ${message.text()}`);
+    if (message.type() !== "error") return;
+    // The logged-out contract intentionally returns 401 from /api/me. Chromium
+    // reports that expected auth probe as a resource error even though each page
+    // handles the response and renders its signed-out state normally.
+    if (/Failed to load resource:.*401 \(Unauthorized\)/.test(message.text())) return;
+    errors.push(`console: ${message.text()}`);
   });
   page.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));
   return errors;
@@ -309,9 +359,10 @@ test.afterEach(async ({ page }) => {
 
 test("shell matrix inventory is explicit and excludes specialized chrome", () => {
   expect(TOOL_ROUTES).toHaveLength(13);
-  expect(GENERAL_PUBLIC_ROUTES).toHaveLength(16);
+  expect(GENERAL_PUBLIC_ROUTES).toHaveLength(10);
   expect(APP_ROUTES).toHaveLength(2);
-  expect(COMMON_SHELL_ROUTES).toHaveLength(31);
+  expect(COMMON_SHELL_ROUTES).toHaveLength(25);
+  expect(APP_SHELL_ROUTES).toHaveLength(10);
   expect(new Set(COMMON_SHELL_ROUTES).size).toBe(COMMON_SHELL_ROUTES.length);
 
   const excluded = Object.values(EXCLUDED_ROUTES).flat();
@@ -320,9 +371,15 @@ test("shell matrix inventory is explicit and excludes specialized chrome", () =>
     "/signup.html",
     "/verify-email.html",
     "/admin.html",
+    "/create.html",
     "/editor.html",
+    "/exam-prep.html",
+    "/filechat.html",
+    "/physics-studio.html",
     "/studio.html",
+    "/study.html",
     "/translate-app.html",
+    "/translate.html",
     "/vibe-coding.html",
   ]);
   for (const route of excluded) expect(COMMON_SHELL_ROUTES).not.toContain(route);
@@ -338,6 +395,34 @@ test("removed standalone tools are absent from the public tree", () => {
   }
 });
 
+test("redesigned static pages use only the new independent stylesheet stack", () => {
+  for (const route of NEW_STATIC_SHELL_ROUTES) {
+    const source = fs.readFileSync(path.join(PUBLIC_DIR, route.replace(/^\/+/, "")), "utf8");
+    expect(source, route).toContain('href="/ui/foundation.css"');
+    expect(source, route).toContain('href="/ui/shell.css"');
+    expect(source, route).toContain('href="/ui/pages.css"');
+    expect(source, route).not.toMatch(/href="\/(?:style|site-shell|home-redesign|auth-ui)\.css"/);
+    expect(source, route).not.toContain('href="/apps/apps.css"');
+    expect(source, route).not.toMatch(/<style\b|style="/);
+    expect(source, route).not.toMatch(/\son(?:click|change|input|submit)\s*=/i);
+  }
+});
+
+test("app pages expose first-party platform download endpoints", () => {
+  const expected = {
+    "/apps/quilo.html": "/api/apps/quilo/download?platform=",
+    "/apps/live-translator.html": "/api/apps/live-translator/download?platform=",
+  };
+  for (const [route, prefix] of Object.entries(expected)) {
+    const source = fs.readFileSync(path.join(PUBLIC_DIR, route.replace(/^\/+/, "")), "utf8");
+    expect(source, route).not.toContain("다운로드 페이지 열기");
+    expect(source, route).not.toContain("fakeminjun7321.github.io/quilo-app");
+    expect(source.match(/data-app-download/g)?.length, route).toBeGreaterThanOrEqual(4);
+    expect(source, route).toContain(`${prefix}mac`);
+    expect(source, route).toContain(`${prefix}windows`);
+  }
+});
+
 for (const viewport of VIEWPORTS) {
   test.describe(`common shell ${viewport.name}`, () => {
     for (const route of COMMON_SHELL_ROUTES) {
@@ -346,16 +431,113 @@ for (const viewport of VIEWPORTS) {
         await page.setViewportSize({ width: viewport.width, height: viewport.height });
         await page.goto(`${baseUrl}${route}`, { waitUntil: "networkidle" });
 
-        await expect(page.locator("[data-q-shell-root]"), `${route} shared shell`).toBeVisible();
+        const staticShell = NEW_STATIC_SHELL_ROUTES.has(route);
+        const appShell = APP_SHELL_ROUTE_SET.has(route);
+        const shellSelector = staticShell
+          ? "[data-ui-shell]"
+          : appShell
+            ? "[data-app-shell]"
+            : "[data-q-shell-root]";
+        await expect(page.locator(shellSelector), `${route} shared shell`).toBeVisible();
+        await expect(page.locator(".ui-site-header"), `${route} visible header`).toBeVisible();
+        await expect(page.locator(".ui-site-footer"), `${route} visible footer`).toBeVisible();
         await expect(page.locator("#main-content"), `${route} main landmark`).toHaveCount(1);
         await expect(page.locator("#main-content"), `${route} visible main content`).toBeVisible();
         await expect(page.locator(".landing-nav"), `${route} legacy navigation`).toHaveCount(0);
 
         if (viewport.width > 760) {
-          await expect(page.locator(".q-shell__nav"), `${route} desktop navigation`).toBeVisible();
-          await expect(page.locator(".q-shell__actions"), `${route} desktop actions`).toBeVisible();
-          await expect(page.locator(".q-shell__mobile"), `${route} mobile disclosure`).toBeHidden();
+          const navSelector = staticShell ? ".ui-site-nav" : appShell ? ".app-commandbar" : ".q-shell__nav";
+          const actionsSelector = staticShell
+            ? ".ui-site-actions"
+            : appShell
+              ? ".app-commandbar__actions"
+              : ".q-shell__actions";
+          await expect(page.locator(navSelector), `${route} desktop navigation`).toBeVisible();
+          await expect(page.locator(actionsSelector), `${route} desktop actions`).toBeVisible();
+          if (!appShell) {
+            const mobileSelector = staticShell ? ".ui-mobile-menu" : ".q-shell__mobile";
+            await expect(page.locator(mobileSelector), `${route} mobile disclosure`).toBeHidden();
+          }
+
+          if (staticShell) {
+            const themeButton = page.locator(".ui-site-actions .ui-theme-toggle");
+            await expect(themeButton, `${route} desktop moon theme control`).toBeVisible();
+            await expect(themeButton).toHaveAttribute("aria-label", /테마로 변경/);
+            const initialTheme = await page.locator("html").getAttribute("data-theme");
+            await themeButton.click();
+            await expect(page.locator("html")).not.toHaveAttribute("data-theme", initialTheme || "light");
+          }
         }
+
+        const shellClipping = await page.evaluate(() =>
+          [".ui-site-header__inner", ".ui-site-footer__inner"].flatMap((selector) => {
+            const element = document.querySelector(selector);
+            if (!element) return [{ selector, reason: "missing" }];
+            const rect = element.getBoundingClientRect();
+            return element.scrollWidth > element.clientWidth + 1 || rect.width <= 0 || rect.height <= 0
+              ? [{ selector, scrollWidth: element.scrollWidth, clientWidth: element.clientWidth, width: rect.width, height: rect.height }]
+              : [];
+          }),
+        );
+        expect(shellClipping, `${route} header/footer clipping`).toEqual([]);
+
+        const overflow = await horizontalOverflowReport(page);
+        expect(
+          overflow.documentWidth,
+          `${route} at ${viewport.name} overflows ${overflow.viewportWidth}px; offenders: ${JSON.stringify(overflow.offenders)}`,
+        ).toBeLessThanOrEqual(overflow.viewportWidth + 1);
+        expect(consoleErrors, `${route} at ${viewport.name} console health`).toEqual([]);
+
+        if (route === "/developers.html" && viewport.width === 1440) {
+          await page.screenshot({ path: "/tmp/quilo-public-developers-1440.png", fullPage: false });
+        }
+        if (route === "/tools/index.html" && viewport.width === 933) {
+          await page.screenshot({ path: "/tmp/quilo-public-tools-933.png", fullPage: false });
+        }
+
+        if (viewport.width === 1440) {
+          if (APP_ROUTES.includes(route)) {
+            const appName = route.includes("live-translator") ? "live-translator" : "quilo";
+            const download = page.locator(
+              `[data-app-download][data-app="${appName}"][data-platform="mac"]`,
+            ).filter({ hasText: "macOS용 다운로드" });
+            await expect(download, `${route} primary direct-download CTA`).toHaveCount(1);
+            await expect(download).toHaveAttribute(
+              "href",
+              `/api/apps/${appName}/download?platform=mac`,
+            );
+            const [downloadEvent] = await Promise.all([
+              page.waitForEvent("download"),
+              download.click(),
+            ]);
+            expect(downloadEvent.suggestedFilename()).toBe("qa-installer.dmg");
+            await expect(page.locator("[data-app-download-status]")).toContainText("다운로드를 시작했습니다");
+          } else {
+            const startCta = page.locator('.ui-site-actions .ui-site-cta[href="/?report=free"]');
+            await expect(startCta, `${route} primary CTA`).toHaveCount(1);
+            await startCta.click();
+            await expect(page).toHaveURL(`${baseUrl}/?report=free`);
+          }
+        }
+      });
+    }
+  });
+}
+
+for (const viewport of APP_SHELL_VIEWPORTS) {
+  test.describe(`app shell ${viewport.name}`, () => {
+    for (const route of APP_SHELL_ROUTES) {
+      test(`${route} renders CompactAppShell without overflow or console errors`, async ({ page }) => {
+        const consoleErrors = collectConsoleErrors(page);
+        await page.setViewportSize({ width: viewport.width, height: viewport.height });
+        await page.goto(`${baseUrl}${route}`, { waitUntil: "networkidle" });
+
+        await expect(page.locator("[data-app-shell]"), `${route} app shell root`).toHaveCount(1);
+        await expect(page.locator("[data-app-shell]"), `${route} visible app shell`).toBeVisible();
+        await expect(page.locator(".app-commandbar"), `${route} command bar`).toBeVisible();
+        await expect(page.locator("#main-content"), `${route} main landmark`).toHaveCount(1);
+        await expect(page.locator("#main-content"), `${route} visible main content`).toBeVisible();
+        await expect(page.locator("[data-q-shell-root]"), `${route} removed legacy shell root`).toHaveCount(0);
 
         const overflow = await horizontalOverflowReport(page);
         expect(

@@ -28,10 +28,14 @@ export class Quilo {
     this.pdf = new Pdf(this);
     this.reports = new Reports(this);
     this.conversions = new Conversions(this);
+    this.documents = new Documents(this);
+    this.tools = new Tools(this);
     this.studios = new Studios(this);
     this.fileChat = new FileChat(this);
     this.knowledge = new Knowledge(this);
     this.community = new Community(this);
+    this.webhooks = new Webhooks(this);
+    this.integrations = new Integrations(this);
   }
 
   headers({ auth = true, idempotencyKey } = {}) {
@@ -89,6 +93,10 @@ class Jobs {
 
   abort(id) {
     return this.client.json(`/api/v1/jobs/${encodeURIComponent(id)}/abort`, { method: "POST" });
+  }
+
+  email(id) {
+    return this.client.json(`/api/v1/jobs/${encodeURIComponent(id)}/email`, { method: "POST" });
   }
 
   async wait(id, { timeoutMs = 600_000, pollIntervalMs = 2_000 } = {}) {
@@ -164,6 +172,21 @@ class Reports {
     const body = await this.client.json("/api/v1/reports", { method: "POST", body: form, idempotencyKey });
     return { id: body.jobId, status: "running", type, ...body };
   }
+
+  translateCapstone(file, { targetLanguage = "ko", model, idempotencyKey = randomUUID() } = {}) {
+    return this.create({
+      type: "cap-translate",
+      format: "zip",
+      model,
+      fields: {
+        targetLang: targetLanguage,
+        copyrightAccepted: true,
+        academicIntegrityAccepted: true,
+      },
+      files: { cap: file },
+      idempotencyKey,
+    });
+  }
 }
 
 class Conversions {
@@ -173,6 +196,63 @@ class Conversions {
     const form = new FormData();
     await appendFile(form, "docx", file, ".docx");
     const response = await this.client.request("/api/v1/conversions/docx-to-hwpx", { method: "POST", body: form });
+    const output = path.resolve(String(destination));
+    await fs.mkdir(path.dirname(output), { recursive: true });
+    await fs.writeFile(output, Buffer.from(await response.arrayBuffer()), { flag: "wx" });
+    return output;
+  }
+}
+
+class Documents {
+  constructor(client) { this.client = client; }
+
+  async analyzePdf(file) {
+    const form = new FormData();
+    await appendFile(form, "pdf", file, ".pdf");
+    return this.client.json("/api/v1/documents/pdf/analyze", { method: "POST", body: form });
+  }
+
+  async ocrImage(file, { includeBlocks = false } = {}) {
+    const form = new FormData();
+    form.append("includeBlocks", String(includeBlocks));
+    await appendFile(form, "image", file);
+    return this.client.json("/api/v1/documents/images/ocr", { method: "POST", body: form });
+  }
+
+  async convertHwpxEquations(file, destination, { mode = "all" } = {}) {
+    const form = new FormData();
+    form.append("mode", mode);
+    await appendFile(form, "hwpx", file, ".hwpx");
+    const response = await this.client.request("/api/v1/documents/hwpx/equations", { method: "POST", body: form });
+    const output = path.resolve(String(destination));
+    await fs.mkdir(path.dirname(output), { recursive: true });
+    await fs.writeFile(output, Buffer.from(await response.arrayBuffer()), { flag: "wx" });
+    return output;
+  }
+}
+
+class Tools {
+  constructor(client) { this.client = client; }
+
+  wordCount(text) { return this.client.jsonBody("/api/v1/tools/word-count", { text }); }
+  statistics(values) { return this.client.jsonBody("/api/v1/tools/statistics", { values }); }
+  regression(x, y) { return this.client.jsonBody("/api/v1/tools/regression", { x, y }); }
+  units() { return this.client.json("/api/v1/tools/units"); }
+  convertUnit(value, from, to, category) { return this.client.jsonBody("/api/v1/tools/units/convert", { value, from, to, category }); }
+  convertEquation(expression) { return this.client.jsonBody("/api/v1/tools/equations/convert", { expression }); }
+
+  async analyzeTable(file) {
+    const form = new FormData();
+    await appendFile(form, "file", file);
+    return this.client.json("/api/v1/tools/tables/analyze", { method: "POST", body: form });
+  }
+
+  async renderGraph(input, destination) {
+    const response = await this.client.request("/api/v1/tools/graphs", {
+      method: "POST",
+      body: JSON.stringify(input),
+      headers: { "content-type": "application/json", accept: input?.format === "svg" ? "image/svg+xml" : "image/png" },
+    });
     const output = path.resolve(String(destination));
     await fs.mkdir(path.dirname(output), { recursive: true });
     await fs.writeFile(output, Buffer.from(await response.arrayBuffer()), { flag: "wx" });
@@ -195,8 +275,26 @@ class Studios {
     return this.client.jsonBody("/api/v1/studios/vibe/refine", { message, result, history, ...(model ? { model } : {}) });
   }
 
+  generateVibeImage(prompt) {
+    return this.client.jsonBody("/api/v1/studios/vibe/image", { prompt });
+  }
+
   generatePhysics(topic, options = {}) {
     return this.client.jsonBody("/api/v1/studios/physics/generate", { topic, ...options });
+  }
+
+  artifactModels() { return this.client.json("/api/v1/studios/artifacts/models"); }
+  buildArtifact(prompt, options = {}) { return this.client.jsonBody("/api/v1/studios/artifacts/build", { prompt, ...options }); }
+  async artifacts() { return (await this.client.json("/api/v1/studios/artifacts")).artifacts || []; }
+  saveArtifact(input) { return this.client.jsonBody("/api/v1/studios/artifacts", input); }
+  artifact(id) { return this.client.json(`/api/v1/studios/artifacts/${encodeURIComponent(id)}`); }
+  deleteArtifact(id) { return this.client.json(`/api/v1/studios/artifacts/${encodeURIComponent(id)}`, { method: "DELETE" }); }
+  codeModels() { return this.client.json("/api/v1/studios/code/models"); }
+  assistCode(prompt, { code = "", lang = "", model } = {}) {
+    return this.client.jsonBody("/api/v1/studios/code/assist", { prompt, code, lang, ...(model ? { model } : {}) });
+  }
+  buildCodeProject(prompt, { files = [], history = [], model = "auto" } = {}) {
+    return this.client.jsonBody("/api/v1/studios/code/projects", { prompt, project: true, projectFiles: files, history, model, chat: true });
   }
 }
 
@@ -256,6 +354,42 @@ class Community {
 
   vote(postId) {
     return this.client.jsonBody(`/api/v1/community/posts/${encodeURIComponent(postId)}/vote`);
+  }
+}
+
+class Webhooks {
+  constructor(client) { this.client = client; }
+  async list() { return (await this.client.json("/api/v1/webhooks")).webhooks || []; }
+  create(url, { events = ["job.completed"], description = "" } = {}) {
+    return this.client.jsonBody("/api/v1/webhooks", { url, events, description });
+  }
+  remove(id) { return this.client.json(`/api/v1/webhooks/${encodeURIComponent(id)}`, { method: "DELETE" }); }
+  async deliveries({ limit = 25 } = {}) {
+    return (await this.client.json(`/api/v1/webhook-deliveries?limit=${Math.min(100, Math.max(1, limit))}`)).deliveries || [];
+  }
+}
+
+class Integrations {
+  constructor(client) { this.client = client; }
+  status() { return this.client.json("/api/v1/integrations"); }
+  byokStatus() { return this.client.json("/api/v1/integrations/byok"); }
+  dropboxLink(path) {
+    return this.client.json(`/api/v1/integrations/dropbox/link?path=${encodeURIComponent(path)}`);
+  }
+  async googleDriveFiles({ limit = 50 } = {}) {
+    const value = Math.min(100, Math.max(1, Number(limit) || 50));
+    return (await this.client.json(`/api/v1/integrations/google-drive/files?limit=${value}`)).files || [];
+  }
+  async uploadGoogleDrive(file) {
+    const form = new FormData();
+    await appendFile(form, "file", file);
+    return this.client.json("/api/v1/integrations/google-drive/files", { method: "POST", body: form });
+  }
+  createGoogleDoc(title, text) {
+    return this.client.jsonBody("/api/v1/integrations/google-docs", { title, text });
+  }
+  createNotionPage(title, markdown) {
+    return this.client.jsonBody("/api/v1/integrations/notion/pages", { title, markdown });
   }
 }
 

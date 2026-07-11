@@ -17,18 +17,20 @@ const { listFeatures } = require("../lib/quilo-catalog");
 test("catalog represents the broad Quilo product, not only reports", () => {
   const features = listFeatures();
   assert.ok(features.length >= 30);
-  for (const id of ["pdf-translate", "vibe-coding", "file-chat", "community", "lab", "dropbox", "codex-plugin"]) {
+  for (const id of ["pdf-translate", "cap-translate", "image-ocr", "pdf-analysis", "vibe-coding", "file-chat", "community", "lab", "dropbox", "google-drive", "google-docs", "notion", "email-results", "codex-plugin"]) {
     assert.ok(features.some((feature) => feature.id === id), `missing ${id}`);
   }
   assert.ok(new Set(features.map((feature) => feature.category)).size >= 6);
   assert.equal(features.find((feature) => feature.id === "chem-pre").execution, "remote");
   assert.equal(features.find((feature) => feature.id === "pdf-translate").execution, "remote");
-  assert.equal(features.find((feature) => feature.id === "word-count").execution, "local");
+  assert.equal(features.find((feature) => feature.id === "word-count").execution, "hybrid");
   assert.equal(features.find((feature) => feature.id === "lab").execution, "read-only");
   assert.equal(features.find((feature) => feature.id === "phys-inquiry").execution, "paused");
   assert.equal(features.find((feature) => feature.id === "vibe-coding").execution, "remote");
   assert.equal(features.find((feature) => feature.id === "file-chat").execution, "remote");
   assert.equal(features.find((feature) => feature.id === "community").execution, "remote");
+  assert.equal(features.find((feature) => feature.id === "cap-translate").status, "pro");
+  assert.equal(features.find((feature) => feature.id === "cap-translate").execution, "remote");
 });
 
 test("scope normalization rejects unknown permissions", () => {
@@ -152,7 +154,15 @@ test("OpenAPI document is public and generated from the v1 route registry", asyn
   assert.equal(body.paths["/api/v1/pdf-translations"].post["x-quilo-scope"], "translations:write");
   assert.equal(body.paths["/api/v1/pdf-translations/estimate"].post["x-quilo-scope"], "translations:read");
   assert.equal(body.paths["/api/v1/conversions/docx-to-hwpx"].post["x-quilo-scope"], "conversions:write");
+  assert.equal(body.paths["/api/v1/documents/pdf/analyze"].post["x-quilo-scope"], "documents:read");
+  assert.equal(body.paths["/api/v1/documents/hwpx/equations"].post["x-quilo-scope"], "documents:write");
+  assert.equal(body.paths["/api/v1/documents/images/ocr"].post["x-quilo-scope"], "documents:write");
   assert.equal(body.paths["/api/v1/api-requests"].get["x-quilo-scope"], "account:read");
+  assert.equal(body.paths["/api/v1/jobs/{id}/email"].post["x-quilo-scope"], "jobs:write");
+  assert.equal(body.paths["/api/v1/integrations/google-drive/files"].post["x-quilo-scope"], "integrations:write");
+  assert.equal(body.paths["/api/v1/integrations/google-docs"].post["x-quilo-scope"], "integrations:write");
+  assert.equal(body.paths["/api/v1/integrations/notion/pages"].post["x-quilo-scope"], "integrations:write");
+  assert.equal(body.paths["/api/v1/webhooks"].post["x-quilo-scope"], "webhooks:write");
   assert.ok(body.components.securitySchemes.bearerAuth["x-scopes"]["account:read"]);
 });
 
@@ -207,6 +217,7 @@ test("PDF translation and conversion routes require their own scopes", async (t)
   const chain = {
     select() { return this; }, eq() { return this; }, is() { return this; }, gt() { return this; },
     update() { return this; },
+    insert() { return { select() { return this; }, single() { return Promise.resolve({ data: { id: "idem-1" }, error: null }); }, then(resolve) { return Promise.resolve(resolve({ error: null })); } }; },
     maybeSingle() { return Promise.resolve({ data: tokenRow, error: null }); },
     then(resolve) { return Promise.resolve(resolve({ data: null, error: null })); },
   };
@@ -223,7 +234,7 @@ test("PDF translation and conversion routes require their own scopes", async (t)
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.after(() => server.close());
   const { port } = server.address();
-  const headers = { authorization: `Bearer ${rawToken}` };
+  const headers = { authorization: `Bearer ${rawToken}`, "idempotency-key": "test-request-1234" };
 
   for (const [path, route] of [
     ["/api/v1/pdf-translations/estimate", "estimate"],
@@ -232,6 +243,45 @@ test("PDF translation and conversion routes require their own scopes", async (t)
   ]) {
     const response = await fetch(`http://127.0.0.1:${port}${path}`, { method: "POST", headers });
     assert.equal(response.status, 200);
+    assert.equal((await response.json()).route, route);
+  }
+});
+
+test("document analysis and processing routes use separate read and write scopes", async (t) => {
+  const rawToken = `quilo_deadbeef_${"F".repeat(43)}`;
+  const tokenRow = {
+    id: "token-documents",
+    user_id: "user-1",
+    name: "documents",
+    token_prefix: "deadbeef",
+    scopes: ["documents:read", "documents:write"],
+    expires_at: new Date(Date.now() + 60000).toISOString(),
+  };
+  const chain = {
+    select() { return this; }, eq() { return this; }, is() { return this; }, gt() { return this; }, update() { return this; },
+    maybeSingle() { return Promise.resolve({ data: tokenRow, error: null }); },
+    then(resolve) { return Promise.resolve(resolve({ data: null, error: null })); },
+  };
+  const supa = {
+    getClient: () => ({ from: () => Object.create(chain) }),
+    findUserById: async () => ({ id: "user-1", name: "민준", approved: true, email_verified: true }),
+  };
+  const app = express();
+  app.use(createExternalApiMiddleware({ supa }));
+  app.post("/api/tools/pdf/analyze", (_req, res) => res.json({ route: "pdf-analysis" }));
+  app.post("/api/tools/hwpx/equations", (_req, res) => res.json({ route: "equations" }));
+  app.post("/api/tools/images/ocr", (_req, res) => res.json({ route: "ocr" }));
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => server.close());
+  const headers = { authorization: `Bearer ${rawToken}` };
+  for (const [path, route] of [
+    ["/api/v1/documents/pdf/analyze", "pdf-analysis"],
+    ["/api/v1/documents/hwpx/equations", "equations"],
+    ["/api/v1/documents/images/ocr", "ocr"],
+  ]) {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}${path}`, { method: "POST", headers });
+    assert.equal(response.status, 200, path);
     assert.equal((await response.json()).route, route);
   }
 });

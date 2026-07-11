@@ -7,6 +7,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("createTokenBtn").addEventListener("click", createToken);
   $("copyTokenBtn").addEventListener("click", copyToken);
   $("catalogSearch").addEventListener("input", renderCatalog);
+  $("refreshLogsBtn").addEventListener("click", loadApiRequests);
   void Promise.all([loadStatus(), loadCatalog(), loadAccount()]);
 });
 
@@ -36,6 +37,7 @@ async function loadAccount() {
     $("loginLink").textContent = "Quilo로 돌아가기";
     $("loginLink").href = "/";
     await loadTokens();
+    await loadApiRequests();
   } catch (_) {
     state.loggedIn = false;
     $("accountStatus").textContent = "토큰을 만들려면 Quilo 로그인이 필요합니다.";
@@ -94,7 +96,7 @@ async function createToken() {
     const data = await api("/api/integrations/tokens", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ name: $("tokenName").value, expiresInDays: Number($("tokenDays").value), scopes }),
+      body: JSON.stringify({ name: $("tokenName").value, expiresInDays: Number($("tokenDays").value), mode: $("tokenMode").value, scopes }),
     });
     $("tokenSecret").hidden = false;
     $("tokenValue").textContent = data.token;
@@ -120,8 +122,27 @@ function renderTokens(tokens) {
     $("tokenList").innerHTML = '<p class="dev-muted">아직 발급한 토큰이 없습니다.</p>';
     return;
   }
-  $("tokenList").innerHTML = tokens.map((token) => `<div class="token-row"><div><b>${escapeHtml(token.name)}</b> <small>quilo_${escapeHtml(token.prefix)}_…</small><br /><small>${escapeHtml((token.scopes || []).join(" · "))} · ${formatDate(token.expiresAt)} 만료${token.revokedAt ? " · 폐기됨" : ""}</small></div>${token.revokedAt ? "" : `<button type="button" data-revoke="${escapeAttr(token.id)}">폐기</button>`}</div>`).join("");
+  $("tokenList").innerHTML = tokens.map((token) => `<div class="token-row"><div><b>${escapeHtml(token.name)}</b> <span class="badge ${token.mode === "test" ? "beta" : "active"}">${token.mode === "test" ? "TEST" : "LIVE"}</span> <small>quilo_${escapeHtml(token.mode || "live")}_${escapeHtml(token.prefix)}_…</small><br /><small>${escapeHtml((token.scopes || []).join(" · "))} · ${formatDate(token.expiresAt)} 만료${token.revokedAt ? " · 폐기됨" : ""}</small></div>${token.revokedAt ? "" : `<button type="button" data-revoke="${escapeAttr(token.id)}">폐기</button>`}</div>`).join("");
   document.querySelectorAll("[data-revoke]").forEach((button) => button.addEventListener("click", () => revokeToken(button.dataset.revoke)));
+}
+
+async function loadApiRequests() {
+  if (!state.loggedIn) return;
+  try {
+    const data = await api("/api/integrations/api-requests?limit=50");
+    const rows = data.requests || [];
+    $("apiLogBody").innerHTML = rows.length ? rows.map((item) => {
+      const ok = Number(item.status) < 400;
+      return `<tr><td>${escapeHtml(formatDateTime(item.createdAt))}</td><td><b>${escapeHtml(item.method)}</b> <code>${escapeHtml(item.path)}</code><br /><small>${escapeHtml(item.scope)}</small></td><td class="${ok ? "status-ok" : "status-error"}">${escapeHtml(item.status)}</td><td>${escapeHtml(item.durationMs)} ms</td><td>${escapeHtml(item.errorCode || "-")}</td><td><code>${escapeHtml(item.requestId)}</code></td></tr>`;
+    }).join("") : '<tr><td colspan="6" class="dev-muted">아직 기록된 API 요청이 없습니다.</td></tr>';
+  } catch (error) {
+    $("apiLogBody").innerHTML = `<tr><td colspan="6" class="status-error">${escapeHtml(error.message)}</td></tr>`;
+  }
+}
+
+function formatDateTime(value) {
+  if (!value) return "-";
+  return new Intl.DateTimeFormat("ko-KR", { dateStyle: "short", timeStyle: "medium" }).format(new Date(value));
 }
 
 async function revokeToken(id) {

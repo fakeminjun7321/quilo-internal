@@ -673,7 +673,6 @@ const READING_LOG_TYPES = new Set(["reading-log", "reading-log-bulk"]);
 const RETIRED_TYPES = new Set([
   "eng-exam-prep",
   "korean-lit-exam",
-  "cap-translate",
   "phys-mock-exam",
   "phys-inquiry",
   "math-inquiry",
@@ -733,6 +732,7 @@ const {
 } = pricing;
 const supa = require("./lib/supabase");
 const externalApi = require("./lib/external-api");
+const apiWebhooks = require("./lib/api-v1/webhooks");
 const byok = require("./lib/byok");
 const dbx = require("./lib/cloud/dropbox");
 const { krwToUsd, usdToKrw, getKrwPerUsd } = require("./lib/exchange-rate");
@@ -1219,6 +1219,30 @@ function requireAdminOrBeta(key) {
   };
 }
 
+// Pro 공통 게이트: 특정 베타 key 하나가 아니라 Pro 기능을 하나 이상 보유한 사용자와
+// Max 구독자를 허용한다. 외부 API 토큰도 req.apiUser의 실제 계정 기준으로 판정한다.
+async function requireProMember(req, res, next) {
+  let u;
+  try {
+    u = await refreshSessionUser(req, { failClosed: true });
+  } catch (e) {
+    console.warn("[auth] pro privilege refresh failed:", e.message);
+    return res.status(503).json({ error: "권한 확인 중 오류가 발생했습니다." });
+  }
+  if (!u) return res.status(401).json({ error: "로그인이 필요합니다." });
+  if (u.isAdmin) return next();
+  try {
+    const [features, maxSub] = await Promise.all([
+      supa.getUserBetaFeatures(u.id),
+      supa.getActiveBackgroundSub(u.id),
+    ]);
+    if ((Array.isArray(features) && features.length > 0) || maxSub) return next();
+  } catch (_) {
+    // 권한 저장소가 불확실할 때 유료 제공자 호출을 허용하지 않는다.
+  }
+  return res.status(403).json({ error: "이 기능은 Pro 회원 전용입니다." });
+}
+
 // Max 회원 게이트: 관리자 또는 활성 백그라운드 구독(=Max) 보유자만 통과.
 // (옛 '프리미엄'. 부여는 관리자 수동 또는 입금 신청 승인 — lib/subscription-routes.js)
 function requireMax() {
@@ -1401,6 +1425,24 @@ function pushProgress(job, msg) {
   job.listeners.forEach((res) => sendSse(res, "progress", line));
 }
 
+function emitJobWebhook(job, event) {
+  void apiWebhooks.dispatchJobEvent({
+    supa,
+    userId: job?.userInfo?.id,
+    event,
+    encryptionKey: process.env.WEBHOOK_SECRET_KEY || SESSION_SECRET,
+    payload: {
+      id: job?.id,
+      type: job?.reportType || "",
+      status: job?.status || "unknown",
+      filename: job?.filename || null,
+      fileId: job?.fileId || null,
+      error: event === "job.failed" ? job?.error || null : null,
+      createdAt: job?.createdAt ? new Date(job.createdAt).toISOString() : null,
+    },
+  });
+}
+
 function sendSse(res, event, data) {
   if (res.writableEnded) return;
   res.write(`event: ${event}\n`);
@@ -1538,10 +1580,15 @@ app.post("/api/login", async (req, res) => {
       success: true,
     });
     console.log(`[login] ${user.name} (admin=${user.is_admin})`);
+    const oauthRedirect = req.session?.oauthReturn && String(req.session.oauthReturn).startsWith("/oauth/authorize?")
+      ? String(req.session.oauthReturn)
+      : null;
+    if (req.session) delete req.session.oauthReturn;
     return res.json({
       ok: true,
       user: user.name,
       isAdmin: !!user.is_admin,
+      redirect: oauthRedirect,
     });
   } catch (e) {
     console.error("[login] error:", e);
@@ -3847,6 +3894,7 @@ app.post(
       async (err) => {
         job.status = "error";
         job.error = err.message || String(err);
+        emitJobWebhook(job, "job.failed");
         pushProgress(job, `❌ 오류: ${job.error}`);
         // P1: 실패/중단(자동중단·타임아웃·에러) 시 선예약 크레딧 전액 환불(아직 정산 안 됐으면).
         await settleReservationOnFailure(job);
@@ -4292,7 +4340,9 @@ app.post(
         const freshUser = await supa.findUserById(userInfo.id);
         if (freshUser) {
           effectiveIsAdmin = !!freshUser.is_admin;
-          req.session.userInfo.isAdmin = effectiveIsAdmin;
+          const authUser = req.apiUser || (req.session && req.session.userInfo);
+          if (authUser) authUser.isAdmin = req.apiUser ? false : effectiveIsAdmin;
+          if (req.apiUser) effectiveIsAdmin = false;
         }
       } catch (e) {
         console.warn("[translate-pdf] privilege lookup failed:", e.message);
@@ -4491,6 +4541,7 @@ app.post(
     }).catch((err) => {
       job.status = "error";
       job.error = err.message || String(err);
+      emitJobWebhook(job, "job.failed");
       pushProgress(job, `❌ 오류: ${job.error}`);
       if (job.background) persistBgJob(job);
       job.listeners.forEach((r) => {
@@ -5434,6 +5485,7 @@ async function runPdfTranslation(
       job.fileId = entry.fileId;
     }
     job.status = "done";
+    emitJobWebhook(job, "job.completed");
 
     // 백그라운드: 작업 레코드 갱신 + 완료 이메일(옵트인 시 1회).
     if (job.background) {
@@ -5644,6 +5696,7 @@ async function persistBgJob(job) {
 
 // 백그라운드 작업 완료 이메일(Resend). 옵트인 + 이메일 보유 시에만 1회.
 async function notifyBgJobDone(job) {
+  if (job?.notified) return;
   if (
     !job ||
     !job.background ||
@@ -6068,6 +6121,7 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
       }
     }
     job.status = "done";
+    emitJobWebhook(job, "job.completed");
 
     const totalSec = Math.floor((Date.now() - t0) / 1000);
     pushProgress(
@@ -6247,6 +6301,26 @@ app.post("/api/jobs/:id/abort", requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+app.post("/api/jobs/:id/email", requireAuth, async (req, res) => {
+  const user = getSessionUser(req);
+  if (!user?.id) return res.status(401).json({ error: "로그인이 필요합니다." });
+  let job = jobs.get(req.params.id) || null;
+  if (job && job.userInfo?.id !== user.id) return res.status(404).json({ error: "작업을 찾을 수 없습니다." });
+  if (!job && supa.isEnabled()) {
+    const stored = await supa.getReportJob(user.id, req.params.id);
+    if (stored) job = { ...stored, userInfo: user, progress: stored.progress || [], background: true, notifyEmail: true };
+  }
+  if (!job) return res.status(404).json({ error: "작업을 찾을 수 없습니다." });
+  if (!new Set(["done", "completed"]).has(job.status)) return res.status(409).json({ error: "완료된 작업만 이메일로 보낼 수 있습니다." });
+  if (!job.fileId && !job.cloudProvider) return res.status(409).json({ error: "파일함 또는 클라우드에 저장된 결과가 없습니다." });
+  if (job.notified) return res.json({ ok: true, alreadySent: true });
+  job.background = true;
+  job.notifyEmail = true;
+  await notifyBgJobDone(job);
+  if (!job.notified) return res.status(422).json({ error: "계정 이메일이 없거나 이메일 전송이 설정되지 않았습니다." });
+  return res.json({ ok: true, sent: true });
+});
+
 // SSE stream
 app.get("/api/jobs/:id/stream", requireAuth, (req, res) => {
   const job = jobs.get(req.params.id);
@@ -6325,8 +6399,9 @@ app.get("/api/jobs/:id/download", requireAuth, (req, res) => {
 // ── 클라우드 저장소(Dropbox) 연동 ─────────────────────────────────────────────
 function appBaseUrl(req) {
   const env = (
-    process.env.RENDER_EXTERNAL_URL ||
+    process.env.PUBLIC_BASE_URL ||
     process.env.APP_BASE_URL ||
+    process.env.RENDER_EXTERNAL_URL ||
     ""
   ).replace(/\/+$/, "");
   if (env) return env;
@@ -6337,6 +6412,21 @@ function appBaseUrl(req) {
 }
 const dropboxRedirectUri = (req) => `${appBaseUrl(req)}/api/cloud/dropbox/callback`;
 
+app.use(
+  require("./lib/mcp/oauth").createMcpOAuthRouter({ supa, getSessionUser, baseUrl: appBaseUrl }),
+);
+app.use("/mcp", require("./lib/mcp/server").createMcpRouter({ baseUrl: appBaseUrl, supa }));
+
+app.use(
+  "/api/cloud",
+  require("./lib/cloud/integration-routes").createCloudIntegrationRouter({
+    requireAuth,
+    getSessionUser,
+    supa,
+    baseUrl: appBaseUrl,
+  }),
+);
+
 // Quilo 전체 기능 카탈로그(공개) + 외부 API 토큰 관리(브라우저 로그인) +
 // 범위 제한 Bearer API. 플러그인은 하드코딩 대신 이 카탈로그를 원본으로 사용한다.
 app.use("/api/catalog", externalApi.createCatalogRouter());
@@ -6346,8 +6436,26 @@ app.use(
   externalApi.createTokenRouter({ supa, getSessionUser }),
 );
 app.use(
+  "/api/integrations",
+  apiWebhooks.createWebhookRouter({ supa, getSessionUser, encryptionKey: process.env.WEBHOOK_SECRET_KEY || SESSION_SECRET }),
+);
+app.use(
   "/api/v1",
   externalApi.createV1Router({ supa, getRuntimeJob: (jobId) => jobs.get(jobId) || null }),
+);
+app.use(
+  "/api/tools",
+  require("./lib/document-tools/routes").createDocumentToolRouter({
+    requireAuth,
+    requirePro: requireProMember,
+    analyzePdf,
+    getSessionUser,
+    rateLimit,
+  }),
+);
+app.use(
+  "/api/tools",
+  require("./lib/calculation-tools/routes").createCalculationToolRouter({ requireAuth }),
 );
 
 // 커뮤니티 API (건의·기능요청 게시판) — 라우터 모듈 마운트(읽기 공개, 작성/공감/댓글 로그인).

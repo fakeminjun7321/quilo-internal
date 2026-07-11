@@ -38,7 +38,7 @@
     .scope-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin:14px 0; }
     .scope-item { display:flex; gap:9px; align-items:flex-start; padding:11px; border:1px solid #e0e6f2; border-radius:12px; background:#f9faff; }
     .scope-item input { margin-top:3px; }
-    .token-form { display:grid; grid-template-columns:minmax(0,1fr) 120px; gap:10px; }
+    .token-form { display:grid; grid-template-columns:minmax(0,1fr) 120px 120px; gap:10px; }
     .token-form input,.token-form select { width:100%; box-sizing:border-box; border:1px solid #ccd6e8; border-radius:11px; padding:11px 12px; background:#fff; }
     .token-secret { margin-top:14px; padding:15px; border:1px solid #aadccf; border-radius:14px; background:#edfbf7; }
     .token-secret code { display:block; margin:9px 0; padding:12px; border-radius:10px; overflow:auto; color:#d9e8ff; background:#11203e; }
@@ -46,6 +46,10 @@
     .token-row { display:flex; justify-content:space-between; gap:16px; align-items:center; padding:13px; border:1px solid #e2e7f1; border-radius:13px; }
     .token-row small { color:#7d889c; }
     .token-row button { border:0; border-radius:9px; padding:8px 10px; color:#a3233c; background:#fff0f3; cursor:pointer; }
+    .api-log { width:100%; border-collapse:collapse; margin-top:14px; font-size:13px; }
+    .api-log th,.api-log td { padding:10px 8px; border-bottom:1px solid #e5e9f2; text-align:left; vertical-align:top; }
+    .api-log code { color:#243c85; background:#eef2ff; padding:2px 5px; border-radius:5px; }
+    .status-ok { color:#08714c; font-weight:750; } .status-error { color:#b4233f; font-weight:750; }
     .catalog-head { display:flex; align-items:end; justify-content:space-between; gap:16px; margin-bottom:18px; }
     .catalog-search { width:min(360px,100%); border:1px solid #ccd6e8; border-radius:12px; padding:11px 13px; }
     .category { margin-top:28px; }
@@ -74,7 +78,7 @@
     </nav>
 
     <section class="dev-hero">
-      <span class="dev-kicker">Codex plugin · API v1</span>
+      <span class="dev-kicker">ChatGPT app · Codex plugin · API v1</span>
       <h1>Quilo 전체를<br />Codex와 연결하세요.</h1>
       <p>보고서 생성기 하나가 아닙니다. 번역, 학습, 창작, 코딩, 파일, 커뮤니티와 내 작업까지 하나의 기능 카탈로그와 범위 제한 API로 연결합니다.</p>
       <div class="dev-actions"><a class="dev-btn" href="#connect">플러그인 연결</a><a class="dev-btn secondary" href="#catalog">전체 기능 보기</a></div>
@@ -102,12 +106,26 @@ GET  /api/v1/files
 POST /api/v1/reports</code></pre>
       </section>
 
+      <section class="dev-card wide">
+        <h2>ChatGPT에 Quilo 연결</h2>
+        <p class="dev-muted">원격 MCP는 Quilo 로그인과 OAuth 2.1 + PKCE를 사용합니다. 액세스 토큰을 대화창에 붙여 넣지 않아도 되고, 연결할 때 권한을 직접 확인합니다.</p>
+        <pre><code>Remote MCP URL  https://quilolab.com/mcp
+OAuth metadata  https://quilolab.com/.well-known/oauth-protected-resource/mcp</code></pre>
+        <ol class="dev-muted">
+          <li>ChatGPT 설정의 <b>Security and login</b>에서 Developer Mode를 켭니다.</li>
+          <li>Plugins에서 새 개발자 앱을 추가하고 위 Remote MCP URL을 입력합니다.</li>
+          <li>Quilo 로그인 후 권한 화면에서 연결을 허용합니다.</li>
+        </ol>
+        <div class="dev-actions"><a class="dev-btn dark" href="https://chatgpt.com/plugins" target="_blank" rel="noopener">ChatGPT Plugins 열기</a><a class="dev-btn" href="https://developers.openai.com/apps-sdk/deploy/connect-chatgpt" target="_blank" rel="noopener">공식 연결 가이드</a></div>
+      </section>
+
       <section class="dev-card wide" id="tokenCard">
         <h2>Codex 액세스 토큰</h2>
         <p class="dev-muted">토큰은 생성 직후 한 번만 표시됩니다. 비밀번호나 브라우저 세션 쿠키를 플러그인에 입력하지 마세요.</p>
         <div class="token-form">
           <input id="tokenName" maxlength="80" value="Codex on my Mac" aria-label="토큰 이름" />
           <select id="tokenDays" aria-label="만료 기간"><option value="30">30일</option><option value="90">90일</option><option value="365">1년</option></select>
+          <select id="tokenMode" aria-label="토큰 환경"><option value="test">Test · 무과금</option><option value="live">Live · 실제 실행</option></select>
         </div>
         <div class="scope-grid" id="scopeGrid">
           <label class="scope-item"><input type="checkbox" value="account:read" checked /><span><b>계정 읽기</b><br /><small>등급·크레딧 확인</small></span></label>
@@ -124,6 +142,13 @@ POST /api/v1/reports</code></pre>
           <label class="scope-item"><input type="checkbox" value="knowledge:read" /><span><b>Quilo Lab</b><br /><small>기술 문서 읽기</small></span></label>
           <label class="scope-item"><input type="checkbox" value="community:read" /><span><b>커뮤니티 읽기</b><br /><small>게시글·댓글 확인</small></span></label>
           <label class="scope-item"><input type="checkbox" value="community:write" /><span><b>커뮤니티 쓰기</b><br /><small>글·댓글·공감 작성</small></span></label>
+          <label class="scope-item"><input type="checkbox" value="documents:read" /><span><b>문서 분석</b><br /><small>PDF 구조 분석</small></span></label>
+          <label class="scope-item"><input type="checkbox" value="documents:write" /><span><b>문서 처리</b><br /><small>OCR·HWPX 수식 변환</small></span></label>
+          <label class="scope-item"><input type="checkbox" value="tools:read" /><span><b>계산 도구</b><br /><small>통계·회귀·그래프·단위</small></span></label>
+          <label class="scope-item"><input type="checkbox" value="webhooks:read" /><span><b>Webhook 읽기</b><br /><small>endpoint·전송 기록</small></span></label>
+          <label class="scope-item"><input type="checkbox" value="webhooks:write" /><span><b>Webhook 관리</b><br /><small>endpoint 생성·삭제</small></span></label>
+          <label class="scope-item"><input type="checkbox" value="integrations:read" /><span><b>외부 연동 읽기</b><br /><small>Dropbox·Google·Notion·BYOK 상태</small></span></label>
+          <label class="scope-item"><input type="checkbox" value="integrations:write" /><span><b>외부 연동 쓰기</b><br /><small>Drive 업로드·Docs·Notion 생성</small></span></label>
         </div>
         <button class="dev-btn dark" id="createTokenBtn" type="button">새 토큰 만들기</button>
         <p class="dev-muted" id="tokenMessage" aria-live="polite"></p>
@@ -131,10 +156,15 @@ POST /api/v1/reports</code></pre>
         <div class="token-list" id="tokenList"></div>
       </section>
 
+      <section class="dev-card wide" id="apiLogsCard">
+        <div class="catalog-head"><div><h2>API 사용·오류 기록</h2><p class="dev-muted">최근 외부 API 요청의 상태, 지연시간과 오류 코드를 확인합니다.</p></div><button class="dev-btn dark" type="button" id="refreshLogsBtn">새로고침</button></div>
+        <div style="overflow:auto"><table class="api-log"><thead><tr><th>시간</th><th>요청</th><th>상태</th><th>지연</th><th>오류</th><th>Request ID</th></tr></thead><tbody id="apiLogBody"><tr><td colspan="6" class="dev-muted">로그인 후 표시됩니다.</td></tr></tbody></table></div>
+      </section>
+
       <section class="dev-card wide">
         <h2>로컬 플러그인에 연결</h2>
         <p class="dev-muted">발급한 토큰을 로컬 자격 증명 파일에 저장하면 Quilo 플러그인이 계정·작업·파일 도구를 활성화합니다. 파일 업로드·다운로드는 명시한 폴더 안에서만 허용됩니다.</p>
-        <pre><code>node ~/plugins/quilo/scripts/configure.mjs 'quilo_...'
+        <pre><code>node ~/plugins/quilo/scripts/configure.mjs 'quilo_live_...'
 export QUILO_UPLOAD_ROOTS="$HOME/Downloads:$HOME/Documents/Quilo"
 codex plugin add quilo@personal</code></pre>
         <p class="dev-muted">새로운 Codex task를 열어 <b>“Quilo에서 내가 쓸 수 있는 기능 찾아줘”</b>라고 말해보세요.</p>

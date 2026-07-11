@@ -7,12 +7,28 @@ create table if not exists user_access_tokens (
   name text not null check (char_length(name) between 1 and 80),
   token_hash text not null unique check (char_length(token_hash) = 64),
   token_prefix text not null check (char_length(token_prefix) = 8),
+  token_mode text not null default 'live' check (token_mode in ('live', 'test')),
+  audience text,
   scopes jsonb not null default '[]'::jsonb,
   expires_at timestamptz not null,
   last_used_at timestamptz,
   revoked_at timestamptz,
   created_at timestamptz not null default now()
 );
+
+alter table user_access_tokens add column if not exists token_mode text not null default 'live';
+alter table user_access_tokens add column if not exists audience text;
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'user_access_tokens_token_mode_check'
+      and conrelid = 'public.user_access_tokens'::regclass
+  ) then
+    alter table public.user_access_tokens
+      add constraint user_access_tokens_token_mode_check check (token_mode in ('live', 'test'));
+  end if;
+end $$;
 
 create index if not exists user_access_tokens_user_idx
   on user_access_tokens (user_id, created_at desc);

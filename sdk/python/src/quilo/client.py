@@ -32,10 +32,14 @@ class QuiloClient:
         self.pdf = PdfResource(self)
         self.reports = ReportsResource(self)
         self.conversions = ConversionsResource(self)
+        self.documents = DocumentsResource(self)
+        self.tools = ToolsResource(self)
         self.studios = StudiosResource(self)
         self.file_chat = FileChatResource(self)
         self.knowledge = KnowledgeResource(self)
         self.community = CommunityResource(self)
+        self.webhooks = WebhooksResource(self)
+        self.integrations = IntegrationsResource(self)
 
     def _headers(self, *, auth: bool = True, idempotency_key: str | None = None) -> dict[str, str]:
         headers = {"Accept": "application/json", "User-Agent": "quilo-python/0.1.0"}
@@ -113,6 +117,9 @@ class JobsResource:
 
     def abort(self, job_id: str) -> dict[str, Any]:
         return self._client._json(f"/api/v1/jobs/{job_id}/abort", method="POST")
+
+    def email(self, job_id: str) -> dict[str, Any]:
+        return self._client._json(f"/api/v1/jobs/{job_id}/email", method="POST")
 
     def wait(self, job_id: str, *, timeout: float = 600.0, poll_interval: float = 2.0) -> Job:
         deadline = time.monotonic() + timeout
@@ -232,6 +239,27 @@ class ReportsResource:
         )
         return Job.from_dict(body)
 
+    def translate_capstone(
+        self,
+        file: str | os.PathLike[str],
+        *,
+        target_language: str = "ko",
+        model: str | None = None,
+        idempotency_key: str | None = None,
+    ) -> Job:
+        return self.create(
+            type="cap-translate",
+            format="zip",
+            model=model,
+            fields={
+                "targetLang": target_language,
+                "copyrightAccepted": True,
+                "academicIntegrityAccepted": True,
+            },
+            files={"cap": file},
+            idempotency_key=idempotency_key,
+        )
+
 
 class ConversionsResource:
     def __init__(self, client: QuiloClient) -> None:
@@ -245,6 +273,93 @@ class ConversionsResource:
         )
         if not hasattr(response, "body"):
             raise QuiloError("Quilo conversion returned JSON instead of an HWPX file")
+        output = Path(destination).expanduser()
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(response.body)
+        return output.resolve()
+
+
+class DocumentsResource:
+    def __init__(self, client: QuiloClient) -> None:
+        self._client = client
+
+    def analyze_pdf(self, file: str | os.PathLike[str]) -> dict[str, Any]:
+        return self._client._multipart(
+            "/api/v1/documents/pdf/analyze",
+            fields={},
+            files=[("pdf", file, "application/pdf")],
+        )
+
+    def ocr_image(self, file: str | os.PathLike[str], *, include_blocks: bool = False) -> dict[str, Any]:
+        return self._client._multipart(
+            "/api/v1/documents/images/ocr",
+            fields={"includeBlocks": include_blocks},
+            files=[("image", file, None)],
+        )
+
+    def convert_hwpx_equations(
+        self,
+        file: str | os.PathLike[str],
+        destination: str | os.PathLike[str],
+        *,
+        mode: str = "all",
+    ) -> Path:
+        response = self._client._multipart(
+            "/api/v1/documents/hwpx/equations",
+            fields={"mode": mode},
+            files=[("hwpx", file, "application/vnd.hancom.hwpx")],
+        )
+        if not hasattr(response, "body"):
+            raise QuiloError("Quilo equation conversion returned JSON instead of an HWPX file")
+        output = Path(destination).expanduser()
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(response.body)
+        return output.resolve()
+
+
+class ToolsResource:
+    def __init__(self, client: QuiloClient) -> None:
+        self._client = client
+
+    def word_count(self, text: str) -> dict[str, Any]:
+        return self._client._json_body("/api/v1/tools/word-count", {"text": text})
+
+    def statistics(self, values: Sequence[float]) -> dict[str, Any]:
+        return self._client._json_body("/api/v1/tools/statistics", {"values": list(values)})
+
+    def regression(self, x: Sequence[float], y: Sequence[float]) -> dict[str, Any]:
+        return self._client._json_body("/api/v1/tools/regression", {"x": list(x), "y": list(y)})
+
+    def units(self) -> dict[str, Any]:
+        return self._client._json("/api/v1/tools/units")
+
+    def convert_unit(self, value: float, from_unit: str, to_unit: str, category: str) -> dict[str, Any]:
+        return self._client._json_body(
+            "/api/v1/tools/units/convert",
+            {"value": value, "from": from_unit, "to": to_unit, "category": category},
+        )
+
+    def convert_equation(self, expression: str) -> dict[str, Any]:
+        return self._client._json_body("/api/v1/tools/equations/convert", {"expression": expression})
+
+    def analyze_table(self, file: str | os.PathLike[str]) -> dict[str, Any]:
+        return self._client._multipart(
+            "/api/v1/tools/tables/analyze",
+            fields={},
+            files=[("file", file, None)],
+        )
+
+    def render_graph(self, graph: Mapping[str, Any], destination: str | os.PathLike[str]) -> Path:
+        payload = json.dumps(dict(graph), ensure_ascii=False).encode("utf-8")
+        headers = self._client._headers()
+        headers["Content-Type"] = "application/json"
+        response = request(
+            self._client.base_url + "/api/v1/tools/graphs",
+            method="POST",
+            headers=headers,
+            body=payload,
+            timeout=self._client.timeout,
+        )
         output = Path(destination).expanduser()
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_bytes(response.body)
@@ -267,8 +382,51 @@ class StudiosResource:
             body["model"] = model
         return self._client._json_body("/api/v1/studios/vibe/refine", body)
 
+    def generate_vibe_image(self, prompt: str) -> dict[str, Any]:
+        return self._client._json_body("/api/v1/studios/vibe/image", {"prompt": prompt})
+
     def generate_physics(self, topic: str, **options: Any) -> dict[str, Any]:
         return self._client._json_body("/api/v1/studios/physics/generate", {"topic": topic, **options})
+
+    def artifact_models(self) -> dict[str, Any]:
+        return self._client._json("/api/v1/studios/artifacts/models")
+
+    def build_artifact(self, prompt: str, **options: Any) -> dict[str, Any]:
+        return self._client._json_body("/api/v1/studios/artifacts/build", {"prompt": prompt, **options})
+
+    def artifacts(self) -> list[dict[str, Any]]:
+        return list(self._client._json("/api/v1/studios/artifacts").get("artifacts") or [])
+
+    def save_artifact(self, title: str, html: str, **options: Any) -> dict[str, Any]:
+        return self._client._json_body("/api/v1/studios/artifacts", {"title": title, "html": html, **options})
+
+    def artifact(self, artifact_id: str) -> dict[str, Any]:
+        return self._client._json(f"/api/v1/studios/artifacts/{artifact_id}")
+
+    def delete_artifact(self, artifact_id: str) -> dict[str, Any]:
+        return self._client._json(f"/api/v1/studios/artifacts/{artifact_id}", method="DELETE")
+
+    def code_models(self) -> dict[str, Any]:
+        return self._client._json("/api/v1/studios/code/models")
+
+    def assist_code(self, prompt: str, *, code: str = "", lang: str = "", model: str | None = None) -> dict[str, Any]:
+        body = {"prompt": prompt, "code": code, "lang": lang}
+        if model:
+            body["model"] = model
+        return self._client._json_body("/api/v1/studios/code/assist", body)
+
+    def build_code_project(
+        self,
+        prompt: str,
+        *,
+        files: Sequence[Mapping[str, Any]] | None = None,
+        history: Sequence[Mapping[str, Any]] | None = None,
+        model: str = "auto",
+    ) -> dict[str, Any]:
+        return self._client._json_body(
+            "/api/v1/studios/code/projects",
+            {"prompt": prompt, "project": True, "projectFiles": list(files or []), "history": list(history or []), "model": model, "chat": True},
+        )
 
 
 class FileChatResource:
@@ -336,3 +494,55 @@ class CommunityResource:
 
     def vote(self, post_id: str) -> dict[str, Any]:
         return self._client._json_body(f"/api/v1/community/posts/{post_id}/vote")
+
+
+class WebhooksResource:
+    def __init__(self, client: QuiloClient) -> None:
+        self._client = client
+
+    def list(self) -> list[dict[str, Any]]:
+        return list(self._client._json("/api/v1/webhooks").get("webhooks") or [])
+
+    def create(self, url: str, *, events: Sequence[str] | None = None, description: str = "") -> dict[str, Any]:
+        return self._client._json_body(
+            "/api/v1/webhooks",
+            {"url": url, "events": list(events or ["job.completed"]), "description": description},
+        )
+
+    def remove(self, webhook_id: str) -> dict[str, Any]:
+        return self._client._json(f"/api/v1/webhooks/{webhook_id}", method="DELETE")
+
+    def deliveries(self, *, limit: int = 25) -> list[dict[str, Any]]:
+        bounded = min(100, max(1, int(limit)))
+        return list(self._client._json(f"/api/v1/webhook-deliveries?limit={bounded}").get("deliveries") or [])
+
+
+class IntegrationsResource:
+    def __init__(self, client: QuiloClient) -> None:
+        self._client = client
+
+    def status(self) -> dict[str, Any]:
+        return self._client._json("/api/v1/integrations")
+
+    def byok_status(self) -> dict[str, Any]:
+        return self._client._json("/api/v1/integrations/byok")
+
+    def dropbox_link(self, path: str) -> dict[str, Any]:
+        return self._client._json(f"/api/v1/integrations/dropbox/link?{query_string({'path': path})}")
+
+    def google_drive_files(self, *, limit: int = 50) -> list[dict[str, Any]]:
+        bounded = min(100, max(1, int(limit)))
+        return list(self._client._json(f"/api/v1/integrations/google-drive/files?limit={bounded}").get("files") or [])
+
+    def upload_google_drive(self, file: str | os.PathLike[str]) -> dict[str, Any]:
+        return self._client._multipart(
+            "/api/v1/integrations/google-drive/files",
+            fields={},
+            files=[("file", file, None)],
+        )
+
+    def create_google_doc(self, title: str, text: str) -> dict[str, Any]:
+        return self._client._json_body("/api/v1/integrations/google-docs", {"title": title, "text": text})
+
+    def create_notion_page(self, title: str, markdown: str) -> dict[str, Any]:
+        return self._client._json_body("/api/v1/integrations/notion/pages", {"title": title, "markdown": markdown})

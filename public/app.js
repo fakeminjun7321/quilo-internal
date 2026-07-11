@@ -449,11 +449,17 @@ let currentStudentId = "";
         .then((d) => applyAuth(true, d))
         .catch(() => applyAuth(false));
 
-      // Dropbox 연결 콜백 결과 안내(+ URL 정리)
+      // 외부 서비스 OAuth 연결 결과 안내(+ URL 정리)
       try {
         const _cloud = new URLSearchParams(location.search).get("cloud");
         if (_cloud === "connected") {
           alert("✅ Dropbox가 연결되었습니다. 이제 생성한 보고서가 Dropbox 앱 폴더에 영구 저장됩니다.");
+          history.replaceState({}, "", location.pathname);
+        } else if (_cloud === "google-connected") {
+          alert("✅ Google Drive·Docs가 연결되었습니다.");
+          history.replaceState({}, "", location.pathname);
+        } else if (_cloud === "notion-connected") {
+          alert("✅ Notion이 연결되었습니다.");
           history.replaceState({}, "", location.pathname);
         } else if (_cloud === "error") {
           alert("Dropbox 연결에 실패했습니다. 잠시 후 다시 시도해 주세요.");
@@ -535,7 +541,11 @@ let currentStudentId = "";
               if (remember) localStorage.setItem("lastUsername", uname);
               else localStorage.removeItem("lastUsername");
             } catch (_) {}
-            location.reload();
+            if (data.redirect && String(data.redirect).startsWith("/oauth/authorize?")) {
+              location.assign(data.redirect);
+            } else {
+              location.reload();
+            }
           } catch (ex) {
             err.textContent = ex.message;
             err.style.display = "block";
@@ -689,75 +699,59 @@ let currentStudentId = "";
         const statusEl = document.getElementById("cloudStatus");
         const actions = document.getElementById("cloudActions");
         try {
-          const r = await fetch("/api/cloud/status");
+          const r = await fetch("/api/cloud/providers/status");
           if (!r.ok) {
             card.hidden = true;
             return;
           }
-          const d = await r.json();
-          const dp = (d && d.dropbox) || {};
-          if (!dp.configured) {
-            card.hidden = true; // 서버에 Dropbox 미설정 → 카드 숨김
-            return;
-          }
+          const providers = (await r.json()).integrations || {};
+          const entries = [
+            ["dropbox", "Dropbox", "보고서 영구 보관"],
+            ["google", "Google Drive·Docs", "파일 업로드·문서 생성"],
+            ["notion", "Notion", "Markdown 페이지 생성"],
+          ].filter(([key]) => providers[key]?.configured);
+          if (!entries.length) return void (card.hidden = true);
           card.hidden = false;
-          if (dp.connected) {
-            const note = document.createElement("span");
-            note.className = "hint";
-            note.textContent = "생성한 보고서가 Dropbox 앱 폴더에 영구 저장됩니다.";
-            const br = document.createElement("br");
-            const nodes = [document.createTextNode("✅ Dropbox 연결됨")];
-            if (dp.email) {
-              const email = document.createElement("b");
-              email.textContent = String(dp.email);
-              nodes.push(document.createTextNode(" — "), email);
-            }
-            statusEl.replaceChildren(...nodes, br, note);
-
-            const btn = document.createElement("button");
-            btn.type = "button";
-            btn.id = "dbxDisconnectBtn";
-            btn.className = "secondary compact";
-            btn.textContent = "연결 해제";
-            actions.replaceChildren(btn);
-            if (btn)
-              btn.addEventListener("click", async () => {
-                if (!confirm("Dropbox 연결을 해제할까요? (이미 저장된 파일은 Dropbox에 그대로 남습니다)")) return;
-                await fetch("/api/cloud/dropbox/disconnect", { method: "POST" });
+          statusEl.textContent = entries.some(([key]) => providers[key].connected)
+            ? "연결된 서비스는 계정 단위로 안전하게 저장됩니다."
+            : "아직 연결된 외부 서비스가 없습니다.";
+          const isElectron = /electron|quilo/i.test(navigator.userAgent || "");
+          const rows = entries.map(([key, label, purpose]) => {
+            const info = providers[key];
+            const row = document.createElement("div");
+            row.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:14px;padding:12px 0;border-top:1px solid var(--border,#e5e7eb)";
+            const text = document.createElement("div");
+            const title = document.createElement("b");
+            title.textContent = `${info.connected ? "✅" : "○"} ${label}`;
+            const detail = document.createElement("div");
+            detail.className = "hint";
+            detail.textContent = info.connected
+              ? `${info.accountEmail || info.accountName || "연결됨"} · ${purpose}`
+              : purpose;
+            text.append(title, detail);
+            const action = document.createElement(info.connected ? "button" : "a");
+            action.className = info.connected ? "secondary compact" : "btn btn-primary";
+            action.textContent = info.connected ? "연결 해제" : "연결";
+            if (info.connected) {
+              action.type = "button";
+              action.addEventListener("click", async () => {
+                if (!confirm(`${label} 연결을 해제할까요?`)) return;
+                await fetch(`/api/cloud/${key}/disconnect`, { method: "POST" });
                 loadCloudStatus();
-                if (typeof loadFiles === "function") loadFiles();
+                if (key === "dropbox" && typeof loadFiles === "function") loadFiles();
               });
-          } else {
-            const strong = document.createElement("b");
-            strong.textContent = "24시간 파일함";
-            statusEl.replaceChildren(
-              document.createTextNode("연결 안 됨 — 보고서는 "),
-              strong,
-              document.createTextNode("에 저장됩니다."),
-            );
-            const isElectron = /electron|quilo/i.test(navigator.userAgent || "");
-            if (isElectron) {
-              // 데스크톱 앱(Electron)은 임베디드 브라우저라 Dropbox OAuth 가 막힌다.
-              // 연결은 계정 단위로 저장되므로 웹사이트에서 한 번만 연결하면 앱에도 적용됨.
-              const p = document.createElement("p");
-              p.className = "hint";
-              p.style.margin = "0";
-              const b = document.createElement("b");
-              b.textContent = "웹사이트(브라우저)";
-              p.append(
-                document.createTextNode("📱 데스크톱 앱에서는 보안상 여기서 바로 연결되지 않습니다. "),
-                b,
-                document.createTextNode("에서 같은 계정으로 로그인 후 한 번 연결하면, 이 앱에도 자동으로 적용됩니다."),
-              );
-              actions.replaceChildren(p);
+            } else if (isElectron) {
+              action.href = `https://quilolab.com${info.connectUrl}`;
+              action.target = "_blank";
+              action.rel = "noopener";
+              action.textContent = "웹에서 연결";
             } else {
-              const a = document.createElement("a");
-              a.className = "btn btn-primary";
-              a.href = "/api/cloud/dropbox/connect";
-              a.textContent = "Dropbox 연결";
-              actions.replaceChildren(a);
+              action.href = info.connectUrl;
             }
-          }
+            row.append(text, action);
+            return row;
+          });
+          actions.replaceChildren(...rows);
         } catch (_) {
           card.hidden = true;
         }

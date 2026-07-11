@@ -42,7 +42,7 @@ export async function loadAnnouncements() {
     };
     const textLength = list.reduce((total, item) => total + String(item.category || "").length + String(item.title || "").length + 8, 0);
     let repetitions = 1;
-    while (textLength * repetitions < 1600 && repetitions < 12) repetitions += 1;
+    while (textLength * repetitions < 180 && repetitions < 4) repetitions += 1;
     const group = document.createElement("span");
     group.className = "ann-group";
     for (let i = 0; i < repetitions; i += 1) {

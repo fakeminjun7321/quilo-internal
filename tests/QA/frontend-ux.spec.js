@@ -149,6 +149,47 @@ test("home keeps the approved desktop header at the real 933px viewport", async 
   expect(overflow).toBe(0);
 });
 
+test("production-style announcements stay in one compact marquee row", async ({ page }) => {
+  await page.route("**/api/**", (route) => {
+    const pathname = new URL(route.request().url()).pathname;
+    if (pathname === "/api/me") return route.fulfill({ status: 401, json: { error: "로그인이 필요합니다." } });
+    if (pathname === "/api/announcements") {
+      return route.fulfill({
+        json: {
+          announcements: [{ category: "공지", title: "Quilola.com 전용 도메인 생성", link: "/changelog.html" }],
+        },
+      });
+    }
+    if (pathname === "/api/chat/status") return route.fulfill({ json: { enabled: false } });
+    return route.fulfill({ json: {} });
+  });
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(BASE_URL, { waitUntil: "networkidle" });
+  await expect(page.locator("#annTicker")).toBeVisible();
+  const metrics = await page.evaluate(() => {
+    const ticker = document.getElementById("annTicker");
+    const track = document.getElementById("annTrack");
+    const tickerStyle = getComputedStyle(ticker);
+    return {
+      height: ticker.getBoundingClientRect().height,
+      scrollHeight: ticker.scrollHeight,
+      whiteSpace: tickerStyle.whiteSpace,
+      overflow: tickerStyle.overflow,
+      animationName: getComputedStyle(track).animationName,
+      itemCount: track.querySelectorAll(".ann-item").length,
+      pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    };
+  });
+  expect(metrics.height).toBe(38);
+  expect(metrics.scrollHeight).toBeLessThanOrEqual(38);
+  expect(metrics.whiteSpace).toBe("nowrap");
+  expect(metrics.overflow).toBe("hidden");
+  expect(metrics.animationName).toBe("ann-marquee");
+  expect(metrics.itemCount).toBeLessThanOrEqual(8);
+  expect(metrics.pageOverflow).toBe(0);
+});
+
 test("authentication stays on landing until an explicit report opens the workspace", async ({ page }) => {
   fs.mkdirSync(SCREEN_DIR, { recursive: true });
   const errors = [];

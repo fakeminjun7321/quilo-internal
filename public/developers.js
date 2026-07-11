@@ -47,7 +47,11 @@ async function loadAccount() {
 async function loadCatalog() {
   try {
     state.catalog = await api("/api/catalog");
-    $("catalogSummary").textContent = `${state.catalog.total}개 기능 · 보고서, 학습, 창작, 번역, 커뮤니티, 내 작업`;
+    const modes = state.catalog.features.reduce((counts, item) => {
+      counts[item.execution] = (counts[item.execution] || 0) + 1;
+      return counts;
+    }, {});
+    $("catalogSummary").textContent = `${state.catalog.total}개 기능 · API ${modes.remote || 0} · 로컬 ${modes.local || 0} · 읽기 ${modes["read-only"] || 0} · 웹 연결 ${modes.handoff || 0} · 중단 ${modes.paused || 0}`;
     renderCatalog();
   } catch (error) {
     $("catalogSummary").textContent = `카탈로그를 불러오지 못했습니다: ${error.message}`;
@@ -68,7 +72,8 @@ function renderCatalog() {
 
 function featureCard(item) {
   const label = { active: "운영 중", pro: "Pro", max: "Max", beta: "Beta", paused: "중단" }[item.status] || item.status;
-  return `<a class="feature" href="${escapeAttr(item.path)}"><span class="feature-top"><strong>${escapeHtml(item.title)}</strong><span class="badge ${escapeAttr(item.status)}">${escapeHtml(label)}</span></span><p>${escapeHtml(item.summary)}</p><small>${escapeHtml(item.audience)} · ${escapeHtml(item.kind)}</small></a>`;
+  const execution = { remote: "API 실행", local: "로컬 실행", "read-only": "읽기", handoff: "웹 연결", paused: "중단" }[item.execution] || item.execution;
+  return `<a class="feature" href="${escapeAttr(item.path)}"><span class="feature-top"><strong>${escapeHtml(item.title)}</strong><span class="badge ${escapeAttr(item.status)}">${escapeHtml(label)}</span></span><p>${escapeHtml(item.summary)}</p><small>${escapeHtml(execution)} · ${escapeHtml(item.audience)} · ${escapeHtml(item.kind)}</small></a>`;
 }
 
 async function loadTokens() {

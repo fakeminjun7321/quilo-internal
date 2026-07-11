@@ -6340,11 +6340,15 @@ const dropboxRedirectUri = (req) => `${appBaseUrl(req)}/api/cloud/dropbox/callba
 // Quilo 전체 기능 카탈로그(공개) + 외부 API 토큰 관리(브라우저 로그인) +
 // 범위 제한 Bearer API. 플러그인은 하드코딩 대신 이 카탈로그를 원본으로 사용한다.
 app.use("/api/catalog", externalApi.createCatalogRouter());
+app.use("/api/openapi.json", externalApi.createOpenApiRouter());
 app.use(
   "/api/integrations",
   externalApi.createTokenRouter({ supa, getSessionUser }),
 );
-app.use("/api/v1", externalApi.createV1Router({ supa }));
+app.use(
+  "/api/v1",
+  externalApi.createV1Router({ supa, getRuntimeJob: (jobId) => jobs.get(jobId) || null }),
+);
 
 // 커뮤니티 API (건의·기능요청 게시판) — 라우터 모듈 마운트(읽기 공개, 작성/공감/댓글 로그인).
 app.use(

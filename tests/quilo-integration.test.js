@@ -7,7 +7,9 @@ const express = require("express");
 const {
   createCatalogRouter,
   createExternalApiMiddleware,
+  createOpenApiRouter,
   createTokenRouter,
+  createV1Router,
   normalizeScopes,
 } = require("../lib/external-api");
 const { listFeatures } = require("../lib/quilo-catalog");
@@ -19,6 +21,14 @@ test("catalog represents the broad Quilo product, not only reports", () => {
     assert.ok(features.some((feature) => feature.id === id), `missing ${id}`);
   }
   assert.ok(new Set(features.map((feature) => feature.category)).size >= 6);
+  assert.equal(features.find((feature) => feature.id === "chem-pre").execution, "remote");
+  assert.equal(features.find((feature) => feature.id === "pdf-translate").execution, "remote");
+  assert.equal(features.find((feature) => feature.id === "word-count").execution, "local");
+  assert.equal(features.find((feature) => feature.id === "lab").execution, "read-only");
+  assert.equal(features.find((feature) => feature.id === "phys-inquiry").execution, "paused");
+  assert.equal(features.find((feature) => feature.id === "vibe-coding").execution, "remote");
+  assert.equal(features.find((feature) => feature.id === "file-chat").execution, "remote");
+  assert.equal(features.find((feature) => feature.id === "community").execution, "remote");
 });
 
 test("scope normalization rejects unknown permissions", () => {
@@ -68,12 +78,177 @@ test("v1 middleware requires bearer auth and rewrites an allowed job route", asy
 
   const denied = await fetch(`http://127.0.0.1:${port}/api/v1/jobs`);
   assert.equal(denied.status, 401);
+  assert.match(denied.headers.get("x-request-id") || "", /^req_/);
+  const deniedBody = await denied.json();
+  assert.equal(deniedBody.code, "INVALID_ACCESS_TOKEN");
+  assert.equal(deniedBody.requestId, denied.headers.get("x-request-id"));
 
   const allowed = await fetch(`http://127.0.0.1:${port}/api/v1/jobs`, {
     headers: { authorization: `Bearer ${rawToken}` },
   });
   assert.equal(allowed.status, 200);
   assert.deepEqual(await allowed.json(), { ok: true, user: "user-1" });
+});
+
+test("v1 job detail returns only the authenticated user's runtime job", async (t) => {
+  const rawToken = `quilo_deadbeef_${"B".repeat(43)}`;
+  const tokenRow = {
+    id: "token-2",
+    user_id: "user-1",
+    name: "job-reader",
+    token_prefix: "deadbeef",
+    scopes: ["jobs:read"],
+    expires_at: new Date(Date.now() + 60000).toISOString(),
+  };
+  const chain = {
+    select() { return this; }, eq() { return this; }, is() { return this; }, gt() { return this; },
+    update() { return this; },
+    maybeSingle() { return Promise.resolve({ data: tokenRow, error: null }); },
+    then(resolve) { return Promise.resolve(resolve({ data: null, error: null })); },
+  };
+  const supa = {
+    getClient: () => ({ from: () => Object.create(chain) }),
+    findUserById: async () => ({ id: "user-1", name: "민준", approved: true, email_verified: true }),
+    getReportJob: async () => null,
+  };
+  const jobs = new Map([
+    ["mine", { id: "mine", userInfo: { id: "user-1" }, status: "running", progress: ["준비 중"], createdAt: Date.now() }],
+    ["other", { id: "other", userInfo: { id: "user-2" }, status: "running", progress: [] }],
+  ]);
+  const app = express();
+  app.use(createExternalApiMiddleware({ supa }));
+  app.use("/api/v1", createV1Router({ supa, getRuntimeJob: (id) => jobs.get(id) || null }));
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => server.close());
+  const { port } = server.address();
+  const headers = { authorization: `Bearer ${rawToken}` };
+
+  const mine = await fetch(`http://127.0.0.1:${port}/api/v1/jobs/mine`, { headers });
+  assert.equal(mine.status, 200);
+  const mineBody = await mine.json();
+  assert.equal(mineBody.job.id, "mine");
+  assert.equal(mineBody.job.status, "running");
+  assert.deepEqual(mineBody.job.progress, ["준비 중"]);
+
+  const other = await fetch(`http://127.0.0.1:${port}/api/v1/jobs/other`, { headers });
+  assert.equal(other.status, 404);
+  assert.equal((await other.json()).code, "JOB_NOT_FOUND");
+});
+
+test("OpenAPI document is public and generated from the v1 route registry", async (t) => {
+  const app = express();
+  app.use("/api/openapi.json", createOpenApiRouter());
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => server.close());
+  const { port } = server.address();
+  const response = await fetch(`http://127.0.0.1:${port}/api/openapi.json`);
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.openapi, "3.1.0");
+  assert.equal(body.paths["/api/v1/jobs/{id}"].get["x-quilo-scope"], "jobs:read");
+  assert.equal(body.paths["/api/v1/reports"].post["x-quilo-scope"], "reports:write");
+  assert.equal(body.paths["/api/v1/pdf-translations"].post["x-quilo-scope"], "translations:write");
+  assert.equal(body.paths["/api/v1/pdf-translations/estimate"].post["x-quilo-scope"], "translations:read");
+  assert.equal(body.paths["/api/v1/conversions/docx-to-hwpx"].post["x-quilo-scope"], "conversions:write");
+  assert.ok(body.components.securitySchemes.bearerAuth["x-scopes"]["account:read"]);
+});
+
+test("PDF translation and conversion routes require their own scopes", async (t) => {
+  const rawToken = `quilo_deadbeef_${"C".repeat(43)}`;
+  const tokenRow = {
+    id: "token-3",
+    user_id: "user-1",
+    name: "translator",
+    token_prefix: "deadbeef",
+    scopes: ["translations:read", "translations:write", "conversions:write"],
+    expires_at: new Date(Date.now() + 60000).toISOString(),
+  };
+  const chain = {
+    select() { return this; }, eq() { return this; }, is() { return this; }, gt() { return this; },
+    update() { return this; },
+    maybeSingle() { return Promise.resolve({ data: tokenRow, error: null }); },
+    then(resolve) { return Promise.resolve(resolve({ data: null, error: null })); },
+  };
+  const supa = {
+    getClient: () => ({ from: () => Object.create(chain) }),
+    findUserById: async () => ({ id: "user-1", name: "민준", approved: true, email_verified: true }),
+  };
+  const app = express();
+  app.use(createExternalApiMiddleware({ supa }));
+  app.post("/api/translate-pdf/estimate", (_req, res) => res.json({ route: "estimate" }));
+  app.post("/api/translate-pdf", (_req, res) => res.json({ route: "translate" }));
+  app.post("/api/convert-docx", (_req, res) => res.json({ route: "convert" }));
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => server.close());
+  const { port } = server.address();
+  const headers = { authorization: `Bearer ${rawToken}` };
+
+  for (const [path, route] of [
+    ["/api/v1/pdf-translations/estimate", "estimate"],
+    ["/api/v1/pdf-translations", "translate"],
+    ["/api/v1/conversions/docx-to-hwpx", "convert"],
+  ]) {
+    const response = await fetch(`http://127.0.0.1:${port}${path}`, { method: "POST", headers });
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).route, route);
+  }
+});
+
+test("studio, file chat, knowledge, and community v1 routes use dedicated scopes", async (t) => {
+  const rawToken = `quilo_deadbeef_${"D".repeat(43)}`;
+  const tokenRow = {
+    id: "token-4",
+    user_id: "user-1",
+    name: "platform",
+    token_prefix: "deadbeef",
+    scopes: ["studios:read", "studios:write", "chat:write", "knowledge:read", "community:read", "community:write"],
+    expires_at: new Date(Date.now() + 60000).toISOString(),
+  };
+  const chain = {
+    select() { return this; }, eq() { return this; }, is() { return this; }, gt() { return this; },
+    update() { return this; },
+    maybeSingle() { return Promise.resolve({ data: tokenRow, error: null }); },
+    then(resolve) { return Promise.resolve(resolve({ data: null, error: null })); },
+  };
+  const supa = {
+    getClient: () => ({ from: () => Object.create(chain) }),
+    findUserById: async () => ({ id: "user-1", name: "민준", approved: true, email_verified: true }),
+  };
+  const app = express();
+  app.use(express.json());
+  app.use(createExternalApiMiddleware({ supa }));
+  for (const [method, path, route] of [
+    ["get", "/api/vibe/config", "vibe-config"],
+    ["post", "/api/vibe/generate", "vibe-generate"],
+    ["post", "/api/physics-studio/generate", "physics"],
+    ["get", "/api/filechat/access", "chat-access"],
+    ["post", "/api/filechat", "chat"],
+    ["get", "/api/lab/entries", "lab"],
+    ["get", "/api/community/posts", "community-read"],
+    ["post", "/api/community/posts", "community-write"],
+  ]) app[method](path, (_req, res) => res.json({ route }));
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => server.close());
+  const { port } = server.address();
+  const headers = { authorization: `Bearer ${rawToken}`, "content-type": "application/json" };
+  for (const [method, path, route] of [
+    ["GET", "/api/v1/studios/vibe/config", "vibe-config"],
+    ["POST", "/api/v1/studios/vibe/generate", "vibe-generate"],
+    ["POST", "/api/v1/studios/physics/generate", "physics"],
+    ["GET", "/api/v1/file-chat/access", "chat-access"],
+    ["POST", "/api/v1/file-chat/messages", "chat"],
+    ["GET", "/api/v1/knowledge/lab", "lab"],
+    ["GET", "/api/v1/community/posts", "community-read"],
+    ["POST", "/api/v1/community/posts", "community-write"],
+  ]) {
+    const response = await fetch(`http://127.0.0.1:${port}${path}`, { method, headers, body: method === "POST" ? "{}" : undefined });
+    assert.equal(response.status, 200, `${method} ${path}`);
+    assert.equal((await response.json()).route, route);
+  }
 });
 
 test("token management returns JSON 401 instead of a login redirect", async (t) => {

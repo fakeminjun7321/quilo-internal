@@ -270,10 +270,11 @@ GOLDEN_LATEX_GUARD = {
     r"2\sqrt[3]{8}": (["{}^{3} sqrt {8}"], ["root", "2^{3}"]),
     r"\begin{align} x &= y \\ z &= w \end{align}": (["matrix"], []),
     # \sup/\inf 함수명 — 알몸 sup 은 한컴 위첨자 연산자와 충돌해 수식이
-    # 통째로 증발하고(실측 S2-51·68), 알몸 inf 는 ∞ 로 그려진다. 인용 필수.
-    r"\sup_{n \ge 1} a_n \le \det A": (['"sup"'], ["sup_{"]),
-    r"\inf_{n \ge 1} b_n": (['"inf"'], ["inf_{"]),
-    r"\sup_{x \in A} f(x)": (['"sup"'], ["sup_{"]),
+    # 통째로 증발하고(실측 S2-51·68), 알몸 inf 는 ∞ 로 그려진다. 인용은
+    # 편집기 왕복에서 깨지므로(실측) 낱자 분해가 정준형이다.
+    r"\sup_{n \ge 1} a_n \le \det A": (["s u p"], ["sup_{", '"sup"']),
+    r"\inf_{n \ge 1} b_n": (["i n f"], ["inf_{", '"inf"']),
+    r"\sup_{x \in A} f(x)": (["s u p"], ["sup_{", '"sup"']),
     r"\begin{vmatrix} a & b \\ c & d \end{vmatrix} = ad - bc": (
         ["dmatrix"], ["vmatrix", "Vmatrix"],
     ),
@@ -303,22 +304,25 @@ GOLDEN_LATEX_GUARD = {
     # 그리스 '이름' 첨자는 텍스트 인용 금지 — π 첨자가 업라이트 "pi" 로 죽는다.
     r"\lambda_{\pi}": (["pi"], ['"pi"']),
     r"E_{\alpha} + T_{\beta}": (["alpha", "beta"], ['"alpha"', '"beta"']),
-    # \pu(mhchem 물리량+단위) — 'pu' 영단어 노출 금지, 단위는 인용 리터럴로.
-    r"\pu{123 kJ/mol}": (['"123 kJ/mol"'], ["pu"]),
-    r"\pu{8.314 J//(mol.K)}": (['"8.314 J/(mol·K)"'], ["pu"]),
+    # \pu(mhchem 물리량+단위) — 'pu' 영단어 노출 금지. 단위는 무따옴표
+    # 안정 표기(kJ/mol 등 키워드 없는 단어는 알몸, 공백은 ~)가 정준형.
+    r"\pu{123 kJ/mol}": (["123 ~ kJ/mol"], ["pu", '"']),
+    r"\pu{8.314 J//(mol.K)}": (["8.314 ~ J/(mol·K)"], ["pu", '"']),
     # 미확인 명령 영단어 누출 — 양 엔진 모두 기호/무시로 처리해야 한다.
     r"p \implies q": (["RARROW"], ["implies"]),
     r"p \iff q": (["LRARROW"], ["iff"]),
     r"a \geqslant b, c \leqslant d": ([], ["geqslant", "leqslant"]),
     r"\displaystyle \frac{a}{b}": (["over"], ["displaystyle"]),
     # 집합 리터럴 중괄호 — 알몸 '{' 는 그룹으로 먹혀 증발(실측 S2-114).
-    r"\{ x \mid x > 0 \}": (['"{"', "|", '"}"'], ["mid"]),
-    # 물리 %Diff 절댓값식 — 첨자 라벨 인용 유지(파편화 회귀는 phys 쪽 테스트).
+    # 정준형은 스트레치 쌍 LEFT{ RIGHT} (실측 S1-4 정상, 무따옴표).
+    r"\{ x \mid x > 0 \}": (["LEFT{", "|", "RIGHT}"], ["mid", '"{"']),
+    # 물리 %Diff 절댓값식 — 라벨 정준형: 키워드 품은 pivot 은 낱자 분해,
+    # 키워드 없는 cm 은 알몸(무따옴표 안정 표기).
     r"\%Diff = |I_{pivot} - I_{cm}|/I_{cm} \times 100\%": (
-        ['_{"pivot"}', '_{"cm"}'], [],
+        ["p i v o t", "{ cm }"], ['"pivot"', '"cm"'],
     ),
-    # LaTeX 원문의 '_ {…}' 공백 첨자 — 재결합 누락 시 _{"m a x"} 로 굳는다.
-    r"\omega _{max} = 2.5 rad/s": (['_{"max"}'], ['"m a x"']),
+    # LaTeX 원문의 '_ {…}' 공백 첨자 — max 는 함수 키워드라 알몸 유지.
+    r"\omega _{max} = 2.5 rad/s": (["_{ max }"], ['"max"', "m a x"]),
     # ── 벡터 미적분 / 맥스웰(2026-06-14, int 반복 갱신 2026-06-15) ──
     # ∇/∂ 는 nabla/partial 키워드로(따옴표 리터럴 금지). 다중적분은 int 반복
     # (iiint→'int int int', iint→'int int') — 한컴 '본문' 렌더러가 tint/dint 를

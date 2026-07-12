@@ -823,28 +823,19 @@ def compare_scripts(a: str, b: str) -> Verdict:
 
 def lint_hancom_lexing(script: str) -> list[str]:
     """단일 스크립트 린트 — 비인용 글자 런에 숨은 키워드(한컴 그리디 렉싱이
-    기호로 바꿔 그릴 조각)를 찾는다. 'I_{pivot}' 류 파손의 조기 경보."""
+    기호로 바꿔 그릴 조각)를 찾는다. 'I_{pivot}' 류 파손의 조기 경보.
+
+    원문 문자열 기준으로 본다 — 낱자 분해 표기('p i v o t')는 글자마다
+    독립 토큰이라 렉싱 위험이 없으므로(무따옴표 안정 표기의 원리) 이어붙여
+    검사하면 오탐이다. 런 전체가 키워드 하나(max·det)면 의도된 함수명이다."""
     warnings: list[str] = []
-    try:
-        toks = tokenize(script)
-    except Exception:
-        return warnings
-    run: list[str] = []
-
-    def flush() -> None:
-        if len(run) >= 2:
-            word = "".join(run)
-            hits = segment_keywords(word)
-            if hits:
-                warnings.append(f"비인용 런 '{word}' 에 키워드 {hits}")
-        run.clear()
-
-    for t in toks:
-        if t.kind == "glyph" and len(t.val) == 1 and t.val.isalpha():
-            run.append(t.val)
-        else:
-            flush()
-    flush()
+    unquoted = re.sub(r'"[^"]*"', " ", script)
+    for run in re.findall(r"[A-Za-z]{2,}", unquoted):
+        if run in KEYWORDS:
+            continue
+        hits = segment_keywords(run)
+        if hits:
+            warnings.append(f"비인용 런 '{run}' 에 키워드 {hits}")
     return warnings
 
 

@@ -127,7 +127,7 @@ test.afterAll(async () => {
   if (serverProcess) serverProcess.kill();
 });
 
-test("home keeps the approved desktop header at the real 933px viewport", async ({ page }) => {
+test("home uses the compact header at the real 933px viewport", async ({ page }) => {
   await page.route("**/api/**", (route) => {
     const pathname = new URL(route.request().url()).pathname;
     if (pathname === "/api/me") return route.fulfill({ status: 401, json: { error: "로그인이 필요합니다." } });
@@ -139,12 +139,15 @@ test("home keeps the approved desktop header at the real 933px viewport", async 
   await page.setViewportSize({ width: 933, height: 897 });
   await page.goto(BASE_URL, { waitUntil: "networkidle" });
 
-  await expect(page.locator(".ui-mobile-menu")).toBeHidden();
-  await expect(page.locator("#navMenu")).toBeVisible();
+  const mobileTrigger = page.locator("[data-ui-mobile-trigger]");
+  await expect(mobileTrigger).toBeVisible();
+  await expect(page.locator("#navMenu")).toBeHidden();
   await expect(page.locator("#reportTypeFieldset")).toBeHidden();
   await expect(page.locator("#reportTypes")).toBeHidden();
-  await expect(page.locator("#navMenu")).toContainText("제품");
-  await expect(page.locator("#navMenu")).toContainText("Instagram");
+  await mobileTrigger.click();
+  await expect(page.locator("#uiMobilePanel")).toBeVisible();
+  await expect(page.locator("#uiMobilePanel")).toContainText("제품");
+  await expect(page.locator("#uiMobilePanel")).toContainText("Instagram");
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBe(0);
 });
@@ -158,8 +161,8 @@ test("report runtime is loaded only after an authenticated report choice", async
   expect(requested).not.toContain("/app.js");
   expect(requested).not.toContain("/workspace/report-runtime.js");
   const started = Date.now();
-  await page.locator(".ui-site-disclosure summary").filter({ hasText: /^제품$/ }).click();
-  await page.locator('.ui-site-menu a[data-report="chem-pre"]').click();
+  await page.locator('[data-ui-menu-trigger="0"]').click();
+  await page.locator('#uiSiteMega a[data-report="chem-pre"]').click();
   await expect(page.locator('#form[data-report-form="chem-pre"]')).toBeVisible();
   expect(Date.now() - started).toBeLessThan(1500);
   expect(requested).toContain("/app.js");
@@ -187,13 +190,13 @@ test("production announcements render as one quiet dismissible rail", async ({ p
   const metrics = await page.evaluate(() => {
     const ticker = document.getElementById("annTicker");
     const track = document.getElementById("annTrack");
-    const title = track.querySelector(".ann-item-title");
+    const title = track.querySelector(".ui-announcement__title");
     return {
       height: ticker.getBoundingClientRect().height,
       scrollHeight: ticker.scrollHeight,
       titleWhiteSpace: title ? getComputedStyle(title).whiteSpace : "",
       animationName: getComputedStyle(track).animationName,
-      itemCount: track.querySelectorAll(".ann-item").length,
+      itemCount: track.querySelectorAll(".ui-announcement__title").length,
       pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
     };
   });
@@ -204,9 +207,9 @@ test("production announcements render as one quiet dismissible rail", async ({ p
   expect(metrics.animationName).toBe("none");
   expect(metrics.itemCount).toBe(1);
   expect(metrics.pageOverflow).toBe(0);
-  await expect(page.locator(".ann-label")).toHaveText("NOTICE");
-  await expect(page.locator(".ann-item-meta")).toHaveCount(0);
-  await expect(page.locator(".ann-item-more")).toHaveText("자세히 보기 →");
+  await expect(page.locator(".ui-announcement__category")).toHaveText("공지");
+  await expect(page.locator(".ui-announcement__date")).toBeHidden();
+  await expect(page.locator(".ui-announcement__more")).toContainText("자세히 보기");
 });
 
 test("authentication stays on landing until an explicit report opens the workspace", async ({ page }) => {
@@ -234,8 +237,8 @@ test("authentication stays on landing until an explicit report opens the workspa
   await expect(page.locator("#acctDd")).toBeVisible();
   await expect(page.locator("#homeHero")).toBeVisible();
 
-  await page.locator('.ui-site-disclosure summary').filter({ hasText: /^제품$/ }).click();
-  await page.locator('.ui-site-menu a[data-report="chem-pre"]').click();
+  await page.locator('[data-ui-menu-trigger="0"]').click();
+  await page.locator('#uiSiteMega a[data-report="chem-pre"]').click();
   await page.waitForTimeout(350);
   await expect(page.locator("body")).toHaveAttribute("data-view", "workspace");
   await expect(page.locator("#landingSurface")).toBeHidden();
@@ -366,8 +369,9 @@ test("report entry links bypass the removed intermediary and open the free repor
   await expect(page.locator("#reportsPanel")).toHaveClass(/workspace-mode/);
   await expect(page.locator("#choosePrompt")).toHaveCount(0);
   await expect(page.locator(".home-hero-categories")).toHaveCount(0);
-  await expect(page.locator('.ui-site-menu a[data-report="free"] strong')).toHaveText("자유 보고서");
-  await expect(page.locator('.ui-site-cta[href="/?report=free"]:visible')).toHaveText("작업 시작하기");
+  await page.locator('[data-ui-menu-trigger="0"]').click();
+  await expect(page.locator('#uiSiteMega a[data-report="free"] strong')).toHaveText("자유 보고서");
+  await expect(page.locator('.ui-site-actions [data-ui-start-action]')).toBeHidden();
 });
 
 test("all thirteen report routes resolve to a continuous visible form contract", async ({ page }) => {

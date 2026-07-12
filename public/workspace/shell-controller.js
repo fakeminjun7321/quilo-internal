@@ -130,21 +130,21 @@ export function createShellController({ state, router, hooks }) {
         });
       }
     });
-    document.querySelectorAll("[data-ui-shell] a[data-report]").forEach((anchor) => {
-      anchor.addEventListener("click", async (event) => {
-        event.preventDefault();
-        closeDropdowns();
-        if (state.get().auth !== "in") {
-          router.setPending(anchor.dataset.report);
-          openLogin();
-          return;
-        }
-        anchor.setAttribute("aria-busy", "true");
-        await hooks.ensureReportRuntime?.();
-        anchor.removeAttribute("aria-busy");
-        showTab("reports");
-        router.select(anchor.dataset.report, { scroll: true });
-      });
+    document.addEventListener("click", async (event) => {
+      const anchor = event.target.closest?.("[data-ui-shell] a[data-report]");
+      if (!anchor) return;
+      event.preventDefault();
+      closeDropdowns();
+      if (state.get().auth !== "in") {
+        router.setPending(anchor.dataset.report);
+        openLogin();
+        return;
+      }
+      anchor.setAttribute("aria-busy", "true");
+      await hooks.ensureReportRuntime?.();
+      anchor.removeAttribute("aria-busy");
+      showTab("reports");
+      router.select(anchor.dataset.report, { scroll: true });
     });
     document.querySelectorAll("[data-ui-shell] a[data-tab], .page-tabs [data-tab]").forEach((anchor) => {
       anchor.addEventListener("click", (event) => {

@@ -15,7 +15,11 @@ const {
   normalizeFontFaceForFormat,
 } = require("./lib/document-fonts");
 const styleRef = require("./lib/style-ref");
-const { assertGeneratedOutputMagic } = require("./lib/output-validate");
+const {
+  assertGeneratedOutputMagic,
+  validateReportArtifact,
+  ENFORCEABLE_RULES: OUTPUT_VALIDATE_ENFORCEABLE_RULES,
+} = require("./lib/output-validate");
 const { registerAppDownloadRoutes } = require("./lib/app-downloads");
 
 // 프로세스 전역 안전망: 처리되지 않은 예외/거부가 서버 프로세스 전체를 죽여
@@ -6289,6 +6293,43 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
         const studentPart = sanitizeForFilename(studentId) || "학번";
         const namePart = userName ? `_${userName}` : "";
         job.filename = `${prefix}${pipeline.filenamePrefix}_${studentPart}${namePart}.${ext}`;
+      }
+    }
+
+    // 산출물 자동검사(W2-C/DEF-011): 저장·전달 직전에 최종 버퍼를 스캔한다.
+    // (수식 raw 마커 잔존, 긴 대시, U+FFFD, HWPX BinData 누락. zip 번들·pdf는 검사 밖)
+    // 기본은 경고만 남기고, OUTPUT_VALIDATE_ENFORCE=1 이면 raw 수식 마커(M1급)에
+    // 한해 생성 실패로 처리한다("HWPX 수식 postprocess 실패는 fatal" 원칙과 동일 선상).
+    // 긴 대시·U+FFFD는 상류 스크럽(stripAiDashes 등)이 1차 방어라 enforce에서도 경고 유지.
+    {
+      const artifactFormat =
+        typeof pipeline.generateBundle === "function"
+          ? "zip"
+          : format === "hwpx"
+            ? "hwpx"
+            : "docx";
+      const artifactCheck = await validateReportArtifact(buffer, {
+        format: artifactFormat,
+        type: job.reportType,
+      });
+      if (!artifactCheck.ok) {
+        console.warn(
+          "[output-validate]",
+          `job=${job.id}`,
+          `type=${job.reportType}`,
+          `format=${artifactFormat}`,
+          artifactCheck.problems.map((p) => `${p.rule}: ${p.detail}`).join(" | "),
+        );
+        pushProgress(job, `⚠️ 산출물 검사 경고 ${artifactCheck.problems.length}건`);
+        if (process.env.OUTPUT_VALIDATE_ENFORCE === "1") {
+          const fatal = artifactCheck.problems.find((p) =>
+            OUTPUT_VALIDATE_ENFORCEABLE_RULES.has(p.rule),
+          );
+          if (fatal) {
+            job.result = null; // 결함 산출물이 메모리에 남지 않게 정리(다운로드는 status 게이트가 막음)
+            throw new Error(`산출물 검사 실패(수식 raw 마커 잔존): ${fatal.detail}`);
+          }
+        }
       }
     }
 

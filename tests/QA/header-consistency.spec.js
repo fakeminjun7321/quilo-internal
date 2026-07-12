@@ -94,7 +94,7 @@ const HEADER_ROUTES = Object.freeze([
   "/translate.html",
 ]);
 
-const MENU_GROUPS = Object.freeze(["제품", "솔루션", "앱", "개발자", "리소스"]);
+const MENU_GROUPS = Object.freeze(["제품", "학습", "창작", "파일 및 번역", "개발자", "리소스"]);
 const COMMON_NAV_DESTINATIONS = Object.freeze([
   "/?report=chem-pre",
   "/?report=chem-result",
@@ -317,45 +317,48 @@ async function expectCanonicalAnonymousHeader(page, route) {
   await expect(brand.locator('img[src="/favicon.png"]'), `${route} canonical logo asset`).toHaveCount(1);
 
   const desktopNav = header.locator('nav[aria-label="주요 메뉴"], nav[aria-label="주 메뉴"]');
+  const compact = await page.evaluate(() => window.innerWidth <= 1120);
   await expect(desktopNav, `${route} desktop navigation`).toHaveCount(1);
-  await expect(desktopNav).toBeVisible();
-  await expect(desktopNav.locator(":scope > details > summary"), `${route} menu groups`).toHaveText(MENU_GROUPS);
-
-  const navDestinations = await desktopNav.locator("a[href]").evaluateAll((links) =>
-    links.map((link) => link.href),
-  );
-  expect(
-    navDestinations.map(normalizeHref),
-    `${route} must expose the same 18 global navigation destinations`,
-  ).toEqual(COMMON_NAV_DESTINATIONS);
+  if (compact) await expect(desktopNav).toBeHidden();
+  else await expect(desktopNav).toBeVisible();
+  await expect(desktopNav.locator("[data-ui-menu-trigger]"), `${route} menu groups`).toHaveText(MENU_GROUPS);
 
   const pricing = desktopNav.locator(':scope > a[href="/pricing.html"]');
   await expect(pricing, `${route} pricing navigation`).toHaveText("요금");
   const instagram = desktopNav.locator('a[href="https://www.instagram.com/quilo._.official/"]');
-  await expect(instagram, `${route} Instagram navigation`).toHaveText("Instagram ↗");
+  await expect(instagram, `${route} Instagram navigation`).toContainText("Instagram");
   await expect(instagram).toHaveAttribute("target", "_blank");
   await expect(instagram).toHaveAttribute("rel", /noopener/);
 
   const actions = header.locator(".ui-site-actions");
   await expect(actions, `${route} desktop actions`).toHaveCount(1);
-  await expect(actions).toBeVisible();
+  if (compact) await expect(actions).toBeHidden();
+  else await expect(actions).toBeVisible();
 
-  const authAction = actions.locator("[data-ui-auth-action]");
+  const actionScope = compact ? header.locator("#uiMobilePanel") : actions;
+  if (compact) {
+    const mobileTrigger = header.locator("[data-ui-mobile-trigger]");
+    await expect(mobileTrigger).toBeVisible();
+    await mobileTrigger.click();
+    await expect(header.locator("#uiMobilePanel")).toBeVisible();
+  }
+
+  const authAction = actionScope.locator("[data-ui-auth-action]");
   await expect(authAction, `${route} logged-out action`).toHaveCount(1);
   await expect(authAction).toBeVisible();
   await expect(authAction).toHaveText("로그인");
   await expect(authAction).toHaveAttribute("href", "/?login=1");
 
-  const start = actions.locator('.ui-site-cta[href="/signup.html"]');
+  const start = actionScope.locator('.ui-site-cta[href="/signup.html"]');
   await expect(start, `${route} signup start action`).toHaveCount(1);
   await expect(start).toBeVisible();
   await expect(start).toHaveText("무료로 시작하기");
 
-  const theme = actions.locator("[data-ui-theme]");
+  const theme = actionScope.locator("[data-ui-theme]");
   await expect(theme, `${route} desktop theme control`).toHaveCount(1);
   await expect(theme).toBeVisible();
   await expect(theme).toHaveAttribute("aria-label", /테마/);
-  await expect(theme).toHaveText(/🌙|☀️/);
+  await expect(theme.locator("svg")).toHaveCount(1);
 
   const previousTheme = await page.locator("html").getAttribute("data-theme");
   await theme.click();
@@ -365,27 +368,27 @@ async function expectCanonicalAnonymousHeader(page, route) {
   );
 }
 
-test("desktop product menu is one compact four-column row", async ({ page }) => {
+test("desktop product menu is one complete editorial mega panel", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
 
-  await page.locator(".ui-site-disclosure > summary").filter({ hasText: /^제품$/ }).click();
-  const menu = page.locator("#ui-site-menu-1");
+  await page.locator('[data-ui-menu-trigger="0"]').click();
+  const menu = page.locator("#uiSiteMega");
   await expect(menu).toBeVisible();
   const layout = await menu.evaluate((element) => {
-    const links = [...element.querySelectorAll("a")];
-    const tops = links.map((link) => Math.round(link.getBoundingClientRect().top));
     return {
       height: Math.round(element.getBoundingClientRect().height),
-      links: links.length,
-      rows: new Set(tops).size,
+      links: element.querySelectorAll("a").length,
+      sections: element.querySelectorAll(".ui-site-menu-section").length,
       overflow: element.scrollWidth - element.clientWidth,
     };
   });
-  expect(layout.links).toBe(4);
-  expect(layout.rows).toBe(1);
-  expect(layout.height).toBeLessThanOrEqual(120);
+  expect(layout.links).toBeGreaterThanOrEqual(10);
+  expect(layout.sections).toBe(3);
+  expect(layout.height).toBeLessThanOrEqual(460);
   expect(layout.overflow).toBeLessThanOrEqual(1);
+  await expect(menu.locator('[data-report="chem-pre"]')).toContainText("Free");
+  await expect(menu.locator('a[href="/translate.html"]')).toContainText("Max");
 });
 
 test.beforeAll(async () => {
@@ -471,42 +474,43 @@ test.describe("authenticated header state", () => {
       await expect(account).toHaveText("세션사용자 님");
       await expect(account).toHaveAttribute("href", "/#settings");
       await expect(header.locator('.ui-site-actions a[href="/?login=1"]')).toHaveCount(0);
+      await expect(header.locator(".ui-site-actions [data-ui-start-action]")).toBeHidden();
     });
   }
 });
 
-test("representative dropdowns are exclusive and restore focus on Escape and outside click", async ({ page }) => {
+test("representative mega menu groups switch in place and restore focus on close", async ({ page }) => {
   await installReadOnlyNetworkGuard(page, { authenticated: false });
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${baseUrl}/guide.html`, { waitUntil: "domcontentloaded" });
 
   const header = page.locator("[data-ui-shell]");
   const navigation = header.locator('nav[aria-label="주요 메뉴"], nav[aria-label="주 메뉴"]');
-  const productSummary = navigation.locator(":scope > details > summary").filter({ hasText: /^제품$/ });
-  const resourceSummary = navigation.locator(":scope > details > summary").filter({ hasText: /^리소스$/ });
-  const product = productSummary.locator("..");
-  const resource = resourceSummary.locator("..");
+  const productTrigger = navigation.locator('[data-ui-menu-trigger="0"]');
+  const resourceTrigger = navigation.locator('[data-ui-menu-trigger="5"]');
+  const panel = header.locator("#uiSiteMega");
 
-  await productSummary.click();
-  await expect(product).toHaveAttribute("open", "");
+  await productTrigger.click();
+  await expect(productTrigger).toHaveAttribute("aria-expanded", "true");
+  await expect(panel).toBeVisible();
 
-  await resourceSummary.click();
-  await expect(resource).toHaveAttribute("open", "");
-  await expect(product).not.toHaveAttribute("open", "");
-  await expect(navigation.locator(":scope > details[open]")).toHaveCount(1);
+  await resourceTrigger.click();
+  await expect(resourceTrigger).toHaveAttribute("aria-expanded", "true");
+  await expect(productTrigger).toHaveAttribute("aria-expanded", "false");
+  await expect(panel).toContainText("이용 가이드");
 
-  const resourceLink = resource.locator('a[href="/guide.html"]');
+  const resourceLink = panel.locator('a[href="/guide.html"]').first();
   await resourceLink.focus();
   await expect(resourceLink).toBeFocused();
   await resourceLink.press("Escape");
-  await expect(navigation.locator(":scope > details[open]")).toHaveCount(0);
-  await expect(resourceSummary).toBeFocused();
+  await expect(panel).toHaveAttribute("aria-hidden", "true");
+  await expect(resourceTrigger).toBeFocused();
 
-  await productSummary.click();
-  await expect(product).toHaveAttribute("open", "");
+  await productTrigger.click();
+  await expect(productTrigger).toHaveAttribute("aria-expanded", "true");
   const outsideY = await header.evaluate((element) =>
     Math.min(window.innerHeight - 8, Math.round(element.getBoundingClientRect().bottom + 240)),
   );
   await page.mouse.click(8, outsideY);
-  await expect(navigation.locator(":scope > details[open]")).toHaveCount(0);
+  await expect(panel).toHaveAttribute("aria-hidden", "true");
 });

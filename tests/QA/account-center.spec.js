@@ -200,6 +200,7 @@ for (const [role, label] of [["free", "Free"], ["pro", "Pro"], ["max", "Max"], [
     if (role === "admin") await expect(page.locator("#adminLink")).not.toHaveAttribute("hidden", "");
     else await expect(page.locator("#adminLink")).toHaveAttribute("hidden", "");
     await expect(page.locator("#navBetaEditor, #navBetaTranslate")).toHaveCount(0);
-    await expect(page.locator('.ui-site-nav a[href="/translate.html"]')).toHaveCount(1);
+    await page.locator('[data-ui-menu-trigger="3"]').click();
+    await expect(page.locator('#uiSiteMega a[href="/translate.html"] strong').filter({ hasText: "PDF 통번역" })).toHaveCount(1);
   });
 }

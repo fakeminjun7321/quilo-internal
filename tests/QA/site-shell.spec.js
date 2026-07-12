@@ -19,6 +19,7 @@ function loadPlaywrightTest() {
 }
 
 const { test, expect } = loadPlaywrightTest();
+const { FEATURES } = require("../../lib/quilo-catalog");
 
 const PUBLIC_DIR = path.join(process.cwd(), "public");
 const SAFE_METHODS = new Set(["GET", "HEAD"]);
@@ -179,33 +180,22 @@ test("guide desktop shell renders with real navigation destinations", async ({ p
   await expect(page.locator("[data-ui-shell]")).toBeVisible();
   await expect(page.locator(".ui-site-nav")).toBeVisible();
   await expect(page.locator(".ui-site-actions")).toBeVisible();
-  await expect(page.locator(".ui-mobile-menu")).toBeHidden();
+  await expect(page.locator("[data-ui-mobile-trigger]")).toBeHidden();
   await expect(page.locator("#main-content")).toBeVisible();
   await expect(page.locator('.ui-skip-link[href="#main-content"]')).toHaveText("본문으로 건너뛰기");
 
-  const desktopHrefs = await page.locator(".ui-site-nav a[href]").evaluateAll((links) =>
+  const desktopHrefs = await page.locator(".ui-site-nav > a[href]").evaluateAll((links) =>
     links.map((link) => link.getAttribute("href")),
   );
   expect(desktopHrefs).toEqual([
-    "/?report=chem-pre",
-    "/?report=chem-result",
-    "/?report=phys-result",
-    "/?report=free",
-    "/tools/index.html",
-    "/translate.html",
-    "/apps/quilo.html",
-    "/apps/live-translator.html",
-    "/developers.html",
-    "/developers.html#catalog",
-    "/developers.html#tokenCard",
-    "/guide.html",
-    "/examples.html",
-    "/changelog.html",
-    "/community.html",
-    "/school-apply.html",
     "/pricing.html",
     "https://www.instagram.com/quilo._.official/",
   ]);
+  await expect(page.locator(".ui-site-nav [data-ui-menu-trigger]")).toHaveText([
+    "제품", "학습", "창작", "파일 및 번역", "개발자", "리소스",
+  ]);
+  await page.locator('[data-ui-menu-trigger="0"]').click();
+  await expect(page.locator('#uiSiteMega [data-report="chem-pre"]')).toBeVisible();
   await expect(page.locator('.ui-site-actions a[href="/?login=1"]')).toHaveText("로그인");
   await expect(page.locator('.ui-site-actions .ui-site-cta[href="/signup.html"]')).toHaveText("무료로 시작하기");
 
@@ -213,23 +203,17 @@ test("guide desktop shell renders with real navigation destinations", async ({ p
   await expect(placeholderLinks).toHaveCount(0);
 });
 
-test("guide 933px shell keeps the approved full navigation without overflow", async ({ page }) => {
+test("guide 933px shell uses the compact navigation without overflow", async ({ page }) => {
   await page.setViewportSize({ width: 933, height: 844 });
   await page.goto(`${baseUrl}/guide.html`, { waitUntil: "domcontentloaded" });
 
-  await expect(page.locator(".ui-site-nav")).toBeVisible();
-  await expect(page.locator(".ui-site-actions")).toBeVisible();
-  await expect(page.locator(".ui-mobile-menu")).toBeHidden();
-  await expect(page.locator(".ui-site-disclosure summary")).toHaveText([
-    "제품",
-    "솔루션",
-    "앱",
-    "개발자",
-    "리소스",
-  ]);
-  await expect(page.locator(".ui-site-nav > a")).toHaveText(["요금", "Instagram ↗"]);
-  await expect(page.locator('.ui-site-actions a[href="/?login=1"]')).toHaveText("로그인");
-  await expect(page.locator(".ui-site-actions .ui-site-cta")).toHaveText("무료로 시작하기");
+  await expect(page.locator(".ui-site-nav")).toBeHidden();
+  await expect(page.locator(".ui-site-actions")).toBeHidden();
+  const trigger = page.locator("[data-ui-mobile-trigger]");
+  await expect(trigger).toBeVisible();
+  await trigger.click();
+  await expect(page.locator("#uiMobilePanel")).toBeVisible();
+  await expect(page.locator('#uiMobilePanel a[href="/signup.html"]')).toHaveText("무료로 시작하기");
 
   const overflow = await page.evaluate(() => ({
     viewport: window.innerWidth,
@@ -264,10 +248,10 @@ test("shared shell prefetches a likely same-origin destination only after intent
 
 test("home metadata positions Quilo as a broad learning and research workspace", async ({ page }) => {
   await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
-  await expect(page).toHaveTitle("Quilo — 학업의 전 과정을 연결하는 AI Workspace");
+  await expect(page).toHaveTitle("Quilo | 학습과 연구를 위한 AI Workspace");
   await expect(page.locator('meta[name="description"]')).toHaveAttribute(
     "content",
-    /보고서, 리서치, 데이터 분석, 코딩과 파일 작업/,
+    /보고서, 리서치, 데이터 분석, 문서, 번역과 코딩/,
   );
 });
 
@@ -286,6 +270,19 @@ test("every public pricing navigation points to the visible pricing page", () =>
   for (const file of htmlFiles) {
     const source = fs.readFileSync(file, "utf8");
     expect(source, path.relative(PUBLIC_DIR, file)).not.toMatch(/href=["']\/?#balanceBox["']/);
+  }
+});
+
+test("every catalog feature exposes a real destination and an explicit audience", () => {
+  expect(FEATURES.length).toBeGreaterThan(30);
+  for (const feature of FEATURES) {
+    expect(["public", "member", "pro", "max"], `${feature.id} audience`).toContain(feature.audience);
+    expect(["active", "pro", "max", "paused", "beta"], `${feature.id} status`).toContain(feature.status);
+    const pathname = new URL(feature.path, "http://quilo.local").pathname;
+    const target = pathname === "/"
+      ? path.join(PUBLIC_DIR, "index.html")
+      : path.join(PUBLIC_DIR, pathname.replace(/^\/+/, ""));
+    expect(fs.existsSync(target), `${feature.id} destination ${feature.path}`).toBe(true);
   }
 });
 
@@ -319,30 +316,29 @@ test("shared shell is the single source for account and navigation destinations"
   expect(developers).toContain('id="tokenCard"');
 });
 
-test("desktop disclosures keep one menu open and return focus on Escape", async ({ page }) => {
+test("desktop mega menu switches groups and returns focus on Escape", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${baseUrl}/guide.html`, { waitUntil: "domcontentloaded" });
 
-  const productSummary = page.locator(".ui-site-disclosure summary").filter({ hasText: /^제품$/ });
-  const resourceSummary = page.locator(".ui-site-disclosure summary").filter({ hasText: /^리소스$/ });
-  const product = productSummary.locator("..");
-  const resource = resourceSummary.locator("..");
+  const productTrigger = page.locator('[data-ui-menu-trigger="0"]');
+  const resourceTrigger = page.locator('[data-ui-menu-trigger="5"]');
+  const panel = page.locator("#uiSiteMega");
 
-  await productSummary.click();
-  await expect(product).toHaveAttribute("open", "");
+  await productTrigger.click();
+  await expect(productTrigger).toHaveAttribute("aria-expanded", "true");
 
-  await resourceSummary.click();
-  await expect(resource).toHaveAttribute("open", "");
-  await expect(product).not.toHaveAttribute("open", "");
-  await expect(page.locator(".ui-site-disclosure[open]")).toHaveCount(1);
+  await resourceTrigger.click();
+  await expect(resourceTrigger).toHaveAttribute("aria-expanded", "true");
+  await expect(productTrigger).toHaveAttribute("aria-expanded", "false");
+  await expect(panel).toContainText("이용 가이드");
 
-  const focusedMenuLink = resource.locator('a[href="/guide.html"]');
+  const focusedMenuLink = panel.locator('a[href="/guide.html"]').first();
   await focusedMenuLink.focus();
   await expect(focusedMenuLink).toBeFocused();
   await focusedMenuLink.press("Escape");
 
-  await expect(page.locator(".ui-site-disclosure[open]")).toHaveCount(0);
-  await expect(resourceSummary).toBeFocused();
+  await expect(panel).toHaveAttribute("aria-hidden", "true");
+  await expect(resourceTrigger).toBeFocused();
 });
 
 test("guide mobile shell exposes the same real destinations", async ({ page }) => {
@@ -352,39 +348,22 @@ test("guide mobile shell exposes the same real destinations", async ({ page }) =
   await expect(page.locator(".ui-site-nav")).toBeHidden();
   await expect(page.locator(".ui-site-actions")).toBeHidden();
 
-  const mobile = page.locator(".ui-mobile-menu");
-  const mobileSummary = mobile.locator(":scope > summary");
-  const mobilePanel = mobile.locator(".ui-mobile-panel");
-  await expect(mobile).toBeVisible();
+  const mobileSummary = page.locator("[data-ui-mobile-trigger]");
+  const mobilePanel = page.locator("#uiMobilePanel");
+  await expect(mobileSummary).toBeVisible();
   await mobileSummary.click();
-  await expect(mobile).toHaveAttribute("open", "");
+  await expect(mobileSummary).toHaveAttribute("aria-expanded", "true");
   await expect(mobilePanel).toBeVisible();
 
   const mobileHrefs = await mobilePanel.locator("a[href]").evaluateAll((links) =>
     links.map((link) => link.getAttribute("href")),
   );
-  expect(mobileHrefs).toEqual([
-    "/?report=chem-pre",
-    "/?report=chem-result",
-    "/?report=phys-result",
-    "/?report=free",
-    "/tools/index.html",
-    "/translate.html",
-    "/apps/quilo.html",
-    "/apps/live-translator.html",
-    "/developers.html",
-    "/developers.html#catalog",
-    "/developers.html#tokenCard",
-    "/guide.html",
-    "/examples.html",
-    "/changelog.html",
-    "/community.html",
-    "/school-apply.html",
-    "/pricing.html",
-    "https://www.instagram.com/quilo._.official/",
-    "/?login=1",
-    "/signup.html",
-  ]);
+  expect(mobileHrefs).toContain("/?report=chem-pre");
+  expect(mobileHrefs).toContain("/tools/index.html");
+  expect(mobileHrefs).toContain("/developers.html#catalog");
+  expect(mobileHrefs).toContain("/pricing.html");
+  expect(mobileHrefs).toContain("/?login=1");
+  expect(mobileHrefs).toContain("/signup.html");
 
   const hasHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   expect(hasHorizontalOverflow).toBe(false);

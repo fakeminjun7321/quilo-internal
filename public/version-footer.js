@@ -5,10 +5,11 @@
     const res = await fetch("/api/version", { cache: "no-store" });
     if (!res.ok) throw new Error("version fetch failed");
     const info = await res.json();
-    if (!info || !info.version) throw new Error("version missing");
+    const release = info && (info.releaseVersion || info.version);
+    if (!release) throw new Error("version missing");
     const version = info.shortCommit
-      ? `v${info.version} · ${info.shortCommit}`
-      : `v${info.version}`;
+      ? `v${release} · ${info.shortCommit}`
+      : `v${release}`;
     nodes.forEach((node) => {
       node.textContent = version;
       node.title = info.commit ? `commit ${info.commit}` : "현재 배포 버전";

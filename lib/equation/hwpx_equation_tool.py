@@ -117,6 +117,26 @@ def make_text_run(text: str, run_attrs: dict[str, str]) -> ET.Element:
     return run
 
 
+def _estimate_base_line(script: str) -> str:
+    """편집기가 계산하는 baseLine(객체 높이 대비 글줄 기준선 위치 %)의 근사.
+
+    넣기 후 XML 실측(2026-07-13): 분수/근호/큰 연산이 있으면 64~68,
+    첨자만 있으면 72, 평문은 86. 정확값은 레이아웃 계산이 필요하지만
+    이 근사만으로도 '넣기 후와 같은 정상 모양'이 된다(속성 프로브 B/C/E/G
+    판정). 종전의 baseLine=0 은 문장 속 인라인 수식이 글줄에 어긋나 보이던
+    원인이었다.
+    """
+    if re.search(
+        r"\bover\b|\batop\b|\bsqrt\b|\bmatrix\b|\bcases\b|\bsum\b|\bint\b"
+        r"|\bprod\b|\bCHOOSE\b|\bpmatrix\b|\bdmatrix\b|\bbmatrix\b",
+        script,
+    ):
+        return "68"
+    if "_" in script or "^" in script:
+        return "72"
+    return "86"
+
+
 def make_equation(
     script: str,
     equation_id: str,
@@ -127,17 +147,28 @@ def make_equation(
         # 빈 hp:script 는 validate_hwpx_equations 가 fatal 로 보므로
         # 빈 수식 객체는 생성 단계에서 차단한다(호출부가 미리 걸러야 한다).
         raise ValueError("empty equation script")
+    # 속성은 수식 편집기 '넣기'가 부여하는 정준 집합을 그대로 쓴다(넣기
+    # 전후 XML diff + 속성 프로브 실측, 2026-07-13). 이 속성이 없으면
+    # (특히 version/font/lineMode/baseLine) 문서를 열 때 수식이 구식
+    # 렌더러로 그려져 글꼴·기준선이 어긋나고, 사용자가 수식마다 넣기를
+    # 눌러야 정상으로 보이는 문제(P1)가 생긴다. version="Equation Version
+    # 60" 은 새로 열 때의 스크립트 방언(토큰 단위 렉싱)까지 바꾼다.
     equation = ET.Element(
         qname(HP_NS, "equation"),
         {
             "id": equation_id,
-            "type": "0",
+            "zOrder": "0",
+            "numberingType": "NONE",
+            "textWrap": "TOP_AND_BOTTOM",
+            "textFlow": "BOTH_SIDES",
+            "lock": "0",
+            "dropcapstyle": "None",
+            "version": "Equation Version 60",
+            "baseLine": _estimate_base_line(script),
             "textColor": style.text_color,
             "baseUnit": str(style.base_unit),
-            "letterSpacing": str(style.letter_spacing),
-            "lineThickness": str(style.line_thickness),
-            # Hancom can recalculate this when the file opens.
-            "baseLine": "0",
+            "lineMode": "CHAR",
+            "font": "HYhwpEQ",
         },
     )
     ET.SubElement(

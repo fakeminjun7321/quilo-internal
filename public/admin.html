@@ -22,39 +22,6 @@
       })();
     </script>
     <link rel="stylesheet" href="/ui/foundation.css" />
-    <!-- 코드 에디터(CodeMirror) -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/material-darker.min.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/eclipse.min.css" />
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/xml/xml.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/css/css.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/htmlmixed/htmlmixed.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/python/python.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/markdown/markdown.min.js"></script>
-    <!-- VS Code 스타일 에디터: CodeMirror 애드온 -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/foldgutter.min.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/dialog/dialog.min.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.css" />
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closebrackets.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closetag.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/foldcode.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/foldgutter.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/brace-fold.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/xml-fold.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/indent-fold.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/fold/comment-fold.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/selection/active-line.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/search/searchcursor.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/search/search.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/search/jump-to-line.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/dialog/dialog.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/comment/comment.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/anyword-hint.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/keymap/sublime.min.js"></script>
     <link rel="stylesheet" href="/ui/admin.css" />
   </head>
   <body class="operations-shell">
@@ -141,62 +108,114 @@
       </aside>
     </section>
 
-    <section class="settings-card operations-panel" data-atab="users">
-      <h2>사용자 인스펙터</h2>
+    <section class="settings-card operations-panel" id="adminUserInspector" data-atab="users">
+      <div class="user-inspector-head">
+        <div>
+          <span class="admin-eyebrow">Selected account</span>
+          <h2>사용자 인스펙터</h2>
+        </div>
+        <button type="button" id="userInspectorClose" class="secondary compact" hidden>선택 해제</button>
+      </div>
       <div id="userInspectorDetails" class="user-inspector-details">
         <b>사용자를 선택하세요</b>
-        <span>목록의 행을 누르면 계정·인증·플랜 정보를 여기에서 확인합니다.</span>
+        <span>목록의 행을 누르면 계정·인증·사용 현황을 이 화면에서 확인합니다.</span>
       </div>
-      <h3>새 사용자</h3>
-      <form id="addForm" class="compact-form">
-        <div class="field">
-          <label>
-            <span class="field-label">이름</span>
-            <input id="name" required maxlength="50" />
-          </label>
+      <div id="userInspectorActions" class="user-inspector-actions" hidden>
+        <h3>빠른 작업</h3>
+        <div class="user-inspector-action-grid">
+          <button type="button" data-inspector-action="topup">크레딧 조정</button>
+          <button type="button" data-inspector-action="approve">승인 상태</button>
+          <button type="button" data-inspector-action="model">모델 권한</button>
+          <button type="button" data-inspector-action="reports">보고서 권한</button>
+          <button type="button" data-inspector-action="edit">비밀번호 변경</button>
+          <button type="button" data-inspector-action="unlock">사용 잠금 해제</button>
         </div>
-        <div class="field">
-          <label>
-            <span class="field-label">비밀번호</span>
-            <input id="password" type="text" required minlength="5" />
-          </label>
-          <small>평문 입력, 해시되어 저장됨. 최소 5자.</small>
+        <div class="user-danger-zone">
+          <button type="button" data-inspector-action="reset">누적 사용량 초기화</button>
+          <button type="button" data-inspector-action="delete">사용자 삭제</button>
         </div>
-        <small>충전은 사용자 추가 후 사용자 목록의 ‘+ 충전’ 버튼으로 진행하세요.</small>
-        <label class="check-line"><input id="isAdmin" type="checkbox" /> 관리자 권한</label>
-        <div class="form-actions">
-          <span id="addStatus" class="inline-status"></span>
-          <button type="submit">추가</button>
-        </div>
-      </form>
+      </div>
+      <details id="userCreatePanel" class="user-create-disclosure">
+        <summary>새 사용자 추가</summary>
+        <form id="addForm" class="compact-form">
+          <div class="field">
+            <label>
+              <span class="field-label">이름</span>
+              <input id="name" required maxlength="50" autocomplete="off" />
+            </label>
+          </div>
+          <div class="field">
+            <label>
+              <span class="field-label">임시 비밀번호</span>
+              <input id="password" type="password" required minlength="5" autocomplete="new-password" />
+            </label>
+            <small>서버에서 해시되어 저장됩니다. 최소 5자.</small>
+          </div>
+          <label class="check-line"><input id="isAdmin" type="checkbox" /> 관리자 권한</label>
+          <div class="form-actions">
+            <span id="addStatus" class="inline-status" aria-live="polite"></span>
+            <button type="submit">사용자 추가</button>
+          </div>
+        </form>
+      </details>
     </section>
 
-    <section class="settings-card operations-panel" data-atab="users">
-      <div class="card-head">
-        <h2>사용자 목록</h2>
-        <div class="console-toolbar__actions">
-          <input id="adminUserFilter" class="console-search" type="search" placeholder="이름·아이디 검색" aria-label="사용자 검색" />
-          <button id="refresh" class="secondary compact">새로고침</button>
+    <section class="settings-card operations-panel" id="adminUsersSection" data-atab="users">
+      <div class="user-summary-strip" aria-label="사용자 현황">
+        <button type="button" class="user-summary-item is-active" data-user-preset="all" aria-pressed="true"><span>전체 사용자</span><strong id="userMetricTotal">-</strong></button>
+        <button type="button" class="user-summary-item" data-user-preset="pending" aria-pressed="false"><span>승인 대기</span><strong id="userMetricPending">-</strong></button>
+        <button type="button" class="user-summary-item" data-user-preset="unverified" aria-pressed="false"><span>이메일 미인증</span><strong id="userMetricUnverified">-</strong></button>
+        <button type="button" class="user-summary-item" data-user-preset="locked" aria-pressed="false"><span>사용 잠김</span><strong id="userMetricLocked">-</strong></button>
+        <button type="button" class="user-summary-item" data-user-preset="admin" aria-pressed="false"><span>관리자</span><strong id="userMetricAdmin">-</strong></button>
+      </div>
+      <div class="user-console-toolbar">
+        <div class="user-console-search">
+          <label for="adminUserFilter">사용자 검색</label>
+          <input id="adminUserFilter" class="console-search" type="search" placeholder="이름, 아이디, 학번, 이메일" aria-label="사용자 검색" autocomplete="off" />
+        </div>
+        <label class="user-console-control">상태
+          <select id="adminUserStatusFilter">
+            <option value="all">전체</option>
+            <option value="pending">승인 대기</option>
+            <option value="unverified">이메일 미인증</option>
+            <option value="locked">사용 잠김</option>
+            <option value="low-credit">크레딧 부족</option>
+            <option value="admin">관리자</option>
+          </select>
+        </label>
+        <label class="user-console-control">정렬
+          <select id="adminUserSort">
+            <option value="created-desc">최근 가입순</option>
+            <option value="created-asc">오래된 가입순</option>
+            <option value="credits-desc">크레딧 많은순</option>
+            <option value="spent-desc">누적 사용 많은순</option>
+          </select>
+        </label>
+        <div class="user-console-actions">
+          <button type="button" id="adminUserFilterReset" class="secondary compact">필터 초기화</button>
+          <button type="button" id="refresh" class="secondary compact">새로고침</button>
+          <button type="button" id="userCreateButton" class="primary compact">사용자 추가</button>
         </div>
       </div>
+      <div class="user-results-meta">
+        <p id="listStatus" aria-live="polite">사용자 목록을 불러오는 중입니다.</p>
+        <span id="userRefreshMeta"></span>
+      </div>
       <div class="table-wrapper">
-        <table id="userTable">
+        <table id="userTable" aria-label="사용자 목록">
           <thead>
             <tr>
-              <th>이름 / 아이디</th>
-              <th>인증</th>
+              <th>사용자</th>
+              <th>계정 상태</th>
               <th>크레딧</th>
-              <th>누적 사용</th>
-              <th>관리자</th>
-              <th>시간당</th>
+              <th>이번 시간 사용량</th>
               <th>가입일</th>
-              <th>조작</th>
+              <th class="user-row-actions" aria-hidden="true">조작</th>
             </tr>
           </thead>
           <tbody id="userTbody"></tbody>
         </table>
       </div>
-      <p id="listStatus" class="hint"></p>
     </section>
 
     <section class="settings-card operations-panel" id="grantsSection" data-atab="grants">
@@ -605,7 +624,8 @@
 
       async function loadUsers() {
         const status = document.getElementById("listStatus");
-        status.textContent = "로딩 중...";
+        status.textContent = "사용자 목록을 불러오는 중입니다.";
+        document.getElementById("adminUsersSection")?.setAttribute("aria-busy", "true");
         try {
           const res = await fetch("/api/admin/users");
           if (!res.ok) {
@@ -617,9 +637,13 @@
           document.getElementById("rateInfo").textContent =
             `현재 환율: 1 USD = ${krwPerUsd.toFixed(2)} KRW`;
           renderUsers(data.users);
-          status.textContent = `${data.users.length}명 로드됨`;
+          const refreshed = document.getElementById("userRefreshMeta");
+          if (refreshed) refreshed.textContent = `마지막 갱신 ${new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}`;
         } catch (e) {
           status.textContent = "오류: " + e.message;
+          status.dataset.tone = "danger";
+        } finally {
+          document.getElementById("adminUsersSection")?.setAttribute("aria-busy", "false");
         }
       }
 
@@ -648,32 +672,97 @@
       }
       function creditCell(u) {
         if (u.unlimited) {
-          const m = u.restricted_model
-            ? " · " + modelShortList(u.restricted_model) + "만"
-            : "";
-          return `<span class="tone-muted">무제한${m}</span>`;
+          return '<span class="tone-muted">무제한</span>';
         }
         const c = Math.max(0, Math.trunc(Number(u.credits) || 0));
         const tone = c === 0 ? "tone-danger" : c <= 3 ? "tone-warning" : "tone-default";
-        const restr = u.restricted_model
-          ? ` <small class="tone-muted">(${modelShortList(u.restricted_model)}만)</small>`
-          : "";
-        return `<span class="${tone}">${c} 크레딧</span>${restr}`;
+        return `<span class="${tone}">${c} 크레딧</span>`;
       }
 
       let adminUsersCache = [];
+      let selectedAdminUserId = "";
+
+      function userIsLocked(user) {
+        if (user.is_admin) return false;
+        const count = Number(user.recent_gen_count) || 0;
+        const limit = Math.max(1, Number(user.recent_gen_limit) || 5);
+        return count >= limit;
+      }
+
+      function userMatchesStatus(user, status) {
+        if (!status || status === "all") return true;
+        if (status === "pending") return !user.is_admin && !user.approved;
+        if (status === "unverified") return !user.is_admin && !user.email_verified;
+        if (status === "locked") return userIsLocked(user);
+        if (status === "low-credit") return !user.unlimited && Number(user.credits || 0) <= 3;
+        if (status === "admin") return !!user.is_admin;
+        return true;
+      }
+
+      function updateUserMetrics() {
+        const metrics = {
+          userMetricTotal: adminUsersCache.length,
+          userMetricPending: adminUsersCache.filter((user) => !user.is_admin && !user.approved).length,
+          userMetricUnverified: adminUsersCache.filter((user) => !user.is_admin && !user.email_verified).length,
+          userMetricLocked: adminUsersCache.filter(userIsLocked).length,
+          userMetricAdmin: adminUsersCache.filter((user) => user.is_admin).length,
+        };
+        Object.entries(metrics).forEach(([id, value]) => {
+          const element = document.getElementById(id);
+          if (element) element.textContent = Number(value).toLocaleString("ko-KR");
+        });
+      }
+
       function renderUsers(users) {
         adminUsersCache = Array.isArray(users) ? users.slice() : [];
+        updateUserMetrics();
+        applyUserFilters();
+      }
+
+      function applyUserFilters() {
+        const query = document.getElementById("adminUserFilter").value.trim().toLowerCase();
+        const status = document.getElementById("adminUserStatusFilter").value;
+        const sort = document.getElementById("adminUserSort").value;
+        const visible = adminUsersCache.filter((user) => {
+          const haystack = [user.name, user.username, user.student_id, user.email, user.id]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase();
+          return (!query || haystack.includes(query)) && userMatchesStatus(user, status);
+        });
+        visible.sort((a, b) => {
+          if (sort === "created-asc") return new Date(a.created_at) - new Date(b.created_at);
+          if (sort === "credits-desc") return Number(b.credits || 0) - Number(a.credits || 0);
+          if (sort === "spent-desc") return Number(b.spent_usd || 0) - Number(a.spent_usd || 0);
+          return new Date(b.created_at) - new Date(a.created_at);
+        });
+        renderUserRows(visible);
+        const statusCopy = document.getElementById("listStatus");
+        statusCopy.removeAttribute("data-tone");
+        statusCopy.textContent = visible.length
+          ? `전체 ${adminUsersCache.length.toLocaleString("ko-KR")}명 · 표시 ${visible.length.toLocaleString("ko-KR")}명`
+          : "조건에 맞는 사용자가 없습니다.";
+        if (!visible.some((user) => String(user.id) === selectedAdminUserId)) {
+          selectedAdminUserId = visible[0] ? String(visible[0].id) : "";
+        }
+        selectAdminUser(selectedAdminUserId);
+      }
+
+      function renderUserRows(users) {
         const tbody = document.getElementById("userTbody");
         tbody.innerHTML = "";
+        if (!users.length) {
+          tbody.innerHTML = '<tr class="user-empty-row"><td colspan="5">검색 또는 필터 조건에 맞는 사용자가 없습니다.</td></tr>';
+          return;
+        }
         for (const u of users) {
           const count = u.recent_gen_count || 0;
           const limit = u.recent_gen_limit || 5;
           const isAdmin = !!u.is_admin;
           const isLocked = !isAdmin && count >= limit;
           const rateText = isAdmin
-            ? '<span class="tone-muted">무제한</span>'
-            : `<span class="${isLocked ? "tone-danger" : count >= limit - 1 ? "tone-warning" : "tone-default"}">${count}/${limit}${isLocked ? " 🔒" : ""}</span>`;
+            ? '<span class="tone-muted">제한 없음</span>'
+            : `<span class="${isLocked ? "tone-danger" : count >= limit - 1 ? "tone-warning" : "tone-default"}">${count}/${limit}${isLocked ? " · 잠김" : ""}</span>`;
           const unlockBtn = isLocked
             ? `<button class="tone-accent" data-act="unlock" data-id="${u.id}">잠금 해제</button>`
             : "";
@@ -681,28 +770,28 @@
           const approveBtn = isAdmin
             ? ""
             : u.approved
-              ? `<button class="tone-warning" data-act="approve" data-id="${u.id}" data-approved="1">승인취소</button>`
+              ? `<button class="tone-warning" data-act="approve" data-id="${u.id}" data-approved="1">승인 취소</button>`
               : `<button class="tone-accent is-semibold" data-act="approve" data-id="${u.id}" data-approved="0">승인</button>`;
-          const uname = u.username && u.username !== u.name
-            ? `<br><small class="tone-muted">@${escape(u.username)}</small>`
-            : "";
+          const identityMeta = [
+            u.username && u.username !== u.name ? `@${u.username}` : "",
+            u.student_id ? `학번 ${u.student_id}` : "",
+          ].filter(Boolean).join(" · ") || `ID ${u.id}`;
           const tr = document.createElement("tr");
           tr.className = "admin-user-row";
           tr.dataset.userId = String(u.id);
+          tr.tabIndex = 0;
+          tr.setAttribute("aria-selected", "false");
           tr.innerHTML = `
-            <td>${escape(u.name)}${uname}</td>
-            <td>${verifyCell}</td>
-            <td>${creditCell(u)}<br>
-              <button class="table-compact-action" data-act="topup" data-id="${u.id}">± 크레딧</button>
-            </td>
-            <td>${fmtBoth(u.spent_usd)}</td>
-            <td>${isAdmin ? "✓" : ""}</td>
-            <td>${rateText}</td>
-            <td class="table-meta">${new Date(u.created_at).toLocaleDateString()}</td>
-            <td>
+            <td><div class="user-primary"><strong>${escape(u.name)}</strong><span>${escape(identityMeta)}</span></div></td>
+            <td>${verifyCell}${isAdmin ? '<span class="status-pill status-pill--admin">관리자</span>' : ""}</td>
+            <td class="user-numeric">${creditCell(u)}</td>
+            <td><div class="user-rate-usage">${rateText}<progress max="${limit}" value="${Math.min(limit, count)}" aria-label="${escape(u.name)} 이번 시간 사용량"></progress></div></td>
+            <td class="table-meta">${new Date(u.created_at).toLocaleDateString("ko-KR")}</td>
+            <td class="user-row-actions" aria-hidden="true">
               <details class="row-action-menu">
                 <summary>관리</summary>
                 <div class="row-action-menu__items">
+                  <button data-act="topup" data-id="${u.id}">크레딧 조정</button>
                   ${approveBtn}
                   ${unlockBtn}
                   <button data-act="edit" data-id="${u.id}">비밀번호</button>
@@ -718,6 +807,62 @@
         }
       }
 
+      function clearAdminUserSelection() {
+        selectedAdminUserId = "";
+        document.querySelectorAll("#userTbody .admin-user-row").forEach((row) => {
+          row.classList.remove("is-selected");
+          row.setAttribute("aria-selected", "false");
+        });
+        const inspector = document.getElementById("userInspectorDetails");
+        inspector.innerHTML = '<b>사용자를 선택하세요</b><span>목록의 행을 누르면 계정·인증·사용 현황을 이 화면에서 확인합니다.</span>';
+        document.getElementById("userInspectorActions").hidden = true;
+        document.getElementById("userInspectorClose").hidden = true;
+      }
+
+      function selectAdminUser(userId, options = {}) {
+        const selected = adminUsersCache.find((user) => String(user.id) === String(userId || ""));
+        if (!selected) {
+          clearAdminUserSelection();
+          return;
+        }
+        selectedAdminUserId = String(selected.id);
+        document.querySelectorAll("#userTbody .admin-user-row").forEach((row) => {
+          const active = row.dataset.userId === selectedAdminUserId;
+          row.classList.toggle("is-selected", active);
+          row.setAttribute("aria-selected", active ? "true" : "false");
+          if (active && options.focus) row.focus();
+        });
+        const count = Number(selected.recent_gen_count) || 0;
+        const limit = Math.max(1, Number(selected.recent_gen_limit) || 5);
+        const identity = selected.username ? `@${selected.username}` : `ID ${selected.id}`;
+        const email = selected.email || "등록되지 않음";
+        const credit = selected.unlimited ? "무제한" : `${Math.max(0, Number(selected.credits) || 0)} 크레딧`;
+        const modelAccess = selected.restricted_model ? `${modelShortList(selected.restricted_model)}만 허용` : "전체 모델";
+        const reportAccess = reportAccessLabel(selected.blocked_report_types);
+        const inspector = document.getElementById("userInspectorDetails");
+        inspector.innerHTML =
+          '<div class="user-inspector-details__title"><div><b>' + escape(selected.name || "(이름 없음)") + '</b><span>' + escape(identity) + '</span></div>' +
+          '<span class="status-pill ' + (selected.is_admin ? 'status-pill--admin' : selected.approved ? 'status-pill--success' : 'status-pill--warning') + '">' +
+          (selected.is_admin ? "관리자" : selected.approved ? "승인됨" : "승인 대기") + '</span></div>' +
+          '<dl><div><dt>학번</dt><dd>' + escape(selected.student_id || "-") + '</dd></div>' +
+          '<div><dt>이메일</dt><dd title="' + escape(email) + '">' + escape(email) + '</dd></div>' +
+          '<div><dt>이메일 인증</dt><dd>' + (selected.email_verified ? "완료" : "미인증") + '</dd></div>' +
+          '<div><dt>크레딧</dt><dd>' + escape(credit) + '</dd></div>' +
+          '<div><dt>누적 사용</dt><dd>' + fmtBoth(selected.spent_usd) + '</dd></div>' +
+          '<div><dt>이번 시간</dt><dd>' + (selected.is_admin ? "제한 없음" : `${count}/${limit}${userIsLocked(selected) ? " · 잠김" : ""}`) + '</dd></div>' +
+          '<div><dt>모델 접근</dt><dd>' + escape(modelAccess) + '</dd></div>' +
+          '<div><dt>보고서 접근</dt><dd>' + escape(reportAccess) + '</dd></div>' +
+          '<div><dt>가입일</dt><dd>' + escape(new Date(selected.created_at).toLocaleDateString("ko-KR")) + '</dd></div></dl>';
+        const selectedRow = document.querySelector(`#userTbody .admin-user-row[data-user-id="${CSS.escape(selectedAdminUserId)}"]`);
+        document.querySelectorAll("#userInspectorActions [data-inspector-action]").forEach((button) => {
+          const target = selectedRow?.querySelector(`[data-act="${button.dataset.inspectorAction}"]`);
+          button.hidden = !target;
+          if (target && button.dataset.inspectorAction === "approve") button.textContent = target.textContent.trim();
+        });
+        document.getElementById("userInspectorActions").hidden = false;
+        document.getElementById("userInspectorClose").hidden = false;
+      }
+
       function escape(s) {
         return String(s)
           .replace(/&/g, "&amp;")
@@ -730,32 +875,19 @@
       // 학생 인증(2단계) 상태 셀: 이메일 인증 여부 + 관리자 승인 여부.
       function verifyStatusCell(u) {
         if (u.is_admin)
-          return '<span class="tone-muted">관리자</span>';
+          return '<span class="status-pill status-pill--neutral">내부 계정</span>';
         const ev = u.email_verified
-          ? `<span class="tone-success" title="${escape(u.email || "")}">📧 인증</span>`
-          : '<span class="tone-muted">📧 미인증</span>';
+          ? `<span class="status-pill status-pill--success" title="${escape(u.email || "")}">이메일 인증</span>`
+          : '<span class="status-pill status-pill--neutral">이메일 미인증</span>';
         const ap = u.approved
-          ? '<span class="tone-success">✅ 승인</span>'
-          : '<span class="tone-warning">⏳ 대기</span>';
-        return `<div class="verification-state">${ev}<br>${ap}</div>`;
+          ? '<span class="status-pill status-pill--success">승인됨</span>'
+          : '<span class="status-pill status-pill--warning">승인 대기</span>';
+        return `<div class="verification-state">${ev}${ap}</div>`;
       }
 
       document.getElementById("userTbody").addEventListener("click", async (e) => {
         const row = e.target.closest("tr[data-user-id]");
-        if (row) {
-          document.querySelectorAll("#userTbody .admin-user-row").forEach((item) => item.classList.toggle("is-selected", item === row));
-          const selected = adminUsersCache.find((user) => String(user.id) === row.dataset.userId);
-          const inspector = document.getElementById("userInspectorDetails");
-          if (selected && inspector) {
-            inspector.innerHTML =
-              '<div class="user-inspector-details__title"><b>' + escape(selected.name || "(이름 없음)") + '</b><span>' + escape(selected.username ? "@" + selected.username : "ID " + selected.id) + '</span></div>' +
-              '<dl><div><dt>인증</dt><dd>' + (selected.email_verified ? "이메일 인증" : "미인증") + ' · ' + (selected.approved ? "승인" : "승인 대기") + '</dd></div>' +
-              '<div><dt>권한</dt><dd>' + (selected.is_admin ? "관리자" : "일반 사용자") + '</dd></div>' +
-              '<div><dt>크레딧</dt><dd>' + escape(String(selected.credits == null ? 0 : selected.credits)) + '</dd></div>' +
-              '<div><dt>누적 사용</dt><dd>' + fmtBoth(selected.spent_usd) + '</dd></div>' +
-              '<div><dt>가입일</dt><dd>' + escape(new Date(selected.created_at).toLocaleDateString()) + '</dd></div></dl>';
-          }
-        }
+        if (row) selectAdminUser(row.dataset.userId);
         const btn = e.target.closest("button");
         if (!btn) return;
         const id = btn.dataset.id;
@@ -935,11 +1067,57 @@
       }
 
       document.getElementById("refresh").addEventListener("click", loadUsers);
-      document.getElementById("adminUserFilter").addEventListener("input", (event) => {
-        const query = event.target.value.trim().toLowerCase();
-        document.querySelectorAll("#userTbody tr[data-user-id]").forEach((row) => {
-          row.hidden = !!query && !row.textContent.toLowerCase().includes(query);
+      document.getElementById("adminUserFilter").addEventListener("input", applyUserFilters);
+      document.getElementById("adminUserStatusFilter").addEventListener("change", (event) => {
+        document.querySelectorAll("[data-user-preset]").forEach((button) => {
+          const active = button.dataset.userPreset === event.target.value;
+          button.classList.toggle("is-active", active);
+          button.setAttribute("aria-pressed", active ? "true" : "false");
         });
+        applyUserFilters();
+      });
+      document.getElementById("adminUserSort").addEventListener("change", applyUserFilters);
+      document.getElementById("adminUserFilterReset").addEventListener("click", () => {
+        document.getElementById("adminUserFilter").value = "";
+        document.getElementById("adminUserStatusFilter").value = "all";
+        document.getElementById("adminUserSort").value = "created-desc";
+        document.querySelectorAll("[data-user-preset]").forEach((button) => {
+          const active = button.dataset.userPreset === "all";
+          button.classList.toggle("is-active", active);
+          button.setAttribute("aria-pressed", active ? "true" : "false");
+        });
+        applyUserFilters();
+      });
+      document.querySelectorAll("[data-user-preset]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const preset = button.dataset.userPreset || "all";
+          document.getElementById("adminUserStatusFilter").value = preset;
+          document.querySelectorAll("[data-user-preset]").forEach((item) => {
+            const active = item === button;
+            item.classList.toggle("is-active", active);
+            item.setAttribute("aria-pressed", active ? "true" : "false");
+          });
+          applyUserFilters();
+        });
+      });
+      document.getElementById("userTbody").addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        const row = event.target.closest("tr[data-user-id]");
+        if (!row) return;
+        event.preventDefault();
+        selectAdminUser(row.dataset.userId, { focus: true });
+      });
+      document.getElementById("userInspectorClose").addEventListener("click", clearAdminUserSelection);
+      document.getElementById("userInspectorActions").addEventListener("click", (event) => {
+        const proxy = event.target.closest("[data-inspector-action]");
+        if (!proxy || !selectedAdminUserId) return;
+        const row = document.querySelector(`#userTbody .admin-user-row[data-user-id="${CSS.escape(selectedAdminUserId)}"]`);
+        row?.querySelector(`[data-act="${proxy.dataset.inspectorAction}"]`)?.click();
+      });
+      document.getElementById("userCreateButton").addEventListener("click", () => {
+        const panel = document.getElementById("userCreatePanel");
+        panel.open = true;
+        document.getElementById("name").focus();
       });
 
       // ── Add user form ─────────────────────────────────────────────────────
@@ -1584,6 +1762,68 @@
         var tabBtns = Array.prototype.slice.call(
           document.querySelectorAll("#adminTabs .atab")
         );
+        var codeMirrorAssetsPromise = null;
+        function loadAdminEditorAssets() {
+          if (window.CodeMirror) return Promise.resolve();
+          if (codeMirrorAssetsPromise) return codeMirrorAssetsPromise;
+          var base = "https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/";
+          [
+            "codemirror.min.css",
+            "theme/material-darker.min.css",
+            "theme/eclipse.min.css",
+            "addon/fold/foldgutter.min.css",
+            "addon/dialog/dialog.min.css",
+            "addon/hint/show-hint.min.css",
+          ].forEach(function (path) {
+            if (document.querySelector('link[data-admin-editor-asset="' + path + '"]')) return;
+            var link = document.createElement("link");
+            link.rel = "stylesheet";
+            link.href = base + path;
+            link.setAttribute("data-admin-editor-asset", path);
+            document.head.appendChild(link);
+          });
+          var scripts = [
+            "codemirror.min.js",
+            "mode/javascript/javascript.min.js",
+            "mode/xml/xml.min.js",
+            "mode/css/css.min.js",
+            "mode/htmlmixed/htmlmixed.min.js",
+            "mode/python/python.min.js",
+            "mode/markdown/markdown.min.js",
+            "addon/edit/matchbrackets.min.js",
+            "addon/edit/closebrackets.min.js",
+            "addon/edit/closetag.min.js",
+            "addon/fold/foldcode.min.js",
+            "addon/fold/foldgutter.min.js",
+            "addon/fold/brace-fold.min.js",
+            "addon/fold/xml-fold.min.js",
+            "addon/fold/indent-fold.min.js",
+            "addon/fold/comment-fold.min.js",
+            "addon/selection/active-line.min.js",
+            "addon/search/searchcursor.min.js",
+            "addon/search/search.min.js",
+            "addon/search/jump-to-line.min.js",
+            "addon/dialog/dialog.min.js",
+            "addon/comment/comment.min.js",
+            "addon/hint/show-hint.min.js",
+            "addon/hint/anyword-hint.min.js",
+            "keymap/sublime.min.js",
+          ];
+          codeMirrorAssetsPromise = scripts.reduce(function (promise, path) {
+            return promise.then(function () {
+              return new Promise(function (resolve, reject) {
+                var script = document.createElement("script");
+                script.src = base + path;
+                script.async = false;
+                script.setAttribute("data-admin-editor-asset", path);
+                script.addEventListener("load", resolve, { once: true });
+                script.addEventListener("error", function () { reject(new Error("에디터 리소스를 불러오지 못했습니다.")); }, { once: true });
+                document.head.appendChild(script);
+              });
+            });
+          }, Promise.resolve());
+          return codeMirrorAssetsPromise;
+        }
         function showTab(tab) {
           var titles = {
             ai: "운영 개요",
@@ -1627,11 +1867,24 @@
           if (tab === "appeals") loadAppeals();
           if (tab === "schools" && window.loadSchoolApps) window.loadSchoolApps();
           if (tab === "editor") {
-            initEditor();
-            if (window.__ceCM)
-              setTimeout(function () {
-                window.__ceCM.refresh();
-              }, 30);
+            var ideEl = document.getElementById("ide");
+            if (!window.CodeMirror && ideEl) ideEl.setAttribute("aria-busy", "true");
+            loadAdminEditorAssets()
+              .then(function () {
+                if (ideEl) ideEl.setAttribute("aria-busy", "false");
+                initEditor();
+                if (window.__ceCM)
+                  setTimeout(function () {
+                    window.__ceCM.refresh();
+                  }, 30);
+              })
+              .catch(function () {
+                codeMirrorAssetsPromise = null;
+                if (ideEl) {
+                  ideEl.setAttribute("aria-busy", "false");
+                  ideEl.innerHTML = '<div class="editor-load-error">에디터 로드 실패 — 다시 시도해 주세요.</div>';
+                }
+              });
           }
         }
         tabBtns.forEach(function (b) {
@@ -1744,7 +1997,6 @@
         var cmReady = false;
         function initEditor() {
           if (cmReady) return;
-          cmReady = true;
           if (typeof CodeMirror === "undefined") {
             var ideEl = document.getElementById("ide");
             if (ideEl)
@@ -1752,6 +2004,7 @@
                 '<div class="editor-load-error">에디터 로드 실패(네트워크 확인)</div>';
             return;
           }
+          cmReady = true;
 
           var LANGS = {
             javascript: { label: "JavaScript", mode: "javascript", ext: "js" },

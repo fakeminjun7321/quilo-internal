@@ -21,7 +21,7 @@ function loadPlaywrightTest() {
 const { test, expect } = loadPlaywrightTest();
 const PUBLIC_DIR = path.join(process.cwd(), "public");
 const screenshotPath = "/tmp/quilo-admin-operations.png";
-const REQUIRED_IDS = ["aaChips","aaInput","aaModel","aaModelHint","aaMsgs","aaSend","addForm","addStatus","adminAiSection","adminAnnSection","adminAppealsSection","adminEditorSection","adminPageTitle","adminTabs","annAddBtn","annAdminList","annCat","annLink","annStatus","annTitle","appealsList","appealsRefresh","betaAddForm","betaAddStatus","betaKey","betaLabel","betaList","betaSection","betaStatus","bgSubsSection","caActions","caGo","caHint","caModel","caPrompt","caResult","caText","caUseCode","ceAi","ceArea","ceFrame","ceLang","ceOut","grantAddForm","grantAddStatus","grantDays","grantHours","grantList","grantName","grantNote","grantStatus","grantsSection","ide","ideFileInput","ideFiles","ideMiniCode","ideMiniView","ideMinimap","ideNewFile","ideOpenFile","ideOpenFolder","idePanel","idePanelClose","ideSide","ideTabs","isAdmin","listStatus","logStatus","logTable","logTbody","logout","name","openAudience","openFeatureSection","openForm","openHours","openKey","openList","openSetStatus","openStatus","password","proAddForm","proAddStatus","proList","proName","proStatus","proTierSection","problemsetSection","psLimitForm","psLimitInput","psLimitStatus","rateInfo","refresh","refreshBeta","refreshGrants","refreshLogs","refreshOpen","refreshProMembers","refreshPsLimit","refreshSchoolApps","refreshSubReqs","refreshSubs","schoolAppFilter","schoolAppsList","schoolAppsSection","stDownload","stMinimap","stMsg","stPos","stRun","stSave","stTheme","subAddForm","subAddStatus","subDays","subHours","subList","subName","subNote","subPermanent","subReqList","subStatus","themeToggle","userTable","userTbody"];
+const REQUIRED_IDS = ["aaChips","aaInput","aaModel","aaModelHint","aaMsgs","aaSend","addForm","addStatus","adminAiSection","adminAnnSection","adminAppealsSection","adminEditorSection","adminPageTitle","adminTabs","adminUserFilter","adminUserFilterReset","adminUserInspector","adminUserSort","adminUserStatusFilter","adminUsersSection","annAddBtn","annAdminList","annCat","annLink","annStatus","annTitle","appealsList","appealsRefresh","betaAddForm","betaAddStatus","betaKey","betaLabel","betaList","betaSection","betaStatus","bgSubsSection","caActions","caGo","caHint","caModel","caPrompt","caResult","caText","caUseCode","ceAi","ceArea","ceFrame","ceLang","ceOut","grantAddForm","grantAddStatus","grantDays","grantHours","grantList","grantName","grantNote","grantStatus","grantsSection","ide","ideFileInput","ideFiles","ideMiniCode","ideMiniView","ideMinimap","ideNewFile","ideOpenFile","ideOpenFolder","idePanel","idePanelClose","ideSide","ideTabs","isAdmin","listStatus","logStatus","logTable","logTbody","logout","name","openAudience","openFeatureSection","openForm","openHours","openKey","openList","openSetStatus","openStatus","password","proAddForm","proAddStatus","proList","proName","proStatus","proTierSection","problemsetSection","psLimitForm","psLimitInput","psLimitStatus","rateInfo","refresh","refreshBeta","refreshGrants","refreshLogs","refreshOpen","refreshProMembers","refreshPsLimit","refreshSchoolApps","refreshSubReqs","refreshSubs","schoolAppFilter","schoolAppsList","schoolAppsSection","stDownload","stMinimap","stMsg","stPos","stRun","stSave","stTheme","subAddForm","subAddStatus","subDays","subHours","subList","subName","subNote","subPermanent","subReqList","subStatus","themeToggle","userCreateButton","userCreatePanel","userInspectorActions","userInspectorClose","userMetricAdmin","userMetricLocked","userMetricPending","userMetricTotal","userMetricUnverified","userRefreshMeta","userTable","userTbody"];
 let server;
 let baseUrl;
 
@@ -52,6 +52,57 @@ function fixture(pathname) {
           recent_gen_count: 0,
           recent_gen_limit: 5,
           created_at: "2026-07-01T00:00:00Z",
+          restricted_model: "",
+          blocked_report_types: [],
+        },
+        {
+          id: "pending-user",
+          name: "승인 대기 사용자",
+          username: "pending-user",
+          student_id: "2501",
+          is_admin: false,
+          approved: false,
+          email_verified: false,
+          email: "pending@ts.hs.kr",
+          credits: 0,
+          spent_usd: 1.25,
+          recent_gen_count: 0,
+          recent_gen_limit: 5,
+          created_at: "2026-07-02T00:00:00Z",
+          restricted_model: "gpt-5.4-mini",
+          blocked_report_types: ["phys-result"],
+        },
+        {
+          id: "locked-user",
+          name: "사용 잠김 사용자",
+          username: "locked-user",
+          student_id: "2502",
+          is_admin: false,
+          approved: true,
+          email_verified: true,
+          email: "locked@ts.hs.kr",
+          credits: 2,
+          spent_usd: 4.5,
+          recent_gen_count: 5,
+          recent_gen_limit: 5,
+          created_at: "2026-07-03T00:00:00Z",
+          restricted_model: "",
+          blocked_report_types: [],
+        },
+        {
+          id: "admin-user",
+          name: "운영 관리자",
+          username: "admin-user",
+          is_admin: true,
+          approved: true,
+          email_verified: true,
+          email: "admin@quilo.test",
+          credits: 1000,
+          unlimited: true,
+          spent_usd: 10,
+          recent_gen_count: 0,
+          recent_gen_limit: 5,
+          created_at: "2026-07-04T00:00:00Z",
           restricted_model: "",
           blocked_report_types: [],
         },
@@ -153,11 +204,14 @@ test("admin console keeps all operational groups reachable without write request
   await expect(page.locator("#themeToggle .operations-theme__icon")).toHaveCount(2);
   await expect(page.locator("#adminTabs .atab.on")).toHaveAttribute("data-go", "ai");
   await expect(page.locator("#adminAiSection")).toBeVisible();
+  await expect(page.locator("[data-admin-editor-asset]")).toHaveCount(0);
 
   for (const group of ["users", "subs", "grants", "beta", "schools", "logs", "announce", "appeals", "editor"]) {
     await page.locator(`#adminTabs .atab[data-go="${group}"]`).click();
     await expect(page.locator(`section.settings-card[data-atab="${group}"]`).first()).toBeVisible();
   }
+  await expect(page.locator('link[data-admin-editor-asset]')).toHaveCount(6);
+  expect(await page.locator('script[data-admin-editor-asset]').count()).toBeGreaterThan(0);
 
   await page.locator('#adminTabs .atab[data-go="ai"]').click();
   await expect(page.locator("#adminPageTitle")).toHaveText("운영 개요");
@@ -201,10 +255,33 @@ test("users and announcements use dense list and inspector workflows", async ({ 
   const userInspector = page.locator('section[data-atab="users"]:has(#addForm)');
   await expect(userList).toBeVisible();
   await expect(userInspector).toBeVisible();
+  await expect(page.locator("#userMetricTotal")).toHaveText("4");
+  await expect(page.locator("#userMetricPending")).toHaveText("1");
+  await expect(page.locator("#userMetricUnverified")).toHaveText("1");
+  await expect(page.locator("#userMetricLocked")).toHaveText("1");
+  await expect(page.locator("#userMetricAdmin")).toHaveText("1");
   await page.locator("#adminUserFilter").fill("qa-user");
   await expect(page.locator('#userTbody tr[data-user-id="qa-user"]')).toBeVisible();
+  await expect(page.locator('#userTbody tr[data-user-id]')).toHaveCount(1);
   await page.locator('#userTbody tr[data-user-id="qa-user"] td').first().click();
   await expect(page.locator("#userInspectorDetails")).toContainText("QA 사용자");
+  await expect(page.locator('#userTbody tr[data-user-id="qa-user"]')).toHaveAttribute("aria-selected", "true");
+  await page.locator("#adminUserFilter").fill("");
+  await page.locator('[data-user-preset="pending"]').click();
+  await expect(page.locator('#userTbody tr[data-user-id="pending-user"]')).toBeVisible();
+  await expect(page.locator('#userTbody tr[data-user-id]')).toHaveCount(1);
+  await page.locator("#adminUserFilterReset").click();
+  await expect(page.locator('#userTbody tr[data-user-id]')).toHaveCount(4);
+  await page.locator('#userTbody tr[data-user-id="qa-user"]').focus();
+  await page.locator('#userTbody tr[data-user-id="qa-user"]').press("Enter");
+  await expect(page.locator("#userInspectorDetails")).toContainText("qa-user");
+  await expect(page.locator("#userInspectorActions")).toBeVisible();
+  await expect(page.locator("#userCreatePanel")).not.toHaveAttribute("open", "");
+  await page.locator("#userCreateButton").click();
+  await expect(page.locator("#userCreatePanel")).toHaveAttribute("open", "");
+  await expect(page.locator("#name")).toBeFocused();
+  await page.locator("#userCreatePanel > summary").click();
+  await expect(page.locator("#userCreatePanel")).not.toHaveAttribute("open", "");
   const userListBox = await userList.boundingBox();
   const userInspectorBox = await userInspector.boundingBox();
   expect(userListBox.x + userListBox.width).toBeLessThanOrEqual(userInspectorBox.x + 1);
@@ -222,6 +299,26 @@ test("users and announcements use dense list and inspector workflows", async ({ 
   expect(announcementListBox.x + announcementListBox.width).toBeLessThanOrEqual(announcementInspectorBox.x + 1);
   await page.screenshot({ path: "/tmp/quilo-admin-announcements-console.png", fullPage: false });
   expect(consoleErrors).toEqual([]);
+});
+
+test("user console remains readable at the reported 1206px desktop width", async ({ page }) => {
+  await page.setViewportSize({ width: 1206, height: 850 });
+  await page.goto(`${baseUrl}/admin.html`, { waitUntil: "networkidle" });
+  await page.locator('#adminTabs .atab[data-go="users"]').click();
+
+  await expect(page.locator("#adminUsersSection")).toBeVisible();
+  await expect(page.locator("#adminUserInspector")).toBeVisible();
+  await expect(page.locator("#userCreateButton")).toBeVisible();
+  await expect(page.locator("#userTable thead")).toBeVisible();
+  const geometry = await page.evaluate(() => ({
+    documentWidth: document.documentElement.scrollWidth,
+    viewportWidth: innerWidth,
+    toolbarRight: document.querySelector(".user-console-toolbar").getBoundingClientRect().right,
+    listRight: document.getElementById("adminUsersSection").getBoundingClientRect().right,
+  }));
+  expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.viewportWidth);
+  expect(geometry.toolbarRight).toBeLessThanOrEqual(geometry.listRight + 1);
+  await page.screenshot({ path: "/tmp/quilo-admin-users-1206.png", fullPage: false });
 });
 
 test("subscription, system, usage, feedback, and development panels keep dense console geometry", async ({ page }) => {
@@ -269,8 +366,8 @@ test("destructive operations retain confirmation gates and cancel without writes
     confirmationMessage = dialog.message();
     await dialog.dismiss();
   });
-  await page.locator('.row-action-menu:has(button[data-act="delete"][data-id="qa-user"]) summary').click();
-  await page.locator('button[data-act="delete"][data-id="qa-user"]').click();
+  await page.locator('#userTbody tr[data-user-id="qa-user"]').click();
+  await page.locator('#userInspectorActions [data-inspector-action="delete"]').click();
   expect(confirmationMessage).toBe("정말 삭제할까요?");
   expect(writes).toEqual([]);
 });

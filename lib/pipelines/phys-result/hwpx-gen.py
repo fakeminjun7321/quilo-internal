@@ -171,6 +171,15 @@ def find_template_body_cells(doc):
 
 def fill_template_title(doc, content):
     title = content.get("title") or content.get("title_en") or content.get("title_kr") or "물리 결과보고서"
+    # (DEF-019) 템플릿 첫 페이지에 학번·날짜 기입 - 제목 채우기 경로를 그대로
+    # 재사용해, 채운 제목 run '바로 뒤'에 같은 서식의 run 하나만 덧붙인다.
+    # 값이 없으면 아무것도 안 한다. 제목 박스는 고정 크기(hp:sz) 한 줄 사각형
+    # 이라 문단을 추가하면 잘릴 수 있고, header→body 이동은 macOS/Windows
+    # 한컴 미오픈 회귀 전력이 있어(CLAUDE.md HWPX 규칙) 구조 변경은 하지
+    # 않는다 - 기존 문단 안 run 추가는 텍스트 채우기와 동급의 안전 변경이다.
+    student_id = str(content.get("student_id") or "").strip()
+    date = str(content.get("date") or "").strip()
+    id_date_suffix = ", ".join(v for v in (student_id, date) if v)
     changed = False
     for sec in getattr(doc.oxml, "sections", []):
         element = getattr(sec, "element", None)
@@ -190,6 +199,15 @@ def fill_template_title(doc, content):
                         prev_run = prev.getparent()
                         if run is not None and prev_run is not None and prev_run.get("charPrIDRef"):
                             run.set("charPrIDRef", prev_run.get("charPrIDRef"))
+                if id_date_suffix and run is not None:
+                    tail_run = etree.Element(f"{pre.NS_HP}run")
+                    if run.get("charPrIDRef"):
+                        tail_run.set("charPrIDRef", run.get("charPrIDRef"))
+                    tail_t = etree.SubElement(tail_run, f"{pre.NS_HP}t")
+                    tail_t.text = f"  ({id_date_suffix})"
+                    # 제목 run 바로 다음 형제로 삽입 - linesegarray 등 뒤따르는
+                    # 요소 순서(스키마: run들 뒤 linesegarray)를 깨지 않는다.
+                    run.addnext(tail_run)
                 changed = True
         if changed and hasattr(sec, "mark_dirty"):
             sec.mark_dirty()
@@ -449,13 +467,26 @@ SUBSCRIPT_TO_LATEX = str.maketrans({
 # 잡힌다. 빠지면 연산자/그리스 경계에서 식이 토막나 산문에 raw 기호가 남는다.
 _FORMULA_GREEK = "αβγδεϵζηθϑικλμνξπρστυφϕχψωΓΔΘΛΞΠΣΦΨΩ"
 _FORMULA_OPERATORS = "∇▽∂∫∬∭∮∯∰∑∏≡≅∝∞∈∉⟨⟩∓∘∠"
-FORMULA_CHAR_CLASS = (
+# 수식 문자 '본체' - 공백과 마침표는 뺀 나머지. 이 둘은 아래에서 문맥 제한을
+# 걸어 붙인다. 예전처럼 \s(줄바꿈 포함)와 '.'를 클래스 통짜로 넣으면 인라인
+# 수식 범위가 문장 마침표/줄바꿈을 넘어 '…/g). (2' 처럼 닫는 괄호, 마침표,
+# 다음 항목 번호까지 삼키고, JSON에서 줄바꿈으로 분리돼 있던 (1)/(2) 항목이
+# 한 문단으로 병합된다(R0 phys-atwood 실측, DEF-018 D-1).
+_FORMULA_CHAR_BODY = (
     r"A-Za-z0-9"
     + _FORMULA_GREEK
     + _FORMULA_OPERATORS
-    + r"_\{\}\^\*\s\+\-=−–—≈≃≅≡≤≥≠<>/\\\(\)\[\]\.,\|"
+    + r"_\{\}\^\*\+\-=−–—≈≃≅≡≤≥≠<>/\\\(\)\[\],\|"
     r"·×√½°%′'⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻₀₁₂₃₄₅₆₇₈₉₊₋\u0302\u0303\u0304\u0307\u0308"
 )
+# 하위 호환 공개 이름 - 본체 + 마침표 + 공백. 공백은 스페이스/탭만 넣고
+# 줄바꿈(\n)은 제외한다(인라인 수식은 한 줄 안에서만 성립).
+FORMULA_CHAR_CLASS = _FORMULA_CHAR_BODY + r"\. \t"
+# 인라인 수식 본문 1글자: 수식 문자(스페이스/탭 포함, 줄바꿈 제외) 또는 '숫자
+# 사이' 마침표(소수점 9.8, 0.0933)만 허용한다. 문장 종결 마침표('…한다.',
+# '…). (2')는 숫자 사이가 아니라서 수식 범위가 거기서 끊긴다. 마침표 뒤
+# 내용은 re.sub 스캔이 이어서 보므로 별도 수식으로 다시 판정된다. (DEF-018 D-1)
+_FORMULA_BODY_ATOM = rf"(?:[{_FORMULA_CHAR_BODY} \t]|(?<=\d)\.(?=\d))"
 # 식의 '첫 글자'로도 연산자/그리스가 올 수 있어야 '▽·E=...', '∭_V ...=...',
 # '∠ABC = 90°', '∞ = ...' 가 통째로 승격된다(연산자 prefix 가 산문에 떨어지는
 # 토막 현상 방지). 미적분 연산자(∇▽∂∫∬∭∮∯∰∑∏)에 더해 식 시작이 자연스러운
@@ -464,10 +495,12 @@ FORMULA_CHAR_CLASS = (
 FORMULA_START_CLASS = (
     r"A-Za-z0-9" + _FORMULA_GREEK + "∇▽∂∫∬∭∮∯∰∑∏∠≡≅∝∞∈∉⟨∓∘" + r"\*\(\{%\|"
 )
+# 본문 반복을 _FORMULA_BODY_ATOM 으로 구성해 마침표는 소수점 문맥에서만,
+# 공백은 스페이스/탭만 허용한다(문장 마침표/줄바꿈에서 수식 범위 종료). (D-1)
 INLINE_FORMULA_RE = re.compile(
-    rf"(?<![A-Za-z0-9_])([{FORMULA_START_CLASS}][{FORMULA_CHAR_CLASS}]{{0,120}}?"
+    rf"(?<![A-Za-z0-9_])([{FORMULA_START_CLASS}]{_FORMULA_BODY_ATOM}{{0,120}}?"
     rf"(?:=|≈|≃|≅|≡|≤|≥|≠|∝)"
-    rf"[{FORMULA_CHAR_CLASS}]{{1,160}})"
+    rf"{_FORMULA_BODY_ATOM}{{1,160}})"
 )
 
 
@@ -548,7 +581,16 @@ def _slash_underscore_is_prose(core):
             return True  # 버전 문자열(v2.0/beta)
         # 단일 슬래시 약어/단위/영문 나열(TCP/IP, m/s, input/output, w/o, N/A …):
         # 양쪽이 순수 영숫자(첨자·연산자 없음)이고 슬래시가 하나뿐이면 산문.
-        if s.count("/") == 1 and re.fullmatch(r"[A-Za-z0-9]+/[A-Za-z0-9]+", s):
+        # 괄호 '한 겹'으로 감싼 표 헤더 단위 '(kJ/mol)'/'(mol/L)' 도 알맹이
+        # 기준으로 같은 판정을 한다 - 괄호가 fullmatch 가드를 무력화해 단위
+        # 표기가 수식 승격 후 'k {J} over {m} o l' 로 분수화되던 실측 결함
+        # (R0 free-1 표 헤더, DEF-018 D-3). 강한 트리거가 있는 '(m/s²)' 는
+        # 이 함수 첫 가드에서 이미 수식으로 통과했으므로 영향이 없다.
+        bare = s
+        m_paren = re.fullmatch(r"\(([^()]+)\)", bare)
+        if m_paren:
+            bare = m_paren.group(1).strip()
+        if bare.count("/") == 1 and re.fullmatch(r"[A-Za-z0-9]+/[A-Za-z0-9]+", bare):
             return True
 
     if has_underscore and _IDENT_UNDERSCORE_RE.search(s):
@@ -585,7 +627,9 @@ def _is_real_math(core):
 
 
 # 공백 없는 한 덩어리 토큰(= 없이도) — 강한 트리거가 있으면 통째 수식화한다.
-_SYMBOL_TOKEN_RE = re.compile("[" + FORMULA_CHAR_CLASS.replace(r"\s", "") + "]+")
+# 토큰은 공백에서 끊기므로 문장 마침표 삼킴 문제가 없다 - 마침표는 토큰
+# 내부용(9.8, 'Effect.' 뒤 strip 처리)으로 남긴다. (D-1 리팩터 동치 유지)
+_SYMBOL_TOKEN_RE = re.compile("[" + _FORMULA_CHAR_BODY + r"\." + "]+")
 
 
 
@@ -914,6 +958,26 @@ def trim_formula_edges(core, trailing):
     """Keep regex-matched inline formulas from swallowing nearby prose."""
     core = str(core or "").strip()
     trailing = str(trailing or "")
+
+    # 괄호 '짝(구조)' 경계 - 개수는 맞아도 구조가 어긋난 '…/g) . (2' 꼴은
+    # 수식이 인접 산문(문장 닫는 괄호, 마침표, 다음 항목 번호)을 삼킨
+    # 신호다(R0 phys-atwood 실측, DEF-018 D-1). 아래 count 기반 while 은
+    # 개수가 같으면 통과시키므로 여기서 구조를 본다: 식 안에서 열린 적 없는
+    # ')' 를 만나면 그 직전까지만 수식으로 보고 나머지는 산문으로 돌려보낸다.
+    depth = 0
+    for i, ch in enumerate(core):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            if depth == 0:
+                trailing = core[i:] + trailing
+                core = core[:i].rstrip()
+                # 잘린 끝에 드러난 문장 구두점도 산문으로 돌린다.
+                while core and core[-1] in ".,;:":
+                    trailing = core[-1] + trailing
+                    core = core[:-1].rstrip()
+                break
+            depth -= 1
 
     while core and core.count("(") > core.count(")"):
         idx = core.rfind("(")

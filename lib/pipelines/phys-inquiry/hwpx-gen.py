@@ -131,7 +131,7 @@ def build_title(doc, content):
     topic = (content.get("topic_title") or "").strip()
     if topic:
         phys.add_para_to(
-            doc, doc, f"— {topic} —",
+            doc, doc, topic,
             base_size=pre.SIZE_BODY, align="CENTER", space_after=200,
         )
     sid = str(content.get("student_id") or "").strip()

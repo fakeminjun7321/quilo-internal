@@ -121,7 +121,7 @@ def build_title(doc, content):
     subtitle = str(content.get("subtitle") or "").strip()
     if subtitle:
         phys.add_para_to(
-            doc, doc, f"— {subtitle} —",
+            doc, doc, subtitle,
             base_size=pre.SIZE_BODY, align="CENTER", space_after=160,
         )
     sid = str(content.get("student_id") or "").strip()

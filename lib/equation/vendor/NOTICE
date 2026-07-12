@@ -17,6 +17,17 @@ hwip-converter.js 는 아래 오픈소스를 vendor 한 것입니다.
 - 만약 추후 허락이 철회되면 이 vendor 파일을 제거하면 되고, 수식 변환은
   hwpx_equation_tool.py 의 자체(builtin) 변환기로 자동 폴백됩니다.
 
+업스트림 동기화 감사 (2026-07-13)
+- 업스트림 HEAD 11ff12d(2026-07-04) 기준 converter(src/converter.js) 차이를
+  전수 대조했다. 결론: 재-vendor 불필요.
+  · \frac12 두 자리 인수 분리(업스트림 4876b52) — 본 vendor 는 동등 패치
+    (readArg singleGlyph, "(chem-pre-lab-web 수정)" 주석) 를 이미 보유.
+  · tryReadRawText(\text 를 무인용 평문으로) — 본 파이프라인은 인용 출력 후
+    normalize 의 dequote(키워드 인지 낱자 분해)로 처리하며, 문서 렌더러의
+    탐욕 렉싱(pivot→πvot)에 대해 그쪽 방식보다 안전해 채택하지 않음.
+  · 그 외 커밋은 앱/OCR/md 변환 계층으로 변환기와 무관.
+- 다음 동기화 시 이 기록의 해시(11ff12d) 이후 커밋만 보면 된다.
+
 적용 위치 (2026-06-10 통합)
 - lib/equation/hwpx_equation_tool.py 가 {{EQ-LATEX}}/{{EQN-LATEX}} 마커를
   hwip(이 vendor)으로 우선 변환하고, 실패한 식만 builtin 변환기로 폴백합니다.

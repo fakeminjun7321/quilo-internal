@@ -81,9 +81,12 @@ KEYWORDS: frozenset[str] = frozenset(
 )
 
 # ── 동의 글리프 클래스 ──────────────────────────────────────────────────────
-# SAFE: 두 표기 모두 실서비스 문서에서 정상 렌더가 확인된 동일 글리프.
-#       (builtin 표기는 2026-04~06 단독 운용기, hwip 표기는 06-10 이후 운용기
-#        산출물로 각각 검증됨. Phase 3 렌더 시트에서 한 번 더 실측한다.)
+# SAFE: 두 표기 모두 같은 글리프로 렌더됨이 확인된 쌍. 2026-07-12 렌더 시트
+#       실측(S1 프로브, tmp/eq-render-sheet.pdf)으로 in/IN·inf/INF·exist/
+#       exists·union/cup·inter/cap·DELTA/Delta 확정. '=>' 는 ⇒ 가 아니라
+#       '=' '>' 두 글자로 렌더됨이 확인되어 RARROW 와 동의어가 아니다(제외).
+#       'lnot' 은 한컴 비키워드('ln'+'otp' 로 쪼개짐) — normalize 가 ¬ 로
+#       치환하므로 출력에 남으면 그 자체가 결함 신호다(동의어 아님).
 _SAFE_SYNONYM_SETS = [
     {"times", "TIMES", "×"},
     {"div", "DIV", "÷"},
@@ -99,21 +102,19 @@ _SAFE_SYNONYM_SETS = [
     {"<->", "lrarrow", "↔"},
     {"LARROW", "⇐"},
     {"LRARROW", "⇔"},
-    {"lnot", "¬"},
+    {"RARROW", "⇒"},
     {"cdot", "·", "∙", "⋅"},
-]
-# SUSPECT: 같은 글리프로 추정되나 어느 한쪽 표기의 한컴 실측이 없는 쌍.
-# 동치로 '통과'시키되 suspect 로 표시해 렌더 시트 검증 큐로 보낸다.
-# (in/IN·inf/INF 는 한컴 키워드가 대소문자 구분이라 두 표기 중 한쪽이
-#  미검증 — builtin 은 IN/INF, hwip 은 in/inf 를 낸다.)
-_SUSPECT_SYNONYM_SETS = [
-    {"cup", "union"},
-    {"cap", "inter"},
-    {"exists", "exist"},
     {"in", "IN", "∈"},
     {"inf", "INF", "∞"},
-    {"=>", "RARROW", "⇒"},
+    {"exists", "exist", "∃"},
+    {"cup", "union", "∪"},
+    {"cap", "inter", "∩"},
 ]
+# SUSPECT: 같은 글리프로 추정되나 아직 한컴 실측이 없는 쌍.
+# 동치로 '통과'시키되 suspect 로 표시해 렌더 시트 검증 큐로 보낸다.
+# (2026-07-12 실측 후 전부 SAFE 로 승격되어 현재 비어 있음 — 새 미검증
+#  동의 쌍이 생기면 여기 먼저 넣고 렌더 시트로 확정한다.)
+_SUSPECT_SYNONYM_SETS: list[set[str]] = []
 
 _GLYPH_CLASS: dict[str, str] = {}
 _SUSPECT_CLASS: dict[str, str] = {}
@@ -435,15 +436,15 @@ def fold_seq(items: list, notes: list[str]) -> list:
         i += 1
     items = out
 
-    # ⑥ 고아 ^{n} + sqrt → n제곱근 (hwip 의 \sqrt[n] 표기: '^{n} sqrt {x}').
-    #    base 가 없는 script(위첨자만)와 바로 뒤 rad(None,…)를 합친다.
+    # ⑥ 고아/빈밑 ^{n} + sqrt → n제곱근. hwip 의 \sqrt[n] 표기('^{n} sqrt')와
+    #    정규화 표기('{}^{n} sqrt' — normalize_hwp_script 산출)를 모두 접는다.
     out = []
     i = 0
     while i < len(items):
         it = items[i]
         if (
             it[0] == "script"
-            and it[1] is None
+            and (it[1] is None or (it[1][0] == "group" and not it[1][1]))
             and it[3]
             and not it[2]
             and i + 1 < len(items)
@@ -856,13 +857,14 @@ _SELFTEST = [
     ("vec {A} TIMES vec {B}", "vec {A} times vec {B}", "benign"),
     ("DELTA G = DELTA H - T DELTA S", "Delta G `=` Delta H `-` T Delta S", "benign"),
     ("sum_{n=1}^{ INF } {1} over {n^{2}}", "sum_{n `=` 1}^{inf} {1} over {n^{2}}",
-     "suspect"),
+     "benign"),
+    ("2 {}^{3} sqrt {8}", "2 root 3 of {8}", "equal"),  # n제곱근 두 표기 동치
     ("( { partial V} over { partial T} )_{P}",
      "LEFT( {partial V} over {partial T} RIGHT)_{P}", "equal"),
     ("2KClO_{3} { -> }^{ DELTA } 2KCl", "2 KC l O_{3} REL rarrow {Delta} {} 2 KC l",
      "benign"),
     ("OVERBRACE {a+b}^{n}", "OVERBRACE {n} {a `+` b}", "equal"),
-    ("x in A", "x ` IN ` A", "suspect"),
+    ("x in A", "x ` IN ` A", "benign"),
     # 실결함 재현 — 서로 다른 수식은 반드시 struct 로 갈라야 한다
     ("2 root 3 of {8}", "2^{3} sqrt {8}", "struct"),          # n제곱근 결합 파손
     ("A^{T}", "A^{intercal}", "struct"),                       # 미지 명령 노출

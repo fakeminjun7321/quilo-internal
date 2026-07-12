@@ -28,20 +28,36 @@ import eq_corpus_mine  # noqa: E402
 
 from hwpx.document import HwpxDocument  # noqa: E402  (.venv python-hwpx)
 
-# 의심 키워드 프로브 — 두 표기가 같은 글리프로 그려지는지 눈으로 판정한다.
-# (라벨, {{EQ:}} 원시 스크립트). '~' 는 한컴 수식의 일반 공백.
+# 프로브(2라운드, 2026-07-12 1차 실측 반영) — 이번 수정의 렌더 검증 +
+# 아직 미확정인 형태 판정. (라벨, {{EQ:}} 원시 스크립트). '~' 는 일반 공백.
+# 1차 실측 확정분(INF/inf·IN/in·exist/exists·union/cup·inter/cap·DELTA/
+# Delta 동일, => 는 ⇒ 아님, root…of 파손, sup 증발, lnot 파손, \{ 증발)은
+# docs/hwp-equation-quirks.md 의 결과 표에 기록되어 있다.
 PROBES = [
-    ("무한대 — INF(빌트인)와 inf(hwip) 둘 다 ∞ 인가", "INF ~ ~ inf"),
-    ("원소 — IN(빌트인)과 in(hwip) 둘 다 ∈ 인가", "x IN A ~ ~ x in A"),
-    ("겹줄 오른화살표 — =>(구표기)와 RARROW 둘 다 ⇒ 인가", "p => q ~ ~ p RARROW q"),
-    ("겹줄 왼/양방향 — LARROW(⇐)·LRARROW(⇔) 정상인가", "p LARROW q ~ ~ p LRARROW q"),
-    ("존재 기호 — exist(hwip)와 exists(빌트인) 둘 다 ∃ 인가", "exist x ~ ~ exists x"),
-    ("합집합 — union(hwip)과 cup(빌트인) 둘 다 ∪ 인가", "A union B ~ ~ A cup B"),
-    ("교집합 — inter(hwip)와 cap(빌트인) 둘 다 ∩ 인가", "A inter B ~ ~ A cap B"),
-    ("대문자 그리스 두 표기 — DELTA 와 Delta 둘 다 Δ 인가", "DELTA G ~ ~ Delta G"),
-    ("희귀 대문자 그리스(hwip 표기) — 글자 그대로 나오면 안 됨", "Alpha ~ Beta ~ Rho"),
-    ("n제곱근 — ∛8 로 그려지는가", "2 root 3 of {8}"),
-    ("노름 — ‖x‖ 로 그려지는가", "VERT x VERT"),
+    ("n제곱근 정규형 — 2·∛8 로 그려지는가(3 이 2 의 지수로 붙으면 안 됨)",
+     "2 {}^{3} sqrt {8}"),
+    ("n제곱근 대조군 — 빈 밑 없는 ^{3} 은 2³√8 로 붙는 것이 맞는지 확인",
+     "2^{3} sqrt {8}"),
+    ("집합 중괄호(인용 리터럴) — {x|x>0} 으로 중괄호가 보이는가",
+     '"{" x | x > 0 "}"'),
+    ("집합 중괄호(스트레치 대안) — LEFT{ RIGHT} 도 중괄호가 보이는가",
+     "LEFT{ x | x > 0 RIGHT}"),
+    ("부정 기호 — ¬p 로 그려지는가", "¬ p"),
+    ("부정 대조군 — not 키워드는 어떻게 그려지는가", "not p"),
+    ("상한/하한 교정형 — 업라이트 sup/inf + 첨자가 정상인가",
+     '"sup"_{n >= 1} a_{n} ~ ~ "inf"_{n} b_{n}'),
+    ("희귀 함수 키워드 — 글자 노출/증발 없이 나오는가",
+     "det A ~ gcd (a,b) ~ arg z ~ deg f"),
+    ("겹브레이스 A형(hwip 현행, 1차에서 증발) — 다시 확인",
+     "OVERBRACE {n} {a+b} ~ ~ UNDERBRACE {m} {c+d}"),
+    ("겹브레이스 B형(빌트인 구형) — 위 라벨 붙은 브레이스가 그려지는가",
+     "OVERBRACE {a+b}^{n} ~ ~ UNDERBRACE {c+d}_{m}"),
+    ("겹브레이스 C형(단일 인자) — 브레이스만이라도 그려지는가",
+     "OVERBRACE {a+b}"),
+    # ⇌(U+21CC)는 normalize 가 <-> 로 치환하므로, 치환 표 밖의 자매 글리프
+    # ⇋(U+21CB)로 '알몸 하픈 글리프가 렌더되는가'를 판정한다. 되면 ⇌ 를
+    # 글리프 그대로 살리는 개선(화학 평형 표기)으로 전환할 수 있다.
+    ("평형 화살표 후보 — 하픈 글리프(⇋)가 그대로 보이는가", "A ⇋ B"),
 ]
 
 _LABEL_SWAP = str.maketrans({"\\": "＼", "{": "｛", "}": "｝", "^": "＾", "_": "＿"})

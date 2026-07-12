@@ -369,6 +369,13 @@ class LatexToHwpConverter:
         r"\lvert": "|",
         r"\rvert": "|",
         r"\vert": "|",
+        # 리터럴 중괄호(집합 표기 \{x|x>0\}) — 알몸 '{' 는 한컴 그룹 여닫이로
+        # 먹혀 기호가 증발한다(렌더 시트 S2-114 실측). 인용 리터럴로 살린다.
+        # hwip 은 이 입력을 처리 못 해 _HWIP_UNSAFE_RE 가 빌트인으로 보낸다.
+        r"\{": '"{"',
+        r"\}": '"}"',
+        r"\lbrace": '"{"',
+        r"\rbrace": '"}"',
         r"\,": "`",
         r"\;": "~",
         r"\quad": "~",
@@ -1422,10 +1429,26 @@ def normalize_hwp_script(script: str) -> str:
     text = re.sub(r"(?<![A-Za-z])iint(?![A-Za-z])", "int int", text)
     text = re.sub(r"(?<![A-Za-z])oiint(?![A-Za-z])", "oint", text)
     text = convert_inline_radicals(text)
+    # 'root N of {X}' 는 한컴 문법이 아니다 — root 가 sqrt 동의어로 동작해
+    # √N + 이탤릭 'of' + X 로 깨진다(렌더 시트 S1-10·S2-87 실측). 한컴에서
+    # n제곱근은 빈 밑 위첨자 + sqrt 조합('{}^{N} sqrt {X}')으로 그린다.
+    # 빈 밑 {} 이 있어야 위첨자가 앞 항의 지수로 붙지 않는다.
+    text = re.sub(
+        r"(?<![A-Za-z])root[ \t]+(?:\{(?P<braced>[^{}]*)\}|(?P<bare>[A-Za-z0-9]+))"
+        r"[ \t]+of(?![A-Za-z])[ \t]*",
+        lambda m: "{}^{" + (m.group("braced") or m.group("bare")) + "} sqrt ",
+        text,
+    )
+    # 'lnot' 은 한컴 키워드가 아니다 — 그리디 렉싱이 ln+otp 로 쪼갠다
+    # (렌더 시트 S2-92 실측: \neg p → 'ln otp'). 부정 기호는 글리프로 낸다
+    # (한컴 스크립트의 알몸 유니코드 글리프는 정상 렌더 — °C 등 실측).
+    text = re.sub(r"(?<![A-Za-z])lnot(?![A-Za-z])", "¬", text)
     text = (
+        # '=>' 는 한컴에서 ⇒ 가 아니라 '=' '>' 두 글자로 렌더된다(렌더 시트
+        # S1-3 실측) — 겹줄 화살표는 키워드 RARROW 로.
         text.replace("→", "->")
         .replace("⟶", "->")
-        .replace("⇒", "=>")
+        .replace("⇒", " RARROW ")
         .replace("←", "<-")
         .replace("⇌", "<->")
         .replace("↔", "<->")
@@ -1487,11 +1510,13 @@ _hwip_failed: set[str] = set()
 _hwip_disabled = False
 
 
-# hwip 이 구조를 오조립하는 입력 — n제곱근 \sqrt[n]{x} 을 '^{n} sqrt {x}' 로
-# 내는데, 앞에 항이 있으면(2\sqrt[3]{8}) ^{n} 이 그 항의 지수로 붙어
-# 2³√8 로 렌더된다(구조 동치성 검사로 발견). 빌트인은 'root n of {x}' 로
-# 정상 변환하므로 해당 식은 hwip 을 건너뛰고 빌트인만 쓴다.
-_HWIP_UNSAFE_RE = re.compile(r"\\sqrt\s*\[")
+# hwip 이 구조를 오조립하는 입력은 식 단위로 빌트인만 쓴다:
+# - n제곱근 \sqrt[n]{x}: hwip 은 '^{n} sqrt {x}' 로 내는데 앞에 항이 있으면
+#   (2\sqrt[3]{8}) ^{n} 이 그 항의 지수로 붙어 2³√8 로 렌더된다(구조 검사로
+#   발견). 빌트인 경로는 normalize 가 '{}^{n} sqrt {x}' 로 정규화한다.
+# - 리터럴 중괄호 \{ \}: hwip 토크나이저가 그룹 여닫이로 삼켜 집합 기호가
+#   증발한다(렌더 시트 S2-114 실측). 빌트인은 인용 리터럴("{")로 낸다.
+_HWIP_UNSAFE_RE = re.compile(r"\\sqrt\s*\[|\\[{}]|\\[lr]brace(?![A-Za-z])")
 
 
 def hwip_engine_enabled() -> bool:
@@ -1872,6 +1897,13 @@ def preprocess_latex_body(raw_latex: str) -> str:
     # → 글자 노출)를 내므로, 양 엔진 진입 전 \oint 로 정규화해 hwip 출력도
     # oint 로 맞춘다. (\iint/\iiint 는 hwip 이 dint/tint 로 정상 변환하므로 둠.)
     s = re.sub(r"\\oi+nt(?![A-Za-z])", r"\\oint", s)
+    # \sup(상한)/\inf(하한) — 한컴에서 'sup' 은 위첨자 연산자라 수식 전체가
+    # 빈 렌더로 증발하고(렌더 시트 S2-51·S2-68 실측), 'inf' 는 ∞ 로 그려져
+    # 의미가 바뀐다(S1-1 실측). 함수명은 인용 리터럴로 강등한다 — \text{}
+    # 경유로 양 엔진 모두 "sup"/"inf" 업라이트 텍스트를 낸다. (\infty 는
+    # 뒤에 글자가 이어져 매칭되지 않고, \liminf 류는 백슬래시 직후가 아니라
+    # 안전하다.)
+    s = re.sub(r"\\(sup|inf)(?![A-Za-z])", r"\\text{\1}", s)
     # \intercal(전치 A^⊤ 표기) — hwip 은 미지 명령을 그대로 흘려 위첨자에
     # 'intercal' 영단어가 렌더된다. 양 엔진 진입 전 평문 T 로 강등한다
     # (빌트인 COMMANDS 의 T 매핑과 동일 결과, 구조 동치성 검사로 발견).

@@ -178,6 +178,10 @@ GOLDEN = [
     #    (2\sqrt[3]{8}→2^{3}√8), \intercal 영단어 노출, align 환경 알몸 &/# ──
     r"p \Leftarrow q",
     r"A \Leftrightarrow B",
+    # ── 회귀 추가분(2026-07-12b): 렌더 시트 실측으로 확정한 한컴 결함 잠금 —
+    #    \inf 하한(알몸 inf 는 ∞ 로 렌더), \sup 충돌은 기존 #51·#68 케이스가
+    #    담당. n제곱근·\neg·집합 중괄호는 기존 케이스의 guard 갱신으로 잠금 ──
+    r"\inf_{n \ge 1} b_n",
 ]
 
 # 최종 스크립트에 절대 남으면 안 되는 패턴(원시 LaTeX 잔재/마커 잔재 신호).
@@ -220,8 +224,10 @@ GOLDEN_EQ = [
     (r"cases{x & x \ge 0 # -x & x < 0}", ["cases", ">="]),
     (r"rm {mol} \cdot L^{-1}", ["rm", "mol", "cdot"]),
     (r"{DELTA T} over {t} \approx 0.5", ["DELTA", "over", "APPROX"]),
-    ("sqrt[3]{x} + 1", ["root 3 of {x}"]),
-    ("√[3]{8} = 2", ["root 3 of {8}"]),
+    # n제곱근은 '{}^{n} sqrt' — 'root n of' 는 한컴 문법이 아니어서 √n+'of'
+    # 로 깨진다(렌더 시트 실측 2026-07-12).
+    ("sqrt[3]{x} + 1", ["^{3} sqrt {x}"]),
+    ("√[3]{8} = 2", ["^{3} sqrt {8}"]),
     # {{EQ:}} raw 경로에 모델이 유니코드 적분 글리프·다중적분 스택을 섞어 쓴
     # 실제 깨짐(2026-06-14, 물리 탐구성찰). 엔진을 안 거치므로 normalize_hwp_script
     # 의 raw 유니코드 정규화가 직접 키워드로 바꿔야 한다 — '"∭"'/'{∫∫∫}'/'∂' 가
@@ -254,12 +260,20 @@ GOLDEN_LATEX_GUARD = {
         ["lim_"], ["limits", "lim its"],
     ),
     r"A^\top B": (["top"], ["-> p"]),
-    r"\neg p": (["lnot"], ["!= g"]),
+    # lnot 은 한컴 비키워드('ln'+'otp' 렌더, 실측) — 부정은 ¬ 글리프로.
+    r"\neg p": (["¬"], ["lnot", "!= g"]),
     r"A^\intercal": (["{T}"], [" ercal", "intercal"]),
     r"p \Leftarrow q": (["LARROW"], ["<="]),
     r"A \Leftrightarrow B": (["LRARROW"], ["<->"]),
-    r"2\sqrt[3]{8}": (["root 3 of {8}"], ["^{3} sqrt"]),
+    # n제곱근 — 'root n of' 는 √n+'of' 로 깨지고(실측), hwip 의 알몸 ^{3} 은
+    # 선행 항에 붙는다. 정규형은 빈 밑 '{}^{3} sqrt'.
+    r"2\sqrt[3]{8}": (["{}^{3} sqrt {8}"], ["root", "2^{3}"]),
     r"\begin{align} x &= y \\ z &= w \end{align}": (["matrix"], []),
+    # \sup/\inf 함수명 — 알몸 sup 은 한컴 위첨자 연산자와 충돌해 수식이
+    # 통째로 증발하고(실측 S2-51·68), 알몸 inf 는 ∞ 로 그려진다. 인용 필수.
+    r"\sup_{n \ge 1} a_n \le \det A": (['"sup"'], ["sup_{"]),
+    r"\inf_{n \ge 1} b_n": (['"inf"'], ["inf_{"]),
+    r"\sup_{x \in A} f(x)": (['"sup"'], ["sup_{"]),
     r"\begin{vmatrix} a & b \\ c & d \end{vmatrix} = ad - bc": (
         ["dmatrix"], ["vmatrix", "Vmatrix"],
     ),
@@ -297,7 +311,8 @@ GOLDEN_LATEX_GUARD = {
     r"p \iff q": (["LRARROW"], ["iff"]),
     r"a \geqslant b, c \leqslant d": ([], ["geqslant", "leqslant"]),
     r"\displaystyle \frac{a}{b}": (["over"], ["displaystyle"]),
-    r"\{ x \mid x > 0 \}": (["|"], ["mid"]),
+    # 집합 리터럴 중괄호 — 알몸 '{' 는 그룹으로 먹혀 증발(실측 S2-114).
+    r"\{ x \mid x > 0 \}": (['"{"', "|", '"}"'], ["mid"]),
     # 물리 %Diff 절댓값식 — 첨자 라벨 인용 유지(파편화 회귀는 phys 쪽 테스트).
     r"\%Diff = |I_{pivot} - I_{cm}|/I_{cm} \times 100\%": (
         ['_{"pivot"}', '_{"cm"}'], [],

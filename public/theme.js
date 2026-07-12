@@ -27,18 +27,23 @@
   }
 
   function syncButton(theme) {
-    var btn = document.getElementById("themeToggle");
-    if (!btn) return;
     var dark = theme === "dark";
     var label = dark ? "라이트 모드로 전환" : "다크 모드로 전환";
-    btn.setAttribute("aria-pressed", dark ? "true" : "false");
-    btn.setAttribute("aria-label", label);
-    btn.setAttribute("title", label);
+    document.querySelectorAll("[data-ui-theme], #themeToggle").forEach(function (btn) {
+      btn.setAttribute("aria-pressed", dark ? "true" : "false");
+      btn.setAttribute("aria-label", label);
+      btn.setAttribute("title", label);
+      if (btn.hasAttribute("data-ui-theme")) {
+        var icon = btn.querySelector("span") || btn;
+        icon.textContent = dark ? "☀️" : "🌙";
+      }
+    });
   }
 
   function apply(theme) {
     root.setAttribute("data-theme", theme);
     syncButton(theme);
+    document.dispatchEvent(new CustomEvent("quilo:theme-change", { detail: { theme: theme } }));
   }
 
   function set(theme) {
@@ -55,7 +60,7 @@
 
   // 이벤트 위임: 버튼이 헤더 어디에 있든 동작
   document.addEventListener("click", function (e) {
-    var btn = e.target.closest && e.target.closest("#themeToggle");
+    var btn = e.target.closest && e.target.closest("[data-ui-theme], #themeToggle");
     if (!btn) return;
     set(current() === "dark" ? "light" : "dark");
   });

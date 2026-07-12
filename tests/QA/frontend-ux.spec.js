@@ -197,12 +197,16 @@ test("production announcements render as one quiet dismissible rail", async ({ p
       pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
     };
   });
-  expect(metrics.height).toBeLessThanOrEqual(44);
-  expect(metrics.scrollHeight).toBeLessThanOrEqual(44);
+  expect(metrics.height).toBeGreaterThanOrEqual(56);
+  expect(metrics.height).toBeLessThanOrEqual(64);
+  expect(metrics.scrollHeight).toBeLessThanOrEqual(64);
   expect(metrics.titleWhiteSpace).toBe("nowrap");
   expect(metrics.animationName).toBe("none");
   expect(metrics.itemCount).toBe(1);
   expect(metrics.pageOverflow).toBe(0);
+  await expect(page.locator(".ann-label")).toHaveText("NOTICE");
+  await expect(page.locator(".ann-item-meta")).toHaveCount(0);
+  await expect(page.locator(".ann-item-more")).toHaveText("자세히 보기 →");
 });
 
 test("authentication stays on landing until an explicit report opens the workspace", async ({ page }) => {
@@ -363,7 +367,7 @@ test("report entry links bypass the removed intermediary and open the free repor
   await expect(page.locator("#choosePrompt")).toHaveCount(0);
   await expect(page.locator(".home-hero-categories")).toHaveCount(0);
   await expect(page.locator('.ui-site-menu a[data-report="free"] strong')).toHaveText("자유 보고서");
-  await expect(page.locator('.ui-site-cta[href="/?report=free"]:visible')).toHaveText("무료로 시작하기");
+  await expect(page.locator('.ui-site-cta[href="/?report=free"]:visible')).toHaveText("작업 시작하기");
 });
 
 test("all thirteen report routes resolve to a continuous visible form contract", async ({ page }) => {

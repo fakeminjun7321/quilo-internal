@@ -17,14 +17,24 @@
 .ann-ticker {
   position: relative;
   width: 100%;
-  min-height: 42px;
+  min-height: 58px;
   border-bottom: 1px solid var(--q-line);
   color: var(--q-muted);
-  background: var(--q-paper);
+  background: color-mix(in srgb, var(--q-blue) 4%, var(--q-paper));
   font-size: 12px;
 }
-.ann-inner { display: flex; width: min(100%, 1440px); min-height: 42px; align-items: center; gap: 14px; margin: 0 auto; padding: 0 28px; }
-.ann-label { flex: 0 0 auto; color: var(--q-blue); font-size: 11px; font-weight: 750; }
+.ann-inner { display: flex; width: min(100%, 1440px); min-height: 58px; align-items: center; gap: 16px; margin: 0 auto; padding: 0 28px; }
+.ann-label {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border: 1px solid color-mix(in srgb, var(--q-blue) 24%, var(--q-line));
+  border-radius: 999px;
+  color: var(--q-blue);
+  background: var(--q-paper);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+}
 .ann-track {
   display: flex;
   min-width: 0;
@@ -34,17 +44,18 @@
 .ann-item {
   display: flex;
   min-width: 0;
+  width: 100%;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   color: inherit;
   text-decoration: none;
 }
-.ann-item-title { min-width: 0; overflow: hidden; color: var(--q-ink); font-weight: 560; text-overflow: ellipsis; white-space: nowrap; }
+.ann-item-title { min-width: 0; overflow: hidden; color: var(--q-ink); font-size: 13px; font-weight: 680; text-overflow: ellipsis; white-space: nowrap; }
 .ann-item-meta { flex: 0 0 auto; color: var(--q-muted); font-size: 11px; }
-.ann-item-more { flex: 0 0 auto; margin-left: auto; color: var(--q-ink); font-size: 11px; font-weight: 650; }
+.ann-item-more { flex: 0 0 auto; margin-left: auto; color: var(--q-blue); font-size: 11px; font-weight: 700; }
 a.ann-item:hover .ann-item-title, a.ann-item:hover .ann-item-more { color: var(--q-blue); }
-.ann-dismiss { flex: 0 0 auto; width: 28px; height: 28px; padding: 0; border: 0; background: transparent; color: var(--q-muted); font-size: 19px; cursor: pointer; }
-.ann-dismiss:hover { color: var(--q-ink); }
+.ann-dismiss { flex: 0 0 auto; width: 32px; height: 32px; padding: 0; border: 1px solid transparent; border-radius: 50%; background: transparent; color: var(--q-muted); font-size: 18px; cursor: pointer; }
+.ann-dismiss:hover { border-color: var(--q-line); color: var(--q-ink); background: var(--q-paper); }
 
 #landingSurface { background: var(--q-paper); }
 .home-hero-v2 { display: grid; min-height: 505px; align-content: start; justify-items: center; padding: 108px 20px 0; background: #fff; }

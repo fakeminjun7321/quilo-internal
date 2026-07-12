@@ -61,11 +61,14 @@
 
   function desktopMenu(group, index) {
     const id = `ui-site-menu-${index + 1}`;
+    const menuSize = Math.min(Math.max(group.items.length, 2), 5);
     return `
       <details class="ui-site-disclosure" data-ui-disclosure>
         <summary aria-controls="${id}">${escapeHtml(group.label)}</summary>
         <div class="ui-site-menu" id="${id}" role="region" aria-label="${escapeHtml(group.label)} 메뉴">
-          ${group.items.map(menuItem).join("")}
+          <div class="ui-site-menu__inner ui-site-menu__inner--${menuSize}">
+            ${group.items.map(menuItem).join("")}
+          </div>
         </div>
       </details>`;
   }
@@ -123,9 +126,9 @@
             </div>
           </div>
           <button type="button" class="ui-site-action ui-theme-toggle" id="themeToggle" data-ui-theme>
-            <span>테마</span>
+            <span aria-hidden="true">🌙</span>
           </button>
-          <a class="ui-site-action ui-site-cta" href="/?report=free">무료로 시작하기</a>
+          <a class="ui-site-action ui-site-cta" data-ui-start-action href="/signup.html">무료로 시작하기</a>
         </div>
         <details class="ui-mobile-menu" data-ui-mobile>
           <summary class="ui-mobile-trigger">메뉴</summary>
@@ -133,9 +136,9 @@
             ${mobileLinks()}
             <a href="/pricing.html">요금</a>
             <a href="https://www.instagram.com/quilo._.official/" target="_blank" rel="noopener">Instagram ↗</a>
-            <button type="button" data-ui-theme>테마 변경</button>
+            <button type="button" data-ui-theme><span aria-hidden="true">🌙</span></button>
             <a data-ui-auth-action href="/?login=1" hidden><span data-ui-auth-label>로그인</span></a>
-            <a class="ui-site-cta" href="/?report=free">무료로 시작하기</a>
+            <a class="ui-site-cta" data-ui-start-action href="/signup.html">무료로 시작하기</a>
           </nav>
         </details>
       </div>`;
@@ -221,7 +224,7 @@
       button.setAttribute("aria-label", dark ? "라이트 테마로 변경" : "다크 테마로 변경");
       button.setAttribute("title", dark ? "라이트 테마로 변경" : "다크 테마로 변경");
       const label = button.querySelector("span") || button;
-      label.textContent = dark ? "라이트" : "테마";
+      label.textContent = dark ? "☀️" : "🌙";
     });
   }
 
@@ -238,6 +241,7 @@
       });
     });
   }
+  document.addEventListener("quilo:theme-change", syncTheme);
   syncTheme();
 
   function renderAuthState(result) {
@@ -251,6 +255,16 @@
     const anonymous = result.state === "anonymous";
     const name = authenticated ? accountName(result.user) : "";
     const compactName = [...name].length > 14 ? `${[...name].slice(0, 14).join("")}…` : name;
+
+    header.querySelectorAll("[data-ui-start-action]").forEach((action) => {
+      if (authenticated) {
+        action.href = "/?report=free";
+        action.textContent = "작업 시작하기";
+      } else {
+        action.href = "/signup.html";
+        action.textContent = "무료로 시작하기";
+      }
+    });
 
     if (loginPanel) loginPanel.hidden = !anonymous;
     if (accountPanel) accountPanel.hidden = !authenticated;

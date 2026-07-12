@@ -207,7 +207,7 @@ test("guide desktop shell renders with real navigation destinations", async ({ p
     "https://www.instagram.com/quilo._.official/",
   ]);
   await expect(page.locator('.ui-site-actions a[href="/?login=1"]')).toHaveText("로그인");
-  await expect(page.locator('.ui-site-actions .ui-site-cta[href="/?report=free"]')).toHaveText("무료로 시작하기");
+  await expect(page.locator('.ui-site-actions .ui-site-cta[href="/signup.html"]')).toHaveText("무료로 시작하기");
 
   const placeholderLinks = page.locator('[data-ui-shell] a[href="#"], [data-ui-shell] a:not([href])');
   await expect(placeholderLinks).toHaveCount(0);
@@ -363,7 +363,7 @@ test("guide mobile shell exposes the same real destinations", async ({ page }) =
     "/pricing.html",
     "https://www.instagram.com/quilo._.official/",
     "/?login=1",
-    "/?report=free",
+    "/signup.html",
   ]);
 
   const hasHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);

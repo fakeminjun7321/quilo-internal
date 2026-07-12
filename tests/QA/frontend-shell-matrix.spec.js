@@ -493,10 +493,10 @@ for (const viewport of VIEWPORTS) {
             expect(downloadEvent.suggestedFilename()).toBe("qa-installer.dmg");
             await expect(page.locator("[data-app-download-status]")).toContainText("다운로드를 시작했습니다");
           } else {
-            const startCta = page.locator('.ui-site-actions .ui-site-cta[href="/?report=free"]');
+            const startCta = page.locator('.ui-site-actions .ui-site-cta[href="/signup.html"]');
             await expect(startCta, `${route} primary CTA`).toHaveCount(1);
             await startCta.click();
-            await expect(page).toHaveURL(`${baseUrl}/?report=free`);
+            await expect(page).toHaveURL(`${baseUrl}/signup.html`);
           }
         }
       });

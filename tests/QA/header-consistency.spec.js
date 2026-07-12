@@ -346,8 +346,8 @@ async function expectCanonicalAnonymousHeader(page, route) {
   await expect(authAction).toHaveText("로그인");
   await expect(authAction).toHaveAttribute("href", "/?login=1");
 
-  const start = actions.locator('.ui-site-cta[href="/?report=free"]');
-  await expect(start, `${route} free start action`).toHaveCount(1);
+  const start = actions.locator('.ui-site-cta[href="/signup.html"]');
+  await expect(start, `${route} signup start action`).toHaveCount(1);
   await expect(start).toBeVisible();
   await expect(start).toHaveText("무료로 시작하기");
 
@@ -355,6 +355,7 @@ async function expectCanonicalAnonymousHeader(page, route) {
   await expect(theme, `${route} desktop theme control`).toHaveCount(1);
   await expect(theme).toBeVisible();
   await expect(theme).toHaveAttribute("aria-label", /테마/);
+  await expect(theme).toHaveText(/🌙|☀️/);
 
   const previousTheme = await page.locator("html").getAttribute("data-theme");
   await theme.click();
@@ -363,6 +364,29 @@ async function expectCanonicalAnonymousHeader(page, route) {
     previousTheme || "light",
   );
 }
+
+test("desktop product menu is one compact four-column row", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(baseUrl, { waitUntil: "domcontentloaded" });
+
+  await page.locator(".ui-site-disclosure > summary").filter({ hasText: /^제품$/ }).click();
+  const menu = page.locator("#ui-site-menu-1");
+  await expect(menu).toBeVisible();
+  const layout = await menu.evaluate((element) => {
+    const links = [...element.querySelectorAll("a")];
+    const tops = links.map((link) => Math.round(link.getBoundingClientRect().top));
+    return {
+      height: Math.round(element.getBoundingClientRect().height),
+      links: links.length,
+      rows: new Set(tops).size,
+      overflow: element.scrollWidth - element.clientWidth,
+    };
+  });
+  expect(layout.links).toBe(4);
+  expect(layout.rows).toBe(1);
+  expect(layout.height).toBeLessThanOrEqual(120);
+  expect(layout.overflow).toBeLessThanOrEqual(1);
+});
 
 test.beforeAll(async () => {
   staticServer = createStaticServer();

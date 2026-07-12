@@ -46,14 +46,13 @@ function createAnnouncement(item, total) {
 
   const meta = document.createElement("span");
   meta.className = "ann-item-meta";
-  const category = String(item.category || "").trim();
-  meta.textContent = total > 1 ? `${category || "새 소식"} · 외 ${total - 1}건` : category;
+  meta.textContent = total > 1 ? `외 ${total - 1}건` : "";
   if (meta.textContent) node.appendChild(meta);
 
   if (href) {
     const more = document.createElement("span");
     more.className = "ann-item-more";
-    more.textContent = "자세히 →";
+    more.textContent = "자세히 보기 →";
     node.appendChild(more);
   }
   return node;

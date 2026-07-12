@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+  </head>
+  <body>
+    <template>
+      <style>
+        @font-face {
+          font-family: "Pretendard";
+          src: url("assets/fonts/Pretendard-Regular.ttf") format("truetype");
+          font-style: normal;
+          font-weight: 400;
+          font-display: block;
+        }
+
+        @font-face {
+          font-family: "Pretendard";
+          src: url("assets/fonts/Pretendard-Bold.ttf") format("truetype");
+          font-style: normal;
+          font-weight: 700;
+          font-display: block;
+        }
+
+        #root {
+          position: relative;
+          width: 1920px;
+          height: 1080px;
+          overflow: hidden;
+          container-type: size;
+          color: #121a2a;
+          font-family: "Pretendard", sans-serif;
+          -webkit-font-smoothing: antialiased;
+          text-rendering: geometricPrecision;
+        }
+
+        #root,
+        #root * {
+          box-sizing: border-box;
+        }
+
+        .hf07-ground,
+        .hf07-clear-layer,
+        .hf07-brand-layer,
+        .hf07-cta-layer {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+        }
+
+        .hf07-ground {
+          background: #ffffff;
+        }
+
+        .hf07-clear-layer {
+          z-index: 2;
+          overflow: hidden;
+        }
+
+        .hf07-connector-plane {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          pointer-events: none;
+        }
+
+        .hf07-connector {
+          fill: none;
+          stroke: rgba(33, 95, 229, 0.15);
+          stroke-width: 2;
+          stroke-linecap: round;
+          will-change: opacity;
+        }
+
+        .hf07-origin {
+          position: absolute;
+          top: 402px;
+          left: 922px;
+          width: 76px;
+          height: 76px;
+          display: grid;
+          place-items: center;
+          border: 1.5px solid rgba(33, 95, 229, 0.2);
+          border-radius: 14px;
+          background: rgba(33, 95, 229, 0.08);
+          color: #215fe5;
+          font-size: 32px;
+          font-weight: 700;
+          transform-origin: 50% 50%;
+          will-change: transform, opacity;
+        }
+
+        .hf07-capability {
+          position: absolute;
+          display: flex;
+          min-width: 224px;
+          height: 76px;
+          align-items: center;
+          justify-content: center;
+          padding: 0 28px;
+          border: 1.5px solid rgba(33, 95, 229, 0.2);
+          border-radius: 100px;
+          background: rgba(33, 95, 229, 0.04);
+          color: #121a2a;
+          font-size: 25px;
+          font-weight: 700;
+          letter-spacing: -0.03em;
+          white-space: nowrap;
+          will-change: transform, opacity;
+        }
+
+        #hf07-node-report {
+          top: 160px;
+          left: 112px;
+        }
+
+        #hf07-node-translation {
+          top: 160px;
+          right: 112px;
+          min-width: 254px;
+        }
+
+        #hf07-node-study {
+          top: 620px;
+          left: 222px;
+        }
+
+        #hf07-node-tools {
+          top: 620px;
+          right: 162px;
+          min-width: 274px;
+        }
+
+        #hf07-node-api {
+          top: 88px;
+          left: 848px;
+        }
+
+        .hf07-brand-layer {
+          z-index: 4;
+          pointer-events: none;
+        }
+
+        .hf07-lockup {
+          position: absolute;
+          top: 148px;
+          left: 650px;
+          width: 620px;
+          height: 230px;
+        }
+
+        .hf07-lockup-row {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 620px;
+          height: 154px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 30px;
+        }
+
+        .hf07-logo-mark {
+          display: block;
+          width: 142px;
+          height: 142px;
+          flex: 0 0 142px;
+          object-fit: contain;
+          transform-origin: 50% 50%;
+          will-change: transform, opacity;
+        }
+
+        .hf07-wordmark {
+          display: flex;
+          min-width: 290px;
+          height: 118px;
+          align-items: center;
+          color: #121a2a;
+          font-size: 100px;
+          font-weight: 700;
+          line-height: 1;
+          letter-spacing: -0.065em;
+          white-space: nowrap;
+        }
+
+        .hf07-wordmark-letter {
+          display: inline-block;
+          will-change: transform, opacity;
+        }
+
+        .hf07-rule-svg {
+          position: absolute;
+          top: 184px;
+          left: 70px;
+          width: 480px;
+          height: 12px;
+          overflow: visible;
+        }
+
+        .hf07-lockup-rule {
+          fill: none;
+          stroke: #215fe5;
+          stroke-width: 4;
+          stroke-linecap: round;
+        }
+
+        .hf07-cta-layer {
+          z-index: 6;
+          pointer-events: none;
+        }
+
+        .hf07-question {
+          position: absolute;
+          top: 410px;
+          left: 310px;
+          width: 1300px;
+          color: #121a2a;
+          text-align: center;
+          font-size: 52px;
+          font-weight: 700;
+          line-height: 1.18;
+          letter-spacing: -0.04em;
+          white-space: nowrap;
+          will-change: transform, opacity;
+        }
+
+        .hf07-url {
+          position: absolute;
+          top: 500px;
+          left: 610px;
+          width: 700px;
+          color: #215fe5;
+          text-align: center;
+          font-size: 40px;
+          font-weight: 700;
+          line-height: 1.2;
+          letter-spacing: -0.035em;
+          white-space: nowrap;
+          will-change: transform, opacity;
+        }
+
+        .hf07-cta {
+          position: absolute;
+          top: 586px;
+          left: 750px;
+          width: 420px;
+          height: 80px;
+          display: grid;
+          place-items: center;
+          border-radius: 100px;
+          background: #215fe5;
+          color: #ffffff;
+          font-size: 24px;
+          font-weight: 700;
+          letter-spacing: -0.025em;
+          transform-origin: 50% 50%;
+          will-change: transform, opacity;
+        }
+
+        .hf07-progress {
+          position: absolute;
+          top: 884px;
+          left: 96px;
+          width: 1728px;
+          height: 3px;
+          overflow: hidden;
+          background: rgba(33, 95, 229, 0.08);
+        }
+
+        .hf07-progress-fill {
+          display: block;
+          width: 100%;
+          height: 100%;
+          background: #215fe5;
+        }
+      </style>
+
+      <div
+        id="root"
+        data-composition-id="07-cta"
+        data-start="0"
+        data-duration="5.5"
+        data-width="1920"
+        data-height="1080"
+      >
+        <div
+          id="hf07-ground"
+          class="clip hf07-ground"
+          data-start="0"
+          data-duration="5.5"
+          data-track-index="0"
+          aria-hidden="true"
+        ></div>
+
+        <div
+          id="hf07-clear-layer"
+          class="clip hf07-clear-layer"
+          data-start="0"
+          data-duration="5.5"
+          data-track-index="1"
+        >
+          <svg
+            class="hf07-connector-plane"
+            viewBox="0 0 1920 1080"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+          >
+            <path class="hf07-connector" d="M 960 440 C 720 330 520 230 224 198" />
+            <path class="hf07-connector" d="M 960 440 C 1210 330 1410 230 1680 198" />
+            <path class="hf07-connector" d="M 960 440 C 700 530 570 650 334 658" />
+            <path class="hf07-connector" d="M 960 440 C 1210 530 1380 650 1620 658" />
+            <path class="hf07-connector" d="M 960 440 C 960 310 960 220 960 126" />
+          </svg>
+
+          <div id="hf07-origin" class="hf07-origin">Q</div>
+          <div id="hf07-node-report" class="hf07-capability">보고서</div>
+          <div id="hf07-node-translation" class="hf07-capability">PDF 통번역</div>
+          <div id="hf07-node-study" class="hf07-capability">학습</div>
+          <div id="hf07-node-tools" class="hf07-capability">브라우저 도구</div>
+          <div id="hf07-node-api" class="hf07-capability">API</div>
+        </div>
+
+        <div
+          id="hf07-brand-layer"
+          class="clip hf07-brand-layer"
+          data-start="0"
+          data-duration="5.5"
+          data-track-index="2"
+        >
+          <div class="hf07-lockup">
+            <div class="hf07-lockup-row">
+              <img
+                id="hf07-logo-mark"
+                class="hf07-logo-mark"
+                src="assets/quilo-logo.png"
+                alt="Quilo"
+              />
+              <div class="hf07-wordmark" aria-label="Quilo">
+                <span class="hf07-wordmark-letter">Q</span>
+                <span class="hf07-wordmark-letter">u</span>
+                <span class="hf07-wordmark-letter">i</span>
+                <span class="hf07-wordmark-letter">l</span>
+                <span class="hf07-wordmark-letter">o</span>
+              </div>
+            </div>
+            <svg
+              class="hf07-rule-svg"
+              viewBox="0 0 480 12"
+              xmlns="http://www.w3.org/2000/svg"
+              aria-hidden="true"
+            >
+              <path id="hf07-lockup-rule" class="hf07-lockup-rule" d="M 2 6 H 478" />
+            </svg>
+          </div>
+        </div>
+
+        <div
+          id="hf07-cta-layer"
+          class="clip hf07-cta-layer"
+          data-start="0"
+          data-duration="5.5"
+          data-track-index="3"
+        >
+          <div id="hf07-question" class="hf07-question">What can Quilo help you create?</div>
+          <div id="hf07-url" class="hf07-url">quilolab.com</div>
+          <div id="hf07-cta" class="hf07-cta">Quilo 시작하기</div>
+          <div class="hf07-progress" aria-hidden="true">
+            <span class="hf07-progress-fill"></span>
+          </div>
+        </div>
+      </div>
+
+      <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+      <script>
+        (() => {
+          window.__timelines = window.__timelines || {};
+
+          const root07 = document.querySelector('[data-composition-id="07-cta"]');
+          const one07 = (selector) => root07.querySelector(selector);
+          const all07 = (selector) => Array.from(root07.querySelectorAll(selector));
+          const rule07 = one07('#hf07-lockup-rule');
+          const ruleLength07 = rule07.getTotalLength();
+          rule07.style.strokeDasharray = String(ruleLength07);
+          rule07.style.strokeDashoffset = String(ruleLength07);
+
+          const timeline07 = gsap.timeline({ paused: true });
+
+          timeline07.set(
+            [
+              one07('#hf07-logo-mark'),
+              ...all07('.hf07-wordmark-letter'),
+              one07('#hf07-question'),
+              one07('#hf07-url'),
+              one07('#hf07-cta')
+            ],
+            { opacity: 0 },
+            0
+          );
+          timeline07.set(one07('#hf07-logo-mark'), { scale: 0.94, y: 8 }, 0);
+
+          const clearTargets07 = [
+            { selector: '#hf07-node-report', x: -640, y: -20 },
+            { selector: '#hf07-node-translation', x: 640, y: -20 },
+            { selector: '#hf07-node-study', x: -760, y: 12 },
+            { selector: '#hf07-node-tools', x: 760, y: 12 },
+            { selector: '#hf07-node-api', x: 0, y: -280 }
+          ];
+
+          clearTargets07.forEach((target) => {
+            timeline07.to(
+              one07(target.selector),
+              {
+                x: target.x,
+                y: target.y,
+                opacity: 0,
+                duration: 0.92,
+                ease: 'power3.in'
+              },
+              0.08
+            );
+          });
+
+          timeline07.to(
+            all07('.hf07-connector'),
+            { opacity: 0, duration: 0.48, ease: 'power2.in' },
+            0.12
+          );
+          timeline07.to(
+            one07('#hf07-origin'),
+            { opacity: 0, scale: 0.62, duration: 0.42, ease: 'power2.in' },
+            0.18
+          );
+          timeline07.to(
+            one07('#hf07-clear-layer'),
+            { opacity: 0, duration: 0.16, ease: 'power1.out' },
+            1.02
+          );
+
+          timeline07.fromTo(
+            one07('#hf07-logo-mark'),
+            { opacity: 0, scale: 0.94, y: 8 },
+            { opacity: 1, scale: 1, y: 0, duration: 0.52, ease: 'power2.out', immediateRender: false },
+            1.2
+          );
+          timeline07.fromTo(
+            all07('.hf07-wordmark-letter'),
+            { opacity: 0, x: 14 },
+            {
+              opacity: 1,
+              x: 0,
+              duration: 0.34,
+              ease: 'power2.out',
+              stagger: 0.09,
+              immediateRender: false
+            },
+            1.66
+          );
+          timeline07.to(
+            rule07,
+            { strokeDashoffset: 0, duration: 0.58, ease: 'power2.out' },
+            2.36
+          );
+
+          timeline07.fromTo(
+            one07('#hf07-question'),
+            { opacity: 0, y: 10 },
+            { opacity: 1, y: 0, duration: 0.14, ease: 'power2.out', immediateRender: false },
+            3.2
+          );
+          timeline07.fromTo(
+            one07('#hf07-url'),
+            { opacity: 0, y: 8 },
+            { opacity: 1, y: 0, duration: 0.14, ease: 'power2.out', immediateRender: false },
+            3.27
+          );
+          timeline07.fromTo(
+            one07('#hf07-cta'),
+            { opacity: 0, y: 8, scale: 0.98 },
+            { opacity: 1, y: 0, scale: 1, duration: 0.16, ease: 'power2.out', immediateRender: false },
+            3.34
+          );
+
+          window.__timelines['07-cta'] = timeline07;
+        })();
+      </script>
+    </template>
+  </body>
+</html>

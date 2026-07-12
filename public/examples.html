@@ -123,14 +123,13 @@
             </p>
             <div class="ex-empty" role="note">
               <p>
-                <b>아직 공개 샘플이 준비 중입니다.</b>
-                다운로드용 예시 파일은 순차적으로 추가되지만, 그동안에도
-                각 보고서가 <b>어떤 자료로 무엇을 만드는지</b>는 아래 카드와
-                <a href="/guide.html">이용 가이드</a>에서 확인할 수 있어요.
+                <b>개인정보 없는 합성 자료로 만든 공개 샘플입니다.</b>
+                실제 Quilo 보고서와 같은 DOCX 렌더러로 생성했으며, 아래 완성본을
+                내려받아 문서 구성과 출력 품질을 직접 확인할 수 있습니다.
               </p>
             </div>
             <h3 class="ex-subhead">이런 걸 만들 수 있어요</h3>
-            <p class="hint ui-inline-examples-4">자료를 넣으면 보고서가 이렇게 나옵니다. 다운로드 예시가 준비되기 전에도 결과물을 가늠해 보세요.</p>
+            <p class="hint ui-inline-examples-4">자료를 넣으면 보고서가 이렇게 나옵니다. 아래 실제 DOCX 예시에서 문서 구조와 출력 품질을 확인할 수 있습니다.</p>
             <div class="ex-grid">
               <div class="ex-card ex-flow">
                 <h3>화학 사전보고서</h3>
@@ -179,23 +178,23 @@
                 <h3>화학 사전보고서</h3>
                 <div class="ex-in">입력: 실험 매뉴얼 PDF</div>
                 <p>매뉴얼의 이론·원리 키워드를 펼쳐 쓰고, 시약 물성·실험 기구·과정을 학교 양식으로 정리합니다.</p>
-                <div class="ex-foot"><span class="ex-badge" data-sample="chem-pre">다운로드 예시 준비 중</span></div>
+                <div class="ex-foot"><span class="ex-badge" data-sample="chem-pre">DOCX 예시 제공</span></div>
               </div>
               <div class="ex-card">
                 <h3>화학 결과보고서</h3>
                 <div class="ex-in">입력: 데이터(엑셀/CSV)·사진 (+ 사전보고서)</div>
                 <p>평균·표준편차·백분율 오차를 계산하고 표·차트를 그려 사전보고서 뒤 결과 분량을 채웁니다.</p>
-                <div class="ex-foot"><span class="ex-badge" data-sample="chem-result">다운로드 예시 준비 중</span></div>
+                <div class="ex-foot"><span class="ex-badge" data-sample="chem-result">DOCX 예시 제공</span></div>
               </div>
               <div class="ex-card">
                 <h3>물리 결과보고서</h3>
                 <div class="ex-in">입력: <code>.cap</code>·엑셀/CSV·사진 중 하나 이상</div>
                 <p>실험 파트별 표·그래프·분석과 결론·오차 분석을 양식 기반으로 구성합니다.</p>
-                <div class="ex-foot"><span class="ex-badge" data-sample="phys-result">다운로드 예시 준비 중</span></div>
+                <div class="ex-foot"><span class="ex-badge" data-sample="phys-result">DOCX 예시 제공</span></div>
               </div>
             </div>
             <p class="hint ui-inline-examples-6">
-              예시 파일은 순차적으로 추가됩니다. 직접 만들어 보려면 <a href="/">메인</a>에서 자료를 올리고 생성하세요.
+              공개 예시는 합성 데이터로 생성되어 실명·학번을 포함하지 않습니다. 직접 만들어 보려면 <a href="/">메인</a>에서 자료를 올리고 생성하세요.
               메모를 함께 넣으면 결과가 더 정확해집니다. (<a href="#notes">위 작성 가이드 참고</a>)
             </p>
           </section>
@@ -210,8 +209,7 @@
     </footer>
 
     <script>
-      // 보고서 예시 파일을 공개할 때 여기에 확장자를 추가하면 다운로드 버튼이 표시된다.
-      // 없는 파일을 HEAD로 탐색하면 브라우저 콘솔에 404가 남아 기본값은 비워둔다.
+      // 공개 샘플 manifest. scripts/build-public-samples.js가 같은 파일명을 생성한다.
       (function () {
         var NAMES = {
           "chem-pre": "화학사전보고서_예시",
@@ -219,9 +217,9 @@
           "phys-result": "물리결과보고서_예시",
         };
         var AVAILABLE = {
-          "chem-pre": [],
-          "chem-result": [],
-          "phys-result": [],
+          "chem-pre": ["docx"],
+          "chem-result": ["docx"],
+          "phys-result": ["docx"],
         };
         var FORMATS = [
           { ext: "docx", label: "DOCX" },
@@ -236,7 +234,7 @@
             .map(function (f) {
               return { url: "/examples/samples/" + key + "." + f.ext, label: f.label, ext: f.ext };
             });
-          if (!found.length) return; // 파일 없으면 "준비 중" 뱃지 유지
+          if (!found.length) return;
           var dlName = NAMES[key] || key;
           foot.innerHTML = found
             .map(function (f) {
@@ -247,9 +245,6 @@
               );
             })
             .join("");
-          foot.style.display = "flex";
-          foot.style.flexWrap = "wrap";
-          foot.style.gap = "8px";
         });
       })();
     </script>

@@ -1,0 +1,758 @@
+<template>
+  <style>
+    @font-face {
+      font-family: "Pretendard";
+      src: url("assets/fonts/Pretendard-Regular.ttf") format("truetype");
+      font-style: normal;
+      font-weight: 400;
+    }
+
+    @font-face {
+      font-family: "Pretendard";
+      src: url("assets/fonts/Pretendard-Bold.ttf") format("truetype");
+      font-style: normal;
+      font-weight: 700;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    #root {
+      position: relative;
+      width: 1920px;
+      height: 1080px;
+      overflow: hidden;
+      container-type: size;
+      color: #121a2a;
+      font-family: "Pretendard", sans-serif;
+    }
+
+    .hf05-background,
+    .hf05-stage {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .hf05-background {
+      background: #ffffff;
+    }
+
+    .hf05-stage {
+      overflow: hidden;
+    }
+
+    .hf05-chrome {
+      position: absolute;
+      z-index: 30;
+      top: 3.7cqh;
+      left: 5cqw;
+      right: 5cqw;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      pointer-events: none;
+    }
+
+    .hf05-eyebrow {
+      color: #215fe5;
+      font-size: 0.8cqw;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+    }
+
+    .hf05-tag {
+      padding: 1.05cqh 1.25cqw;
+      border: 1.5px solid rgba(33, 95, 229, 0.2);
+      border-radius: 100px;
+      background: rgba(33, 95, 229, 0.08);
+      color: #215fe5;
+      font-size: 0.68cqw;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+    }
+
+    .hf05-camera {
+      position: absolute;
+      inset: 0;
+      z-index: 4;
+      width: 100%;
+      height: 100%;
+      transform-origin: 50% 45%;
+      will-change: transform;
+    }
+
+    .hf05-page-back,
+    .hf05-page {
+      position: absolute;
+      width: 78.125cqw;
+      height: 68.52cqh;
+      border: 1.5px solid rgba(33, 95, 229, 0.2);
+      border-radius: 14px;
+    }
+
+    .hf05-page-back-one {
+      top: 10.19cqh;
+      left: 11.72cqw;
+      background: rgba(33, 95, 229, 0.04);
+    }
+
+    .hf05-page-back-two {
+      top: 9.26cqh;
+      left: 11.33cqw;
+      background: rgba(33, 95, 229, 0.025);
+    }
+
+    .hf05-page {
+      top: 8.8cqh;
+      left: 10.94cqw;
+      overflow: hidden;
+      background: #ffffff;
+    }
+
+    .hf05-document-header {
+      position: absolute;
+      top: 2.6cqh;
+      left: 2.6cqw;
+      right: 2.6cqw;
+      min-height: 10.2cqh;
+      border-bottom: 1px solid rgba(33, 95, 229, 0.15);
+    }
+
+    .hf05-document-kicker {
+      color: #215fe5;
+      font-size: 0.62cqw;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+    }
+
+    .hf05-document-title {
+      min-height: 4.4cqh;
+      margin-top: 0.65cqh;
+      color: #121a2a;
+      font-size: 1.55cqw;
+      font-weight: 700;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+    }
+
+    .hf05-summary-title {
+      min-height: 2.8cqh;
+      color: #5d6879;
+      font-size: 0.86cqw;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .hf05-table {
+      position: absolute;
+      top: 16.67cqh;
+      left: 2.6cqw;
+      width: 35.42cqw;
+      overflow: hidden;
+      border: 1.5px solid rgba(33, 95, 229, 0.2);
+      border-radius: 12px;
+      background: #ffffff;
+    }
+
+    .hf05-table-head,
+    .hf05-table-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 0.72fr;
+      align-items: center;
+      padding: 0 1.15cqw;
+    }
+
+    .hf05-table-head {
+      min-height: 4.17cqh;
+      background: rgba(33, 95, 229, 0.08);
+      color: #5d6879;
+      font-size: 0.67cqw;
+      font-weight: 700;
+    }
+
+    .hf05-table-row {
+      min-height: 4.17cqh;
+      border-top: 1px solid rgba(33, 95, 229, 0.12);
+      color: #121a2a;
+      font-size: 0.72cqw;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .hf05-evidence-tag {
+      justify-self: start;
+      padding: 0.55cqh 0.65cqw;
+      border-radius: 100px;
+      background: rgba(33, 95, 229, 0.08);
+      color: #215fe5;
+      font-size: 0.57cqw;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+
+    .hf05-chart-slot {
+      position: absolute;
+      top: 16.67cqh;
+      left: 42.71cqw;
+      display: grid;
+      width: 28.125cqw;
+      height: 26.39cqh;
+      place-items: center;
+      overflow: hidden;
+      border: 1.5px dashed rgba(33, 95, 229, 0.2);
+      border-radius: 12px;
+      background: rgba(33, 95, 229, 0.025);
+      color: #9a9a9a;
+      font-size: 0.63cqw;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+    }
+
+    .hf05-chart-morph {
+      position: absolute;
+      z-index: 12;
+      top: 11.57cqh;
+      left: 72.92cqw;
+      width: 400px;
+      height: 220px;
+      overflow: hidden;
+      border: 1.5px solid rgba(33, 95, 229, 0.28);
+      border-radius: 14px;
+      background: #ffffff;
+      will-change: width, height, transform, opacity;
+    }
+
+    .hf05-chart-source,
+    .hf05-chart-final {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .hf05-chart-source {
+      display: grid;
+      grid-template-columns: 0.72fr 1.28fr;
+      align-items: center;
+      gap: 1cqw;
+      padding: 2.2cqh 1.35cqw;
+      background: rgba(33, 95, 229, 0.04);
+    }
+
+    .hf05-chart-source-label {
+      color: #5d6879;
+      font-size: 0.62cqw;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+    }
+
+    .hf05-chart-source-value {
+      margin-top: 0.8cqh;
+      color: #215fe5;
+      font-size: 1.65cqw;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .hf05-chart-source svg,
+    .hf05-chart-final svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    .hf05-chart-final {
+      display: grid;
+      grid-template-rows: auto 1fr;
+      padding: 1.65cqh 1.2cqw 1.25cqh;
+      background: #ffffff;
+    }
+
+    .hf05-chart-final-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1cqw;
+    }
+
+    .hf05-chart-final-title {
+      color: #121a2a;
+      font-size: 0.82cqw;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .hf05-chart-fit {
+      padding: 0.5cqh 0.65cqw;
+      border-radius: 100px;
+      background: rgba(33, 95, 229, 0.08);
+      color: #215fe5;
+      font-size: 0.58cqw;
+      font-weight: 700;
+    }
+
+    .hf05-conclusion {
+      position: absolute;
+      top: 45.37cqh;
+      left: 42.71cqw;
+      width: 28.125cqw;
+      min-height: 11.8cqh;
+      padding: 1.45cqh 1.2cqw;
+      border-left: 4px solid #215fe5;
+      border-radius: 12px;
+      background: rgba(33, 95, 229, 0.08);
+    }
+
+    .hf05-conclusion-heading,
+    .hf05-conclusion-result,
+    .hf05-conclusion-fit {
+      min-height: 2.3cqh;
+    }
+
+    .hf05-conclusion-heading {
+      color: #215fe5;
+      font-size: 0.66cqw;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+    }
+
+    .hf05-conclusion-result {
+      margin-top: 0.35cqh;
+      color: #121a2a;
+      font-size: 0.95cqw;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .hf05-conclusion-fit {
+      margin-top: 0.25cqh;
+      color: #5d6879;
+      font-size: 0.68cqw;
+      font-weight: 400;
+    }
+
+    .hf05-export-bar {
+      position: absolute;
+      top: 61.02cqh;
+      left: 2.6cqw;
+      right: 2.6cqw;
+      display: flex;
+      align-items: center;
+      gap: 0.8cqw;
+      padding-top: 1.3cqh;
+      border-top: 1px solid rgba(33, 95, 229, 0.15);
+    }
+
+    .hf05-export-label {
+      margin-right: auto;
+      color: #5d6879;
+      font-size: 0.67cqw;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+
+    .hf05-export-pill {
+      display: flex;
+      min-width: 7.2cqw;
+      height: 4.9cqh;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.8cqw;
+      padding: 0 0.9cqw;
+      border: 1.5px solid rgba(33, 95, 229, 0.2);
+      border-radius: 100px;
+      background: rgba(33, 95, 229, 0.04);
+      color: #121a2a;
+      font-size: 0.68cqw;
+      font-weight: 700;
+    }
+
+    .hf05-export-state {
+      position: relative;
+      display: grid;
+      min-width: 2.4cqw;
+      place-items: center;
+      color: #5d6879;
+      font-size: 0.58cqw;
+      font-weight: 700;
+    }
+
+    .hf05-export-ready,
+    .hf05-export-complete {
+      grid-area: 1 / 1;
+    }
+
+    .hf05-export-complete {
+      color: #215fe5;
+    }
+
+    .hf05-saved {
+      display: flex;
+      align-items: center;
+      gap: 0.45cqw;
+      margin-left: 0.45cqw;
+      color: #121a2a;
+      font-size: 0.66cqw;
+      font-weight: 700;
+    }
+
+    .hf05-saved-dot {
+      width: 0.47cqw;
+      height: 0.83cqh;
+      border-radius: 50%;
+      background: #059669;
+    }
+
+    .hf05-progress {
+      position: absolute;
+      z-index: 40;
+      top: 82.04cqh;
+      left: 5cqw;
+      width: 90cqw;
+      height: 3px;
+      overflow: hidden;
+      background: rgba(33, 95, 229, 0.08);
+    }
+
+    .hf05-progress-fill {
+      display: block;
+      width: 71.43%;
+      height: 100%;
+      background: #215fe5;
+    }
+  </style>
+
+  <div
+    id="root"
+    data-composition-id="05-report"
+    data-start="0"
+    data-duration="8.4"
+    data-track-index="0"
+   data-width="1920" data-height="1080">
+    <div
+      id="hf05-background"
+      class="clip hf05-background"
+      data-start="0"
+      data-duration="8.4"
+      data-track-index="1"
+    ></div>
+
+    <div
+      id="hf05-stage"
+      class="clip hf05-stage"
+      data-start="0"
+      data-duration="8.4"
+      data-track-index="2"
+    >
+      <div class="hf05-chrome" id="hf05-chrome">
+        <div class="hf05-eyebrow">REPORT · 05 / 07</div>
+        <div class="hf05-tag">DOCUMENT BUILD</div>
+      </div>
+
+      <div class="hf05-camera" id="hf05-camera">
+        <div class="hf05-page-back hf05-page-back-one" id="hf05-page-back-one"></div>
+        <div class="hf05-page-back hf05-page-back-two" id="hf05-page-back-two"></div>
+
+        <article class="hf05-page" id="hf05-page">
+          <header class="hf05-document-header">
+            <div class="hf05-document-kicker">QUILO REPORT</div>
+            <div class="hf05-document-title" id="hf05-document-title"></div>
+            <div class="hf05-summary-title" id="hf05-summary-title"></div>
+          </header>
+
+          <section class="hf05-table" aria-label="실험 데이터 표">
+            <div class="hf05-table-head" id="hf05-table-head">
+              <span>질량 m (kg)</span>
+              <span>주기 T (s)</span>
+              <span>근거</span>
+            </div>
+            <div class="hf05-table-row" id="hf05-row-1">
+              <span>0.1</span><span>0.68</span><span class="hf05-evidence-tag">XLSX</span>
+            </div>
+            <div class="hf05-table-row" id="hf05-row-2">
+              <span>0.2</span><span>0.82</span><span class="hf05-evidence-tag">XLSX</span>
+            </div>
+            <div class="hf05-table-row" id="hf05-row-3">
+              <span>0.3</span><span>1.02</span><span class="hf05-evidence-tag">XLSX</span>
+            </div>
+            <div class="hf05-table-row" id="hf05-row-4">
+              <span>0.4</span><span>1.28</span><span class="hf05-evidence-tag">XLSX</span>
+            </div>
+            <div class="hf05-table-row" id="hf05-row-5">
+              <span>0.5</span><span>1.55</span><span class="hf05-evidence-tag">XLSX</span>
+            </div>
+          </section>
+
+          <div class="hf05-chart-slot" id="hf05-chart-slot">CHART SLOT</div>
+
+          <section class="hf05-conclusion">
+            <div class="hf05-conclusion-heading" id="hf05-conclusion-heading"></div>
+            <div class="hf05-conclusion-result" id="hf05-conclusion-result"></div>
+            <div class="hf05-conclusion-fit" id="hf05-conclusion-fit"></div>
+          </section>
+
+          <footer class="hf05-export-bar">
+            <div class="hf05-export-label">EXPORT</div>
+            <div class="hf05-export-pill" id="hf05-export-docx">
+              <span>DOCX</span>
+              <span class="hf05-export-state">
+                <span class="hf05-export-ready" id="hf05-docx-ready">준비</span>
+                <span class="hf05-export-complete" id="hf05-docx-complete">완료</span>
+              </span>
+            </div>
+            <div class="hf05-export-pill" id="hf05-export-hwpx">
+              <span>HWPX</span>
+              <span class="hf05-export-state">
+                <span class="hf05-export-ready" id="hf05-hwpx-ready">준비</span>
+                <span class="hf05-export-complete" id="hf05-hwpx-complete">완료</span>
+              </span>
+            </div>
+            <div class="hf05-saved" id="hf05-saved">
+              <span class="hf05-saved-dot"></span>
+              <span>저장됨</span>
+            </div>
+          </footer>
+        </article>
+
+        <div class="hf05-chart-morph" id="hf05-chart-morph">
+          <div class="hf05-chart-source" id="hf05-chart-source">
+            <div>
+              <div class="hf05-chart-source-label">ANALYSIS RESULT</div>
+              <div class="hf05-chart-source-value">R² 0.98</div>
+            </div>
+            <svg viewBox="0 0 220 150" aria-hidden="true">
+              <path d="M 18 126 L 18 18 M 18 126 L 205 126" fill="none" stroke="#9A9A9A" stroke-width="2" />
+              <polyline points="35,111 73,94 111,72 149,49 188,25" fill="none" stroke="#215FE5" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+              <g fill="#215FE5">
+                <circle cx="35" cy="111" r="5" /><circle cx="73" cy="94" r="5" />
+                <circle cx="111" cy="72" r="5" /><circle cx="149" cy="49" r="5" />
+                <circle cx="188" cy="25" r="5" />
+              </g>
+            </svg>
+          </div>
+
+          <div class="hf05-chart-final" id="hf05-chart-final">
+            <div class="hf05-chart-final-head">
+              <div class="hf05-chart-final-title">핵심 결과</div>
+              <div class="hf05-chart-fit">R² 0.98</div>
+            </div>
+            <svg viewBox="0 0 540 240" aria-label="질량과 주기 분석 그래프">
+              <g stroke="rgba(33,95,229,0.12)" stroke-width="1">
+                <line x1="70" y1="45" x2="70" y2="205" />
+                <line x1="70" y1="205" x2="500" y2="205" />
+                <line x1="70" y1="165" x2="500" y2="165" />
+                <line x1="70" y1="125" x2="500" y2="125" />
+                <line x1="70" y1="85" x2="500" y2="85" />
+              </g>
+              <polyline points="105,183 195,166 285,138 375,103 465,66" fill="none" stroke="#215FE5" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />
+              <g fill="#215FE5" stroke="#FFFFFF" stroke-width="3">
+                <circle cx="105" cy="183" r="7" /><circle cx="195" cy="166" r="7" />
+                <circle cx="285" cy="138" r="7" /><circle cx="375" cy="103" r="7" />
+                <circle cx="465" cy="66" r="7" />
+              </g>
+              <g fill="#5D6879" font-family="Pretendard" font-size="14" font-weight="400">
+                <text x="278" y="232" text-anchor="middle">m (kg)</text>
+                <text x="22" y="130" text-anchor="middle">T (s)</text>
+              </g>
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <div class="hf05-progress">
+        <span class="hf05-progress-fill"></span>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    (() => {
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+
+      const typeText = (selector, text, start, duration) => {
+        const element = document.querySelector(selector);
+        const driver = { count: 0 };
+        let lastCount = -1;
+        tl.to(
+          driver,
+          {
+            count: text.length,
+            duration,
+            ease: "none",
+            onUpdate: () => {
+              const count = Math.floor(driver.count);
+              if (count !== lastCount) {
+                element.textContent = text.slice(0, count);
+                lastCount = count;
+              }
+            },
+          },
+          start,
+        );
+      };
+
+      tl.fromTo(
+        "#hf05-chrome",
+        { opacity: 0, y: -10 },
+        { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" },
+        0.05,
+      );
+      tl.fromTo(
+        "#hf05-camera",
+        { opacity: 0.55, y: 24, scale: 0.985 },
+        { opacity: 1, y: 0, scale: 1, duration: 1.1, ease: "power3.out" },
+        0,
+      );
+      tl.fromTo(
+        "#hf05-page-back-one",
+        { opacity: 0, y: 20 },
+        { opacity: 0.55, y: 0, duration: 0.8, ease: "power3.out" },
+        0.08,
+      );
+      tl.fromTo(
+        "#hf05-page-back-two",
+        { opacity: 0, y: 14 },
+        { opacity: 0.7, y: 0, duration: 0.8, ease: "power3.out" },
+        0.18,
+      );
+      tl.fromTo(
+        "#hf05-page",
+        { opacity: 0.5, y: 18, scale: 0.99 },
+        { opacity: 1, y: 0, scale: 1, duration: 0.85, ease: "power3.out" },
+        0,
+      );
+
+      typeText("#hf05-document-title", "질량과 진자의 주기 분석", 0.28, 0.72);
+      typeText("#hf05-summary-title", "요약", 1.02, 0.34);
+
+      tl.fromTo(
+        "#hf05-table-head",
+        { opacity: 0, y: 10 },
+        { opacity: 1, y: 0, duration: 0.34, ease: "power2.out" },
+        1.5,
+      );
+
+      const rowContent = [
+        { selector: "#hf05-row-1", text: "0.1 0.68 XLSX" },
+        { selector: "#hf05-row-2", text: "0.2 0.82 XLSX" },
+        { selector: "#hf05-row-3", text: "0.3 1.02 XLSX" },
+        { selector: "#hf05-row-4", text: "0.4 1.28 XLSX" },
+        { selector: "#hf05-row-5", text: "0.5 1.55 XLSX" },
+      ];
+      let rowCursor = 1.76;
+      const rowTimeline = rowContent.map((row) => {
+        const duration = 0.25 + row.text.length * 0.012 + 0.06;
+        const result = { ...row, start: rowCursor, duration };
+        rowCursor += duration;
+        return result;
+      });
+
+      rowTimeline.forEach((row) => {
+        tl.fromTo(
+          row.selector,
+          { opacity: 0, y: 12 },
+          { opacity: 1, y: 0, duration: row.duration * 0.72, ease: "power2.out" },
+          row.start,
+        );
+        tl.fromTo(
+          `${row.selector} .hf05-evidence-tag`,
+          { opacity: 0, x: -8, scale: 0.94 },
+          { opacity: 1, x: 0, scale: 1, duration: 0.28, ease: "power2.out" },
+          row.start + row.duration * 0.48,
+        );
+      });
+
+      tl.fromTo(
+        "#hf05-chart-slot",
+        { opacity: 0 },
+        { opacity: 0.72, duration: 0.5, ease: "power2.out" },
+        1.65,
+      );
+      tl.fromTo(
+        "#hf05-chart-morph",
+        { opacity: 0, y: -12, scale: 0.96 },
+        { opacity: 1, y: 0, scale: 1, duration: 0.34, ease: "power2.out" },
+        3.82,
+      );
+      tl.to(
+        "#hf05-chart-morph",
+        {
+          width: 540,
+          height: 285,
+          x: -370,
+          y: 150,
+          borderRadius: 12,
+          background: "#ffffff",
+          duration: 1.05,
+          ease: "power2.inOut",
+        },
+        4.2,
+      );
+      tl.to(
+        "#hf05-chart-source",
+        { opacity: 0, duration: 0.42, ease: "power1.in" },
+        4.2,
+      );
+      tl.fromTo(
+        "#hf05-chart-final",
+        { opacity: 0 },
+        { opacity: 1, duration: 0.42, ease: "power1.out" },
+        4.83,
+      );
+      tl.to(
+        "#hf05-chart-slot",
+        { opacity: 0, duration: 0.3, ease: "power1.in" },
+        4.2,
+      );
+
+      tl.to(
+        "#hf05-camera",
+        { scale: 1.025, x: -8, y: -6, duration: 0.52, ease: "power2.inOut" },
+        4.38,
+      );
+      tl.to(
+        "#hf05-camera",
+        { scale: 1, x: 0, y: 0, duration: 0.62, ease: "power3.out" },
+        5.02,
+      );
+
+      typeText("#hf05-conclusion-heading", "결론", 5.12, 0.24);
+      typeText("#hf05-conclusion-result", "질량 증가 · 주기 증가", 5.38, 0.52);
+      typeText("#hf05-conclusion-fit", "R² 0.98 · 5개 측정점", 5.93, 0.38);
+
+      tl.to(
+        ["#hf05-docx-ready", "#hf05-hwpx-ready"],
+        { opacity: 0, duration: 0.26, ease: "power1.in" },
+        6.52,
+      );
+      tl.fromTo(
+        ["#hf05-docx-complete", "#hf05-hwpx-complete"],
+        { opacity: 0, y: 8 },
+        { opacity: 1, y: 0, duration: 0.32, ease: "power2.out" },
+        6.68,
+      );
+      tl.to(
+        ["#hf05-export-docx", "#hf05-export-hwpx"],
+        {
+          borderColor: "rgba(33, 95, 229, 0.35)",
+          background: "rgba(33, 95, 229, 0.08)",
+          duration: 0.42,
+          ease: "power2.out",
+        },
+        6.58,
+      );
+      tl.fromTo(
+        "#hf05-saved",
+        { opacity: 0, y: 8 },
+        { opacity: 1, y: 0, duration: 0.35, ease: "power2.out" },
+        7.02,
+      );
+
+      window.__timelines["05-report"] = tl;
+    })();
+  </script>
+</template>

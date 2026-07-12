@@ -385,6 +385,26 @@ class VerifyTranslationTests(unittest.TestCase):
             [(1, 2), (2, 1)],
         )
 
+    def test_repeated_scientific_literal_allows_same_row_translation_reflow(self):
+        source = [
+            fitz.Rect(353, 80, 393, 95),
+            fitz.Rect(357, 104, 397, 119),
+        ]
+        output = [
+            fitz.Rect(99, 80, 139, 94),
+            fitz.Rect(288, 104, 328, 118),
+        ]
+
+        comparison = VERIFY_MODULE._match_anchor_occurrences(
+            source,
+            output,
+            595.276,
+            anchor_kinds=["number_unit"],
+        )
+
+        self.assertTrue(comparison["matched"], comparison)
+        self.assertEqual(comparison["reason"], "repeated_literal_same_row_reflow")
+
     def test_stable_anchor_boundary_and_line_wrap_policy(self):
         source = fitz.Rect(72, 90, 112, 105)
         within_50 = VERIFY_MODULE._anchor_pair_metrics(

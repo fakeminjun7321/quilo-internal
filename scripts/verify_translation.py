@@ -1058,9 +1058,29 @@ def _match_anchor_occurrences(
                 **metrics[source_index][output_index],
             }
         )
+    # Repeated scientific literals often sit inside full-width prose blocks.
+    # Korean translation can make the first occurrence much shorter while a
+    # later occurrence remains locally aligned. Treat that as same-row text
+    # reflow, not column migration. Singletons, identifiers/code, count
+    # changes and vertical moves keep the stricter policy above.
+    repeat_literal_reflow = (
+        len(pairs) > 1
+        and bool(kinds)
+        and kinds.issubset({"chemical_formula", "number_unit"})
+        and any(pair["matched"] for pair in pairs)
+        and all(
+            pair["matched"]
+            or (
+                pair["dy"] <= STABLE_ANCHOR_BASELINE_TOLERANCE_PT
+                and pair["dx"]
+                <= min(max(1.0, page_width) * 0.50, 300.0)
+            )
+            for pair in pairs
+        )
+    )
     return {
-        "matched": all(pair["matched"] for pair in pairs),
-        "reason": "movement",
+        "matched": all(pair["matched"] for pair in pairs) or repeat_literal_reflow,
+        "reason": "repeated_literal_same_row_reflow" if repeat_literal_reflow else "movement",
         "source_count": len(source_rects),
         "output_count": len(output_rects),
         "pairs": pairs,

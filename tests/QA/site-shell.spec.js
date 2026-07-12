@@ -249,6 +249,26 @@ test("pricing page explains plan differences without inventing a fixed price", a
   await expect(page.locator("#main-content")).toContainText("Max 가격·기간·입금 안내는 그 화면에 표시되는 현재 운영 설정을 기준으로 합니다.");
   const mainText = await page.locator("#main-content").innerText();
   expect(mainText).not.toMatch(/\d[\d,]*\s*원/);
+  await expect(page.locator('#main-content [data-ui-start-action]')).toHaveAttribute("href", "/signup.html");
+  await expect(page.locator('#main-content [data-ui-start-action]')).toHaveText("무료로 시작하기");
+});
+
+test("shared shell prefetches a likely same-origin destination only after intent", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${baseUrl}/guide.html`, { waitUntil: "domcontentloaded" });
+
+  await expect(page.locator('link[rel="prefetch"][href="/pricing.html"]')).toHaveCount(0);
+  await page.locator('.ui-site-nav > a[href="/pricing.html"]').hover();
+  await expect(page.locator('link[rel="prefetch"][href="/pricing.html"]')).toHaveCount(1);
+});
+
+test("home metadata positions Quilo as a broad learning and research workspace", async ({ page }) => {
+  await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
+  await expect(page).toHaveTitle("Quilo — 학업의 전 과정을 연결하는 AI Workspace");
+  await expect(page.locator('meta[name="description"]')).toHaveAttribute(
+    "content",
+    /보고서, 리서치, 데이터 분석, 코딩과 파일 작업/,
+  );
 });
 
 test("every public pricing navigation points to the visible pricing page", () => {

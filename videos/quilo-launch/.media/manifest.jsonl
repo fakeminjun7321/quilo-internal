@@ -1,0 +1,2 @@
+{"id":"logo_001","type":"logo","path":".media/images/logo_001.png","source":"ingested","description":"favicon.png","provenance":{"provider":"local","from":"/Users/minjun/Quilo/public/favicon.png"}}
+{"id":"image_001","type":"image","path":"assets/quilo-logo.png","source":"existing","description":"quilo logo","width":256,"height":256,"provenance":{"provider":"local","adopted":true}}

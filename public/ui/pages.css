@@ -495,6 +495,8 @@ pre { max-width: 100%; padding: 18px; overflow: auto; border-radius: 8px; backgr
         border: 1px solid var(--border);
         border-radius: var(--radius-sm);
         background: var(--surface-2);
+        color: var(--text);
+        font-family: var(--font-mono);
         white-space: pre-wrap;
         word-break: break-word;
         font-size: 12px;
@@ -519,7 +521,7 @@ pre { max-width: 100%; padding: 18px; overflow: auto; border-radius: 8px; backgr
       .ex-card h3 { margin: 0 0 8px; font-size: 16px; }
       .ex-card p { margin: 0 0 10px; font-size: 14px; }
       .ex-card .ex-in { color: var(--text-muted); font-size: 12px; margin-bottom: 12px; }
-      .ex-card .ex-foot { margin-top: auto; }
+      .ex-card .ex-foot { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; }
       .ex-badge {
         display: inline-block;
         padding: 3px 9px;

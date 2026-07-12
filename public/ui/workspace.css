@@ -425,8 +425,45 @@ body[data-view="workspace"] #qc-launch.qc-home-launch { display: flex; }
 }
 
 @media (max-width: 760px) {
-  .home-hero-v2 { min-height: 0; padding: 58px 18px 68px; }
-  .home-hero-v2 h1 { font-size: 34px; }
-  .workshow { padding: 40px 20px; }
-  .workshow-stage { grid-template-columns: 1fr; }
+  .ann-inner { gap: 10px; padding-inline: 16px; }
+  .ann-item-meta, .ann-item-more { display: none; }
+  .home-hero-v2 { min-height: 0; padding: 52px 16px 60px; }
+  .home-hero-v2 h1 { max-width: 540px; font-size: clamp(30px, 9vw, 40px); }
+  .quilo-bot-mount { margin-top: 22px; }
+  .quilo-bot-fallback { min-height: 132px; padding: 26px 22px; border-radius: 22px; font-size: 17px; }
+  .workshow { min-height: 0; padding: 38px 0 46px; overflow: hidden; }
+  .workshow-head { padding-inline: 18px; }
+  .workshow-head h2 { font-size: 30px; }
+  .workshow-stage {
+    display: flex;
+    gap: 14px;
+    margin-top: 24px;
+    padding: 0 18px 14px;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scroll-padding-inline: 18px;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+  }
+  .workshow-stage::-webkit-scrollbar { display: none; }
+  .workshow-stage > * { flex: 0 0 min(82vw, 330px); scroll-snap-align: start; }
+  .workshow-core { flex-basis: 82px; align-self: center; }
+  .workshow-request { min-height: 132px; }
+  .workshow-files { min-height: 210px; }
+  .workspace-page-head { align-items: stretch; flex-direction: column; gap: 18px; padding: 24px 18px 20px; }
+  .workspace-page-head h1 { font-size: 29px; }
+  .workspace-home-link { align-self: flex-start; }
+  #workspaceSurface { width: 100%; padding-top: 0; }
+  .report-workflow-nav {
+    display: flex;
+    gap: 8px;
+    padding: 18px;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+  }
+  .report-workflow-nav button { flex: 0 0 170px; padding: 0; scroll-snap-align: start; }
+  .report-workflow-nav button::after { display: none; }
+  .workspace-summary { min-height: 0; max-height: none; border: 0; border-bottom: 1px solid var(--q-line); }
+  .workspace-summary-section { padding: 20px 18px; }
+  .site-footer { width: min(100% - 36px, 1380px); align-items: flex-start; flex-direction: column; }
 }

@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+  </head>
+  <body>
+    <template>
+      <style>
+        @font-face {
+          font-family: "Pretendard";
+          src: url("assets/fonts/Pretendard-Regular.ttf") format("truetype");
+          font-style: normal;
+          font-weight: 400;
+          font-display: block;
+        }
+
+        @font-face {
+          font-family: "Pretendard";
+          src: url("assets/fonts/Pretendard-Bold.ttf") format("truetype");
+          font-style: normal;
+          font-weight: 700;
+          font-display: block;
+        }
+
+        #root {
+          position: relative;
+          width: 1920px;
+          height: 1080px;
+          overflow: hidden;
+          container-type: size;
+          color: #121a2a;
+          font-family: "Pretendard", sans-serif;
+          -webkit-font-smoothing: antialiased;
+          text-rendering: geometricPrecision;
+        }
+
+        #root,
+        #root * {
+          box-sizing: border-box;
+        }
+
+        .f01-ground {
+          position: absolute;
+          inset: 0;
+          z-index: 0;
+          background: #ffffff;
+        }
+
+        .f01-stage {
+          position: absolute;
+          inset: 0;
+          z-index: 2;
+        }
+
+        .f01-composer {
+          position: absolute;
+          top: 318px;
+          left: 50%;
+          width: 980px;
+          height: 96px;
+          overflow: hidden;
+          border: 1.5px solid rgba(33, 95, 229, 0);
+          border-radius: 12px;
+          background: rgba(33, 95, 229, 0);
+          transform: translateX(-50%);
+        }
+
+        .f01-request-anchor {
+          position: absolute;
+          top: 19px;
+          left: 50%;
+          width: 1px;
+          height: 66px;
+        }
+
+        .f01-request-row {
+          position: absolute;
+          top: 0;
+          left: 0;
+          display: flex;
+          width: 900px;
+          height: 66px;
+          align-items: center;
+          justify-content: center;
+          transform: translateX(-50%);
+          white-space: pre;
+        }
+
+        .f01-request-text {
+          display: inline-block;
+          color: #121a2a;
+          font-size: 54px;
+          font-weight: 700;
+          line-height: 1;
+          letter-spacing: -0.035em;
+          white-space: pre;
+        }
+
+        .f01-caret {
+          display: inline-block;
+          width: 7px;
+          height: 57px;
+          flex: 0 0 7px;
+          margin-left: 9px;
+          border-radius: 6px;
+          background: #215fe5;
+          vertical-align: -7px;
+        }
+
+        .f01-line-guide {
+          position: absolute;
+          top: 82px;
+          left: 50%;
+          display: block;
+          width: 660px;
+          height: 2px;
+          border-radius: 6px;
+          background: rgba(33, 95, 229, 0.2);
+          transform: translateX(-50%);
+        }
+
+        .f01-new-controls {
+          position: absolute;
+          right: 26px;
+          bottom: 24px;
+          left: 32px;
+          display: flex;
+          height: 64px;
+          align-items: center;
+          justify-content: space-between;
+          opacity: 0;
+        }
+
+        .f01-add-control {
+          display: inline-flex;
+          align-items: center;
+          gap: 14px;
+          color: #5d6879;
+          font-size: 27px;
+          font-weight: 400;
+          line-height: 1;
+        }
+
+        .f01-add-icon {
+          display: grid;
+          width: 52px;
+          height: 52px;
+          place-items: center;
+          border: 1.5px solid rgba(33, 95, 229, 0.2);
+          border-radius: 50%;
+          background: rgba(33, 95, 229, 0.04);
+          color: #215fe5;
+          font-size: 34px;
+          font-weight: 400;
+          line-height: 1;
+        }
+
+        .f01-send-control {
+          display: grid;
+          width: 64px;
+          height: 64px;
+          place-items: center;
+          border: 0;
+          border-radius: 50%;
+          background: rgba(33, 95, 229, 0.08);
+          color: #215fe5;
+          font: 700 38px/1 "Pretendard", sans-serif;
+        }
+
+        .f01-send-glyph {
+          display: block;
+          width: 28px;
+          height: 36px;
+          text-align: center;
+        }
+
+        .f01-file {
+          position: absolute;
+          z-index: 1;
+        }
+
+        .f01-file-motion {
+          display: inline-flex;
+          align-items: center;
+          gap: 15px;
+          color: #5d6879;
+          font-size: 28px;
+          font-weight: 400;
+          line-height: 1;
+          letter-spacing: -0.02em;
+          white-space: nowrap;
+        }
+
+        .f01-file-one {
+          top: 500px;
+          left: 92px;
+        }
+
+        .f01-file-two {
+          top: 411px;
+          right: 82px;
+        }
+
+        .f01-file-three {
+          top: 632px;
+          left: 146px;
+        }
+
+        .f01-file-icon {
+          position: relative;
+          display: block;
+          width: 28px;
+          height: 34px;
+          flex: 0 0 28px;
+          border: 1.5px solid rgba(93, 104, 121, 0.48);
+          border-radius: 5px;
+          background: rgba(33, 95, 229, 0.04);
+        }
+
+        .f01-file-icon::before,
+        .f01-file-icon::after {
+          position: absolute;
+          right: 5px;
+          left: 5px;
+          height: 1.5px;
+          border-radius: 4px;
+          background: rgba(93, 104, 121, 0.48);
+          content: "";
+        }
+
+        .f01-file-icon::before {
+          bottom: 14px;
+          opacity: 0.68;
+        }
+
+        .f01-file-icon::after {
+          bottom: 8px;
+        }
+      </style>
+
+      <div
+        id="root"
+        data-composition-id="01-hook"
+        data-width="1920"
+        data-height="1080"
+        data-duration="4.9"
+      >
+        <div
+          id="f01-hook-ground"
+          class="clip f01-ground"
+          data-start="0"
+          data-duration="4.9"
+          data-track-index="0"
+          aria-hidden="true"
+        ></div>
+
+        <div
+          id="f01-hook-stage"
+          class="clip f01-stage"
+          data-start="0"
+          data-duration="4.9"
+          data-track-index="1"
+        >
+          <div id="f01-hook-composer" class="f01-composer">
+            <div id="f01-hook-request-anchor" class="f01-request-anchor">
+              <div class="f01-request-row">
+                <span id="f01-hook-text" class="f01-request-text"></span>
+                <span id="f01-hook-caret" class="f01-caret" aria-hidden="true"></span>
+              </div>
+            </div>
+
+            <span id="f01-hook-line-guide" class="f01-line-guide" aria-hidden="true"></span>
+
+            <div id="f01-hook-new-controls" class="f01-new-controls">
+              <div class="f01-add-control">
+                <span class="f01-add-icon" aria-hidden="true">+</span>
+                <span>자료 추가</span>
+              </div>
+              <div id="f01-hook-send" class="f01-send-control" aria-hidden="true">
+                <span class="f01-send-glyph">↑</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div
+          id="f01-hook-file-one"
+          class="clip f01-file f01-file-one"
+          data-start="1.28"
+          data-duration="0.66"
+          data-track-index="2"
+        >
+          <div id="f01-hook-file-one-motion" class="f01-file-motion">
+            <span class="f01-file-icon" aria-hidden="true"></span>
+            <span>실험 데이터.xlsx</span>
+          </div>
+        </div>
+
+        <div
+          id="f01-hook-file-two"
+          class="clip f01-file f01-file-two"
+          data-start="1.94"
+          data-duration="0.66"
+          data-track-index="3"
+        >
+          <div id="f01-hook-file-two-motion" class="f01-file-motion">
+            <span class="f01-file-icon" aria-hidden="true"></span>
+            <span>연구 논문.pdf</span>
+          </div>
+        </div>
+
+        <div
+          id="f01-hook-file-three"
+          class="clip f01-file f01-file-three"
+          data-start="2.60"
+          data-duration="0.64"
+          data-track-index="4"
+        >
+          <div id="f01-hook-file-three-motion" class="f01-file-motion">
+            <span class="f01-file-icon" aria-hidden="true"></span>
+            <span>수업 노트.md</span>
+          </div>
+        </div>
+      </div>
+
+      <script>
+        window.__timelines = window.__timelines || {};
+
+        const textEl = document.getElementById("f01-hook-text");
+        const caretEl = document.getElementById("f01-hook-caret");
+        const tl = gsap.timeline({ paused: true });
+
+        const TEXT_SEQUENCE = [
+          { t: 0.0, text: "", cursor: "#215FE5" },
+          { t: 1.0, text: "실", cursor: "#121A2A" },
+          { t: 1.13, text: "실험", cursor: "#121A2A" },
+          { t: 1.32, text: "실험 ", cursor: "#5D6879" },
+          { t: 1.52, text: "실험 자", cursor: "#121A2A" },
+          { t: 1.66, text: "실험 자료", cursor: "#121A2A" },
+          { t: 1.81, text: "실험 자료를", cursor: "#121A2A" },
+          { t: 2.08, text: "실험 자료를 ", cursor: "#5D6879" },
+          { t: 2.31, text: "실험 자료를 분", cursor: "#215FE5" },
+          { t: 2.44, text: "실험 자료를 분석", cursor: "#215FE5" },
+          { t: 2.61, text: "실험 자료를 분석해", cursor: "#215FE5" },
+          { t: 2.78, text: "실험 자료를 분석해줘", cursor: "#215FE5" },
+        ];
+
+        function entryAt(time) {
+          for (let i = TEXT_SEQUENCE.length - 1; i >= 0; i -= 1) {
+            if (time >= TEXT_SEQUENCE[i].t) return TEXT_SEQUENCE[i];
+          }
+          return TEXT_SEQUENCE[0];
+        }
+
+        function isTypingBeat(time) {
+          for (let i = 1; i < TEXT_SEQUENCE.length; i += 1) {
+            const delta = time - TEXT_SEQUENCE[i].t;
+            if (delta >= 0 && delta < 0.12) return true;
+          }
+          return false;
+        }
+
+        const textDriver = { t: 0 };
+        tl.to(
+          textDriver,
+          {
+            t: 4.5,
+            duration: 4.5,
+            ease: "none",
+            onUpdate: () => {
+              const entry = entryAt(textDriver.t);
+              textEl.textContent = entry.text;
+              caretEl.style.backgroundColor = entry.cursor;
+            },
+          },
+          0,
+        );
+
+        const cursorDriver = { t: 0 };
+        tl.to(
+          cursorDriver,
+          {
+            t: 3.24,
+            duration: 3.24,
+            ease: "none",
+            onUpdate: () => {
+              const solid = isTypingBeat(cursorDriver.t);
+              const blinkOn = Math.sin((cursorDriver.t / 0.72) * Math.PI * 2) >= 0;
+              caretEl.style.opacity = solid || blinkOn ? "1" : "0";
+            },
+          },
+          0,
+        );
+
+        tl.fromTo(
+          "#f01-hook-stage",
+          { opacity: 0 },
+          { opacity: 1, duration: 0.24, ease: "power2.out" },
+          0,
+        );
+
+        tl.fromTo(
+          "#f01-hook-line-guide",
+          { opacity: 0 },
+          { opacity: 0.72, duration: 0.24, ease: "power2.out" },
+          1.0,
+        );
+
+        function animateFile(id, start, duration) {
+          const entryDuration = 0.22;
+          const exitDuration = 0.22;
+          const exitStart = start + duration - exitDuration;
+
+          tl.fromTo(
+            id,
+            { x: 180, opacity: 0.35 },
+            {
+              x: 0,
+              opacity: 0.76,
+              duration: entryDuration,
+              ease: "power4.out",
+              immediateRender: false,
+            },
+            start,
+          );
+          tl.to(id, { x: -180, duration: exitDuration, ease: "power4.in" }, exitStart);
+          tl.to(id, { opacity: 0, duration: 0.2, ease: "power1.in" }, start + duration - 0.2);
+          tl.set(id, { opacity: 0 }, start + duration);
+        }
+
+        animateFile("#f01-hook-file-one-motion", 1.28, 0.66);
+        animateFile("#f01-hook-file-two-motion", 1.94, 0.66);
+        animateFile("#f01-hook-file-three-motion", 2.6, 0.64);
+
+        tl.to(
+          "#f01-hook-caret",
+          { opacity: 0, duration: 0.1, ease: "power1.out" },
+          3.24,
+        );
+
+        tl.to(
+          "#f01-hook-composer",
+          {
+            width: 1360,
+            height: 245,
+            borderRadius: 14,
+            borderColor: "rgba(33, 95, 229, 0.20)",
+            background: "rgba(33, 95, 229, 0.04)",
+            duration: 0.78,
+            ease: "power2.inOut",
+          },
+          3.3,
+        );
+
+        tl.to(
+          "#f01-hook-line-guide",
+          { opacity: 0, duration: 0.3, ease: "power1.in" },
+          3.3,
+        );
+
+        tl.to(
+          "#f01-hook-request-anchor",
+          { x: -300, duration: 0.78, ease: "power2.inOut" },
+          3.3,
+        );
+
+        tl.to(
+          "#f01-hook-new-controls",
+          { opacity: 1, duration: 0.32, ease: "power1.out" },
+          3.76,
+        );
+
+        tl.fromTo(
+          "#f01-hook-send",
+          { scale: 0.9 },
+          { scale: 1, duration: 0.32, ease: "power2.out" },
+          3.76,
+        );
+
+        tl.to(
+          "#f01-hook-send",
+          {
+            backgroundColor: "#215FE5",
+            color: "#FFFFFF",
+            duration: 0.16,
+            ease: "power1.out",
+          },
+          3.92,
+        );
+
+        window.__timelines["01-hook"] = tl;
+      </script>
+    </template>
+  </body>
+</html>

@@ -1577,3 +1577,312 @@ li.CodeMirror-hint-active { background: #094771; color: #fff; }
   .operations-main { padding-inline: 18px; }
   .compact-form { flex-wrap: wrap; }
 }
+
+/* Mobile operations console -------------------------------------------------
+ * The desktop console stays table-led. On a phone the global command bar and
+ * section tabs become two compact fixed rows, while every active workspace is
+ * reduced to one readable column. Wide data remains horizontally scrollable
+ * inside its own table viewport instead of widening the document. */
+@media (max-width: 760px) {
+  :root {
+    --admin-mobile-tabs-h: 50px;
+  }
+
+  html:has(body.operations-shell),
+  body.operations-shell {
+    min-width: 0;
+    width: 100%;
+    overflow-x: hidden;
+  }
+
+  .operations-commandbar {
+    height: var(--ui-site-header-h, 68px);
+    background: var(--admin-panel);
+  }
+
+  .operations-commandbar__inner {
+    gap: 8px;
+    padding: 0 12px;
+  }
+
+  .operations-brand {
+    flex: 0 0 auto;
+    gap: 8px;
+    width: auto;
+    color: var(--admin-text);
+  }
+
+  .operations-brand img {
+    flex-basis: 32px;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+  }
+
+  .operations-brand__copy strong { font-size: 20px; }
+  .operations-brand__copy small { display: none; }
+
+  .operations-commandbar__title {
+    flex: 1 1 auto;
+    padding-left: 2px;
+    font-size: 13px;
+    text-align: left;
+  }
+
+  .operations-commandbar__actions { flex: 0 0 auto; gap: 3px; }
+  .operations-commandbar__actions a[href="/"] { display: none; }
+  .operations-commandbar__actions a {
+    min-height: 40px;
+    padding-inline: 8px;
+    font-size: 11px;
+  }
+
+  .operations-sidebar {
+    z-index: 70;
+    inset: var(--ui-site-header-h, 68px) 0 auto;
+    display: flex;
+    flex-direction: row;
+    gap: 4px;
+    width: 100%;
+    height: var(--admin-mobile-tabs-h);
+    padding: 6px 10px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-bottom: 1px solid var(--admin-line);
+    scrollbar-width: none;
+  }
+
+  .operations-sidebar::-webkit-scrollbar { display: none; }
+  .admin-nav-label { display: none; }
+
+  .operations-sidebar .atab {
+    flex: 0 0 auto;
+    width: auto;
+    min-height: 38px;
+    padding: 8px 12px;
+    white-space: nowrap;
+  }
+
+  .operations-sidebar .atab::before {
+    right: 12px;
+    bottom: 1px;
+    left: 12px;
+    width: auto;
+    height: 2px;
+  }
+
+  .operations-main,
+  body.operations-shell:has(#adminTabs [data-go="users"].on) .operations-main,
+  body.operations-shell:has(#adminTabs [data-go="subs"].on) .operations-main,
+  body.operations-shell:has(#adminTabs [data-go="beta"].on) .operations-main {
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+    min-height: 100dvh;
+    margin-left: 0;
+    padding: calc(var(--ui-site-header-h, 68px) + var(--admin-mobile-tabs-h)) 0 0;
+  }
+
+  .operations-heading {
+    top: calc(var(--ui-site-header-h, 68px) + var(--admin-mobile-tabs-h));
+    gap: 10px;
+    min-height: 46px;
+    padding: 8px 14px;
+  }
+
+  .operations-heading > p:first-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .operations-rate {
+    flex: 0 0 auto;
+    max-width: 45%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .settings-card,
+  .operations-panel {
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: auto !important;
+    width: 100%;
+    min-width: 0;
+    padding: 16px 14px 22px;
+    overflow: visible;
+    border: 0 !important;
+  }
+
+  .operations-panel:not(.is-hidden) { min-height: 0; }
+
+  .operations-main > .operations-panel {
+    grid-column: 1 !important;
+    grid-row: auto !important;
+  }
+
+  .operations-panel > *,
+  #adminAiSection > *,
+  #adminAnnSection > *,
+  #grantsSection > * {
+    grid-column: 1 !important;
+    grid-row: auto !important;
+    min-width: 0;
+  }
+
+  .card-head,
+  .console-toolbar__actions,
+  .form-actions,
+  .school-filter-row,
+  .admin-list-card__header,
+  .school-application-card__controls {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .compact-form,
+  #bgSubsSection #subAddForm,
+  #betaSection #betaAddForm,
+  #proTierSection .compact-form,
+  #openFeatureSection .compact-form,
+  section[data-atab="users"]:has(#addForm) .compact-form,
+  #grantsSection .compact-form,
+  #problemsetSection .compact-form {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    width: 100%;
+  }
+
+  .compact-form .field,
+  .compact-form > label,
+  .feature-select,
+  .audience-select,
+  .duration-input,
+  .problemset-limit-input,
+  .console-search {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .table-wrapper,
+  #adminUsersSection .table-wrapper {
+    width: 100%;
+    min-height: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: visible;
+    border: 1px solid var(--admin-line);
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .table-wrapper table { min-width: 680px; }
+  #userTable { min-width: 720px; }
+
+  #adminUsersSection { padding: 0; }
+
+  body.operations-shell:has(#adminTabs [data-go="users"].on) #adminUsersSection { order: 1; }
+  body.operations-shell:has(#adminTabs [data-go="users"].on) #adminUserInspector { order: 2; }
+
+  .user-summary-strip {
+    display: flex;
+    min-height: 76px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .user-summary-strip::-webkit-scrollbar { display: none; }
+  .user-summary-item {
+    flex: 0 0 118px;
+    min-height: 76px;
+    padding: 12px 14px;
+  }
+  .user-summary-item strong { font-size: 21px; }
+
+  .user-console-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(112px, .45fr);
+    align-items: end;
+    gap: 10px;
+    padding: 14px;
+  }
+
+  .user-console-search { min-width: 0; }
+  .user-console-control { min-width: 0; }
+  .user-console-actions {
+    grid-column: 1 / -1;
+    justify-content: stretch;
+  }
+  .user-console-actions .primary { flex: 1; }
+
+  .user-results-meta {
+    min-height: 42px;
+    padding-inline: 14px;
+  }
+
+  #adminUserInspector {
+    position: static;
+    top: auto;
+    height: auto;
+    min-height: 0;
+    padding: 20px 14px 28px;
+    border-top: 1px solid var(--admin-line);
+    border-left: 0;
+  }
+
+  .user-inspector-action-grid { grid-template-columns: minmax(0, 1fr); }
+  .user-danger-zone { flex-direction: column; }
+
+  #adminAiSection #aaMsgs {
+    min-height: 300px !important;
+    max-height: 52dvh !important;
+  }
+
+  #adminAiSection .admin-ai-model-row,
+  .admin-ai-compose,
+  .admin-action-card__controls,
+  .feature-limit-row,
+  .temporary-open-item {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-ai-model-select { width: 100%; }
+  .admin-ai-compose textarea { min-height: 86px; }
+  #aaSend { width: 100%; min-height: 44px; }
+
+  .announcement-inspector {
+    margin: 8px -14px -22px;
+    padding: 20px 14px 24px;
+    border-top: 1px solid var(--admin-line);
+    border-left: 0;
+  }
+
+  .announcement-preview {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .announcement-preview__action { display: none; }
+
+  .school-application-row {
+    display: grid;
+    grid-template-columns: 88px minmax(0, 1fr);
+  }
+  .school-application-row__label { min-width: 0; }
+  .school-application-note { min-width: 0; width: 100%; }
+
+  #adminEditorSection {
+    padding: 0;
+    overflow: hidden;
+  }
+  #adminEditorSection .ide {
+    width: 100%;
+    height: calc(100dvh - var(--ui-site-header-h, 68px) - var(--admin-mobile-tabs-h) - 46px);
+    min-height: 520px;
+  }
+  #adminEditorSection .ide-side,
+  #adminEditorSection .ide-minimap { display: none; }
+  #adminEditorSection .ide-top,
+  #adminEditorSection .ide-tabs,
+  #adminEditorSection .ide-panel-tabs,
+  #adminEditorSection .ide-statusbar { overflow-x: auto; }
+  #adminEditorSection .ide-panel { flex-basis: 150px; height: 150px; }
+}

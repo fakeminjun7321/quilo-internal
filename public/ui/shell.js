@@ -256,7 +256,7 @@
     const name = authenticated ? accountName(result.user) : "";
     const compactName = [...name].length > 14 ? `${[...name].slice(0, 14).join("")}…` : name;
 
-    header.querySelectorAll("[data-ui-start-action]").forEach((action) => {
+    document.querySelectorAll("[data-ui-start-action]").forEach((action) => {
       if (authenticated) {
         action.href = "/?report=free";
         action.textContent = "작업 시작하기";
@@ -325,6 +325,31 @@
     closeDropdowns,
     openLogin: () => openSessionPanel("login"),
     openAccount: () => openSessionPanel("account"),
+  });
+
+  // Warm likely next pages without blocking the current document. Render can
+  // otherwise add a visible round-trip whenever a user opens a header menu.
+  const prefetched = new Set();
+  function prefetchPage(link) {
+    if (!(link instanceof HTMLAnchorElement)) return;
+    const target = new URL(link.href, currentUrl);
+    if (target.origin !== currentUrl.origin || target.pathname === currentUrl.pathname) return;
+    const key = `${target.pathname}${target.search}`;
+    if (prefetched.has(key)) return;
+    prefetched.add(key);
+    const hint = document.createElement("link");
+    hint.rel = "prefetch";
+    hint.href = key;
+    hint.as = "document";
+    document.head.appendChild(hint);
+  }
+  document.addEventListener("pointerover", (event) => {
+    const link = event.target.closest?.("a[href]");
+    if (link) prefetchPage(link);
+  }, { passive: true });
+  document.addEventListener("focusin", (event) => {
+    const link = event.target.closest?.("a[href]");
+    if (link) prefetchPage(link);
   });
 
   const isWorkspace = document.body.classList.contains("home-page");

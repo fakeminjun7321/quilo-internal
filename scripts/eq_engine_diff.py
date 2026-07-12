@@ -18,6 +18,8 @@ import importlib
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "lib", "equation"))
 
+import hwp_script_parser as hsp  # noqa: E402 — 구조 동치성 비교기(검증 전용)
+
 # 도메인별 골든셋 — 실제 보고서(화학 사전/결과, 물리 결과/수행, 수학 급수)에서
 # 나오는 형태를 대표한다. 새 유형의 수식 문제가 발견되면 여기에 추가할 것.
 GOLDEN = [
@@ -170,6 +172,12 @@ GOLDEN = [
     # 닫힌 면/체적분 \oiint/\oiiint — 한컴 비키워드 'oiint' 글자 노출 회귀
     # (빌트인은 COMMANDS, hwip 은 preprocess_latex_body 의 \oint 정규화로 잡힌다).
     r"\oiint_{S} E \cdot dA = Q / \epsilon_{0}",
+    # ── 회귀 추가분(2026-07-12): 구조 동치성 검사(hwp_script_parser)로 발견한
+    #    실결함 잠금 — 이중화살표 오매핑(빌트인 \Leftarrow→'<='(≤ 격하),
+    #    \Leftrightarrow/\iff→'<->'(단줄 격하)), hwip n제곱근 결합 파손
+    #    (2\sqrt[3]{8}→2^{3}√8), \intercal 영단어 노출, align 환경 알몸 &/# ──
+    r"p \Leftarrow q",
+    r"A \Leftrightarrow B",
 ]
 
 # 최종 스크립트에 절대 남으면 안 되는 패턴(원시 LaTeX 잔재/마커 잔재 신호).
@@ -247,7 +255,11 @@ GOLDEN_LATEX_GUARD = {
     ),
     r"A^\top B": (["top"], ["-> p"]),
     r"\neg p": (["lnot"], ["!= g"]),
-    r"A^\intercal": ([], [" ercal"]),
+    r"A^\intercal": (["{T}"], [" ercal", "intercal"]),
+    r"p \Leftarrow q": (["LARROW"], ["<="]),
+    r"A \Leftrightarrow B": (["LRARROW"], ["<->"]),
+    r"2\sqrt[3]{8}": (["root 3 of {8}"], ["^{3} sqrt"]),
+    r"\begin{align} x &= y \\ z &= w \end{align}": (["matrix"], []),
     r"\begin{vmatrix} a & b \\ c & d \end{vmatrix} = ad - bc": (
         ["dmatrix"], ["vmatrix", "Vmatrix"],
     ),
@@ -281,8 +293,8 @@ GOLDEN_LATEX_GUARD = {
     r"\pu{123 kJ/mol}": (['"123 kJ/mol"'], ["pu"]),
     r"\pu{8.314 J//(mol.K)}": (['"8.314 J/(mol·K)"'], ["pu"]),
     # 미확인 명령 영단어 누출 — 양 엔진 모두 기호/무시로 처리해야 한다.
-    r"p \implies q": ([], ["implies"]),
-    r"p \iff q": ([], ["iff"]),
+    r"p \implies q": (["RARROW"], ["implies"]),
+    r"p \iff q": (["LRARROW"], ["iff"]),
     r"a \geqslant b, c \leqslant d": ([], ["geqslant", "leqslant"]),
     r"\displaystyle \frac{a}{b}": (["over"], ["displaystyle"]),
     r"\{ x \mid x > 0 \}": (["|"], ["mid"]),
@@ -324,6 +336,10 @@ GOLDEN_LATEX_GUARD = {
         ["oiint", '"epsilon"'],
     ),
 }
+
+# 구조 불일치 심사 후 '의도된 차이'로 승인한 케이스 — {LaTeX: 사유}.
+# 새 struct 불일치는 여기 등록하기 전에 반드시 원인 심사부터 한다.
+STRUCT_ALLOW: dict[str, str] = {}
 
 # 근접 오타 마커 변형 — canonicalize + lenient 스캐너가 전부 구제해야 한다.
 MARKER_VARIANTS = [
@@ -552,12 +568,30 @@ def run(quiet=False):
     hwip_used = eq_mod.hwip_engine_enabled() and len(eq_mod._hwip_cache) > 0
 
     diff_count = 0
+    struct_stats = {"equal": 0, "benign": 0, "suspect": 0, "struct": 0}
+    suspects: dict[str, str] = {}  # 카테고리 상세 → 대표 케이스
     for i, tex in enumerate(GOLDEN):
         b, h = builtin_out[i], hwip_out[i]
         differs = b != h
         diff_count += differs
         check_output("hwip", f"#{i+1}", h, problems)
         check_output("builtin", f"#{i+1}", b, problems)
+        # ── 구조 동치성: 두 엔진 출력이 '같은 수식'인지 트리 비교 ──
+        if not (b.startswith("(ERROR") or h.startswith("(ERROR")):
+            verdict = hsp.compare_scripts(b, h)
+            struct_stats[verdict.level] += 1
+            if verdict.level == "suspect":
+                for d in verdict.diffs:
+                    suspects.setdefault(d, f"#{i+1} {tex}")
+            elif verdict.level == "struct" and tex not in STRUCT_ALLOW:
+                problems.append(
+                    f"[struct] #{i+1} 두 엔진 구조 불일치: {tex!r}\n"
+                    f"      builtin: {b[:110]}\n      hwip   : {h[:110]}\n"
+                    f"      원인: {'; '.join(verdict.diffs) or verdict.categories}"
+                )
+            for engine, out in (("builtin", b), ("hwip", h)):
+                for w in hsp.lint_hancom_lexing(out):
+                    problems.append(f"[{engine}] #{i+1} 한컴 렉싱 위험: {w}")
         keep, ban = GOLDEN_LATEX_GUARD.get(tex, ((), ()))
         for engine, out in (("builtin", b), ("hwip", h)):
             for piece in keep:
@@ -583,6 +617,15 @@ def run(quiet=False):
     fell_back = sum(1 for t in GOLDEN if t.strip() in eq_mod._hwip_failed)
     print("──── 요약 ────")
     print(f"골든셋 {len(GOLDEN)}개 | hwip 엔진 사용: {hwip_used} | builtin과 다른 출력: {diff_count}개 | hwip 변환실패→폴백: {fell_back}개")
+    print(
+        "구조 동치성: 동일 {equal} | 양성 차이 {benign} | 의심(실측 필요) {suspect}"
+        " | 불일치 {struct}".format(**struct_stats)
+        + (f" (허용 목록 {len(STRUCT_ALLOW)}건)" if STRUCT_ALLOW else "")
+    )
+    if suspects:
+        print("⚠ 한컴 실측 확인 대기(렌더 시트 대상) — 동치로 통과시켰으나 미검증:")
+        for detail, where in sorted(suspects.items()):
+            print(f"  - {detail} (예: {where})")
     if problems:
         print(f"⚠ 검사 실패 {len(problems)}건:")
         for p in problems:

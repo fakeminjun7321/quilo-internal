@@ -209,9 +209,13 @@ class LatexToHwpConverter:
         r"\neq": "!=",
         r"\ne": "!=",
         r"\rightarrow": "->",
-        r"\Rightarrow": "=>",
+        # 이중(겹줄) 화살표는 한컴 키워드 RARROW/LARROW/LRARROW 로 — 과거
+        # \Leftarrow 를 "<="(≤)로 내던 오매핑은 부등호로 렌더되는 실결함이었고,
+        # \Rightarrow/\Leftrightarrow 의 "=>"/"<->" 는 단줄 화살표 격하였다
+        # (구조 동치성 검사로 발견, hwip vendor 표와 동일 키워드로 통일).
+        r"\Rightarrow": "RARROW",
         r"\leftarrow": "<-",
-        r"\Leftarrow": "<=",
+        r"\Leftarrow": "LARROW",
         r"\leftrightarrow": "<->",
         r"\to": "->",
         r"\infty": "INF",
@@ -308,15 +312,15 @@ class LatexToHwpConverter:
         r"\propto": "propto",
         r"\Upsilon": "Upsilon",
         r"\AA": "ANGSTROM",
-        r"\Leftrightarrow": "<->",
-        r"\Longleftrightarrow": "<->",
+        r"\Leftrightarrow": "LRARROW",
+        r"\Longleftrightarrow": "LRARROW",
         r"\longleftrightarrow": "<->",
         r"\longrightarrow": "->",
         r"\longleftarrow": "<-",
-        r"\Longrightarrow": "=>",
-        r"\Longleftarrow": "<=",
-        r"\implies": "=>",
-        r"\iff": "<->",
+        r"\Longrightarrow": "RARROW",
+        r"\Longleftarrow": "LARROW",
+        r"\implies": "RARROW",
+        r"\iff": "LRARROW",
         r"\ldots": "ldots",
         r"\cdots": "cdots",
         r"\vdots": "vdots",
@@ -927,6 +931,9 @@ def brace_unbraced_scripts(script: str) -> str:
 # 'DELTA G = DELTA H - T DELTA S' 가 'DELTAG = DELTAH - TDELTAS' 로 깨졌다.
 # → 키워드 구간을 통째로 보호(placeholder 치환)한 뒤 압축하고 복원한다.
 # 대소문자 구분이라 원소 In(인듐)·Ta(탄탈럼)와 키워드 IN·Tau 는 충돌하지 않는다.
+# 단일 소스(DEF-012): EQ_SCRIPT_KEYWORD 와 compact_chemical_spacing 은
+# chem-pre/hwpx-gen.py 가 위임 스텁으로 재수출한다. 구현 수정은 이 파일에서만
+# 하면 되고, scripts/eq_engine_diff.py 의 check_mirror_sync 가 검사한다.
 EQ_SCRIPT_KEYWORD = (
     r"\b(?:BUILDREL|TIMES|DIV|APPROX|INF|DELTA|SIGMA|GAMMA|THETA|LAMBDA|XI|PI|"
     r"OMEGA|PHI|PSI|LEFT|RIGHT|IN|DEG|CASES|"
@@ -1243,17 +1250,59 @@ def _normalize_raw_unicode_math(text: str) -> str:
 _OVER_SCRIPTS = r"(?:\^\{[^}]*\}|_\{[^}]*\}|[_^][A-Za-z0-9])*"
 # 중괄호 1단계 중첩 허용({Phi_{B}}) — 미분 dΦ_B/dt 의 피연산자가 braced 일 때.
 _OVER_BRACED = r"\{(?:[^{}]|\{[^{}]*\})*\}"
-_OVER_ATOM = rf"(?:{_OVER_BRACED}|[A-Za-z0-9]+{_OVER_SCRIPTS})"
+# 소수(9.8, 0.0933)는 원자 토큰으로 보호한다 - 원자가 [A-Za-z0-9]+ 뿐이면
+# '9.8/105' 의 분자가 '8' 로만 잡혀 '9.{8} over {105}' 처럼 소수점이 쪼개지고
+# 정수부 '9.' 가 분수 밖에 남는다(R0 phys-atwood 실측, DEF-018 D-2).
+_OVER_NUMBER = r"\d+\.\d+"
+_OVER_ATOM = rf"(?:{_OVER_BRACED}|(?:{_OVER_NUMBER}|[A-Za-z0-9]+){_OVER_SCRIPTS})"
 _OVER_FACTOR = (
     r"(?:"
-    r"\([^()]*\)"                                    # (4 pi epsilon_{0})
+    # \left( … \right) 통짜 — LEFT/RIGHT 키워드를 쪼개 잡으면 '{tau} over {LEFT}'
+    # 류 파손 분수가 된다(퍼저 실측). 내부에 괄호가 또 있으면 매칭을 포기하고
+    # 아래 blocklist 가드가 슬래시를 살린다.
+    r"LEFT\s*\([^()]*?RIGHT\s*\)"
+    r"|LEFT\s*\[[^\[\]]*?RIGHT\s*\]"
+    r"|\([^()]*\)"                                   # (4 pi epsilon_{0})
     # 연산자 접두(partial|nabla) + 원자 — ∂B/∂t, ∂²f/∂x² 가 한 factor 로. (d 는
     # 미분이자 거리 변수라 모호 → 일반 factor 엔 안 넣고 아래 미분비 전처리에서만.)
     rf"|(?:partial|nabla)(?:\^\{{[^}}]*\}}|_\{{[^}}]*\}})?\s+{_OVER_ATOM}"
+    # 1인자 장식/제곱근 + 인자 통짜 — 'sqrt {x} / 2' 의 분자는 {x} 가 아니라
+    # sqrt {x} 전체다. 인자만 떼면 √(x/2) 로 의미가 바뀐다(양 엔진 공통 실측).
+    rf"|(?:sqrt|vec|hat|bar|ddot|dot|tilde|dyad)\s*{_OVER_BRACED}"
     rf"|{_OVER_ATOM}"                                # epsilon_{0}, r^{2}, {묶인군}
     r")"
 )
 _SLASH_OVER_RE = re.compile(rf"(?<![A-Za-z0-9_])({_OVER_FACTOR})\s*/\s*({_OVER_FACTOR})")
+
+# 슬래시 분수의 피연산자가 될 수 없는 구조 키워드 — 'X / int_{a}^{T} …' 를
+# 접으면 적분 기호만 분모로 삼켜 피적분항이 고아가 된다(퍼저 실측). 이런
+# 조합은 슬래시를 그대로 두는 것이 맞다. partial/nabla 는 미분 접두라 제외.
+_OVER_BLOCK_OPERANDS = frozenset(
+    """LEFT RIGHT over atop CHOOSE root of cases matrix pmatrix bmatrix
+    dmatrix int oint dint tint qint sum prod lim REL BUILDREL OVERBRACE
+    UNDERBRACE""".split()
+)
+_OVER_OPERAND_WORD_RE = re.compile(rf"[ \t]*([A-Za-z]+){_OVER_SCRIPTS}[ \t]*$")
+# 분자 직전이 1인자 키워드(sqrt/vec…)나 첨자 마커면 그 {…} 는 키워드의 인자다
+# — 인자만 분자로 떼면 의미가 바뀐다. factor 대안으로 통짜를 먼저 잡지만,
+# root n of {x} 처럼 대안이 못 잡는 형태의 마지막 안전망.
+_OVER_ARG_TAKERS = frozenset(
+    """sqrt vec hat bar dot ddot tilde acute grave check dyad under rm it
+    bold root of over atop CHOOSE""".split()
+)
+_OVER_TAIL_ARGTAKER_RE = re.compile(r"(?:\b([A-Za-z]+)|([_^]))[ \t]*$")
+# hwip 낱자 분해 재접합 — 'd t / X' 의 분자가 t 만 잡혀 d 가 고아가 된다.
+# 미분비(dX/dY)는 _DIFF_RATIO_RE 가 먼저 처리하므로, 그 뒤 잔여 'd 낱자 /'
+# 만 빌트인('dt/X')과 같은 경계로 붙인다. 첨자(t^{2})가 껴도 잡는다.
+_SPLIT_DIFF_NUM_RE = re.compile(
+    r"(?<![A-Za-z0-9_}])d[ \t]+([A-Za-z])"
+    r"(?=(?:\^\{[^}]*\}|_\{[^}]*\})*[ \t]*/)"
+)
+
+
+def _operand_blocked(operand: str) -> bool:
+    m = _OVER_OPERAND_WORD_RE.fullmatch(operand)
+    return bool(m) and m.group(1) in _OVER_BLOCK_OPERANDS
 # 미분비 dX/dY · ∂X/∂Y : 양쪽이 모두 d/partial/nabla 로 시작할 때만 묶는다. d 를
 # 한쪽만 보고 미분으로 처리하면 mgdT²/(4π²) 의 거리 d 까지 분리되므로(실측), 양쪽
 # 동시 조건으로 진짜 도함수만 잡는다. 접두에 첨자(∂²) 허용, 피연산자 braced 허용.
@@ -1264,17 +1313,88 @@ _DIFF_RATIO_RE = re.compile(
     rf"(?<![A-Za-z0-9_])({_DIFF_TERM})\s*/\s*({_DIFF_TERM})"
 )
 
+# ── 단위 슬래시 가드 (DEF-018 D-3) ──────────────────────────────────────────
+# 'ΔH (kJ/mol)' 표 헤더가 hwip 를 거치면 글자가 낱개 토큰으로 풀려('k J / m o l')
+# 슬래시 분수화가 단어 중간을 쪼갠다('k {J} over {m} o l', R0 free-1 실측).
+# kJ/mol, g/mL, rad/s, m/s 같은 '단위/단위' 표기는 분수 스택이 아니라 슬래시
+# 그대로 두는 것이 맞다. 아래 보수 조건에서만 분수화를 건너뛴다:
+#   (B) 양쪽 다 순수 문자 토큰(숫자·첨자·중괄호 없음, 1~4글자)이고 한쪽이 두
+#       글자 이상 - 다글자 순수 문자 피연산자는 사실상 단위(mol, rad, kg)다.
+#       단 그리스 이름(rho, tau, pi …)은 수식 변수라서 단위로 보지 않는다.
+#   (A) 피연산자가 한 글자인데 슬래시 반대편 밖 바로 옆에 또 다른 '한 글자'
+#       토큰이 나란히 있으면(k J / m o l 의 J·m) 낱개로 풀린 단어의 일부다.
+#   (C) 한 글자/한 글자라도 바로 앞 토큰이 숫자면(1.47 m/s) 측정값 뒤 단위다.
+# d/t, g/M 같은 고립 한 글자 변수비, rho/epsilon_{0}, T^{2}/(4pi^{2}) 등
+# 첨자·괄호 낀 진짜 수식 분수는 종전대로 분수화된다.
+_UNIT_WORD_RE = re.compile(r"[A-Za-z]{1,4}")
+_GREEK_UNIT_EXCEPTIONS = frozenset(
+    "pi chi phi psi eta rho tau mu nu xi beta zeta iota".split()
+)
+_LONE_LETTER_BEFORE_RE = re.compile(r"(?<![A-Za-z0-9_{}])[A-Za-z][ \t]+$")
+_LONE_LETTER_AFTER_RE = re.compile(r"^[ \t]+[A-Za-z](?![A-Za-z0-9_^{])")
+# (C)의 '앞 숫자' - 여는 괄호/중괄호 바로 뒤의 한 자리 숫자(sqrt {2 h / g},
+# (2 h / g))는 측정값이 아니라 분수 계수이므로 제외한다. 측정값(1.47, 9.8,
+# 47)은 마지막 자리 앞이 숫자나 소수점이라 이 예외에 걸리지 않는다.
+_NUMBER_BEFORE_RE = re.compile(r"(?<![{(])\d[ \t]+$")
+
+
+def _looks_like_unit_slash(seg: str, m: "re.Match[str]") -> bool:
+    num, den = m.group(1), m.group(2)
+    # (D) 거듭제곱 단위: m/s^{2}, kg/m^{3} — 분모가 '순수 문자+숫자 지수'이고
+    #     측정 문맥(닫는 괄호·숫자·공백 명령 ~/`) 바로 뒤면 단위 표기다.
+    #     (9.79 +- 0.05) ~ m/s^{2} 가 분수 스택으로 서는 것을 막는다.
+    #     수식 본문의 F/m^{2} 류는 앞이 연산자/등호라 걸리지 않는다.
+    den_power = re.fullmatch(r"([A-Za-z]{1,3})\^\{\d{1,2}\}", den.strip())
+    if (
+        den_power
+        and _UNIT_WORD_RE.fullmatch(num)
+        and num.lower() not in _GREEK_UNIT_EXCEPTIONS
+        and den_power.group(1).lower() not in _GREEK_UNIT_EXCEPTIONS
+        and re.search(r"[)\d~`][ \t]*$", seg[: m.start(1)])
+    ):
+        return True
+    if not _UNIT_WORD_RE.fullmatch(num) or not _UNIT_WORD_RE.fullmatch(den):
+        return False
+    if num.lower() in _GREEK_UNIT_EXCEPTIONS or den.lower() in _GREEK_UNIT_EXCEPTIONS:
+        return False
+    if len(num) >= 2 or len(den) >= 2:
+        return True  # (B) 다글자 순수 문자 = 단위 표기
+    before = seg[: m.start(1)]
+    after = seg[m.end(2):]
+    if _LONE_LETTER_BEFORE_RE.search(before) or _LONE_LETTER_AFTER_RE.match(after):
+        return True  # (A) 낱개로 풀린 단어 내부
+    if _NUMBER_BEFORE_RE.search(before):
+        return True  # (C) 숫자 측정값 바로 뒤 단위
+    return False
+
 
 def convert_slash_to_over(script: str) -> str:
     if "/" not in script:
         return script
+
+    def _repl(m: "re.Match[str]") -> str:
+        # 단위 표기(kJ/mol 류)는 슬래시를 살린다 - DEF-018 D-3 가드.
+        if _looks_like_unit_slash(m.string, m):
+            return m.group(0)
+        # 구조 키워드 피연산자(int/sum/LEFT …)는 접으면 파손 — 슬래시 유지.
+        if _operand_blocked(m.group(1)) or _operand_blocked(m.group(2)):
+            return m.group(0)
+        # 직전이 1인자 키워드/첨자 마커면 이 {…} 는 그 인자 — 분수화 금지.
+        tail = _OVER_TAIL_ARGTAKER_RE.search(m.string[: m.start(1)])
+        if tail and (tail.group(2) or tail.group(1) in _OVER_ARG_TAKERS):
+            return m.group(0)
+        return "{%s} over {%s}" % (m.group(1), m.group(2))
 
     def _seg(seg: str) -> str:
         if "/" not in seg:
             return seg
         # 미분비(dX/dY)를 먼저 묶고, 나머지 일반 나눗셈을 처리한다.
         seg = _DIFF_RATIO_RE.sub(r"{\1} over {\2}", seg)
-        return _SLASH_OVER_RE.sub(r"{\1} over {\2}", seg) if "/" in seg else seg
+        if "/" not in seg:
+            return seg
+        # hwip 낱자 분해 잔여('d t / X')를 빌트인과 같은 경계('dt / X')로 접합.
+        seg = _SPLIT_DIFF_NUM_RE.sub(lambda m: "d" + m.group(1), seg)
+        return _SLASH_OVER_RE.sub(_repl, seg)
 
     # 인용("...") 안의 단위(J/(mol·K) 등)·텍스트는 분수로 만들지 않는다.
     out = []
@@ -1367,6 +1487,13 @@ _hwip_failed: set[str] = set()
 _hwip_disabled = False
 
 
+# hwip 이 구조를 오조립하는 입력 — n제곱근 \sqrt[n]{x} 을 '^{n} sqrt {x}' 로
+# 내는데, 앞에 항이 있으면(2\sqrt[3]{8}) ^{n} 이 그 항의 지수로 붙어
+# 2³√8 로 렌더된다(구조 동치성 검사로 발견). 빌트인은 'root n of {x}' 로
+# 정상 변환하므로 해당 식은 hwip 을 건너뛰고 빌트인만 쓴다.
+_HWIP_UNSAFE_RE = re.compile(r"\\sqrt\s*\[")
+
+
 def hwip_engine_enabled() -> bool:
     if os.environ.get("EQUATION_ENGINE", "hwip").strip().lower() in (
         "builtin",
@@ -1389,7 +1516,9 @@ def hwip_convert_batch(latex_list: Iterable[str]) -> None:
     todo = [
         t
         for t in dict.fromkeys(s.strip() for s in latex_list if s and s.strip())
-        if t not in _hwip_cache and t not in _hwip_failed
+        if t not in _hwip_cache
+        and t not in _hwip_failed
+        and not _HWIP_UNSAFE_RE.search(t)  # latex_to_script 의 빌트인 우회와 한 쌍
     ]
     if not todo:
         return
@@ -1743,6 +1872,19 @@ def preprocess_latex_body(raw_latex: str) -> str:
     # → 글자 노출)를 내므로, 양 엔진 진입 전 \oint 로 정규화해 hwip 출력도
     # oint 로 맞춘다. (\iint/\iiint 는 hwip 이 dint/tint 로 정상 변환하므로 둠.)
     s = re.sub(r"\\oi+nt(?![A-Za-z])", r"\\oint", s)
+    # \intercal(전치 A^⊤ 표기) — hwip 은 미지 명령을 그대로 흘려 위첨자에
+    # 'intercal' 영단어가 렌더된다. 양 엔진 진입 전 평문 T 로 강등한다
+    # (빌트인 COMMANDS 의 T 매핑과 동일 결과, 구조 동치성 검사로 발견).
+    s = re.sub(r"\\intercal(?![A-Za-z])", "{T}", s)
+    # align/gather 계열 환경 — 빌트인은 matrix 로 접지만 hwip 은 내용만 남겨
+    # 정렬 & 와 행 구분 # 이 환경 밖 알몸으로 노출된다(한컴 렌더 미보장).
+    # 양 엔진 진입 전 matrix 로 정규화해 출력 구조를 일치시킨다. alignat
+    # 계열은 뒤따르는 {n} 인자가 셀로 새므로 제외(보고서 산출물 미관측).
+    s = re.sub(
+        r"\\(begin|end)\{(?:aligned|align\*?|gathered|gather\*?|split)\}",
+        r"\\\1{matrix}",
+        s,
+    )
     for glyph, command in _UNICODE_ARROW_LATEX:
         if glyph in s:
             s = s.replace(glyph, command)
@@ -1755,7 +1897,7 @@ def preprocess_latex_body(raw_latex: str) -> str:
 def latex_to_script(raw_latex: str) -> str:
     """LaTeX → 한컴 스크립트. hwip 우선, 식 단위로 빌트인 폴백."""
     raw_latex = preprocess_latex_body(raw_latex)
-    if hwip_engine_enabled():
+    if hwip_engine_enabled() and not _HWIP_UNSAFE_RE.search(raw_latex):
         if raw_latex not in _hwip_cache and raw_latex not in _hwip_failed:
             hwip_convert_batch([raw_latex])
         script = _hwip_cache.get(raw_latex)
@@ -1771,7 +1913,9 @@ EQ_MARKER_PREFIXES = ("{{EQN-LATEX:", "{{EQ-LATEX:", "{{EQN:", "{{EQ:")
 # ({{EQ-LATEX：), 하이픈 누락/언더스코어/공백 구분({{EQLATEX:, {{EQ_LATEX:,
 # {{EQ LATEX:), 단일 여는 중괄호({EQ-LATEX:). 콜론이 반드시 따라와야 매칭되어
 # 일반 산문·한컴 스크립트 그룹({EQN} 등)은 건드리지 않는다.
-# 주의: lib/pipelines/chem-pre/hwpx-gen.py 에 동일 미러가 있다 — 함께 수정할 것.
+# 단일 소스(DEF-012): 과거 chem-pre/hwpx-gen.py 에 있던 동일 미러는 위임
+# 스텁으로 바뀌었다. 구현 수정은 이 파일에서만 하면 되고, scripts/
+# eq_engine_diff.py 의 check_mirror_sync 가 스텁 동일성을 회귀로 검사한다.
 _EQ_PREFIX_RESCUE_RE = re.compile(
     r"\{\{?\s*(EQN|EQ)\s*[-_]?\s*(LATEX)?\s*[:：]", re.IGNORECASE
 )
@@ -2358,8 +2502,9 @@ _HWP_SCRIPT_RESIDUE_RE = re.compile(
 # '=' 포함 산문 전체를 수식으로 승격하는 공격적 방식은 오탐 위험으로 금지,
 # 검출(fatal) 확대도 금지. 구조 명령(frac/sqrt/sum/lim/int …)과 미지 명령은
 # 절대 넣지 않는다(미지 명령은 보존 — 조용한 의미 파괴 방지).
-# 주의: lib/pipelines/chem-pre/hwpx-gen.py 에 동일 미러가 있다 — 함께 수정할
-# 것(scripts/eq_engine_diff.py 의 미러 동기화 검사가 불일치를 잡는다).
+# 단일 소스(DEF-012): 과거 chem-pre/hwpx-gen.py 에 있던 동일 미러는 위임
+# 스텁으로 바뀌었다. 구현 수정은 이 파일에서만 하면 되고, scripts/
+# eq_engine_diff.py 의 check_mirror_sync 가 스텁 동일성을 회귀로 검사한다.
 _BARE_LATEX_SYMBOL_MAP = {
     # 연산자/관계
     "times": "×", "cdot": "·", "div": "÷", "pm": "±", "mp": "∓",
@@ -2403,7 +2548,8 @@ def replace_bare_latex_symbol_commands(text):
     (\nuclear 등 — 명령 이름은 [A-Za-z]+ 최장 일치라 \nu 가 \nuclear 의
     일부를 먹는 일은 없다)과 구조 명령은 그대로 둔다. 마커({{EQ*:...}})
     본문 보호는 호출부 몫이다 — 반드시 마커 밖 구간만 넘길 것.
-    주의: lib/pipelines/chem-pre/hwpx-gen.py 에 동일 미러가 있다 — 함께 수정할 것.
+    단일 소스(DEF-012): chem-pre/hwpx-gen.py 는 이 함수를 위임 스텁으로
+    재수출한다. 구현 수정은 이 파일에서만 한다.
     """
     s = str(text or "")
     if "\\" not in s:

@@ -82,11 +82,21 @@ export async function loadAnnouncements() {
     const list = Array.isArray(data.announcements)
       ? data.announcements.filter((item) => String(item?.title || "").trim())
       : [];
-    if (!list.length) return;
+    if (!list.length) {
+      ticker.dataset.state = "empty";
+      ticker.setAttribute("aria-busy", "false");
+      ticker.hidden = true;
+      return;
+    }
 
     const primary = list[0];
     const key = announcementKey(primary);
-    if (wasDismissed(key)) return;
+    if (wasDismissed(key)) {
+      ticker.dataset.state = "dismissed";
+      ticker.setAttribute("aria-busy", "false");
+      ticker.hidden = true;
+      return;
+    }
 
     if (category) category.textContent = String(primary.category || "공지");
     if (date) {
@@ -97,10 +107,15 @@ export async function loadAnnouncements() {
     track.replaceChildren(createAnnouncement(primary, list.length));
     dismiss?.addEventListener("click", () => {
       rememberDismissed(key);
+      ticker.dataset.state = "dismissed";
       ticker.hidden = true;
     }, { once: true });
+    ticker.dataset.state = "ready";
+    ticker.setAttribute("aria-busy", "false");
     ticker.hidden = false;
   } catch (_) {
+    ticker.dataset.state = "empty";
+    ticker.setAttribute("aria-busy", "false");
     ticker.hidden = true;
   }
 }

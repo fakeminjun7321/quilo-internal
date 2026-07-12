@@ -21,6 +21,7 @@
   border-bottom: 1px solid var(--q-line);
   background: color-mix(in srgb, var(--q-blue) 4%, var(--q-paper));
 }
+.ui-announcement[data-state="pending"] .ui-announcement__inner { visibility: hidden; }
 .ui-announcement::before {
   position: absolute;
   top: 0;

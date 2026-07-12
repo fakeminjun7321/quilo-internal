@@ -104,8 +104,6 @@ const APP_SHELL_ROUTES = Object.freeze([
   "/physics-studio.html",
   "/studio.html",
   "/study.html",
-  "/translate-app.html",
-  "/translate.html",
   "/vibe-coding.html",
 ]);
 const APP_SHELL_ROUTE_SET = new Set(APP_SHELL_ROUTES);
@@ -123,7 +121,6 @@ const EXCLUDED_ROUTES = Object.freeze({
     "/physics-studio.html",
     "/studio.html",
     "/study.html",
-    "/translate-app.html",
     "/translate.html",
     "/vibe-coding.html",
   ]),
@@ -364,7 +361,7 @@ test("shell matrix inventory is explicit and excludes specialized chrome", () =>
   expect(GENERAL_PUBLIC_ROUTES).toHaveLength(11);
   expect(APP_ROUTES).toHaveLength(2);
   expect(COMMON_SHELL_ROUTES).toHaveLength(26);
-  expect(APP_SHELL_ROUTES).toHaveLength(10);
+  expect(APP_SHELL_ROUTES).toHaveLength(8);
   expect(new Set(COMMON_SHELL_ROUTES).size).toBe(COMMON_SHELL_ROUTES.length);
 
   const excluded = Object.values(EXCLUDED_ROUTES).flat();
@@ -380,7 +377,6 @@ test("shell matrix inventory is explicit and excludes specialized chrome", () =>
     "/physics-studio.html",
     "/studio.html",
     "/study.html",
-    "/translate-app.html",
     "/translate.html",
     "/vibe-coding.html",
   ]);

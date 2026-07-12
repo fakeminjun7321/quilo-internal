@@ -7,6 +7,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/ui/foundation.css" />
     <link rel="stylesheet" href="/ui/app-shell.css" />
+    <link rel="stylesheet" href="/ui/app-generator.css" />
+    <script src="/ui/entitlement-gate.js"></script>
+    <script src="/ui/app-assets.js"></script>
     <meta name="theme-color" content="#2563eb" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <title>고급 물리 문제 스튜디오 — Quilo</title>
@@ -18,14 +21,7 @@
           document.documentElement.setAttribute("data-theme", t);
         } catch (e) {}
       })();
-      // MathJax — $...$ 인라인 + $$...$$ 별행. 라이브러리는 동적 로드.
-      window.MathJax = {
-        tex: { inlineMath: [["$", "$"], ["\\(", "\\)"]], displayMath: [["$$", "$$"], ["\\[", "\\]"]] },
-        options: { skipHtmlTags: ["script", "noscript", "style", "textarea", "pre"] },
-        startup: { typeset: false },
-      };
     </script>
-<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js" id="MathJax-script" async></script>
 </head>
   <body id="appShell" class="app-shell app-shell--physics-studio" data-app-shell>
     <header class="app-commandbar" data-q-shell>
@@ -48,7 +44,7 @@
     </header>
 <main class="wrap" id="main-content" aria-label="고급 물리 문제 스튜디오">
       <section class="intro">
-        <h1>🧮 고급 물리 문제 스튜디오</h1>
+        <h1>고급 물리 문제 스튜디오</h1>
         <p>주제·난이도·출제 스타일을 고르면 AI가 풀이·힌트·검산이 함께 있는 <b>새로운</b> 심화 물리 문제를 만들어 줍니다. 해석역학, 전자기학, 상대론 등 대학·올림피아드 수준 주제를 지원합니다.</p>
       </section>
 
@@ -124,10 +120,17 @@
       }
 
       async function boot() {
+        const access = await window.QuiloEntitlement.require({
+          feature: "physics-studio",
+          gate: "#gate",
+          content: "#app",
+          forbiddenTitle: "고급 물리 문제 스튜디오는 Pro 권한이 필요합니다",
+          forbiddenMessage: "Pro·Max 또는 별도 기능 권한이 있는 계정에서 사용할 수 있습니다."
+        });
+        if (!access.allowed) return;
         let bal;
         try { bal = await api("/api/me/balance"); }
-        catch (e) { if (e.status === 401) { $("gate").hidden = false; return; } }
-        $("app").hidden = false;
+        catch (e) { bal = {}; }
         modelCredits = (bal && bal.modelCredits) || {};
         if (bal && !bal.isAdmin && typeof bal.credits === "number") $("bal").textContent = "· 보유 크레딧 " + bal.credits;
         else if (bal && bal.isAdmin) $("bal").textContent = "· 관리자(무제한)";
@@ -147,7 +150,11 @@
         $("cost").textContent = c === 0 ? "무료" : (typeof c === "number" ? c + " 크레딧" : "–");
       }
 
-      function typeset(el) { if (window.MathJax && MathJax.typesetPromise) MathJax.typesetPromise([el]).catch(() => {}); }
+      function typeset(el) {
+        window.QuiloAssets.mathjax()
+          .then(() => window.MathJax.typesetPromise([el]))
+          .catch(() => {});
+      }
 
       async function generate() {
         const topic = $("topic").value.trim();
@@ -177,8 +184,8 @@
 
       function render(r) {
         const probs = (r.problems || []).map((p, i) => {
-          const hints = (p.hints || []).length ? `<details><summary>💡 힌트 ${p.hints.length}개</summary><div class="inner">${p.hints.map((h) => `<div class="hintitem"><b>${esc(h.title || ("힌트 " + (h.level || "")))}.</b> ${esc(h.body)}</div>`).join("")}</div></details>` : "";
-          const sol = (p.solution && (p.solution.steps || []).length) ? `<details><summary>📝 풀이 보기</summary><div class="inner">${p.solution.steps.map((s) => `<div class="step"><b>${esc(s.label || "")}</b><div class="body">${esc(s.body)}</div></div>`).join("")}${p.solution.finalAnswer ? `<div class="final"><b>답.</b> ${esc(p.solution.finalAnswer)}</div>` : ""}</div></details>` : (p.solution && p.solution.finalAnswer ? `<div class="final"><b>답.</b> ${esc(p.solution.finalAnswer)}</div>` : "");
+          const hints = (p.hints || []).length ? `<details><summary>힌트 ${p.hints.length}개</summary><div class="inner">${p.hints.map((h) => `<div class="hintitem"><b>${esc(h.title || ("힌트 " + (h.level || "")))}.</b> ${esc(h.body)}</div>`).join("")}</div></details>` : "";
+          const sol = (p.solution && (p.solution.steps || []).length) ? `<details><summary>풀이 보기</summary><div class="inner">${p.solution.steps.map((s) => `<div class="step"><b>${esc(s.label || "")}</b><div class="body">${esc(s.body)}</div></div>`).join("")}${p.solution.finalAnswer ? `<div class="final"><b>답.</b> ${esc(p.solution.finalAnswer)}</div>` : ""}</div></details>` : (p.solution && p.solution.finalAnswer ? `<div class="final"><b>답.</b> ${esc(p.solution.finalAnswer)}</div>` : "");
           return `<div class="prob">
             <div class="ptop"><h3>${i + 1}. ${esc(p.title || ("문제 " + (i + 1)))}</h3><span class="meta">${esc(p.subtopic || "")}${p.difficulty ? " · " + esc(p.difficulty) : ""}${p.estimatedMinutes ? " · ~" + esc(p.estimatedMinutes) + "분" : ""}</span></div>
             <div class="statement">${esc(p.statement || "")}</div>

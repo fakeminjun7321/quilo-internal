@@ -1,6 +1,6 @@
 "use strict";
 
-const state = { catalog: null, loggedIn: false };
+const state = { catalog: null, loggedIn: false, sessionState: "pending" };
 const $ = (id) => document.getElementById(id);
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -14,7 +14,11 @@ document.addEventListener("DOMContentLoaded", () => {
 async function api(path, options) {
   const response = await fetch(path, options);
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+  if (!response.ok) {
+    const error = new Error(data.error || `HTTP ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
   return data;
 }
 
@@ -29,21 +33,50 @@ async function loadStatus() {
 }
 
 async function loadAccount() {
+  let session;
   try {
-    const data = await api("/api/me");
+    session = window.QuiloShellAuth?.ready
+      ? await window.QuiloShellAuth.ready
+      : { state: "authenticated", user: await api("/api/me"), status: 200 };
+  } catch (error) {
+    session = error?.status === 401
+      ? { state: "anonymous", user: null, status: 401 }
+      : { state: "unknown", user: null, status: error?.status || 0 };
+  }
+
+  state.sessionState = session.state;
+  document.body.dataset.sessionState = session.state;
+  $("accountDot").classList.remove("ok");
+
+  if (session.state === "authenticated") {
+    const data = session.user || {};
     state.loggedIn = true;
     $("accountDot").classList.add("ok");
-    $("accountStatus").textContent = `${data.name || data.user || "사용자"} 계정으로 로그인됨`;
+    $("accountStatus").textContent = `${data.name || data.user || data.username || "사용자"} 계정으로 로그인됨`;
     $("loginLink").textContent = "Quilo로 돌아가기";
     $("loginLink").href = "/";
+    $("createTokenBtn").disabled = false;
     await loadTokens();
     await loadApiRequests();
-  } catch (_) {
-    state.loggedIn = false;
-    $("accountStatus").textContent = "토큰을 만들려면 Quilo 로그인이 필요합니다.";
-    $("createTokenBtn").disabled = true;
-    $("tokenMessage").textContent = "로그인 후 이 페이지로 돌아오세요.";
+    return;
   }
+
+  state.loggedIn = false;
+  $("createTokenBtn").disabled = true;
+  if (session.state === "anonymous") {
+    $("accountStatus").textContent = "토큰을 만들려면 Quilo 로그인이 필요합니다.";
+    $("loginLink").textContent = "Quilo 로그인";
+    $("loginLink").href = "/?login=1";
+    $("tokenMessage").textContent = "로그인 후 이 페이지로 돌아오세요.";
+    return;
+  }
+
+  // A network/server error does not mean the session was cleared. Keep the
+  // controls read-only and give the user a neutral way back to Quilo.
+  $("accountStatus").textContent = "로그인 상태를 확인하지 못했습니다. 잠시 후 새로고침해 주세요.";
+  $("loginLink").textContent = "Quilo로 돌아가기";
+  $("loginLink").href = "/";
+  $("tokenMessage").textContent = "계정 상태 확인이 복구되면 토큰을 관리할 수 있습니다.";
 }
 
 async function loadCatalog() {

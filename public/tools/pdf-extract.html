@@ -21,6 +21,7 @@
     <link rel="stylesheet" href="/ui/foundation.css" />
     <link rel="stylesheet" href="/ui/shell.css" />
     <link rel="stylesheet" href="/ui/pages.css" />
+    <link rel="stylesheet" href="/ui/tool-shell.css" />
   </head>
   <body class="landing q-shell-page ui-page">
     <div class="landing-bg" aria-hidden="true"></div>
@@ -85,8 +86,8 @@
       </div>
     </footer>
 
-    <script src="/tools/vendor/pdf-lib.min.js"></script>
     <script src="/ui/shell.js"></script>
+    <script src="/ui/tool-shell.js"></script>
     <script>
       (function () {
         var drop = document.getElementById("pxDrop"), input = document.getElementById("pxFile");
@@ -132,6 +133,13 @@
         }
 
         function setFile(f) {
+          if (f && !window.PDFLib) {
+            msg.textContent = "PDF 작업 엔진을 불러오는 중…";
+            window.QuiloToolAssets.load("pdfLib").then(function () { setFile(f); }).catch(function (e) {
+              msg.innerHTML = '<span class="error">' + esc(e.message || "PDF 작업 엔진을 불러오지 못했습니다.") + "</span>";
+            });
+            return;
+          }
           file = f; pageCount = 0;
           out.style.display = "none"; msg.textContent = "";
           if (f) {

@@ -214,7 +214,7 @@ test("authentication stays on landing until an explicit report opens the workspa
   page.on("pageerror", (error) => errors.push(error.message));
   await mockLoggedInApis(page);
 
-  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(BASE_URL, { waitUntil: "networkidle" });
   await expect(page.locator("body")).toHaveAttribute("data-auth", "in");
   await expect(page.locator("body")).toHaveAttribute("data-view", "landing");
@@ -233,63 +233,68 @@ test("authentication stays on landing until an explicit report opens the workspa
   await expect(page.locator("#landingSurface")).toBeHidden();
   await expect(page.locator("#workspaceSurface")).toBeVisible();
   await expect(page.locator("#workspaceSummary")).toBeVisible();
-  await expect(page.locator("#form.report-flow.active")).toBeVisible();
+  await expect(page.locator("#form.active")).toBeVisible();
   await expect(page.locator("#form")).toHaveAttribute("data-flow-step", "upload");
+  await expect(page.locator("#reportWorkflowNav")).toBeVisible();
+  await expect(page.locator("#reportWorkflowNav [data-flow-jump]")).toHaveCount(4);
+  await expect(page.locator("#form .form-flow-steps, #form .optional-settings")).toHaveCount(0);
   let stepVisibility = await page.evaluate(() => ({
-    upload: getComputedStyle(document.querySelector('#form > [data-flow-target="upload"]')).display,
-    info: getComputedStyle(document.querySelector('#form > [data-flow-target="info"]')).display,
-    settings: getComputedStyle(document.querySelector("#form > .optional-settings")).display,
+    sectionCount: document.querySelectorAll("#form > .form-section").length,
+    visibleSectionCount: [...document.querySelectorAll("#form > .form-section")].filter((node) => getComputedStyle(node).display !== "none").length,
     actions: getComputedStyle(document.querySelector("#form > .form-actions")).display,
   }));
-  expect(stepVisibility.upload).not.toBe("none");
-  expect(stepVisibility.info).toBe("none");
-  expect(stepVisibility.settings).toBe("none");
-  expect(stepVisibility.actions).toBe("none");
+  expect(stepVisibility.visibleSectionCount).toBe(stepVisibility.sectionCount);
+  expect(stepVisibility.actions).not.toBe("none");
 
-  await page.locator('#form .form-flow-steps button[data-flow-jump="info"]').click();
+  await page.locator('#reportWorkflowNav button[data-flow-jump="info"]').click();
   await page.waitForTimeout(150);
   await expect(page.locator("#form")).toHaveAttribute("data-flow-step", "info");
   stepVisibility = await page.evaluate(() => ({
-    upload: getComputedStyle(document.querySelector('#form > [data-flow-target="upload"]')).display,
-    info: getComputedStyle(document.querySelector('#form > [data-flow-target="info"]')).display,
+    sectionCount: document.querySelectorAll("#form > .form-section").length,
+    visibleSectionCount: [...document.querySelectorAll("#form > .form-section")].filter((node) => getComputedStyle(node).display !== "none").length,
   }));
-  expect(stepVisibility.upload).toBe("none");
-  expect(stepVisibility.info).not.toBe("none");
+  expect(stepVisibility.visibleSectionCount).toBe(stepVisibility.sectionCount);
 
-  await page.locator('#form .form-flow-steps button[data-flow-jump="settings"]').click();
+  await page.locator('#reportWorkflowNav button[data-flow-jump="settings"]').click();
   await page.waitForTimeout(150);
   await expect(page.locator("#form")).toHaveAttribute("data-flow-step", "settings");
-  expect(await page.locator("#form > .optional-settings").getAttribute("open")).not.toBeNull();
 
-  await page.locator('#form .form-flow-steps button[data-flow-jump="generate"]').click();
+  await page.locator('#reportWorkflowNav button[data-flow-jump="generate"]').click();
   await page.waitForTimeout(150);
   await expect(page.locator("#form")).toHaveAttribute("data-flow-step", "generate");
   stepVisibility = await page.evaluate(() => ({
-    upload: getComputedStyle(document.querySelector('#form > [data-flow-target="upload"]')).display,
-    info: getComputedStyle(document.querySelector('#form > [data-flow-target="info"]')).display,
-    settings: getComputedStyle(document.querySelector("#form > .optional-settings")).display,
+    sectionCount: document.querySelectorAll("#form > .form-section").length,
+    visibleSectionCount: [...document.querySelectorAll("#form > .form-section")].filter((node) => getComputedStyle(node).display !== "none").length,
     actions: getComputedStyle(document.querySelector("#form > .form-actions")).display,
   }));
-  expect(stepVisibility.upload).not.toBe("none");
-  expect(stepVisibility.info).not.toBe("none");
-  expect(stepVisibility.settings).toBe("none");
+  expect(stepVisibility.visibleSectionCount).toBe(stepVisibility.sectionCount);
   expect(stepVisibility.actions).not.toBe("none");
   const selectedLayout = await page.evaluate(() => {
-    const reportTypes = document.querySelector("#reportTypes").getBoundingClientRect();
     const form = document.querySelector("#form").getBoundingClientRect();
-    return { reportTypesBottom: reportTypes.bottom, formTop: form.top, scrollY: window.scrollY };
+    const sidebar = document.querySelector("#workspaceSummary").getBoundingClientRect();
+    return {
+      separated: form.right <= sidebar.left,
+      sidebarWidth: Math.round(sidebar.width),
+      pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    };
   });
-  // The 94px desktop shell is intentionally taller than the legacy header.
-  // Keep the selected form inside the first content band without coupling the
-  // contract to the old 140px header geometry.
-  expect(selectedLayout.formTop).toBeLessThan(180);
-  await page.screenshot({ path: path.join(SCREEN_DIR, "desktop-1280.png"), fullPage: false });
+  expect(selectedLayout.separated).toBe(true);
+  expect(selectedLayout.sidebarWidth).toBeGreaterThanOrEqual(320);
+  expect(selectedLayout.pageOverflow).toBe(0);
+  await page.screenshot({ path: path.join(SCREEN_DIR, "desktop-1440.png"), fullPage: false });
 
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize({ width: 1206, height: 900 });
   await page.goto(`${BASE_URL}/?report=chem-pre`, { waitUntil: "networkidle" });
   await expect(page.locator("#workspaceSummary")).toBeVisible();
+  await expect(page.locator("#reportWorkflowNav")).toBeVisible();
   await expect(page.locator("#reportTypeFieldset")).toBeHidden();
-  await page.screenshot({ path: path.join(SCREEN_DIR, "mobile-390.png"), fullPage: false });
+  const compactDesktop = await page.evaluate(() => ({
+    overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    sidebarWidth: Math.round(document.getElementById("workspaceSummary").getBoundingClientRect().width),
+  }));
+  expect(compactDesktop.overflow).toBe(0);
+  expect(compactDesktop.sidebarWidth).toBeGreaterThanOrEqual(320);
+  await page.screenshot({ path: path.join(SCREEN_DIR, "desktop-1206.png"), fullPage: false });
 
   expect(errors).toEqual([]);
 });
@@ -308,6 +313,37 @@ test("cloud providers use a separate account tab instead of the files panel", as
   await expect(page.locator("#filesPanel")).toBeHidden();
 });
 
+test("account utility panels are centered and integrations have a real empty state", async ({ page }) => {
+  await mockLoggedInApis(page);
+  await page.route("**/api/cloud/providers/status", (route) => route.fulfill({ json: { integrations: {} } }));
+  await page.setViewportSize({ width: 1206, height: 900 });
+  await page.goto(`${BASE_URL}/#integrations`, { waitUntil: "networkidle" });
+
+  await expect(page.locator("#integrationsPanel")).toBeVisible();
+  await expect(page.locator("#cloudCard")).toBeHidden();
+  await expect(page.locator("#cloudEmptyState")).toBeVisible();
+  await expect(page.locator("#cloudEmptyState")).toContainText("아직 연결된 외부 서비스가 없습니다");
+  const integrationLayout = await page.evaluate(() => {
+    const panel = document.getElementById("integrationsPanel").getBoundingClientRect();
+    const card = document.getElementById("cloudEmptyState").getBoundingClientRect();
+    return {
+      width: Math.round(card.width),
+      centerDelta: Math.round(Math.abs((card.left + card.right) / 2 - (panel.left + panel.right) / 2)),
+    };
+  });
+  expect(integrationLayout.width).toBeLessThanOrEqual(920);
+  expect(integrationLayout.centerDelta).toBeLessThanOrEqual(2);
+
+  await page.locator('#acctDd button').click();
+  await page.locator('#acctDd a[data-tab="files"]').click();
+  await expect(page.locator("#filesPanel")).toBeVisible();
+  await expect(page.locator("#filesPanel > .settings-card")).toBeVisible();
+  await page.locator('#acctDd button').click();
+  await page.locator('#acctDd a[data-tab="feedback"]').click();
+  await expect(page.locator("#feedbackPanel")).toBeVisible();
+  await expect(page.locator("#feedbackPanel > .settings-card")).toBeVisible();
+});
+
 test("report entry links bypass the removed intermediary and open the free report form", async ({ page }) => {
   await mockLoggedInApis(page);
   await page.goto(`${BASE_URL}/?report=free`, { waitUntil: "networkidle" });
@@ -322,20 +358,32 @@ test("report entry links bypass the removed intermediary and open the free repor
   await expect(page.locator('.home-start-cta[href="/?report=free"]')).toHaveText("무료로 시작하기");
 });
 
-test("all five core report routes resolve to their preserved form contracts", async ({ page }) => {
+test("all thirteen report routes resolve to a continuous visible form contract", async ({ page }) => {
   await mockLoggedInApis(page);
   const cases = [
     ["chem-pre", "form"],
     ["chem-result", "chemResultForm"],
     ["phys-result", "physResultForm"],
-    ["free", "freeForm"],
+    ["phys-inquiry", "physInquiryForm"],
+    ["math-inquiry", "mathInquiryForm"],
     ["reading-log", "readingLogForm"],
+    ["problem-set", "problemSetForm"],
+    ["form-maker", "formMakerForm"],
+    ["eng-exam-prep", "engExamForm"],
+    ["korean-lit-exam", "koreanLitForm"],
+    ["cap-translate", "capTranslateForm"],
+    ["phys-mock-exam", "physMockForm"],
+    ["free", "freeForm"],
   ];
   for (const [type, formId] of cases) {
     await page.goto(`${BASE_URL}/?report=${type}`, { waitUntil: "networkidle" });
     await expect(page.locator("body")).toHaveAttribute("data-view", "workspace");
     await expect(page.locator(`input[name="reportType"][value="${type}"]`)).toBeChecked();
     await expect(page.locator(`#${formId}[data-report-form="${type}"]`)).toBeVisible();
+    await expect(page.locator("#reportWorkflowNav [data-flow-jump]")).toHaveCount(4);
+    await expect(page.locator(`#${formId} .form-flow-steps, #${formId} .optional-settings`)).toHaveCount(0);
+    const visibleSections = await page.locator(`#${formId} > .form-section:visible`).count();
+    expect(visibleSections).toBeGreaterThan(0);
   }
 });
 

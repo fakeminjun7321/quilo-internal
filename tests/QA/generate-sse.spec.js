@@ -148,7 +148,7 @@ async function chooseReport(page, type) {
 }
 
 async function goFlowStep(page, type, step) {
-  await page.locator(`[data-report-form="${type}"] .form-flow-steps button[data-flow-jump="${step}"]`).click();
+  await page.locator(`#reportWorkflowNav button[data-flow-jump="${step}"]`).click();
   await expect(page.locator(`[data-report-form="${type}"]`)).toHaveAttribute("data-flow-step", step);
 }
 

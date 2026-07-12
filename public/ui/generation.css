@@ -2,20 +2,20 @@
 #progressArea {
   box-sizing: border-box;
   min-width: 0;
-  padding: 20px;
+  margin: 26px 28px 0;
+  padding: 24px;
   border: 1px solid var(--q-line);
-  border-radius: 16px;
+  border-radius: 10px;
   background: var(--q-paper);
-  box-shadow: 0 12px 34px rgba(15, 23, 42, .05);
+  box-shadow: 0 12px 34px rgba(15, 23, 42, .04);
+  scroll-margin-top: calc(var(--q-shell-height) + 24px);
 }
 #reportsPanel.workspace-mode > #progressArea {
-  grid-column: 2;
-  grid-row: 4 / span 5;
-  position: sticky;
-  top: calc(var(--q-shell-height) + 240px);
-  margin: 0;
+  grid-column: 1;
+  grid-row: auto;
+  position: static;
 }
-body[data-report-eligible="yes"] #reportsPanel.workspace-mode > #progressArea { grid-row: 3 / span 5; }
+body[data-report-eligible="yes"] #reportsPanel.workspace-mode > #progressArea { grid-row: auto; }
 .progress-sticky-head { display: grid; gap: 5px; }
 .status-head { display: flex; align-items: center; gap: 10px; }
 .status-head h2 { margin: 0; color: var(--q-ink); font-size: 17px; }
@@ -43,20 +43,20 @@ body[data-report-eligible="yes"] #reportsPanel.workspace-mode > #progressArea { 
   cursor: pointer;
 }
 .gen-timer { margin: 2px 0 0; color: var(--q-muted); font-size: 11px; }
-.progress-steps { display: grid; gap: 8px; margin-top: 18px; }
+.progress-steps { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-top: 22px; }
 .progress-step {
   display: grid;
-  grid-template-columns: 24px 1fr;
+  grid-template-columns: 28px 1fr;
   gap: 9px;
   align-items: center;
-  min-height: 32px;
+  min-height: 36px;
   color: var(--q-muted);
   font-size: 12px;
 }
 .progress-step span {
   display: flex;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   align-items: center;
   justify-content: center;
   border: 1px solid var(--q-line);
@@ -121,7 +121,7 @@ body[data-report-eligible="yes"] #reportsPanel.workspace-mode > #progressArea { 
 .retry-detail-body { margin-top: 7px; color: #6f3430; font-size: 11px; line-height: 1.5; }
 
 @media (max-width: 980px) {
-  #reportsPanel.workspace-mode > #progressArea { grid-column: 1; grid-row: auto; position: static; }
+  .progress-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 .progress-latest-copy { min-height: 1.2em; margin: 8px 0 4px; color: var(--text-muted); font-size: 13px; }
 

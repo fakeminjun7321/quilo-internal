@@ -4,6 +4,93 @@
   const header = document.querySelector("[data-ui-shell]");
   if (!header) return;
 
+  const authActions = [...header.querySelectorAll('[data-ui-auth-action], a[href="/?login=1"]')];
+  let currentAuthState = { state: "pending", user: null };
+
+  authActions.forEach((link) => {
+    link.dataset.uiAuthAction = "";
+    link.hidden = true;
+  });
+  if (authActions.length) {
+    header.dataset.uiAuthState = "pending";
+    header.setAttribute("aria-busy", "true");
+  }
+
+  function accountName(user) {
+    return String(user?.user || user?.name || user?.username || "내 계정").trim() || "내 계정";
+  }
+
+  function renderAuthState(result) {
+    currentAuthState = result;
+    header.dataset.uiAuthState = result.state;
+    header.setAttribute("aria-busy", "false");
+
+    authActions.forEach((link) => {
+      link.hidden = false;
+      link.dataset.uiAuthState = result.state;
+      link.removeAttribute("title");
+
+      if (result.state === "authenticated") {
+        const name = accountName(result.user);
+        const compactName = [...name].length > 14 ? `${[...name].slice(0, 14).join("")}…` : name;
+        link.textContent = `${compactName} 님`;
+        link.href = "/#settings";
+        link.setAttribute("aria-label", `${name} Account Center 열기`);
+        return;
+      }
+
+      if (result.state === "anonymous") {
+        link.textContent = "로그인";
+        link.href = "/?login=1";
+        link.setAttribute("aria-label", "Quilo 로그인");
+        return;
+      }
+
+      // A failed status check is not proof that the browser session ended.
+      // Keep this neutral and never call the logout endpoint from the shell.
+      link.textContent = "Quilo로 돌아가기";
+      link.href = "/";
+      link.setAttribute("aria-label", "Quilo로 돌아가기");
+      link.title = "로그인 상태를 확인하지 못했습니다.";
+    });
+
+    try {
+      document.dispatchEvent(new CustomEvent("quilo:auth-state", { detail: result }));
+    } catch (_) {}
+    return result;
+  }
+
+  async function syncAuthState() {
+    if (!authActions.length) return { state: "unsupported", user: null };
+    try {
+      const response = await fetch("/api/me", {
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: { accept: "application/json" },
+      });
+      if (response.status === 401) {
+        return renderAuthState({ state: "anonymous", user: null, status: 401 });
+      }
+      if (!response.ok) {
+        return renderAuthState({ state: "unknown", user: null, status: response.status });
+      }
+      const user = await response.json();
+      return renderAuthState({ state: "authenticated", user, status: response.status });
+    } catch (_) {
+      return renderAuthState({ state: "unknown", user: null, status: 0 });
+    }
+  }
+
+  const authReady = authActions.length
+    ? syncAuthState()
+    : Promise.resolve({ state: "unsupported", user: null });
+
+  window.QuiloShellAuth = Object.freeze({
+    ready: authReady,
+    refresh: syncAuthState,
+    current: () => currentAuthState,
+  });
+
   const desktopActions = header.querySelector(".ui-site-actions");
   if (desktopActions && !desktopActions.querySelector("[data-ui-theme]")) {
     const desktopTheme = document.createElement("button");

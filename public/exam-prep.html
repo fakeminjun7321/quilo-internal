@@ -7,6 +7,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/ui/foundation.css" />
     <link rel="stylesheet" href="/ui/app-shell.css" />
+    <link rel="stylesheet" href="/ui/app-workbench.css" />
+    <script src="/ui/app-assets.js"></script>
     <meta name="theme-color" content="#2563eb" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" href="/favicon.png" />
@@ -19,8 +21,6 @@
         if (t) document.documentElement.setAttribute("data-theme", t);
       } catch (e) {}
     </script>
-<!-- Monaco(VS Code 엔진) — Quilo Code 와 동일 -->
-    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs/loader.js"></script>
 </head>
   <body id="appShell" class="app-shell app-shell--exam-prep" data-app-shell>
     <header class="app-commandbar" data-q-shell>
@@ -46,12 +46,12 @@
       <div class="eptabs" role="tablist" aria-label="수행평가 도움 탭">
         <!-- 코딩 테스트 탭 — 비활성화(노출 제거). JS·#paneCoding 코드는 보존하되 화면에 나오지 않는다.
              .eptabs button 규칙(display:inline-flex)이 [hidden]을 덮으므로 인라인 display:none 으로 확실히 숨긴다. -->
-        <button id="tabCoding" role="tab" aria-selected="false" aria-controls="paneCoding" hidden class="app-inline-exam-prep-1">💻 코딩 테스트 <span class="muted app-inline-exam-prep-2">(정보)</span><span id="badgeCoding" class="ep-tabbadge" hidden></span></button>
+        <button id="tabCoding" role="tab" aria-selected="false" aria-controls="paneCoding" hidden class="app-inline-exam-prep-1">코딩 테스트 <span class="muted app-inline-exam-prep-2">(정보)</span><span id="badgeCoding" class="ep-tabbadge" hidden></span></button>
         <!-- 물리·수학 수행평가 탭 — 일시 중단(2026-07-03, 서버 RETIRED_TYPES 동기).
              JS·pane 코드는 보존, 재공개 시 hidden 제거 + 서버 집합에서 빼면 된다. -->
-        <button id="tabPhys" role="tab" aria-selected="false" aria-controls="panePhys" hidden class="app-inline-exam-prep-1">🔭 물리 수행평가<span id="badgePhys" class="ep-tabbadge" hidden></span></button>
-        <button id="tabMath" role="tab" aria-selected="false" aria-controls="paneMath" hidden class="app-inline-exam-prep-1">📐 수학 수행평가<span id="badgeMath" class="ep-tabbadge" hidden></span></button>
-        <button id="tabReading" class="active" role="tab" aria-selected="true" aria-controls="paneReading">📖 독서록<span id="badgeReading" class="ep-tabbadge" hidden></span></button>
+        <button id="tabPhys" role="tab" aria-selected="false" aria-controls="panePhys" hidden class="app-inline-exam-prep-1">물리 수행평가<span id="badgePhys" class="ep-tabbadge" hidden></span></button>
+        <button id="tabMath" role="tab" aria-selected="false" aria-controls="paneMath" hidden class="app-inline-exam-prep-1">수학 수행평가<span id="badgeMath" class="ep-tabbadge" hidden></span></button>
+        <button id="tabReading" class="active" role="tab" aria-selected="true" aria-controls="paneReading">독서록<span id="badgeReading" class="ep-tabbadge" hidden></span></button>
       </div>
 
       <!-- ── 코딩 테스트 (노출 제거 — 코드 보존, 화면에는 안 나옴) ── -->
@@ -75,7 +75,7 @@
       <section id="panePhys" role="tabpanel" aria-labelledby="tabPhys" hidden>
         <!-- 고급 물리 문제 스튜디오 카드 — 노출 제거(코드는 보존). 진입은 /physics-studio.html 직접.
         <div class="pi-card app-inline-exam-prep-6">
-          <h2>🧮 고급 물리 문제 스튜디오</h2>
+          <h2>고급 물리 문제 스튜디오</h2>
           <p>
             주제·난이도·출제 스타일을 고르면 AI가 풀이·힌트·검산이 함께 있는 <b>새로운</b> 심화 물리 문제를
             만들어 줍니다. 해석역학·전자기학·상대론 등 대학·올림피아드 수준 주제를 지원합니다.
@@ -127,7 +127,7 @@
       <section id="paneReading" role="tabpanel" aria-labelledby="tabReading" hidden>
         <div id="readingGate" class="locked" hidden></div>
         <div id="readingMain" class="pi-card" hidden>
-          <h2>📖 독서록 「독서활동 기록지」</h2>
+          <h2>독서록 「독서활동 기록지」</h2>
           <p>
             읽은 책의 정보를 입력하면 AI가 <b>선택 계기 → 내용 요약 → 느낀 점</b>을 써서
             학교 「독서활동 기록지」 양식에 채워 줍니다. (실제 사용 토큰만큼 크레딧 차감)
@@ -183,7 +183,7 @@
           '사용을 원하면 운영자에게 요청하세요.</p>' +
           '<p class="app-runtime-gap-top"><a class="qbtn" href="/">메인으로</a></p>';
       }
-      function hasBeta(key) { return beta.admin === true || (beta.features || []).indexOf(key) >= 0; }
+      function hasBeta(key) { return beta.admin === true || String(beta.tier || "").toLowerCase() === "max" || (beta.features || []).indexOf(key) >= 0; }
 
       // 각 탭이 어떤 베타 키로 열리는지 (클릭 전에 잠금/베타 상태를 배지로 노출).
       // coding 은 노출하지 않지만(탭 hidden) 키 매핑은 코드 보존 차원에서 남겨 둔다.
@@ -479,7 +479,7 @@
       var MONACO_BASE = "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/";
       function loadMonaco() {
         if (monacoReady) return monacoReady;
-        monacoReady = new Promise(function (resolve, reject) {
+        monacoReady = window.QuiloAssets.monacoLoader().then(function () { return new Promise(function (resolve, reject) {
           window.MonacoEnvironment = {
             getWorkerUrl: function () {
               return "data:text/javascript;charset=utf-8," + encodeURIComponent(
@@ -492,7 +492,7 @@
             require.config({ paths: { vs: MONACO_BASE + "vs" } });
             require(["vs/editor/editor.main"], function () { resolve(window.monaco); });
           } catch (e) { reject(e); }
-        });
+        }); });
         return monacoReady;
       }
       function mountEditor(code, p) {

@@ -7,6 +7,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/ui/foundation.css" />
     <link rel="stylesheet" href="/ui/app-shell.css" />
+    <link rel="stylesheet" href="/ui/app-generator.css" />
+    <script src="/ui/entitlement-gate.js"></script>
     <meta name="theme-color" content="#2563eb" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <title>바이브 코딩 생성기 — Quilo</title>
@@ -42,7 +44,7 @@
     </header>
 <main class="page" id="main-content" aria-label="바이브 코딩 생성기">
       <div class="intro" id="intro">
-        <span class="eyebrow">✨ 바이브 코딩 생성기</span>
+        <span class="eyebrow">Vibe coding planner</span>
         <h1>아이디어, 같이 정리해 볼까요?</h1>
         <p>질문 몇 개에 답하면 AI가 무엇을·어떻게 만들지 설계로 정리하고, 개념 이미지까지 만들어 드려요.<br />어려운 용어는 옆에 쉽게 풀어 둘게요 — 처음이어도 괜찮아요.</p>
       </div>
@@ -94,7 +96,7 @@
       const EXAMPLES = ["동아리 일정·회비 관리 웹앱", "매일 습관 체크 + 스트릭 트래커", "사진 모아 보는 무드보드", "친구끼리 영화 별점 공유"];
       const STEPS = [
         {
-          key: "idea", title: "💡 무엇을 만들고 싶나요?",
+          key: "idea", title: "무엇을 만들고 싶나요?",
           help: "앱이든 사이트든, 머릿속 아이디어를 편하게 한 문장으로 적어 주세요. 막연해도 괜찮아요.",
           required: true,
           render() {
@@ -109,13 +111,13 @@
           ok() { return state.idea.trim().length >= 3; },
         },
         {
-          key: "mood", title: "🎨 어떤 느낌이면 좋겠어요?",
+          key: "mood", title: "어떤 느낌이면 좋겠어요?",
           help: "디자인 분위기예요. 골라도 되고, 그냥 넘어가도 AI가 알아서 잡아요.",
           chips: ["깔끔·미니멀", "아기자기·귀여운", "프로페셔널", "활기찬·컬러풀", "차분한", "레트로·복고"],
           freeLabel: "직접 적기 (선택)",
         },
         {
-          key: "area", title: "🗂 어떤 분야예요?",
+          key: "area", title: "어떤 분야예요?",
           help: "어떤 쓰임새인지 알면 AI가 더 맞춤으로 설계해요.",
           chips: ["학교·교육", "생산성·할 일", "취미·생활", "커뮤니티·소셜", "게임·재미", "비즈니스", "기타"],
           freeLabel: "직접 적기 (선택)",
@@ -187,7 +189,7 @@
         const modelOpts = Object.keys(modelCredits).length
           ? Object.entries(modelLabels).map(([id, label]) => `<option value="${esc(id)}"${id === state.model ? " selected" : ""}>${esc(label)}</option>`).join("")
           : `<option value="claude-opus-4-8">Claude Opus 4.8</option>`;
-        $("stage").innerHTML = `<div class="qcard"><div class="qstep">거의 다 왔어요!</div><h2>✅ 이렇게 만들게요</h2>
+        $("stage").innerHTML = `<div class="qcard"><div class="qstep">거의 다 왔어요!</div><h2>이렇게 만들게요</h2>
           <div class="review">
             <div class="rv"><span class="k">아이디어</span><span class="v">${esc(state.idea)}</span></div>
             ${state.mood ? `<div class="rv"><span class="k">느낌</span><span class="v">${esc(state.mood)}</span></div>` : ""}
@@ -205,7 +207,7 @@
           <div class="navrow">
             <button class="btn ghost" id="prevBtn">← 이전</button>
             <div class="sp"></div>
-            <button class="btn" id="goBtn">✨ 설계 만들기</button>
+            <button class="btn" id="goBtn">설계 만들기</button>
           </div>
           <div class="err" id="err"></div>
         </div>`;
@@ -338,18 +340,18 @@
         const sections = [];
         if (r.problem) sections.push(`<div class="sec">${secHead("🎯 어떤 문제를 풀어요", "왜 이걸 만드는지")}<div class="box sub">${esc(r.problem)}</div></div>`);
         if (r.targetUser) sections.push(`<div class="sec">${secHead("🙋 누가 쓸까요", "주 사용자")}<div class="box sub">${esc(r.targetUser)}</div></div>`);
-        if ((r.mvp || []).length) sections.push(`<div class="sec">${secHead("✅ 먼저 만들 핵심 기능", "MVP — 일단 이것만 되면 쓸 만한 최소 기능")}${r.mvp.map((m) => `<div class="box"><b>${esc(m.feature)}</b><div class="sub">${esc(m.why)}</div></div>`).join("")}</div>`);
+        if ((r.mvp || []).length) sections.push(`<div class="sec">${secHead("먼저 만들 핵심 기능", "MVP — 일단 이것만 되면 쓸 만한 최소 기능")}${r.mvp.map((m) => `<div class="box"><b>${esc(m.feature)}</b><div class="sub">${esc(m.why)}</div></div>`).join("")}</div>`);
         if ((r.screens || []).length) sections.push(`<div class="sec">${secHead("📱 필요한 화면들", "사용자가 보게 될 페이지")}${r.screens.map((s) => `<div class="box"><b>${esc(s.name)}</b><div class="sub">${esc(s.purpose)}</div>${(s.elements || []).length ? `<div class="tags app-runtime-gap-6">${s.elements.map((e) => `<span class="tag2">${esc(e)}</span>`).join("")}</div>` : ""}</div>`).join("")}</div>`);
-        if ((r.modules || []).length) sections.push(`<div class="sec">${secHead("🧩 코드 구성", "기능별로 나눈 파일·부품 단위(모듈)")}${r.modules.map((m) => `<div class="box"><b>${esc(m.name)}</b><div class="sub">${esc(m.responsibility)}</div></div>`).join("")}</div>`);
-        if ((r.dataModel || []).length) sections.push(`<div class="sec">${secHead("🗂 저장할 데이터", "앱이 기억해야 할 정보의 모양")}${r.dataModel.map((d) => `<div class="box"><b>${esc(d.entity)}</b>${(d.fields || []).length ? `<div class="tags app-runtime-gap-6">${d.fields.map((f) => `<span class="tag2">${esc(f)}</span>`).join("")}</div>` : ""}</div>`).join("")}</div>`);
-        if ((r.firstTasks || []).length) sections.push(`<div class="sec">${secHead("👣 첫 작업 순서대로", "이 순서대로 하나씩 하면 돼요")}<ol class="ol">${r.firstTasks.map((t) => `<li><b>${esc(t.task)}</b><div class="sub">${esc(t.detail)}</div>${t.done ? `<div class="done">✓ 완료 기준: ${esc(t.done)}</div>` : ""}</li>`).join("")}</ol></div>`);
+        if ((r.modules || []).length) sections.push(`<div class="sec">${secHead("코드 구성", "기능별로 나눈 파일·부품 단위(모듈)")}${r.modules.map((m) => `<div class="box"><b>${esc(m.name)}</b><div class="sub">${esc(m.responsibility)}</div></div>`).join("")}</div>`);
+        if ((r.dataModel || []).length) sections.push(`<div class="sec">${secHead("저장할 데이터", "앱이 기억해야 할 정보의 모양")}${r.dataModel.map((d) => `<div class="box"><b>${esc(d.entity)}</b>${(d.fields || []).length ? `<div class="tags app-runtime-gap-6">${d.fields.map((f) => `<span class="tag2">${esc(f)}</span>`).join("")}</div>` : ""}</div>`).join("")}</div>`);
+        if ((r.firstTasks || []).length) sections.push(`<div class="sec">${secHead("첫 작업 순서대로", "이 순서대로 하나씩 하면 돼요")}<ol class="ol">${r.firstTasks.map((t) => `<li><b>${esc(t.task)}</b><div class="sub">${esc(t.detail)}</div>${t.done ? `<div class="done">완료 기준: ${esc(t.done)}</div>` : ""}</li>`).join("")}</ol></div>`);
         if (r.stack) sections.push(`<div class="sec">${secHead("🛠 추천 기술 스택", "앱을 만드는 데 쓰는 도구·언어")}<div class="box">${(r.stack.recommended || []).length ? `<div class="tags">${r.stack.recommended.map((s) => `<span class="tag2">${esc(s)}</span>`).join("")}</div>` : ""}${r.stack.rationale ? `<div class="sub app-runtime-gap-7">${esc(r.stack.rationale)}</div>` : ""}</div></div>`);
         if ((r.validation || []).length) sections.push(`<div class="sec">${secHead("🧪 잘 됐는지 확인하는 법", "검증 루틴 — 만든 게 제대로 도는지 점검")}<ul class="ul">${r.validation.map((v) => `<li>${esc(v)}</li>`).join("")}</ul></div>`);
-        if ((r.risks || []).length) sections.push(`<div class="sec">${secHead("⚠️ 막힐 만한 지점", "미리 알아두면 덜 당황해요")}${r.risks.map((x) => `<div class="box"><b>${esc(x.risk)}</b><div class="sub">→ ${esc(x.mitigation)}</div></div>`).join("")}</div>`);
-        if ((r.variations || []).length) sections.push(`<div class="sec">${secHead("🔀 이렇게 비틀어도 좋아요", "다른 방향 아이디어")}${r.variations.map((v) => `<div class="box"><b>${esc(v.angle)}</b><div class="sub">${esc(v.idea)}</div></div>`).join("")}</div>`);
-        if ((r.launchChecklist || []).length) sections.push(`<div class="sec">${secHead("🚀 출시 전 체크리스트", "세상에 내놓기 전 확인할 것")}<ul class="ul">${r.launchChecklist.map((v) => `<li>${esc(v)}</li>`).join("")}</ul></div>`);
+        if ((r.risks || []).length) sections.push(`<div class="sec">${secHead("막힐 만한 지점", "미리 알아두면 덜 당황해요")}${r.risks.map((x) => `<div class="box"><b>${esc(x.risk)}</b><div class="sub">→ ${esc(x.mitigation)}</div></div>`).join("")}</div>`);
+        if ((r.variations || []).length) sections.push(`<div class="sec">${secHead("이렇게 비틀어도 좋아요", "다른 방향 아이디어")}${r.variations.map((v) => `<div class="box"><b>${esc(v.angle)}</b><div class="sub">${esc(v.idea)}</div></div>`).join("")}</div>`);
+        if ((r.launchChecklist || []).length) sections.push(`<div class="sec">${secHead("출시 전 체크리스트", "세상에 내놓기 전 확인할 것")}<ul class="ul">${r.launchChecklist.map((v) => `<li>${esc(v)}</li>`).join("")}</ul></div>`);
         if ((r.guideCards || []).length) sections.push(`<div class="sec">${secHead("📚 바이브 코딩 꿀팁", "이 아이디어에 맞춘 조언")}${r.guideCards.map((g) => `<div class="box"><b>${esc(g.title)}</b><div class="sub">${esc(g.body)}</div></div>`).join("")}</div>`);
-        if (r.aiPrompt) sections.push(`<div class="sec">${secHead("🤖 AI에게 그대로 줄 지시문", "Claude Code·Cursor 같은 도구에 붙여넣기")}<pre class="prompt">${esc(r.aiPrompt)}</pre><div class="plainnote">💡 위 내용을 복사해 AI 코딩 도구에 붙여넣으면 바로 만들기 시작할 수 있어요.</div></div>`);
+        if (r.aiPrompt) sections.push(`<div class="sec">${secHead("AI에게 그대로 줄 지시문", "Claude Code·Cursor 같은 도구에 붙여넣기")}<pre class="prompt">${esc(r.aiPrompt)}</pre><div class="plainnote">위 내용을 복사해 AI 코딩 도구에 붙여넣으면 바로 만들기 시작할 수 있어요.</div></div>`);
 
         const heroInner = heroImageUrl
           ? `<img src="${heroImageUrl}" alt="개념 이미지" />`
@@ -420,10 +422,21 @@
 
       // ───────── 부트 ─────────
       async function boot() {
+        const access = await window.QuiloEntitlement.require({
+          feature: "vibe-coding",
+          gate: "#gate",
+          content: "#wizard",
+          forbiddenTitle: "바이브 코딩 생성기는 Pro 권한이 필요합니다",
+          forbiddenMessage: "Pro·Max 또는 별도 기능 권한이 있는 계정에서 사용할 수 있습니다."
+        });
+        if (!access.allowed) return;
         try { bal = await api("/api/me/balance"); }
-        catch (e) { if (e.status === 401) { $("intro").hidden = true; $("gate").hidden = false; return; } bal = {}; }
+        catch (e) { bal = {}; }
         modelCredits = (bal && bal.modelCredits) || {};
-        try { const b = await api("/api/me/beta"); canCreate = !!b.admin || (Array.isArray(b.features) && b.features.includes("create")); } catch {}
+        try {
+          const b = access.details || await api("/api/me/beta");
+          canCreate = !!b.admin || String(b.tier || "").toLowerCase() === "max" || (Array.isArray(b.features) && b.features.includes("create"));
+        } catch {}
         try {
           const cfg = await api("/api/vibe/config");
           (cfg.models || []).forEach((m) => { modelLabels[m.id] = m.label; if (typeof m.credits === "number") modelCredits[m.id] = m.credits; });

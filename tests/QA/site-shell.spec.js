@@ -272,13 +272,17 @@ test("every public pricing navigation points to the visible pricing page", () =>
 test("app shells and developer menu use existing account and section destinations", () => {
   const compactShellPages = [
     "create.html", "editor.html", "exam-prep.html", "filechat.html", "physics-studio.html",
-    "studio.html", "study.html", "translate-app.html", "translate.html", "vibe-coding.html",
+    "studio.html", "study.html", "translate.html", "vibe-coding.html",
   ];
   for (const file of compactShellPages) {
     const source = fs.readFileSync(path.join(PUBLIC_DIR, file), "utf8");
     expect(source, file).not.toContain('/account.html');
     expect(source, file).toContain('href="/#settings"');
   }
+
+  const retiredTranslator = fs.readFileSync(path.join(PUBLIC_DIR, "translate-app.html"), "utf8");
+  expect(retiredTranslator).toContain('content="0;url=/translate.html"');
+  expect(retiredTranslator).toContain('location.replace("/translate.html"');
 
   const home = fs.readFileSync(path.join(PUBLIC_DIR, "index.html"), "utf8");
   const developers = fs.readFileSync(path.join(PUBLIC_DIR, "developers.html"), "utf8");

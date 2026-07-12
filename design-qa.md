@@ -63,3 +63,102 @@
 - P3: 사용자 수가 수백 명을 넘으면 서버 페이지네이션이 필요하다. 현재 규모에서는 클라이언트 검색과 정렬이 충분하다.
 
 final result: passed
+
+---
+
+# Quilo PDF 통번역·서비스 작업공간 Design QA
+
+- PDF concept: `/Users/minjun/.codex/generated_images/019f4f80-a1c0-7af3-a195-67252e1f1d24/exec-769f899b-81db-4f52-aa73-411f24b7ed22.png`
+- File chat concept: `/Users/minjun/.codex/generated_images/019f4f80-a1c0-7af3-a195-67252e1f1d24/exec-4daae880-9876-46d6-a9e8-9adba948e0bd.png`
+- Generator concept: `/Users/minjun/.codex/generated_images/019f4f80-a1c0-7af3-a195-67252e1f1d24/exec-3bc7a340-b0f3-461b-8cd4-a20dad751e02.png`
+- Browser tools concept: `/Users/minjun/.codex/generated_images/019f4f80-a1c0-7af3-a195-67252e1f1d24/exec-13df0cd1-bad9-4902-a3cf-76a2da721967.png`
+- Implementation evidence: `/tmp/quilo-pdf-translate-workspace.png`, `/tmp/quilo-filechat-app-shell.png`, `/tmp/quilo-physics-studio-app-shell.png`, `/tmp/quilo-vibe-coding-app-shell.png`, `/tmp/quilo-tool-workspace-1440.png`
+- Verified desktop viewports: `1440 × 933`, `1280 × 720`, `1206 × 900`, `933 × 768`
+
+## Five-surface comparison
+
+1. PDF 통번역: concept의 파일 큐·번역 옵션·작업 요약 3열을 유지했다. 구현은 실제 API 계약상 분석 전에는 페이지·비용을 지어내지 않고 `선택 안 함`과 비활성 시작 버튼을 표시한다.
+2. 파일 챗봇: concept의 좌측 첨부 레일과 중앙 대화 흐름을 유지했다. 구현은 실제 빈 상태, 모델 선택, 새 대화, Enter/Shift+Enter 계약을 연결했다.
+3. 생성기: concept의 설정 레일·결과 캔버스 구조를 물리 스튜디오와 Vibe Coding에 적용했다. 가짜 결과 카드는 만들지 않고 생성 전 안내만 중앙에 표시한다.
+4. 브라우저 도구: concept의 도구 탐색·작업·결과 3열을 13개 도구와 수식 변환에 공통 적용했다. 실제 결과가 생길 때만 우측 레일이 갱신된다.
+5. 공통 작업 앱: Editor·Studio·Create·Exam·Study는 낮은 곡률, 얇은 경계, 고정 명령 바와 상태 바를 공유한다. 각 앱의 기존 입력 ID·이벤트·API payload는 유지했다.
+
+## Fidelity and interaction evidence
+
+- PDF 통번역은 기존 CompactAppShell CSS를 제거하고 전용 `pdf-translate.css`와 전용 3열 문서 구조를 사용한다. 파일 선택→분석→요약→mocked SSE 완료→다운로드 링크를 회귀 테스트했다.
+- Filechat·Physics·Vibe·Studio 등은 공통 셸과 화면 유형별 CSS로 분리했다. 기존 약 101KB 단일 app-shell 규칙은 약 8KB 셸과 채팅·생성기·워크벤치 스타일로 나뉜다.
+- Monaco·MathJax·JSZip·PDF 엔진은 권한 확인 또는 실제 사용 시점까지 로드하지 않는다.
+- 비로그인·Free·Pro·Max·관리자 상태는 공통 entitlement gate와 계정 센터 QA에서 각각 확인했다.
+- 40개 사용자 화면 계약, 13개 보고서 경로, 13개 도구, 8개 작업 앱에서 가로 overflow와 console error를 검사했다.
+- 제목·탭·eyebrow의 장식용 emoji를 제거했다. 성공·오류·업로드처럼 의미가 있는 상태 표시는 유지하고, 사용자가 명시한 테마 달 아이콘은 유지했다.
+
+## Intentional deviations
+
+- concept에 있던 가짜 파일명·페이지 수·예상 비용·진행률은 구현 기본 상태에서 제거했다. 실제 파일 분석 결과가 있는 경우에만 표시한다.
+- 목표 이미지의 임시 업로드/문서 일러스트는 검증된 프로젝트 아이콘 자산이 없어 생략했다. CSS 그림이나 장식 emoji로 대체하지 않았다.
+- 모바일 재설계는 사용자 요청대로 이번 범위에서 제외했다. 공개 마케팅·도구 셸의 기존 모바일 안전성은 유지하고 작업 앱은 933px 이상의 데스크톱을 검증했다.
+
+final result: passed
+
+---
+
+# Quilo 보고서 워크스페이스 Design QA
+
+- Source visual truth: `/Users/minjun/.codex/generated_images/019f4f80-a1c0-7af3-a195-67252e1f1d24/exec-0648af3b-64d0-4e9f-9959-23804705a61e.png`
+- Implementation screenshot: `/tmp/quilo-report-workspace-native.png`
+- Combined comparison: `/tmp/quilo-report-workspace-compare.png`
+- Native comparison viewport: `1504 × 1046`
+- Additional verified viewports: `1440 × 900`, `1206 × 900`
+- State: light theme, 관리자 로그인, `?report=chem-pre`, 자료 단계, 업로드 전
+
+## Full-view comparison evidence
+
+원본과 구현을 동일한 1504 × 1046 크기로 좌우 결합해 확인했다. 구현은 목표의 흰색 작업 면, 얇은 구분선, 제목 영역, 네 단계 수평 진행선, 넓은 연속 폼, 340px 상태 레일, 하단 생성 작업 바를 유지한다. 기존 카드 묶음과 런타임 DOM 재배치는 보이지 않는다.
+
+## Focused region comparison evidence
+
+결합 이미지에서 상단 제목·단계선·업로드 영역·우측 필수 항목/상태/자동 저장을 원본 크기로 판독할 수 있어 별도 크롭은 필요하지 않았다. 브라우저 DOM 검사로 모든 폼 섹션이 계속 표시되고 기존 `.form-flow-steps`·`.optional-settings`가 생성되지 않음을 추가 확인했다.
+
+## Required fidelity surfaces
+
+- Fonts and typography: 기존 Quilo sans-serif 스택과 굵기 체계를 유지했다. 34px 페이지 제목, 16px 섹션 제목, 13px 컨트롤, 11–12px 상태 텍스트로 목표와 같은 위계를 만든다.
+- Spacing and layout rhythm: 주 작업 영역과 340px 상태 레일의 2열, 28px 작업 여백, 40px 단계 원, 연속 섹션의 1px 구분선이 목표의 비율과 밀도에 맞는다. 1440px와 1206px에서 가로 overflow가 0이다.
+- Colors and visual tokens: 실제 흰색 배경, 짙은 본문, 옅은 회색 구분선, Quilo blue 활성 상태를 사용했다. 불필요한 그라디언트·큰 그림자·색상 카드가 없다.
+- Image quality and asset fidelity: 별도 사진/일러스트가 없는 도구 화면이다. 브랜드 마크는 기존 자산을 유지했고, 업로드·메모·AI 도움에 쓰이던 장식 이모지는 제거했다. 사용자 요청에 따른 테마 달 아이콘만 유지한다.
+- Copy and content: 목표의 정보 위계는 유지하되 실제 서비스 필드명·모델·출력 형식·정책 문구는 기존 기능 계약을 보존했다. 새 마케팅 문구나 가짜 지표를 추가하지 않았다.
+
+## Interaction and accessibility evidence
+
+- 네 단계 버튼은 실제 섹션으로 스크롤하며 `aria-current=step`을 갱신하고, 섹션을 숨기지 않는다.
+- 필수 자료·날짜·출력·모델·정책 동의 전에는 생성 버튼이 비활성화되고 입력 상태가 우측 레일에 즉시 반영된다.
+- 13개 report query 모두 active form 1개, visible section 1개 이상, 단계 버튼 4개, sidebar 표시, legacy enhancer node 0개를 확인했다.
+- 파일 선택, 정책 동의, 생성 확인, mocked SSE 완료와 다운로드 링크까지 chem-pre/chem-result/phys-result에서 통과했다.
+- Browser/IAB로 실제 화면·DOM·overflow를 확인했고, 고정 viewport는 Playwright로 1440/1206/native 크기를 보완했다. console/page error는 관련 QA에서 0개다.
+
+## Comparison history
+
+### Iteration 1 — blocked
+
+- P0: 4개 타입만 등록한 enhancer가 7개 서비스의 모든 섹션을 숨겼다.
+- P1: 설정 섹션을 런타임에서 다른 부모로 이동시키고 단계별로 폼을 감춰, 사용자가 전체 흐름을 파악하기 어려웠다.
+- P1: 기존 카드형 2열 화면은 목표의 열린 작업 면과 상태 레일 구조를 따르지 않았다.
+
+### Iteration 2 — blocked
+
+- 13개 타입 registry와 정적 단계 내비게이션, 연속 폼, 고정 상태 레일로 교체했다.
+- P2: 상단 정책 카드가 제목을 아래로 밀고 생성 버튼이 필수 입력 전에도 활성처럼 보였다.
+- P2: 메모 가이드와 AI 도움 버튼에 장식 이모지가 남았다.
+
+### Iteration 3 — passed
+
+- 중복 정책 카드를 작업 화면에서 제거하고, 필수 입력·정책 동의 기반 생성 버튼 readiness를 추가했다.
+- 보고서 폼의 장식 이모지를 제거하고 레이블 의미와 기능을 유지했다.
+- Post-fix evidence: `/tmp/quilo-report-workspace-native.png`, `/tmp/quilo-report-workspace-compare.png`.
+- 관련 Playwright 10개 테스트, 13-route matrix, syntax check, diff check가 통과했다.
+
+## Follow-up polish
+
+- P3: 목표의 업로드 클라우드 아이콘은 프로젝트에 일치하는 검증된 아이콘 패키지가 없어 생략했다. 장식 이모지나 임시 SVG로 대체하지 않았다.
+- P3: 브라우저 기본 날짜 입력의 표기 형식은 OS locale에 따라 목표 이미지와 다를 수 있으나 저장 값과 API 계약은 동일하다.
+
+final result: passed

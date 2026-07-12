@@ -5,9 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/ui/foundation.css" />
     <link rel="stylesheet" href="/ui/app-shell.css" />
+    <link rel="stylesheet" href="/ui/app-workbench.css" />
+    <script src="/ui/entitlement-gate.js"></script>
+    <script src="/ui/app-assets.js"></script>
     <title>Quilo Code (Pro)</title>
     <link rel="icon" href="/favicon.ico" />
-    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs/loader.js"></script>
 </head>
   <body id="appShell" class="app-shell app-shell--editor" data-app-shell>
     <header class="app-commandbar" data-q-shell>
@@ -131,34 +133,25 @@
       function showGate(html) {
         var g = document.getElementById("gate");
         g.innerHTML = html; g.hidden = false;
+        document.getElementById("app").hidden = true;
       }
       var MONACO_BASE = "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/";
       // 접근 게이트: 로그인 + (관리자 또는 'code-editor' 베타 테스터)
       (async function guard() {
-        try {
-          var res = await fetch("/api/me");
-          if (res.status === 401) {
-            showGate('<p>로그인이 필요합니다.</p><a class="qbtn qbtn-primary" href="/login.html">로그인</a>');
-            return;
-          }
-          var me = await res.json();
-          var allowed = !!me.isAdmin;
-          if (!allowed) {
-            try {
-              var b = await fetch("/api/me/beta").then(function (r) { return r.json(); });
-              allowed = Array.isArray(b.features) && b.features.indexOf("code-editor") >= 0;
-            } catch (e) {}
-          }
-          if (!allowed) {
-            showGate('<p>🧩 <b>Quilo Code</b>는 현재 <b>Pro 회원</b>에게만 열려 있습니다.<br>사용을 원하면 운영자에게 요청하세요.</p><a class="qbtn" href="/">메인으로</a>');
-            return;
-          }
-          loadMonaco();
-        } catch (e) { showGate("<p>권한 확인 중 오류가 발생했습니다.</p>"); }
+        var access = await window.QuiloEntitlement.require({
+          feature: "code-editor",
+          gate: "#gate",
+          content: "#app",
+          forbiddenTitle: "Quilo Code는 Pro 권한이 필요합니다",
+          forbiddenMessage: "Pro·Max 또는 code-editor 기능 권한이 있는 계정에서 사용할 수 있습니다."
+        });
+        if (access.allowed) loadMonaco();
       })();
 
-      function loadMonaco() {
+      async function loadMonaco() {
         showGate("Monaco(VS Code 엔진) 로딩 중…");
+        try { await window.QuiloAssets.monacoLoader(); }
+        catch (e) { showGate("<p>에디터 엔진을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.</p>"); return; }
         window.MonacoEnvironment = {
           getWorkerUrl: function () {
             return ("data:text/javascript;charset=utf-8," + encodeURIComponent(

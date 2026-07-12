@@ -10,6 +10,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/ui/foundation.css" />
     <link rel="stylesheet" href="/ui/app-shell.css" />
+    <link rel="stylesheet" href="/ui/app-chat.css" />
+    <script src="/ui/entitlement-gate.js"></script>
     <title>파일 챗봇 (Pro) · Quilo</title>
     <meta
       name="description"
@@ -49,88 +51,58 @@
         </nav>
       </div>
     </header>
-<main class="landing-shell" id="main-content" aria-label="파일 챗봇">
-      <section class="section app-inline-filechat-1">
-        <div class="fc-wrap">
-          <div class="tool-page-head">
-            <h1>📎 파일 챗봇 <span class="beta-pill">Pro</span></h1>
-            <p>
-              PDF·이미지·표·텍스트를 올리고 Claude와 대화하세요. 첨부한 파일은
-              대화 내내 함께 참고됩니다.
-            </p>
+    <main id="main-content" aria-label="파일 챗봇">
+      <div id="gate" aria-live="polite"></div>
+
+      <div id="tool" class="fc-workspace" hidden>
+        <aside class="fc-sidebar" aria-label="파일과 모델 설정">
+          <div class="fc-sidebar__head">
+            <p class="fc-sidebar__eyebrow">Chat with files</p>
+            <h1>파일 챗봇 <span class="beta-pill">Pro</span></h1>
+            <p class="fc-sidebar__copy">PDF·이미지·표·텍스트를 첨부하면 대화 전체에서 함께 참고합니다.</p>
           </div>
-
-          <div id="gate" class="card" aria-live="polite">
-            <p class="hint">권한 확인 중...</p>
-          </div>
-
-          <div id="tool" class="app-inline-filechat-2" hidden>
-            <div
-              id="accessNote"
-              class="hint app-inline-filechat-3"
-
-              aria-live="polite"
-            ></div>
-            <div
-              id="fcChat"
-              class="fc-chat"
-              role="log"
-              aria-live="polite"
-              aria-relevant="additions text"
-              aria-label="대화 내용"
-            >
-              <div class="fc-msg empty">
-                파일을 올리고 무엇이든 물어보세요. 예) “이 PDF 핵심만 정리해 줘”
-              </div>
-            </div>
-
-            <div class="fc-composer">
-              <div class="fc-tools">
-                <label
-                  >모델
-                  <select id="fcModel">
-                    <option value="claude-sonnet-5">Sonnet 5 (빠름)</option>
-                    <option value="claude-opus-4-8">Opus 4.8 (정밀)</option>
-                  </select>
-                </label>
-                <label class="fc-attach-btn"
-                  >＋ 파일 첨부
-                  <input
-                    type="file"
-                    id="fcFiles"
-                    multiple
-                    accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.txt,.md,.csv,.tsv,.json,.log,image/*"
-
-                   class="app-inline-filechat-2" hidden/>
-                </label>
-                <button id="fcClear" class="secondary compact" type="button">
-                  대화 초기화
-                </button>
-              </div>
-              <div
-                id="fcFileChips"
-                class="fc-files"
-                aria-live="polite"
-                aria-label="첨부 파일 목록"
-              ></div>
-              <div class="fc-row">
-                <textarea
-                  id="fcInput"
-                  placeholder="메시지를 입력하세요 (Enter 전송, Shift+Enter 줄바꿈)"
-                  aria-label="메시지 입력"
-                ></textarea>
-                <button id="fcSend" class="btn btn-primary" type="button">
-                  보내기
-                </button>
-              </div>
-              <p class="fc-hint">
-                첨부 파일은 매 메시지마다 함께 전송되어 맥락이 유지됩니다. 파일당
-                최대 6개. 서버(관리자) 키로 동작합니다.
-              </p>
+          <div class="fc-sidebar__body">
+            <label class="fc-attach-btn">
+              ＋ 파일 첨부
+              <input
+                type="file"
+                id="fcFiles"
+                multiple
+                accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.txt,.md,.csv,.tsv,.json,.log,image/*"
+                hidden
+              />
+            </label>
+            <span class="fc-sidebar__label">Attached files</span>
+            <div id="fcFileChips" class="fc-files" aria-live="polite" aria-label="첨부 파일 목록"></div>
+            <div class="fc-sidebar__footer">
+              <label class="fc-sidebar__label" for="fcModel">Model</label>
+              <select id="fcModel">
+                <option value="claude-sonnet-5">Sonnet 5 · 빠른 분석</option>
+                <option value="claude-opus-4-8">Opus 4.8 · 정밀 분석</option>
+              </select>
+              <button id="fcClear" class="secondary" type="button">새 대화</button>
             </div>
           </div>
-        </div>
-      </section>
+        </aside>
+
+        <section class="fc-main" aria-label="파일 대화">
+          <div class="fc-main__topbar">
+            <strong>Quilo Bot</strong>
+            <span>첨부 자료를 근거로 답변합니다</span>
+            <span id="accessNote" aria-live="polite"></span>
+          </div>
+          <div id="fcChat" class="fc-chat" role="log" aria-live="polite" aria-relevant="additions text" aria-label="대화 내용">
+            <div class="fc-msg empty">파일을 첨부하고 질문해 보세요.<br />예: “이 PDF의 핵심 주장과 근거를 정리해 줘.”</div>
+          </div>
+          <div class="fc-composer">
+            <div class="fc-row">
+              <textarea id="fcInput" placeholder="파일에 관해 질문하세요" aria-label="메시지 입력"></textarea>
+              <button id="fcSend" class="btn btn-primary" type="button">보내기</button>
+            </div>
+            <p class="fc-hint">Enter 전송 · Shift+Enter 줄바꿈 · 파일은 최대 6개</p>
+          </div>
+        </section>
+      </div>
     </main>
 
     <footer class="app-statusbar" aria-label="앱 상태">
@@ -145,40 +117,20 @@
         var gate = document.getElementById("gate");
         var tool = document.getElementById("tool");
 
-        function showGate(html) {
-          gate.innerHTML = html;
-          gate.hidden = false;
-          tool.hidden = true;
-        }
-
         (async function guard() {
-          try {
-            var res = await fetch("/api/filechat/access");
-            if (res.status === 401) {
-              showGate(
-                '<p class="hint">로그인이 필요합니다.</p><p class="app-runtime-gap-top"><a class="btn btn-primary" href="/login.html">로그인</a></p>'
-              );
-              return;
-            }
-            var d = await res.json();
-            if (!d.allowed) {
-              showGate(
-                '<p class="hint">파일 챗봇은 현재 <b>관리자·위임 사용자·Pro 회원</b>만 사용할 수 있습니다. 관리자에게 사용 권한(키 위임 또는 Pro 등록)을 요청하세요.</p>'
-              );
-              return;
-            }
-            gate.hidden = true;
-            tool.hidden = false;
-            var note = document.getElementById("accessNote");
-            if (d.reason === "grant")
-              note.innerHTML =
-                '관리자 키 위임으로 사용 중입니다 <span class="fc-badge">무료</span>';
-            else if (d.reason === "admin") note.textContent = "관리자 모드";
-            else if (d.reason === "beta") note.textContent = "Pro 회원 모드";
-            initTool();
-          } catch (e) {
-            showGate('<p class="hint">권한 확인 중 오류가 발생했습니다.</p>');
-          }
+          var access = await window.QuiloEntitlement.require({
+            accessEndpoint: "/api/filechat/access",
+            gate: gate,
+            content: tool,
+            forbiddenTitle: "파일 챗봇은 Pro 권한이 필요합니다",
+            forbiddenMessage: "관리자 키 위임, Pro 또는 Max 권한이 있는 계정에서 사용할 수 있습니다."
+          });
+          if (!access.allowed) return;
+          var note = document.getElementById("accessNote");
+          if (access.reason === "grant") note.innerHTML = '관리자 키 위임 <span class="fc-badge">무료</span>';
+          else if (access.reason === "admin") note.textContent = "관리자 모드";
+          else note.textContent = "Pro · Max 이용 가능";
+          initTool();
         })();
 
         function initTool() {
@@ -237,8 +189,10 @@
             messages = [];
             attached = [];
             renderChips();
+            inputEl.value = "";
             chatEl.innerHTML =
               '<div class="fc-msg empty">대화를 초기화했습니다. 새로 시작하세요.</div>';
+            inputEl.focus();
           });
 
           async function send() {

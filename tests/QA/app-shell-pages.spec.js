@@ -28,8 +28,6 @@ const PAGES = [
   "physics-studio.html",
   "studio.html",
   "study.html",
-  "translate-app.html",
-  "translate.html",
   "vibe-coding.html",
 ];
 
@@ -38,10 +36,9 @@ const EXPECTED_IDS = {
   "editor.html": ["agentClear", "agentClose", "agentModel", "agentMsgs", "agentPrompt", "agentSend", "app", "ceFrame", "ceLang", "ceOut", "gate", "ideAgent", "ideFileInput", "ideFiles", "ideNewFile", "ideOpenFile", "ideOpenFolder", "idePanel", "idePanelClose", "ideSide", "ideTabs", "ideWelcome", "main-content", "monaco", "stDownload", "stFormat", "stMinimap", "stMsg", "stPip", "stPos", "stRun", "stSave", "stTheme", "wOpenFile", "wOpenFolder", "wStart"],
   "exam-prep.html": ["badgeCoding", "badgeMath", "badgePhys", "badgeReading", "btnConsole", "btnReset", "btnRunEx", "btnSubmit", "codingGate", "codingMain", "ctAssist", "ctAssistInput", "ctAssistMsgs", "ctAssistSend", "ctDetail", "ctEditor", "ctFallback", "ctList", "ctResults", "ctStatus", "main-content", "mathGate", "mathMain", "paneCoding", "paneMath", "panePhys", "paneReading", "physGate", "physMain", "readingGate", "readingMain", "tabCoding", "tabMath", "tabPhys", "tabReading"],
   "filechat.html": ["accessNote", "fcChat", "fcClear", "fcFileChips", "fcFiles", "fcInput", "fcModel", "fcSend", "gate", "main-content", "themeToggle", "tool"],
-  "physics-studio.html": ["MathJax-script", "app", "bal", "copyMd", "cost", "count", "difficulty", "dlMd", "err", "formCard", "gate", "go", "hint", "main-content", "model", "notes", "out", "sol", "style", "themeToggle", "toggleAll", "topic"],
+  "physics-studio.html": ["app", "bal", "copyMd", "cost", "count", "difficulty", "dlMd", "err", "formCard", "gate", "go", "hint", "main-content", "model", "notes", "out", "sol", "style", "themeToggle", "toggleAll", "topic"],
   "studio.html": ["addFileBtn", "app", "balChip", "chips", "devseg", "dlZip", "fileTree", "gate", "imgBtn", "imgFile", "instatus", "main-content", "model", "modeseg", "monacoHost", "msgs", "o", "openPublish", "pCancel", "pCat", "pDo", "pPublic", "pSlug", "pTitle", "popout", "preview", "prompt", "pubModal", "pubModalTitle", "pubStatus", "pv", "pvhost", "refresh", "restoreBar", "restoreMeta", "restoreNo", "restoreYes", "sendBtn", "stage", "tabs", "thumbs", "toStage", "undoBtn"],
   "study.html": ["analyzeBtn", "assumptionList", "betaOut", "betaRange", "closeZoomBtn", "description", "diagramExplanation", "diagramTitle", "downloadBtn", "etaOut", "etaRange", "eventList", "main-content", "minkowskiCanvas", "minkowskiZoomCanvas", "modelHint", "modelSelect", "openZoomBtn", "problemImage", "resetBtn", "studyGate", "studyMain", "studyMsg", "studyStatus", "studyZoomModal", "studyZoomStage", "studyZoomTitle", "themeToggle", "warningList", "worldlineList", "zoomFitBtn", "zoomMinusBtn", "zoomPlusBtn", "zoomScaleOut"],
-  "translate-app.html": ["agree", "app", "drop", "est", "file", "gate", "gateBtn", "gateErr", "gateLoginForm", "gatePassword", "gateRemember", "gateUsername", "go", "log", "logout", "main-content", "mode", "model", "result", "terms", "termsClose", "termsLink", "termsLink2", "themeToggle"],
   "translate.html": ["gate", "genSpinner", "main-content", "progress", "progressArea", "resultArea", "retypesetDlgBody", "retypesetDlgTitle", "retypesetMultiBody", "retypesetMultiTitle", "statusTitle", "stopBtn", "themeToggle", "tool", "trBg", "trBgField", "trBgNotify", "trBgNotifyWrap", "trBtn", "trChartRedraw", "trError", "trEstimate", "trForm", "trMode", "trModeHint", "trModel", "trPdf", "trRestoreOnly"],
   "vibe-coding.html": ["again", "chatLog", "chatMsg", "chatSend", "copyMd", "costLine", "dlMd", "err", "gate", "goBtn", "heroImg", "i_free", "i_idea", "i_img", "i_model", "intro", "loadMsg", "loadTitle", "loading", "main-content", "nextBtn", "planArea", "prevBtn", "progress", "refineChat", "refineCost", "result", "stage", "themeToggle", "toStudio", "wizard"],
 };
@@ -54,9 +51,19 @@ const EXPECTED_DATA = {
   "physics-studio.html": ["data-q-shell"],
   "studio.html": ["data-dev", "data-f", "data-mode", "data-q-shell", "data-rm", "data-tab", "data-tpl", "data-ver"],
   "study.html": ["data-beta", "data-example", "data-q-shell"],
-  "translate-app.html": ["data-q-shell"],
   "translate.html": ["data-dz-file", "data-q-shell"],
   "vibe-coding.html": ["data-chip", "data-ex", "data-opt", "data-q-shell"],
+};
+
+const EXPECTED_STYLES = {
+  "create.html": ["/ui/foundation.css", "/ui/app-shell.css", "/ui/app-workbench.css"],
+  "editor.html": ["/ui/foundation.css", "/ui/app-shell.css", "/ui/app-workbench.css"],
+  "exam-prep.html": ["/ui/foundation.css", "/ui/app-shell.css", "/ui/app-workbench.css"],
+  "filechat.html": ["/ui/foundation.css", "/ui/app-shell.css", "/ui/app-chat.css"],
+  "physics-studio.html": ["/ui/foundation.css", "/ui/app-shell.css", "/ui/app-generator.css"],
+  "studio.html": ["/ui/foundation.css", "/ui/app-shell.css", "/ui/app-workbench.css"],
+  "study.html": ["/ui/foundation.css", "/ui/app-shell.css", "/ui/app-workbench.css"],
+  "vibe-coding.html": ["/ui/foundation.css", "/ui/app-shell.css", "/ui/app-generator.css"],
 };
 
 const CONTENT_TYPES = {
@@ -74,7 +81,7 @@ let baseUrl;
 function fixture(pathname) {
   const fixtures = {
     "/api/me": { user: "QA 사용자", username: "qa-user", isAdmin: false },
-    "/api/me/beta": { admin: false, features: ["create", "relativity-study"], blockedReportTypes: [] },
+    "/api/me/beta": { admin: false, tier: "pro", features: ["create", "code-editor", "physics-studio", "relativity-study", "vibe-coding"], blockedReportTypes: [] },
     "/api/me/balance": { credits: 8, isAdmin: false, modelCredits: { "claude-sonnet-5": 1 } },
     "/api/artifacts": { artifacts: [], persistent: true },
     "/api/artifacts/gallery": { items: [] },
@@ -152,7 +159,7 @@ test("all work surfaces use the isolated CompactAppShell and preserve DOM contra
     const localStyles = [...markupOnly.matchAll(/<link\b[^>]*rel=["']stylesheet["'][^>]*href=["']([^"']+)/gi)]
       .map((match) => match[1])
       .filter((href) => href.startsWith("/"));
-    expect(localStyles, pageName).toEqual(["/ui/foundation.css", "/ui/app-shell.css"]);
+    expect(localStyles, pageName).toEqual(EXPECTED_STYLES[pageName]);
     expect(source, pageName).not.toMatch(/\/(?:style\.css|site-shell\.css|site-shell\.js)/);
     expect(markupOnly, pageName).not.toMatch(/<style\b|\sstyle\s*=/i);
     expect(markupOnly.match(/<main\b[^>]*id=["']main-content["']/gi) || [], pageName).toHaveLength(1);
@@ -168,34 +175,83 @@ test("all work surfaces use the isolated CompactAppShell and preserve DOM contra
     }
   }
 
-  for (const pageName of ["filechat.html", "translate-app.html", "translate.html"]) {
+  for (const pageName of ["filechat.html"]) {
     const source = fs.readFileSync(path.join(PUBLIC_DIR, pageName), "utf8");
     expect(source, `${pageName} runtime markup`).not.toMatch(/\sstyle\s*=/i);
   }
 });
 
-test("translate app uses the production Quilo account contract instead of the retired access code", () => {
+test("legacy translate app route redirects to the canonical PDF translation workspace", () => {
   const source = fs.readFileSync(path.join(PUBLIC_DIR, "translate-app.html"), "utf8");
-  expect(source).not.toContain("me.authed");
-  expect(source).not.toContain('id="code"');
-  expect(source).not.toContain("JSON.stringify({ code })");
-  expect(source).toContain('id="gateUsername"');
-  expect(source).toContain('id="gatePassword"');
-  expect(source).toContain('href="/login.html"');
-  expect(source).toContain("JSON.stringify({ username, password, remember })");
+  expect(source).toContain('http-equiv="refresh" content="0;url=/translate.html"');
+  expect(source).toContain('location.replace("/translate.html"');
+  expect(source).not.toContain('/api/translate-app');
 });
 
-test("translate app shows the account login form when the production me endpoint returns 401", async ({ page }) => {
-  await page.route("**/api/me", (route) =>
-    route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ error: "로그인이 필요합니다." }) }),
-  );
+test("legacy translate app route reaches the canonical PDF translation workspace", async ({ page }) => {
+  await installNetworkFixtures(page, []);
   await page.goto(`${baseUrl}/translate-app.html`, { waitUntil: "networkidle" });
-  await expect(page.locator("#gate")).toBeVisible();
+  await expect(page).toHaveURL(/\/translate\.html$/);
+  await expect(page.locator("#main-content")).toBeVisible();
+});
+
+test("app entitlement gate distinguishes logged-out, forbidden, and Max access", async ({ page }) => {
+  await page.route("**/api/me", (route) =>
+    route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ error: "login" }) }),
+  );
+  await page.goto(`${baseUrl}/physics-studio.html`, { waitUntil: "networkidle" });
+  await expect(page.locator("#gate")).toContainText("로그인이 필요합니다");
   await expect(page.locator("#app")).toBeHidden();
-  await expect(page.locator("#gateUsername")).toBeFocused();
-  await expect(page.locator('#gateLoginForm input[name="username"]')).toHaveAttribute("autocomplete", "username");
-  await expect(page.locator('#gateLoginForm input[name="password"]')).toHaveAttribute("autocomplete", "current-password");
-  await expect(page.locator('#gate a[href="/login.html"]')).toHaveText("전체 로그인 페이지 열기");
+
+  await page.unroute("**/api/me");
+  await page.route("**/api/me", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ user: "QA", isAdmin: false }) }),
+  );
+  await page.route("**/api/me/beta", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ admin: false, tier: "pro", features: [] }) }),
+  );
+  await page.goto(`${baseUrl}/physics-studio.html`, { waitUntil: "networkidle" });
+  await expect(page.locator("#gate")).toContainText("Pro 권한이 필요합니다");
+  await expect(page.locator("#app")).toBeHidden();
+
+  await page.unroute("**/api/me/beta");
+  await page.route("**/api/me/beta", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ admin: false, tier: "max", features: [] }) }),
+  );
+  await page.route("**/api/me/balance", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(fixture("/api/me/balance")) }),
+  );
+  await page.route("**/api/physics-studio/config", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(fixture("/api/physics-studio/config")) }),
+  );
+  await page.goto(`${baseUrl}/physics-studio.html`, { waitUntil: "networkidle" });
+  await expect(page.locator("#app")).toBeVisible();
+  await expect(page.locator("#gate")).toBeHidden();
+});
+
+test("heavy app engines are loaded only after permission or the matching action", () => {
+  const editor = fs.readFileSync(path.join(PUBLIC_DIR, "editor.html"), "utf8");
+  const exam = fs.readFileSync(path.join(PUBLIC_DIR, "exam-prep.html"), "utf8");
+  const physics = fs.readFileSync(path.join(PUBLIC_DIR, "physics-studio.html"), "utf8");
+  const studio = fs.readFileSync(path.join(PUBLIC_DIR, "studio.html"), "utf8");
+  expect(editor).not.toMatch(/<script[^>]+monaco-editor/i);
+  expect(exam).not.toMatch(/<script[^>]+monaco-editor/i);
+  expect(studio).not.toMatch(/<script[^>]+(?:monaco-editor|jszip)/i);
+  expect(physics).not.toMatch(/<script[^>]+mathjax/i);
+  expect(editor).toContain("QuiloAssets.monacoLoader");
+  expect(exam).toContain("QuiloAssets.monacoLoader");
+  expect(studio).toContain("QuiloAssets.jszip");
+  expect(physics).toContain("QuiloAssets.mathjax");
+});
+
+test("app entitlement gate exposes a recoverable error state", async ({ page }) => {
+  await page.route("**/api/me", (route) =>
+    route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: "temporary" }) }),
+  );
+  await page.goto(`${baseUrl}/editor.html`, { waitUntil: "networkidle" });
+  await expect(page.locator("#gate")).toContainText("권한 확인을 완료하지 못했습니다");
+  await expect(page.locator("#gate [data-entitlement-retry]")).toBeVisible();
+  await expect(page.locator("#app")).toBeHidden();
 });
 
 async function installNetworkFixtures(page, writes) {
@@ -332,14 +388,14 @@ for (const pageName of PAGES) {
     const geometry = await shellGeometry(page);
     expect(geometry, pageName).toEqual({
       overflow: 0,
-      headerPosition: "sticky",
+      headerPosition: "fixed",
       headerTop: 0,
       statusPosition: "fixed",
       statusBottom: 0,
       commandbarOffenders: [],
     });
     await verifyPinnedChrome(page, pageName);
-    if (["create.html", "studio.html", "study.html", "translate.html"].includes(pageName)) {
+    if (["create.html", "filechat.html", "physics-studio.html", "studio.html", "study.html", "vibe-coding.html"].includes(pageName)) {
       await page.screenshot({ path: `/tmp/quilo-${pageName.replace(".html", "")}-app-shell.png`, fullPage: false });
     }
     expect(writes).toEqual([]);
@@ -363,7 +419,7 @@ test("all work surfaces reflow and respond at the 933px compact desktop width", 
     const geometry = await shellGeometry(page);
     expect(geometry, pageName).toEqual({
       overflow: 0,
-      headerPosition: "sticky",
+      headerPosition: "fixed",
       headerTop: 0,
       statusPosition: "fixed",
       statusBottom: 0,
@@ -401,12 +457,6 @@ test("representative empty, modal, and loading states remain contained in Compac
   expect(modalRect.y + modalRect.height).toBeLessThanOrEqual(933);
   await page.locator("#cmtClose").click();
   await expect(page.locator("#cmtModal")).toBeHidden();
-
-  await page.goto(`${baseUrl}/translate-app.html`, { waitUntil: "networkidle" });
-  await page.locator("#termsLink").click();
-  await expect(page.locator("#terms")).toBeVisible();
-  await page.locator("#termsClose").click();
-  await expect(page.locator("#terms")).toBeHidden();
 
   await page.route("**/api/physics-studio/generate", async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 350));

@@ -27,7 +27,7 @@
 <body class="landing q-shell-page dev-page ui-page">
   <div class="landing-bg" aria-hidden="true"></div>
     <a class="ui-skip-link" href="#main-content">본문으로 건너뛰기</a>
-    <header class="ui-site-header" data-ui-shell>
+    <header class="ui-site-header" data-ui-shell data-ui-auth-state="pending" aria-busy="true">
       <div class="ui-site-header__inner">
         <a class="ui-site-brand" href="/" aria-label="Quilo 홈"><img src="/favicon.png" alt="" width="42" height="42" /><span>Quilo</span></a>
         <nav class="ui-site-nav" aria-label="주요 메뉴">
@@ -38,8 +38,8 @@
           <details><summary>리소스</summary><div class="ui-site-menu ui-site-menu--narrow"><a href="/guide.html"><strong>가이드</strong><span>기능별 시작 방법과 사용 원칙</span></a><a href="/examples.html"><strong>예시</strong><span>Quilo로 만든 결과물 살펴보기</span></a><a href="/changelog.html"><strong>업데이트</strong><span>새 기능과 개선 내역</span></a><a href="/community.html"><strong>커뮤니티</strong><span>작업 사례와 질문 나누기</span></a><a href="/school-apply.html"><strong>학교 도입</strong><span>기관용 도입 문의</span></a></div></details>
           <a href="/pricing.html">요금</a><a href="https://www.instagram.com/quilo._.official/" target="_blank" rel="noopener">Instagram ↗</a>
         </nav>
-        <div class="ui-site-actions"><a class="ui-site-action" href="/?login=1">로그인</a><a class="ui-site-action ui-site-cta" href="/?report=free">무료로 시작하기</a></div>
-        <details class="ui-mobile-menu"><summary class="ui-mobile-trigger">메뉴</summary><nav class="ui-mobile-panel" aria-label="모바일 메뉴"><a href="/?report=free">보고서 만들기</a><a href="/tools/index.html">도구</a><a href="/apps/quilo.html">앱</a><a href="/developers.html">개발자</a><a href="/guide.html">가이드</a><button type="button" data-ui-theme>다크 테마</button><a href="/?login=1">로그인</a><a class="ui-site-cta" href="/?report=free">무료로 시작하기</a></nav></details>
+        <div class="ui-site-actions"><a class="ui-site-action" data-ui-auth-action href="/?login=1" hidden>로그인</a><a class="ui-site-action ui-site-cta" href="/?report=free">무료로 시작하기</a></div>
+        <details class="ui-mobile-menu"><summary class="ui-mobile-trigger">메뉴</summary><nav class="ui-mobile-panel" aria-label="모바일 메뉴"><a href="/?report=free">보고서 만들기</a><a href="/tools/index.html">도구</a><a href="/apps/quilo.html">앱</a><a href="/developers.html">개발자</a><a href="/guide.html">가이드</a><button type="button" data-ui-theme>다크 테마</button><a data-ui-auth-action href="/?login=1" hidden>로그인</a><a class="ui-site-cta" href="/?report=free">무료로 시작하기</a></nav></details>
       </div>
     </header>
 
@@ -140,7 +140,7 @@ OAuth metadata  https://quilolab.com/.well-known/oauth-protected-resource/mcp</c
           <label class="scope-item"><input type="checkbox" value="integrations:read" /><span><b>외부 연동 읽기</b><br /><small>Dropbox·Google·Notion·BYOK 상태</small></span></label>
           <label class="scope-item"><input type="checkbox" value="integrations:write" /><span><b>외부 연동 쓰기</b><br /><small>Drive 업로드·Docs·Notion 생성</small></span></label>
         </div>
-        <button class="dev-btn dark" id="createTokenBtn" type="button">새 토큰 만들기</button>
+        <button class="dev-btn dark" id="createTokenBtn" type="button" disabled>새 토큰 만들기</button>
         <p class="dev-muted" id="tokenMessage" aria-live="polite"></p>
         <div class="token-secret" id="tokenSecret" hidden><b>지금 복사하세요</b><code id="tokenValue"></code><button class="dev-btn" type="button" id="copyTokenBtn">복사</button></div>
         <div class="token-list" id="tokenList"></div>

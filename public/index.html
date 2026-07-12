@@ -265,7 +265,7 @@
     <header class="workspace-page-head">
       <div>
         <h1 id="workspaceTitle">보고서 작업 공간</h1>
-        <p>자료를 올리고 필요한 정보만 확인하면 생성 과정과 결과를 한 화면에서 관리할 수 있습니다.</p>
+        <p id="workspaceDescription">자료를 올리고 필요한 정보만 확인하면 생성 과정과 결과를 한 화면에서 관리할 수 있습니다.</p>
       </div>
       <button type="button" class="workspace-home-link" id="workspaceHomeBtn">홈으로</button>
     </header>
@@ -318,18 +318,43 @@
         <small id="balConvert" class="balance-convert"></small>
       </div>
 
-      <div id="workspaceSummary" class="workspace-summary" hidden>
-        <div>
-          <span class="workspace-kicker">필수 파일 체크리스트</span>
+      <aside id="workspaceSummary" class="workspace-summary" hidden aria-label="보고서 작업 상태">
+        <section class="workspace-summary-section workspace-required">
+          <span class="workspace-kicker">필수 항목</span>
           <strong id="workspaceChecklistTitle">보고서 종류를 선택하세요</strong>
           <ul id="reportChecklist"></ul>
-        </div>
-        <div class="workspace-files">
-          <span class="workspace-kicker">최근 파일</span>
-          <button type="button" class="link-button" id="workspaceFilesBtn">내 파일 보기</button>
-          <small id="workspaceFilesSummary">생성 파일은 기본 24시간 보관됩니다.</small>
-        </div>
-      </div>
+        </section>
+        <section class="workspace-summary-section workspace-generation-summary">
+          <span class="workspace-kicker">생성 상태</span>
+          <dl class="workspace-status-list">
+            <div><dt>상태</dt><dd id="workspaceGenerationState" data-tone="muted">준비 대기</dd></div>
+            <div><dt>예상 소요 시간</dt><dd id="workspaceEstimateTime">약 2–4분</dd></div>
+            <div><dt>예상 비용</dt><dd id="workspaceEstimateCost">무료</dd></div>
+          </dl>
+        </section>
+        <section class="workspace-summary-section workspace-save-summary">
+          <span class="workspace-kicker">자동 저장</span>
+          <div class="workspace-save-row">
+            <span id="workspaceSaveState">저장됨</span>
+            <time id="workspaceSaveTime">방금</time>
+          </div>
+        </section>
+        <section class="workspace-summary-section workspace-files">
+          <div class="workspace-summary-heading">
+            <span class="workspace-kicker">내 파일</span>
+            <button type="button" class="link-button" id="workspaceFilesBtn">전체 보기</button>
+          </div>
+          <small id="workspaceFilesSummary">생성된 보고서가 여기에 표시됩니다.</small>
+          <div class="workspace-file-empty" aria-hidden="true">아직 생성된 파일이 없습니다.</div>
+        </section>
+        <section class="workspace-summary-section workspace-recent-summary">
+          <div class="workspace-summary-heading">
+            <span class="workspace-kicker">최근 입력</span>
+            <button type="button" class="link-button" id="workspaceRecentClear">전체 지우기</button>
+          </div>
+          <div id="workspaceRecentInput" class="workspace-recent-input"></div>
+        </section>
+      </aside>
 
       <div id="reportTypeFieldset" role="radiogroup" aria-labelledby="reportTypeLegend" hidden>
         <div id="reportTypeLegend" class="report-type-title">보고서 종류</div>
@@ -414,6 +439,25 @@
       </div>
     </div>
 
+    <nav id="reportWorkflowNav" class="report-workflow-nav" aria-label="보고서 생성 단계" hidden>
+      <button type="button" data-flow-jump="upload" aria-current="step">
+        <span class="report-step-number" data-step-number>1</span>
+        <span class="report-step-copy"><strong data-step-label>1. 자료</strong><small data-step-hint>자료 업로드</small></span>
+      </button>
+      <button type="button" data-flow-jump="info" aria-current="false">
+        <span class="report-step-number" data-step-number>2</span>
+        <span class="report-step-copy"><strong data-step-label>2. 정보</strong><small data-step-hint>실험 정보 입력</small></span>
+      </button>
+      <button type="button" data-flow-jump="settings" aria-current="false">
+        <span class="report-step-number" data-step-number>3</span>
+        <span class="report-step-copy"><strong data-step-label>3. 선택 설정</strong><small data-step-hint>출력 옵션 선택</small></span>
+      </button>
+      <button type="button" data-flow-jump="generate" aria-current="false">
+        <span class="report-step-number" data-step-number>4</span>
+        <span class="report-step-copy"><strong data-step-label>4. 생성</strong><small data-step-hint>보고서 생성</small></span>
+      </button>
+    </nav>
+
     <div id="comingSoon" class="notice" hidden>
       이 보고서 종류는 아직 준비 중입니다.<br>
       <small>곧 사용 가능해질 예정입니다.</small>
@@ -429,7 +473,7 @@
           <span class="field-label">사전보고서 (PDF 권장, docx 가능) <span class="req">*</span></span>
           <div class="dropzone">
             <input id="crPreReport" name="preReport" type="file" accept=".pdf,.docx" required aria-label="사전보고서 파일" />
-            <span class="dropzone-icon" aria-hidden="true">📄</span>
+            <span class="dropzone-icon" aria-hidden="true"></span>
             <span class="dropzone-title">사전보고서를 끌어다 놓거나 클릭</span>
             <span class="dropzone-sub">.pdf · .docx</span>
             <span class="dropzone-file" data-dz-file></span>
@@ -440,7 +484,7 @@
             <span class="field-label">실험 데이터 (선택)</span>
             <div class="dropzone">
               <input id="crData" name="data" type="file" accept=".xlsx,.xls,.csv,.txt,.png,.jpg,.jpeg" aria-label="실험 데이터 파일" />
-              <span class="dropzone-icon" aria-hidden="true">📊</span>
+            <span class="dropzone-icon" aria-hidden="true"></span>
               <span class="dropzone-title">엑셀·CSV·텍스트·사진</span>
               <span class="dropzone-sub">없으면 아래 메모에 관찰값을 적어도 됩니다</span>
               <span class="dropzone-file" data-dz-file></span>
@@ -450,7 +494,7 @@
             <span class="field-label">실험 사진 (여러 장, 선택)</span>
             <div class="dropzone">
               <input id="crPhotos" name="photos" type="file" accept=".png,.jpg,.jpeg" multiple aria-label="실험 사진" />
-              <span class="dropzone-icon" aria-hidden="true">🖼️</span>
+            <span class="dropzone-icon" aria-hidden="true"></span>
               <span class="dropzone-title">사진을 끌어다 놓거나 클릭</span>
               <span class="dropzone-sub">.png · .jpg</span>
               <span class="dropzone-file" data-dz-file></span>
@@ -461,7 +505,7 @@
           <span class="field-label">실험 매뉴얼 PDF (선택)</span>
           <div class="dropzone">
             <input id="crManual" name="manual" type="file" accept="application/pdf" aria-label="실험 매뉴얼 PDF" />
-            <span class="dropzone-icon" aria-hidden="true">📄</span>
+            <span class="dropzone-icon" aria-hidden="true"></span>
             <span class="dropzone-title">매뉴얼 PDF를 끌어다 놓거나 클릭</span>
             <span class="dropzone-sub">application/pdf</span>
             <span class="dropzone-file" data-dz-file></span>
@@ -472,13 +516,13 @@
             <span class="field-label">AI 참고 메모 / 내 의견 (선택)</span>
             <textarea id="crUserNotes" name="userNotes" rows="4" maxlength="12000" placeholder="예: 2회차는 종말점을 지나쳐서 제외했어. 종말점 색이 옅어 판단이 어려웠던 점을 오차로 다뤄줘."></textarea>
           </label>
-          <span data-memo-guide="crUserNotes"></span><details class="memo-guide memo-guide-space"><summary class="memo-guide-summary">📋 메모 작성 가이드 · 좋은 예시 + AI에게 줄 기본 프롬프트</summary><div class="memo-guide-body"><b>좋은 AI 참고 메모 예시</b><div class="memo-guide-example">- 3회 측정 중 2회차는 종말점을 지나쳐 제외(평균에서 빼줘)
+          <span data-memo-guide="crUserNotes"></span><details class="memo-guide memo-guide-space"><summary class="memo-guide-summary">메모 작성 가이드 · 좋은 예시 + AI에게 줄 기본 프롬프트</summary><div class="memo-guide-body"><b>좋은 AI 참고 메모 예시</b><div class="memo-guide-example">- 3회 측정 중 2회차는 종말점을 지나쳐 제외(평균에서 빼줘)
 - 적정 종말점 색이 옅어 판단이 어려웠음 → 오차 원인으로
 - 결론에서 이론 당량점과 비교 그래프를 강조</div><b class="memo-guide-prompt-title">AI(ChatGPT·Claude 등)에게 물어볼 때 복사해 쓰는 기본 프롬프트</b><textarea class="memo-guide-prompt" readonly rows="6">나는 Quilo로 화학 '결과보고서'를 만들려고 해. 사전보고서·측정 데이터·실험 사진을 올리면 AI가 표·그래프·계산·분석·결론을 써 줘. 'AI 참고 메모'는 데이터만 보고는 모를 맥락(제외한 시행과 이유, 관찰한 특이사항, 실제 겪은 오차 원인, 강조할 분석)을 알려주는 글이야. 내 상황을 듣고 부족하면 2~3개만 물어본 뒤 메모 초안을 불릿으로 만들어줘. 데이터에 없는 수치는 지어내지 마.
 
-[내 상황]: </textarea><button class="memo-guide-copy" type="button" data-action="copy-memo-guide">📋 프롬프트 복사</button></div></details>
+[내 상황]: </textarea><button class="memo-guide-copy" type="button" data-action="copy-memo-guide">프롬프트 복사</button></div></details>
           <small>.md/.txt 파일로 길게 작성한 메모도 함께 첨부할 수 있습니다. <a href="/examples.html#notes" target="_blank" rel="noopener">작성 가이드·예시 보기 →</a></small>
-          <button type="button" class="qc-memo-btn qc-assist-trigger qc-assist-trigger--tight" data-action="open-quilo-assist" data-assist-kind="memo" data-target="crUserNotes">✨ AI로 메모 작성 도움받기</button>
+          <button type="button" class="qc-memo-btn qc-assist-trigger qc-assist-trigger--tight" data-action="open-quilo-assist" data-assist-kind="memo" data-target="crUserNotes">AI로 메모 작성 도움받기</button>
           <input id="crUserNotesFile" name="userNotesFile" type="file" accept=".md,.txt,text/markdown,text/plain" aria-label="참고 메모 파일" />
         </div>
       </div>
@@ -519,7 +563,7 @@
             <span class="field-label">내가 쓴 예시 보고서 · 글 스타일 (PDF·이미지·텍스트·한글 .hwpx, 여러 개)</span>
             <div class="dropzone">
               <input id="crStyleRefs" name="styleRefs" type="file" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.txt,.md,.csv,.hwpx,application/pdf,image/*" multiple aria-label="내 글 스타일 참고 파일" />
-              <span class="dropzone-icon" aria-hidden="true">✍️</span>
+            <span class="dropzone-icon" aria-hidden="true"></span>
               <span class="dropzone-title">내 글/예시 보고서를 끌어다 놓거나 클릭</span>
               <span class="dropzone-sub">문체 흉내 · 한글(.hwpx)이면 글꼴까지 · 내용 제외</span>
               <span class="dropzone-file" data-dz-file></span>
@@ -529,7 +573,7 @@
             <label><span class="field-label">문체 메모 (선택)</span>
               <textarea id="crStyleNote" name="styleNote" rows="3" maxlength="1500" placeholder="예: 구어체로 직관 먼저 설명하고, 헷갈리는 지점을 짚으며 수식은 단계별로 유도하는 느낌"></textarea>
             </label>
-          <button type="button" class="qc-style-btn qc-assist-trigger" data-action="open-quilo-assist" data-assist-kind="style" data-target="crStyleNote">✨ AI로 내 문체 정리받기</button>
+          <button type="button" class="qc-style-btn qc-assist-trigger" data-action="open-quilo-assist" data-assist-kind="style" data-target="crStyleNote">AI로 내 문체 정리받기</button>
             <small>샘플 없이 원하는 느낌만 글로 적어도 됩니다.</small>
           </div>
         </div>
@@ -611,7 +655,7 @@
             <span class="field-label">PASCO Capstone (.cap)</span>
             <div class="dropzone">
               <input id="prCap" name="cap" type="file" accept=".cap" aria-label="PASCO Capstone 파일" />
-              <span class="dropzone-icon" aria-hidden="true">🧪</span>
+            <span class="dropzone-icon" aria-hidden="true"></span>
               <span class="dropzone-title">.cap 파일을 끌어다 놓거나 클릭</span>
               <span class="dropzone-sub">PASCO Capstone</span>
               <span class="dropzone-file" data-dz-file></span>
@@ -621,7 +665,7 @@
             <span class="field-label">엑셀/CSV/텍스트 (여러 개)</span>
             <div class="dropzone">
               <input id="prData" name="data" type="file" accept=".xlsx,.xls,.csv,.txt,.md,text/plain,text/markdown" multiple aria-label="데이터 파일" />
-              <span class="dropzone-icon" aria-hidden="true">📊</span>
+            <span class="dropzone-icon" aria-hidden="true"></span>
               <span class="dropzone-title">데이터를 끌어다 놓거나 클릭</span>
               <span class="dropzone-sub">.xlsx · .csv · .txt · .md</span>
               <span class="dropzone-file" data-dz-file></span>
@@ -633,7 +677,7 @@
             <span class="field-label">실험 매뉴얼 PDF (권장)</span>
             <div class="dropzone">
               <input id="prManual" name="manual" type="file" accept="application/pdf" aria-label="실험 매뉴얼 PDF" />
-              <span class="dropzone-icon" aria-hidden="true">📄</span>
+            <span class="dropzone-icon" aria-hidden="true"></span>
               <span class="dropzone-title">매뉴얼 PDF를 끌어다 놓거나 클릭</span>
               <span class="dropzone-sub">application/pdf</span>
               <span class="dropzone-file" data-dz-file></span>
@@ -643,7 +687,7 @@
             <span class="field-label">사진 / 데이터·그래프 스크린샷 (여러 장)</span>
             <div class="dropzone">
               <input id="prPhotos" name="photos" type="file" accept=".png,.jpg,.jpeg" multiple aria-label="사진/스크린샷" />
-              <span class="dropzone-icon" aria-hidden="true">🖼️</span>
+            <span class="dropzone-icon" aria-hidden="true"></span>
               <span class="dropzone-title">이미지를 끌어다 놓거나 클릭</span>
               <span class="dropzone-sub">.png · .jpg</span>
               <span class="dropzone-file" data-dz-file></span>
@@ -655,13 +699,13 @@
             <span class="field-label">AI 참고 메모 / 내 의견 (선택)</span>
             <textarea id="prUserNotes" name="userNotes" rows="4" maxlength="12000" placeholder="예: 예비 1회는 포토게이트가 흔들려 제외. 트랙 이음새에서 카트가 살짝 튀는 현상이 있었음."></textarea>
           </label>
-          <span data-memo-guide="prUserNotes"></span><details class="memo-guide memo-guide-space"><summary class="memo-guide-summary">📋 메모 작성 가이드 · 좋은 예시 + AI에게 줄 기본 프롬프트</summary><div class="memo-guide-body"><b>좋은 AI 참고 메모 예시</b><div class="memo-guide-example">- 예비 시행 1회는 포토게이트 흔들림으로 제외
+          <span data-memo-guide="prUserNotes"></span><details class="memo-guide memo-guide-space"><summary class="memo-guide-summary">메모 작성 가이드 · 좋은 예시 + AI에게 줄 기본 프롬프트</summary><div class="memo-guide-body"><b>좋은 AI 참고 메모 예시</b><div class="memo-guide-example">- 예비 시행 1회는 포토게이트 흔들림으로 제외
 - 트랙 이음새를 지날 때 카트가 살짝 튀는 현상 관찰 → 오차로
 - Part II 운동량 보존 분석을 특히 자세히</div><b class="memo-guide-prompt-title">AI(ChatGPT·Claude 등)에게 물어볼 때 복사해 쓰는 기본 프롬프트</b><textarea class="memo-guide-prompt" readonly rows="6">나는 Quilo로 물리 '결과보고서'를 만들려고 해. PASCO .cap/엑셀/사진을 올리면 AI가 Part별 표·그래프·분석·결론(오차분석 포함)을 써 줘. 'AI 참고 메모'는 데이터만 보고는 모를 맥락(제외한 시행과 이유, 장치 세팅 특이점, 실제 겪은 문제와 해결, 강조할 Part)을 알려주는 글이야. 내 상황을 듣고 부족하면 2~3개만 물어본 뒤 메모 초안을 불릿으로 만들어줘. 데이터에 없는 값은 지어내지 마.
 
-[내 상황]: </textarea><button class="memo-guide-copy" type="button" data-action="copy-memo-guide">📋 프롬프트 복사</button></div></details>
+[내 상황]: </textarea><button class="memo-guide-copy" type="button" data-action="copy-memo-guide">프롬프트 복사</button></div></details>
           <small>.md/.txt 파일로 길게 작성한 메모도 함께 첨부할 수 있습니다. <a href="/examples.html#notes" target="_blank" rel="noopener">작성 가이드·예시 보기 →</a></small>
-          <button type="button" class="qc-memo-btn qc-assist-trigger qc-assist-trigger--tight" data-action="open-quilo-assist" data-assist-kind="memo" data-target="prUserNotes">✨ AI로 메모 작성 도움받기</button>
+          <button type="button" class="qc-memo-btn qc-assist-trigger qc-assist-trigger--tight" data-action="open-quilo-assist" data-assist-kind="memo" data-target="prUserNotes">AI로 메모 작성 도움받기</button>
           <input id="prUserNotesFile" name="userNotesFile" type="file" accept=".md,.txt,text/markdown,text/plain" aria-label="참고 메모 파일" />
         </div>
       </div>
@@ -692,7 +736,7 @@
             <span class="field-label">내가 쓴 예시 보고서 · 글 스타일 (PDF·이미지·텍스트·한글 .hwpx, 여러 개)</span>
             <div class="dropzone">
               <input id="prStyleRefs" name="styleRefs" type="file" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.txt,.md,.csv,.hwpx,application/pdf,image/*" multiple aria-label="내 글 스타일 참고 파일" />
-              <span class="dropzone-icon" aria-hidden="true">✍️</span>
+            <span class="dropzone-icon" aria-hidden="true"></span>
               <span class="dropzone-title">내 글/예시 보고서를 끌어다 놓거나 클릭</span>
               <span class="dropzone-sub">문체 흉내 · 한글(.hwpx)이면 글꼴까지 · 내용 제외</span>
               <span class="dropzone-file" data-dz-file></span>
@@ -702,7 +746,7 @@
             <label><span class="field-label">문체 메모 (선택)</span>
               <textarea id="prStyleNote" name="styleNote" rows="3" maxlength="1500" placeholder="예: 구어체로 직관 먼저 설명하고, 헷갈리는 지점을 짚으며 수식은 단계별로 유도하는 느낌"></textarea>
             </label>
-          <button type="button" class="qc-style-btn qc-assist-trigger" data-action="open-quilo-assist" data-assist-kind="style" data-target="prStyleNote">✨ AI로 내 문체 정리받기</button>
+          <button type="button" class="qc-style-btn qc-assist-trigger" data-action="open-quilo-assist" data-assist-kind="style" data-target="prStyleNote">AI로 내 문체 정리받기</button>
             <small>샘플 없이 원하는 느낌만 글로 적어도 됩니다.</small>
           </div>
         </div>
@@ -791,7 +835,7 @@
             <span class="field-label">필기노트 PDF (여러 개)</span>
             <div class="dropzone">
               <input id="piNotes" name="notes" type="file" accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown" multiple aria-label="필기노트 파일" />
-              <span class="dropzone-icon" aria-hidden="true">📓</span>
+            <span class="dropzone-icon" aria-hidden="true"></span>
               <span class="dropzone-title">필기노트를 끌어다 놓거나 클릭</span>
               <span class="dropzone-sub">.pdf · .txt · .md</span>
               <span class="dropzone-file" data-dz-file></span>
@@ -801,7 +845,7 @@
             <span class="field-label">참고자료 (PDF·이미지·텍스트, 여러 개)</span>
             <div class="dropzone">
               <input id="piRefs" name="refs" type="file" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.txt,.md,.csv,application/pdf,image/*" multiple aria-label="참고자료 파일" />
-              <span class="dropzone-icon" aria-hidden="true">📎</span>
+            <span class="dropzone-icon" aria-hidden="true"></span>
               <span class="dropzone-title">참고자료를 끌어다 놓거나 클릭</span>
               <span class="dropzone-sub">.pdf · .png/.jpg · .txt/.md</span>
               <span class="dropzone-file" data-dz-file></span>
@@ -819,13 +863,13 @@
             <span class="field-label">AI 참고 메모 / 내 생각 (선택)</span>
             <textarea id="piUserNotes" name="userNotes" rows="4" maxlength="12000" placeholder="예: 처음엔 모든 역학을 F=ma로 풀 수 있다 생각했는데, 구속 조건에서 막혀 라그랑주 역학으로 넘어갔음. 노트의 이중진자 풀이 꼭 포함."></textarea>
           </label>
-          <span data-memo-guide="piUserNotes"></span><details class="memo-guide memo-guide-space"><summary class="memo-guide-summary">📋 메모 작성 가이드 · 좋은 예시 + AI에게 줄 기본 프롬프트</summary><div class="memo-guide-body"><b>좋은 AI 참고 메모 예시</b><div class="memo-guide-example">- 처음 생각(오개념): 모든 역학 문제는 힘 분해(F=ma)로 풀 수 있다
+          <span data-memo-guide="piUserNotes"></span><details class="memo-guide memo-guide-space"><summary class="memo-guide-summary">메모 작성 가이드 · 좋은 예시 + AI에게 줄 기본 프롬프트</summary><div class="memo-guide-body"><b>좋은 AI 참고 메모 예시</b><div class="memo-guide-example">- 처음 생각(오개념): 모든 역학 문제는 힘 분해(F=ma)로 풀 수 있다
 - 막힌 지점: 진자·구속 조건에서 힘 분해가 너무 복잡해짐
 - 해결: 라그랑지안(L=T−V)과 오일러-라그랑주 방정식으로 전환
 - 노트의 이중진자 풀이를 세부 분석에 꼭 넣어줘</div><b class="memo-guide-prompt-title">AI(ChatGPT·Claude 등)에게 물어볼 때 복사해 쓰는 기본 프롬프트</b><textarea class="memo-guide-prompt" readonly rows="6">나는 Quilo로 '물리 수행평가(일반물리학 탐구 및 사고 과정 성찰 보고서)'를 만들려고 해. 주제와 필기노트를 올리면 AI가 '초기 오개념 → 오류 인식 → 정확한 개념으로 해결 → 성찰' 흐름으로 써 줘. 이 보고서는 처음에 무엇을 어떻게 잘못 생각했는지(오개념)가 핵심 평가 요소야. 'AI 참고 메모'에 그 오개념·깨달은 계기·노트에서 꼭 포함할 유도/문제를 알려주고 싶어. 내 상황을 듣고 특히 '처음에 어떻게 생각했었는지'를 물어본 뒤 메모 초안을 불릿으로 만들어줘. 없는 사실은 지어내지 마.
 
-[내 상황]: </textarea><button class="memo-guide-copy" type="button" data-action="copy-memo-guide">📋 프롬프트 복사</button></div></details>
-          <button type="button" class="qc-memo-btn qc-assist-trigger" data-action="open-quilo-assist" data-assist-kind="memo" data-target="piUserNotes">✨ AI로 메모 작성 도움받기</button>
+[내 상황]: </textarea><button class="memo-guide-copy" type="button" data-action="copy-memo-guide">프롬프트 복사</button></div></details>
+          <button type="button" class="qc-memo-btn qc-assist-trigger" data-action="open-quilo-assist" data-assist-kind="memo" data-target="piUserNotes">AI로 메모 작성 도움받기</button>
           <small>.md/.txt 파일로 길게 작성한 메모도 함께 첨부할 수 있습니다.</small>
           <input id="piUserNotesFile" name="userNotesFile" type="file" accept=".md,.txt,text/markdown,text/plain" aria-label="참고 메모 파일" />
         </div>
@@ -844,7 +888,7 @@
             <span class="field-label">내 글 스타일 참고 파일 (PDF·이미지·텍스트·한글 .hwpx, 여러 개)</span>
             <div class="dropzone">
               <input id="piStyleRefs" name="styleRefs" type="file" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.txt,.md,.csv,.hwpx,application/pdf,image/*" multiple aria-label="내 글 스타일 참고 파일" />
-              <span class="dropzone-icon" aria-hidden="true">✍️</span>
+            <span class="dropzone-icon" aria-hidden="true"></span>
               <span class="dropzone-title">내 글 샘플을 끌어다 놓거나 클릭</span>
               <span class="dropzone-sub">문체 흉내 · 한글(.hwpx)이면 글꼴까지 · 내용 제외</span>
               <span class="dropzone-file" data-dz-file></span>
@@ -854,7 +898,7 @@
             <label><span class="field-label">문체 메모 (선택, 한 줄)</span>
               <textarea id="piStyleNote" name="styleNote" rows="3" maxlength="1500" placeholder="예: 영어 소제목 + 구어체로 직관 먼저 설명하고, 사람들이 헷갈리는 지점을 짚으며 수식은 단계별로 유도하는 느낌"></textarea>
             </label>
-          <button type="button" class="qc-style-btn qc-assist-trigger" data-action="open-quilo-assist" data-assist-kind="style" data-target="piStyleNote">✨ AI로 내 문체 정리받기</button>
+          <button type="button" class="qc-style-btn qc-assist-trigger" data-action="open-quilo-assist" data-assist-kind="style" data-target="piStyleNote">AI로 내 문체 정리받기</button>
             <small>샘플 없이 원하는 느낌만 글로 적어도 됩니다.</small>
           </div>
         </div>
@@ -957,13 +1001,13 @@
             <span class="field-label">AI 참고 메모 / 내 생각 (선택)</span>
             <textarea id="miUserNotes" name="userNotes" rows="4" maxlength="12000" placeholder="예: 계산기가 sin을 어떻게 구하는지 궁금해서 골랐음. 테일러 전개 유도는 풀버전으로, x=1 부분합 오차 표와 수렴 그래프 꼭 넣어줘. e^x와 수렴 속도 비교처럼 창의적인 시도도 하나 들어가면 좋겠어."></textarea>
           </label>
-          <span data-memo-guide="miUserNotes"></span><details class="memo-guide memo-guide-space"><summary class="memo-guide-summary">📋 메모 작성 가이드 · 좋은 예시 + AI에게 줄 기본 프롬프트</summary><div class="memo-guide-body"><b>좋은 AI 참고 메모 예시</b><div class="memo-guide-example">- 동기: 계산기·AI가 초월함수를 어떻게 계산하는지 궁금했음
+          <span data-memo-guide="miUserNotes"></span><details class="memo-guide memo-guide-space"><summary class="memo-guide-summary">메모 작성 가이드 · 좋은 예시 + AI에게 줄 기본 프롬프트</summary><div class="memo-guide-body"><b>좋은 AI 참고 메모 예시</b><div class="memo-guide-example">- 동기: 계산기·AI가 초월함수를 어떻게 계산하는지 궁금했음
 - 테일러 급수 유도(라그랑주 나머지항 포함)를 Ⅲ.이론적 배경에 풀버전으로 넣어줘
 - Ⅳ에서 x=1의 sin 부분합 N=1~6을 계산해 오차 표랑 수렴 그래프로 보여줘
 - 창의적 시도: 같은 방법으로 e^x도 계산해서 두 급수의 수렴 속도를 비교</div><b class="memo-guide-prompt-title">AI(ChatGPT·Claude 등)에게 물어볼 때 복사해 쓰는 기본 프롬프트</b><textarea class="memo-guide-prompt" readonly rows="6">나는 Quilo로 '수학 수행평가(수학Ⅲ 급수 탐구보고서)'를 만들려고 해. 급수 관련 주제 한 줄만 입력하면 AI가 Ⅰ.탐구 주제 / Ⅱ.탐구 목적 / Ⅲ.선행연구 분석 / Ⅳ.탐구 과정 및 탐구 내용 / Ⅴ.결과 정리 및 반성 양식으로 써 줘. 평가 기준이 '수학적 타당성·창의성 40점 / 논리성·자료(표·그래프) 활용 40점 / 발표 20점'이고 만점이 목표라, 메모가 방향을 정하는 유일한 수단이야. 'AI 참고 메모'에 탐구 동기, 꼭 다루고 싶은 개념/유도, 넣고 싶은 표·그래프, 창의적 연결 아이디어를 정리하고 싶어. 내 상황을 듣고 메모 초안을 불릿으로 만들어줘. 없는 수치는 지어내지 마.
 
-[내 상황]: </textarea><button class="memo-guide-copy" type="button" data-action="copy-memo-guide">📋 프롬프트 복사</button></div></details>
-          <button type="button" class="qc-memo-btn qc-assist-trigger" data-action="open-quilo-assist" data-assist-kind="memo" data-target="miUserNotes">✨ AI로 메모 작성 도움받기</button>
+[내 상황]: </textarea><button class="memo-guide-copy" type="button" data-action="copy-memo-guide">프롬프트 복사</button></div></details>
+          <button type="button" class="qc-memo-btn qc-assist-trigger" data-action="open-quilo-assist" data-assist-kind="memo" data-target="miUserNotes">AI로 메모 작성 도움받기</button>
           <small>.md/.txt 파일로 길게 작성한 메모도 함께 첨부할 수 있습니다.</small>
           <input id="miUserNotesFile" name="userNotesFile" type="file" accept=".md,.txt,text/markdown,text/plain" aria-label="참고 메모 파일" />
         </div>
@@ -982,7 +1026,7 @@
             <span class="field-label">내 글 스타일 참고 파일 (PDF·이미지·텍스트·한글 .hwpx, 여러 개)</span>
             <div class="dropzone">
               <input id="miStyleRefs" name="styleRefs" type="file" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.txt,.md,.csv,.hwpx,application/pdf,image/*" multiple aria-label="내 글 스타일 참고 파일" />
-              <span class="dropzone-icon" aria-hidden="true">✍️</span>
+            <span class="dropzone-icon" aria-hidden="true"></span>
               <span class="dropzone-title">내 글 샘플을 끌어다 놓거나 클릭</span>
               <span class="dropzone-sub">문체 흉내 · 한글(.hwpx)이면 글꼴까지 · 내용 제외</span>
               <span class="dropzone-file" data-dz-file></span>
@@ -992,7 +1036,7 @@
             <label><span class="field-label">문체 메모 (선택, 한 줄)</span>
               <textarea id="miStyleNote" name="styleNote" rows="3" maxlength="1500" placeholder="예: 정의를 먼저 쓰고 직관적 설명을 덧붙이는 차분한 문어체, 수식은 단계별 유도, 소제목은 Step 1처럼 번호로"></textarea>
             </label>
-          <button type="button" class="qc-style-btn qc-assist-trigger" data-action="open-quilo-assist" data-assist-kind="style" data-target="miStyleNote">✨ AI로 내 문체 정리받기</button>
+          <button type="button" class="qc-style-btn qc-assist-trigger" data-action="open-quilo-assist" data-assist-kind="style" data-target="miStyleNote">AI로 내 문체 정리받기</button>
             <small>샘플 없이 원하는 느낌만 글로 적어도 됩니다.</small>
           </div>
         </div>
@@ -1067,7 +1111,7 @@
     </form>
 
     <!-- ── 독서록 폼 — 학교 '독서활동 기록지' 양식(.hwpx) 채우기 (크레딧 과금) ──────── -->
-    <form id="readingLogForm" class="report-form" data-report-form="reading-log" data-flow-init="1" hidden>
+    <form id="readingLogForm" class="report-form" data-report-form="reading-log" hidden>
       <input type="hidden" name="rlFormat" value="hwpx" />
       <div class="notice">
         <strong>독서록 「독서활동 기록지」 초안.</strong>
@@ -1278,7 +1322,7 @@
     <!-- ── 문제집 메이커 폼 (베타) ─────────────────────────────────────── -->
     <!-- data-flow-init="1": 단계별 위저드(자료/정보/설정/생성)를 건너뛰고 한 페이지 폼으로
          (간단한 도구라 모든 입력을 한 화면에 보여 주는 편이 낫다). -->
-    <form id="problemSetForm" class="report-form" data-report-form="problem-set" data-flow-init="1" hidden>
+    <form id="problemSetForm" class="report-form" data-report-form="problem-set" hidden>
       <div class="notice">
         <strong>문제집 메이커 (Pro·무료).</strong>
         옥스토비·Serway처럼 빼곡한 교재 문제 PDF(또는 사진)를 올리면, ① 영어 문제지 ② 한글 문제지 ③ 해설지
@@ -1295,7 +1339,7 @@
           <span class="field-label">교재/학습지 문제 (PDF 또는 이미지, 여러 개) <span class="req">*</span></span>
           <div class="dropzone">
             <input id="psSource" name="source" type="file" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,application/pdf,image/*" multiple aria-label="문제 파일" />
-            <span class="dropzone-icon" aria-hidden="true">📚</span>
+            <span class="dropzone-icon" aria-hidden="true"></span>
             <span class="dropzone-title">문제 PDF·사진을 끌어다 놓거나 클릭</span>
             <span class="dropzone-sub">.pdf · .png/.jpg — 그림·표·수식 포함 OK</span>
             <span class="dropzone-file" data-dz-file></span>
@@ -1407,7 +1451,7 @@
           <span class="field-label">복원할 문서 사진 (여러 장 가능)</span>
           <div class="dropzone">
             <input id="fmPhotos" name="photos" type="file" accept=".png,.jpg,.jpeg,.gif,.webp,image/*" multiple aria-label="복원할 문서 사진" />
-            <span class="dropzone-icon" aria-hidden="true">📄</span>
+            <span class="dropzone-icon" aria-hidden="true"></span>
             <span class="dropzone-title">종이를 찍은 사진을 끌어다 놓거나 클릭</span>
             <span class="dropzone-sub">제목·표·항목을 그대로 복원 · 여러 장이면 순서대로</span>
             <span class="dropzone-file" data-dz-file></span>
@@ -1508,7 +1552,7 @@
         <div class="field">
           <div class="dropzone">
             <input id="engSource" name="source" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.md,application/pdf,image/*" multiple aria-label="영어 지문 파일" />
-            <span class="dropzone-icon" aria-hidden="true">📄</span>
+            <span class="dropzone-icon" aria-hidden="true"></span>
             <span class="dropzone-title">지문 파일을 끌어다 놓거나 클릭 (PDF·이미지·텍스트)</span>
             <span class="dropzone-file" data-dz-file></span>
           </div>
@@ -1552,7 +1596,7 @@
         <div class="field">
           <div class="dropzone">
             <input id="klSource" name="source" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/*" multiple aria-label="국어 학습지 파일" />
-            <span class="dropzone-icon" aria-hidden="true">📝</span>
+            <span class="dropzone-icon" aria-hidden="true"></span>
             <span class="dropzone-title">학습지·판서 사진/PDF를 끌어다 놓거나 클릭</span>
             <span class="dropzone-file" data-dz-file></span>
           </div>
@@ -1563,7 +1607,7 @@
         <div class="field">
           <div class="dropzone">
             <input id="klBank" name="bank" type="file" accept=".pdf,application/pdf" multiple aria-label="문제은행 PDF" />
-            <span class="dropzone-icon" aria-hidden="true">📚</span>
+            <span class="dropzone-icon" aria-hidden="true"></span>
             <span class="dropzone-title">예시 문제(있으면)를 올리면 유형을 맞춰 출제</span>
             <span class="dropzone-file" data-dz-file></span>
           </div>
@@ -1607,7 +1651,7 @@
         <div class="field">
           <div class="dropzone">
             <input id="capFile" name="cap" type="file" accept=".cap" aria-label=".cap 파일" />
-            <span class="dropzone-icon" aria-hidden="true">🧪</span>
+            <span class="dropzone-icon" aria-hidden="true"></span>
             <span class="dropzone-title">.cap 파일을 끌어다 놓거나 클릭</span>
             <span class="dropzone-file" data-dz-file></span>
           </div>
@@ -1658,7 +1702,7 @@
         <div class="field">
           <div class="dropzone">
             <input id="pmExam" name="exam" type="file" accept=".pdf,application/pdf" aria-label="기출 시험지 PDF" />
-            <span class="dropzone-icon" aria-hidden="true">📋</span>
+            <span class="dropzone-icon" aria-hidden="true"></span>
             <span class="dropzone-title">기출/예시 시험지 PDF를 올리세요</span>
             <span class="dropzone-file" data-dz-file></span>
           </div>
@@ -1669,7 +1713,7 @@
         <div class="field">
           <div class="dropzone">
             <input id="pmTextbook" name="textbook" type="file" accept=".pdf,application/pdf" aria-label="교과서 단원 PDF" />
-            <span class="dropzone-icon" aria-hidden="true">📖</span>
+            <span class="dropzone-icon" aria-hidden="true"></span>
             <span class="dropzone-title">출제할 단원의 교과서 PDF를 올리세요</span>
             <span class="dropzone-file" data-dz-file></span>
           </div>
@@ -1680,7 +1724,7 @@
         <div class="field">
           <div class="dropzone">
             <input id="pmRubric" name="rubric" type="file" accept=".pdf,application/pdf" aria-label="채점 기준 PDF" />
-            <span class="dropzone-icon" aria-hidden="true">✅</span>
+            <span class="dropzone-icon" aria-hidden="true"></span>
             <span class="dropzone-title">채점 기준/배점표가 있으면 올리세요 (선택)</span>
             <span class="dropzone-file" data-dz-file></span>
           </div>
@@ -1755,7 +1799,7 @@
             <span class="field-label">자료 파일 (PDF·엑셀·CSV·텍스트, 여러 개)</span>
             <div class="dropzone">
               <input id="frFiles" name="files" type="file" accept=".pdf,.xlsx,.xls,.csv,.txt,.md,.tsv,.png,.jpg,.jpeg,.gif,.webp,application/pdf,image/*" multiple aria-label="자료 파일" />
-              <span class="dropzone-icon" aria-hidden="true">📄</span>
+            <span class="dropzone-icon" aria-hidden="true"></span>
               <span class="dropzone-title">자료를 끌어다 놓거나 클릭</span>
               <span class="dropzone-sub">PDF·엑셀/CSV·텍스트 — 보고서 내용의 근거</span>
               <span class="dropzone-file" data-dz-file></span>
@@ -1765,7 +1809,7 @@
             <span class="field-label">본문에 넣을 사진 (이미지, 여러 장)</span>
             <div class="dropzone">
               <input id="frPhotos" name="photos" type="file" accept=".png,.jpg,.jpeg,.gif,.webp,image/*" multiple aria-label="본문 삽입 사진" />
-              <span class="dropzone-icon" aria-hidden="true">🖼️</span>
+            <span class="dropzone-icon" aria-hidden="true"></span>
               <span class="dropzone-title">사진을 끌어다 놓거나 클릭</span>
               <span class="dropzone-sub">보고서 본문에 삽입할 사진·그림</span>
               <span class="dropzone-file" data-dz-file></span>
@@ -1788,7 +1832,7 @@
             <span class="field-label">AI 참고 메모 / 내 생각 (선택)</span>
             <textarea id="frUserNotes" name="userNotes" rows="3" maxlength="12000" placeholder="강조하고 싶은 관점·꼭 다룰 내용 등을 적으세요. 보조로만 반영됩니다."></textarea>
           </label>
-          <button type="button" class="qc-memo-btn qc-assist-trigger" data-action="open-quilo-assist" data-assist-kind="memo" data-target="frUserNotes">✨ AI로 메모 작성 도움받기</button>
+          <button type="button" class="qc-memo-btn qc-assist-trigger" data-action="open-quilo-assist" data-assist-kind="memo" data-target="frUserNotes">AI로 메모 작성 도움받기</button>
           <small>.md/.txt 파일로 길게 작성한 메모도 함께 첨부할 수 있습니다.</small>
           <input id="frUserNotesFile" name="userNotesFile" type="file" accept=".md,.txt,text/markdown,text/plain" aria-label="참고 메모 파일" />
         </div>
@@ -1807,7 +1851,7 @@
             <span class="field-label">내 글 스타일 참고 파일 (PDF·이미지·텍스트·한글 .hwpx, 여러 개)</span>
             <div class="dropzone">
               <input id="frStyleRefs" name="styleRefs" type="file" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.txt,.md,.csv,.hwpx,application/pdf,image/*" multiple aria-label="내 글 스타일 참고 파일" />
-              <span class="dropzone-icon" aria-hidden="true">✍️</span>
+            <span class="dropzone-icon" aria-hidden="true"></span>
               <span class="dropzone-title">내 글 샘플을 끌어다 놓거나 클릭</span>
               <span class="dropzone-sub">문체 흉내 · 한글(.hwpx)이면 글꼴까지 · 내용 제외</span>
               <span class="dropzone-file" data-dz-file></span>
@@ -1817,7 +1861,7 @@
             <label><span class="field-label">문체 메모 (선택, 한 줄)</span>
               <textarea id="frStyleNote" name="styleNote" rows="3" maxlength="1500" placeholder="예: 두괄식으로 결론을 먼저, 차분한 문어체, 소제목은 번호로"></textarea>
             </label>
-          <button type="button" class="qc-style-btn qc-assist-trigger" data-action="open-quilo-assist" data-assist-kind="style" data-target="frStyleNote">✨ AI로 내 문체 정리받기</button>
+          <button type="button" class="qc-style-btn qc-assist-trigger" data-action="open-quilo-assist" data-assist-kind="style" data-target="frStyleNote">AI로 내 문체 정리받기</button>
             <small>샘플 없이 원하는 느낌만 글로 적어도 됩니다.</small>
           </div>
         </div>
@@ -1903,7 +1947,7 @@
           <span class="field-label">실험 매뉴얼 PDF <span class="req">*</span></span>
           <div class="dropzone">
             <input id="manual" name="manual" type="file" accept="application/pdf" required aria-label="실험 매뉴얼 PDF" />
-            <span class="dropzone-icon" aria-hidden="true">📄</span>
+            <span class="dropzone-icon" aria-hidden="true"></span>
             <span class="dropzone-title">PDF를 끌어다 놓거나 클릭해서 선택</span>
             <span class="dropzone-sub">application/pdf</span>
             <span class="dropzone-file" data-dz-file></span>
@@ -1914,13 +1958,13 @@
             <span class="field-label">AI 참고 메모 / 내 의견 (선택)</span>
             <textarea id="preUserNotes" name="userNotes" rows="4" maxlength="12000" placeholder="예: 이론적 배경에 헨더슨-하셀바흐 식 유도를 꼭 넣어줘. 시약은 매뉴얼대로지만 NaOH 농도만 0.1M로 진행."></textarea>
           </label>
-          <span data-memo-guide="preUserNotes"></span><details class="memo-guide memo-guide-space"><summary class="memo-guide-summary">📋 메모 작성 가이드 · 좋은 예시 + AI에게 줄 기본 프롬프트</summary><div class="memo-guide-body"><b>좋은 AI 참고 메모 예시</b><div class="memo-guide-example">- 이론적 배경에 완충용액의 헨더슨-하셀바흐 식 유도를 포함해줘
+          <span data-memo-guide="preUserNotes"></span><details class="memo-guide memo-guide-space"><summary class="memo-guide-summary">메모 작성 가이드 · 좋은 예시 + AI에게 줄 기본 프롬프트</summary><div class="memo-guide-body"><b>좋은 AI 참고 메모 예시</b><div class="memo-guide-example">- 이론적 배경에 완충용액의 헨더슨-하셀바흐 식 유도를 포함해줘
 - 매뉴얼 3단계 적정 중 우리는 2회 반복으로 진행
 - pH 미터 보정 과정을 실험 과정에 추가</div><b class="memo-guide-prompt-title">AI(ChatGPT·Claude 등)에게 물어볼 때 복사해 쓰는 기본 프롬프트</b><textarea class="memo-guide-prompt" readonly rows="6">나는 Quilo(실험 보고서 생성 사이트)로 화학 '사전보고서'를 만들려고 해. 매뉴얼 PDF를 올리면 AI가 이론·기구·시약·실험과정을 써 줘. 거기에 함께 줄 'AI 참고 메모'를 쓰고 싶어 — 매뉴얼만 보고는 모를 맥락(꼭 넣을 이론 전개, 강조점, 절차 변경, 원하는 깊이)을 짧게 알려주는 글이야. 내 상황을 듣고 부족하면 2~3개만 물어본 뒤 'AI 참고 메모' 초안을 불릿으로 만들어줘. 없는 내용은 지어내지 마.
 
-[내 상황]: </textarea><button class="memo-guide-copy" type="button" data-action="copy-memo-guide">📋 프롬프트 복사</button></div></details>
+[내 상황]: </textarea><button class="memo-guide-copy" type="button" data-action="copy-memo-guide">프롬프트 복사</button></div></details>
           <small>.md/.txt 파일로 길게 작성한 메모도 함께 첨부할 수 있습니다. <a href="/examples.html#notes" target="_blank" rel="noopener">작성 가이드·예시 보기 →</a></small>
-          <button type="button" class="qc-memo-btn qc-assist-trigger qc-assist-trigger--tight" data-action="open-quilo-assist" data-assist-kind="memo" data-target="preUserNotes">✨ AI로 메모 작성 도움받기</button>
+          <button type="button" class="qc-memo-btn qc-assist-trigger qc-assist-trigger--tight" data-action="open-quilo-assist" data-assist-kind="memo" data-target="preUserNotes">AI로 메모 작성 도움받기</button>
           <input id="preUserNotesFile" name="userNotesFile" type="file" accept=".md,.txt,text/markdown,text/plain" aria-label="참고 메모 파일" />
         </div>
       </div>
@@ -1966,7 +2010,7 @@
             <span class="field-label">내가 쓴 예시 보고서 · 글 스타일 (PDF·이미지·텍스트·한글 .hwpx, 여러 개)</span>
             <div class="dropzone">
               <input id="cpStyleRefs" name="styleRefs" type="file" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.txt,.md,.csv,.hwpx,application/pdf,image/*" multiple aria-label="내 글 스타일 참고 파일" />
-              <span class="dropzone-icon" aria-hidden="true">✍️</span>
+            <span class="dropzone-icon" aria-hidden="true"></span>
               <span class="dropzone-title">내 글/예시 보고서를 끌어다 놓거나 클릭</span>
               <span class="dropzone-sub">문체 흉내 · 한글(.hwpx)이면 글꼴까지 · 내용 제외</span>
               <span class="dropzone-file" data-dz-file></span>
@@ -1976,7 +2020,7 @@
             <label><span class="field-label">문체 메모 (선택)</span>
               <textarea id="cpStyleNote" name="styleNote" rows="3" maxlength="1500" placeholder="예: 구어체로 직관 먼저 설명하고, 헷갈리는 지점을 짚으며 수식은 단계별로 유도하는 느낌"></textarea>
             </label>
-          <button type="button" class="qc-style-btn qc-assist-trigger" data-action="open-quilo-assist" data-assist-kind="style" data-target="cpStyleNote">✨ AI로 내 문체 정리받기</button>
+          <button type="button" class="qc-style-btn qc-assist-trigger" data-action="open-quilo-assist" data-assist-kind="style" data-target="cpStyleNote">AI로 내 문체 정리받기</button>
             <small>샘플 없이 원하는 느낌만 글로 적어도 됩니다.</small>
           </div>
         </div>
@@ -2100,6 +2144,12 @@
         <div class="status-block-copy" id="cloudStatus">상태 확인 중…</div>
         <div id="cloudActions"></div>
         <p class="hint space-top-12"><a href="/developers.html">API·ChatGPT·Codex 연동 설정 열기 →</a></p>
+      </div>
+      <div class="settings-card account-panel-empty" id="cloudEmptyState">
+        <span class="account-panel-empty__label">Connections</span>
+        <h2>아직 연결된 외부 서비스가 없습니다</h2>
+        <p class="hint">Dropbox, Google Drive, Notion을 연결하면 생성 파일을 더 오래 보관하고 다른 작업 흐름으로 이어갈 수 있습니다.</p>
+        <a class="btn btn-primary" href="/developers.html">연결 설정 열기</a>
       </div>
     </section>
 

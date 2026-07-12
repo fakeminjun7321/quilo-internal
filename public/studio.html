@@ -5,10 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
     <link rel="stylesheet" href="/ui/foundation.css" />
     <link rel="stylesheet" href="/ui/app-shell.css" />
+    <link rel="stylesheet" href="/ui/app-workbench.css" />
+    <script src="/ui/entitlement-gate.js"></script>
+    <script src="/ui/app-assets.js"></script>
     <title>스튜디오 — Quilo 창작</title>
     <link rel="icon" href="/favicon.ico" />
-    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs/loader.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
 </head>
   <body id="appShell" class="app-shell app-shell--studio" data-app-shell>
     <header class="app-commandbar" data-q-shell>
@@ -100,7 +101,7 @@
     <!-- 게시 모달 -->
     <div class="modal" id="pubModal" role="dialog" aria-modal="true" aria-labelledby="pubModalTitle">
       <div class="sheet">
-        <h3 id="pubModalTitle">🚀 게시하기</h3>
+        <h3 id="pubModalTitle">게시하기</h3>
         <label for="pTitle">제목</label>
         <input type="text" id="pTitle" placeholder="예: 실험 일정 위젯" />
         <label for="pSlug">주소(slug) — 비우면 자동</label>
@@ -272,7 +273,7 @@
       function renderEmpty() {
         const tpls = TEMPLATES.map((x, i) => `<button data-tpl="${i}"><b>${esc(x.t)}</b><span>${esc(x.p.slice(0, 38))}…</span></button>`).join("");
         $("msgs").innerHTML =
-          `<div class="empty"><h3>✨ 파일 올리고, 무엇이든 시키세요</h3>` +
+          `<div class="empty"><h3>파일을 올리고 무엇이든 요청하세요</h3>` +
           `<div>📎 로 PDF·이미지·데이터·.cap 을 올리고 말하면 AI가 알아서 처리해요 — <b>분석·대화</b>, <b>웹앱·위젯</b>, <b>이미지</b>. 물리 모의고사는 기출 시험지 PDF와 교과서 단원 PDF를 모두 첨부해 주세요. 아래는 앱 만들기 예시예요:</div>` +
           `<div class="tpl">${tpls}</div></div>`;
         $("msgs").querySelectorAll("[data-tpl]").forEach((b) => b.onclick = () => { const x = TEMPLATES[+b.dataset.tpl]; $("prompt").value = x.p; send(); });
@@ -396,7 +397,7 @@
         return '<!doctype html><html><head><meta charset="utf-8">' +
           '<script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"><\/script>' +
           '<style>body{margin:0;background:#0b0d12;color:#e7e9ef;font:13px ui-monospace,Menlo,monospace;padding:14px}h4{color:#9aa1b4;font:600 12px sans-serif;margin:0 0 10px}#o{white-space:pre-wrap;word-break:break-word}</style></head>' +
-          '<body><h4>🐍 ' + esc(name) + ' — Pyodide 실행</h4><div id="o">로딩 중…</div>' +
+          '<body><h4>' + esc(name) + ' — Pyodide 실행</h4><div id="o">로딩 중…</div>' +
           '<script>(async()=>{const o=document.getElementById("o");try{const py=await loadPyodide();let b="";const w=t=>{b+=t+"\\n";o.textContent=b;};py.setStdout({batched:w});py.setStderr({batched:w});o.textContent="";await py.runPythonAsync(' + safe + ');if(!b)o.textContent="(출력 없음)";}catch(e){o.textContent="⚠ "+e;}})();<\/script></body></html>';
       }
 
@@ -548,7 +549,8 @@
         }
       }
       async function downloadZip() {
-        if (!window.JSZip) { alert("ZIP 라이브러리 로딩 중이에요. 잠시 후 다시 시도해 주세요."); return; }
+        try { await window.QuiloAssets.jszip(); }
+        catch (e) { alert("ZIP 라이브러리를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요."); return; }
         const zip = new JSZip();
         Object.keys(project.files).forEach((p) => zip.file(p, project.files[p]));
         const blob = await zip.generateAsync({ type: "blob" });
@@ -788,11 +790,11 @@
       const MB = "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/";
       function loadMonaco() {
         if (monacoLoading) return monacoLoading;
-        monacoLoading = new Promise((resolve, reject) => {
+        monacoLoading = window.QuiloAssets.monacoLoader().then(() => new Promise((resolve, reject) => {
           window.MonacoEnvironment = { getWorkerUrl: () => "data:text/javascript;charset=utf-8," + encodeURIComponent("self.MonacoEnvironment={baseUrl:'" + MB + "'};importScripts('" + MB + "vs/base/worker/workerMain.js');") };
           try { require.config({ paths: { vs: MB + "vs" } }); require(["vs/editor/editor.main"], () => resolve(window.monaco)); }
           catch (e) { reject(e); }
-        });
+        }));
         return monacoLoading;
       }
       async function openCode() {
@@ -940,18 +942,16 @@
       }
 
       async function init() {
-        try {
-          const meR = await fetch("/api/me"); me = meR.ok ? await meR.json() : null;
-          const b = await api("/api/me/beta");
-          canCreate = !!b.admin || (Array.isArray(b.features) && b.features.includes("create"));
-        } catch (e) { canCreate = false; }
-        if (!canCreate) {
-          showGate(me
-            ? '🧩 <b>스튜디오</b>는 현재 <b>Pro 회원</b>에게만 열려 있어요. 갤러리는 누구나 구경할 수 있습니다.<div class="app-runtime-gap-top"><a class="btn sec" href="/create.html">갤러리 보기</a></div>'
-            : '로그인 후 <b>Pro 회원</b>에게 열립니다.<div class="app-runtime-gap-top"><a class="btn" href="/login.html">로그인</a> <a class="btn sec" href="/create.html">갤러리 보기</a></div>');
-          return;
-        }
-        $("gate").hidden = true; $("app").hidden = false;
+        const access = await window.QuiloEntitlement.require({
+          feature: "create",
+          gate: "#gate",
+          content: "#app",
+          forbiddenTitle: "Quilo Studio는 Pro 권한이 필요합니다",
+          forbiddenMessage: "갤러리는 누구나 볼 수 있으며, 제작은 Pro·Max 또는 create 기능 권한이 있는 계정에서 사용할 수 있습니다."
+        });
+        if (!access.allowed) return;
+        me = access.me || null;
+        canCreate = true;
         // 모델 목록(앱 빌드 + 이미지 생성)
         try { appModels = await api("/api/artifacts/models"); } catch {}
         try { const im = await api("/api/artifacts/image-models"); if (im && im.models && im.models.length) imageModels = im; } catch {}

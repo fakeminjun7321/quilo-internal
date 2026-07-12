@@ -7,6 +7,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/ui/foundation.css" />
     <link rel="stylesheet" href="/ui/app-shell.css" />
+    <link rel="stylesheet" href="/ui/app-workbench.css" />
+    <script src="/ui/entitlement-gate.js"></script>
     <meta name="theme-color" content="#2563eb" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" href="/favicon.png" />
@@ -887,27 +889,20 @@
           var status = document.getElementById("studyStatus");
           var gate = document.getElementById("studyGate");
           var main = document.getElementById("studyMain");
-          try {
-            var meRes = await fetch("/api/me");
-            if (!meRes.ok) throw new Error("login");
-            var betaRes = await fetch("/api/me/beta");
-            var beta = betaRes.ok ? await betaRes.json() : { features: [], admin: false };
-            var ok = beta.admin === true || (beta.features || []).indexOf(FEATURE) >= 0;
-            if (!ok) {
-              status.textContent = "Pro 권한 필요";
-              gate.hidden = false;
-              gate.innerHTML = "<strong>상대론 공부 도구는 Pro 회원에게만 열려 있습니다.</strong><p>사용을 원하면 운영자에게 요청해 주세요.</p><p><a class=\"study-gate-btn\" href=\"/\">메인으로</a></p>";
-              return;
-            }
-            status.textContent = beta.admin ? "관리자 접근" : "Pro 접근 가능";
-            main.hidden = false;
-            await loadModels();
-            applySpec(spec);
-          } catch (_) {
-            status.textContent = "로그인 필요";
-            gate.hidden = false;
-            gate.innerHTML = "<strong>로그인 후 사용할 수 있습니다.</strong><p>AI 분석 기능은 로그인한 Pro 회원에게만 제공됩니다.</p><p><a class=\"study-gate-btn\" href=\"/login.html\">로그인</a></p>";
+          var access = await window.QuiloEntitlement.require({
+            feature: FEATURE,
+            gate: gate,
+            content: main,
+            forbiddenTitle: "상대론 공부 도구는 Pro 권한이 필요합니다",
+            forbiddenMessage: "Pro·Max 또는 별도 기능 권한이 있는 계정에서 사용할 수 있습니다."
+          });
+          if (!access.allowed) {
+            status.textContent = access.state === "logged-out" ? "로그인 필요" : (access.state === "forbidden" ? "Pro 권한 필요" : "접근 확인 실패");
+            return;
           }
+          status.textContent = access.reason === "admin" ? "관리자 접근" : "Pro · Max 접근 가능";
+          await loadModels();
+          applySpec(spec);
         }
 
         // 예시로 채우기: 대표 시나리오 텍스트 + 어울리는 렌더링 모드를 입력에 채운다(생성/캔버스 로직은 그대로).

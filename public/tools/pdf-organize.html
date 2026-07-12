@@ -21,6 +21,7 @@
     <link rel="stylesheet" href="/ui/foundation.css" />
     <link rel="stylesheet" href="/ui/shell.css" />
     <link rel="stylesheet" href="/ui/pages.css" />
+    <link rel="stylesheet" href="/ui/tool-shell.css" />
   </head>
   <body class="landing q-shell-page ui-page">
     <div class="landing-bg" aria-hidden="true"></div>
@@ -91,9 +92,8 @@
       </div>
     </footer>
 
-    <script src="/tools/vendor/pdf-lib.min.js"></script>
-    <script src="/tools/vendor/pdf.min.js"></script>
     <script src="/ui/shell.js"></script>
+    <script src="/ui/tool-shell.js"></script>
     <script>
       (function () {
         var drop = document.getElementById("poDrop"),
@@ -134,7 +134,13 @@
             msg.innerHTML = '<span class="error">PDF 파일만 올릴 수 있습니다.</span>';
             return;
           }
-          if (!window.pdfjsLib) { msg.innerHTML = '<span class="error">PDF 라이브러리를 불러오지 못했습니다.</span>'; return; }
+          if (!window.pdfjsLib) {
+            msg.textContent = "PDF 미리보기 엔진을 불러오는 중…";
+            window.QuiloToolAssets.load("pdfJs").then(function () { load(f); }).catch(function (e) {
+              msg.innerHTML = '<span class="error">' + esc(e.message || "PDF 미리보기 엔진을 불러오지 못했습니다.") + "</span>";
+            });
+            return;
+          }
           fileName = f.name; msg.textContent = "PDF를 읽는 중…";
           (async function () {
             try {

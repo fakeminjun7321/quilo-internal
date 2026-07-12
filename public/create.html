@@ -7,6 +7,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/ui/foundation.css" />
     <link rel="stylesheet" href="/ui/app-shell.css" />
+    <link rel="stylesheet" href="/ui/app-workbench.css" />
     <title>창작 — AI로 만들고 공유하기</title>
     <script>
       (function () {
@@ -47,7 +48,7 @@
       <!-- 바이브 코딩 생성기 런처 (로그인 사용자 + 크레딧) -->
       <a class="launch app-inline-create-1" href="/vibe-coding.html">
         <div class="lt">
-          <h1>✨ 바이브 코딩 생성기</h1>
+          <h1>바이브 코딩 생성기</h1>
           <p>만들고 싶은 걸 한 문장으로 적으면 AI가 프로젝트 설계·MVP·첫 작업·검증 루틴과 AI 코딩 도구용 작업 지시문까지 만들어 줘요.</p>
           <span class="launch-req">🔑 로그인 · 크레딧 필요</span>
         </div>
@@ -57,7 +58,7 @@
       <!-- 스튜디오 런처 (만들기 권한 있을 때) -->
       <a id="launch" class="launch app-inline-create-3" href="/studio.html" hidden>
         <div class="lt">
-          <h1>✨ 스튜디오</h1>
+          <h1>스튜디오</h1>
           <p>대화하듯 AI에게 말하면 웹앱·위젯·도구를 만들어 줘요. 미리보기를 보며 "더 예쁘게", "다크모드로" 처럼 고쳐 나가세요.</p>
           <span class="launch-req">🔑 로그인 · 크레딧 필요</span>
         </div>
@@ -71,12 +72,12 @@
 
       <!-- 내 창작 (관리) -->
       <div id="mineWrap" class="app-inline-create-4" hidden>
-        <div class="secthead"><h2>🗂 내 창작</h2><span class="muted" id="whoami"></span></div>
+        <div class="secthead"><h2>내 창작</h2><span class="muted" id="whoami"></span></div>
         <div id="mylist"><div class="empty"><strong>내 창작을 불러오는 중입니다.</strong>잠시만 기다려 주세요.</div></div>
       </div>
 
       <!-- 갤러리 (모두 공개) -->
-      <div class="secthead"><h2>🌐 모두의 창작</h2><span class="muted" id="galcount"></span>
+      <div class="secthead"><h2>모두의 창작</h2><span class="muted" id="galcount"></span>
         <select id="sort" aria-label="정렬 기준" title="정렬 기준" class="app-inline-create-5"><option value="new">최신순</option><option value="likes">인기순(좋아요)</option><option value="views">조회순</option></select>
       </div>
       <div id="chips" class="row app-inline-create-6"></div>
@@ -121,7 +122,7 @@
       async function init() {
         try {
           const b = await api("/api/me/beta");
-          canCreate = !!b.admin || (Array.isArray(b.features) && b.features.includes("create"));
+          canCreate = !!b.admin || String(b.tier || "").toLowerCase() === "max" || (Array.isArray(b.features) && b.features.includes("create"));
           if (b.admin) $("whoami").textContent = "· 관리자";
         } catch (e) { canCreate = false; }
         if (canCreate) { $("launch").hidden = false; $("mineWrap").hidden = false; loadMine(); }

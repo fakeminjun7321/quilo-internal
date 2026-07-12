@@ -1535,10 +1535,12 @@ def normalize_hwp_script(script: str) -> str:
         lambda m: "{}^{" + (m.group("braced") or m.group("bare")) + "} sqrt ",
         text,
     )
-    # 'lnot' 은 한컴 키워드가 아니다 — 그리디 렉싱이 ln+otp 로 쪼갠다
-    # (렌더 시트 S2-92 실측: \neg p → 'ln otp'). 부정 기호는 글리프로 낸다
-    # (한컴 스크립트의 알몸 유니코드 글리프는 정상 렌더 — °C 등 실측).
-    text = re.sub(r"(?<![A-Za-z])lnot(?![A-Za-z])", "¬", text)
+    # 'lnot'(소문자)은 한컴 키워드가 아니다 — 문서 렌더러가 ln+otp 로 쪼갠다
+    # (렌더 시트 S2-92 실측). 정준 키워드는 대문자 LNOT — 편집기 왕복 XML
+    # 에서 확인했고(¬→LNOT 재직렬화) 문서 렌더러도 ¬p 로 정상 렌더(3라운드
+    # after S1-9 실측). ¬ 글리프 입력도 같은 키워드로 접는다.
+    text = re.sub(r"(?<![A-Za-z])lnot(?![A-Za-z])", " LNOT ", text)
+    text = text.replace("¬", " LNOT ")
     # OVERBRACE/UNDERBRACE 는 한컴 키워드가 아니다 — 어느 인자 형태든 수식이
     # 통째로 빈 렌더가 된다(렌더 시트 2라운드 S1-9~11 실측: 2인자·후첨자·
     # 단일 인자 전멸). 내용 소실이 가장 나쁘므로 우아한 강등을 택한다:

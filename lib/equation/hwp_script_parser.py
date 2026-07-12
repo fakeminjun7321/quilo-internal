@@ -73,7 +73,7 @@ SYMBOL_WORDS = frozenset(
     RARROW LRARROW uparrow downarrow udarrow UPARROW DOWNARROW UDARROW
     mapsto nwarrow nearrow swarrow searrow hookleft hookright VERT LLL
     COPROD TRIANGLED EXARROW SQSUBSET SQSUPSET SQSUBSETEQ SQSUPSETEQ
-    BUILDREL""".split()
+    BUILDREL LNOT RLHARPOONS LRHARPOONS vert""".split()
 )
 
 KEYWORDS: frozenset[str] = frozenset(
@@ -103,6 +103,9 @@ _SAFE_SYNONYM_SETS = [
     {"LARROW", "⇐"},
     {"LRARROW", "⇔"},
     {"RARROW", "⇒"},
+    {"LNOT", "¬"},
+    {"RLHARPOONS", "⇋"},
+    {"vert", "|"},
     {"cdot", "·", "∙", "⋅"},
     {"in", "IN", "∈"},
     {"inf", "INF", "∞"},

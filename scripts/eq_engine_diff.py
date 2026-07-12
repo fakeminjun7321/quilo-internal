@@ -260,8 +260,9 @@ GOLDEN_LATEX_GUARD = {
         ["lim_"], ["limits", "lim its"],
     ),
     r"A^\top B": (["top"], ["-> p"]),
-    # lnot 은 한컴 비키워드('ln'+'otp' 렌더, 실측) — 부정은 ¬ 글리프로.
-    r"\neg p": (["¬"], ["lnot", "!= g"]),
+    # lnot(소문자)은 한컴 비키워드('ln'+'otp' 렌더, 실측) — 정준은 LNOT
+    # (편집기 재직렬화·문서 렌더 모두 실측 확인).
+    r"\neg p": (["LNOT"], ["lnot", "!= g"]),
     r"A^\intercal": (["{T}"], [" ercal", "intercal"]),
     r"p \Leftarrow q": (["LARROW"], ["<="]),
     r"A \Leftrightarrow B": (["LRARROW"], ["<->"]),

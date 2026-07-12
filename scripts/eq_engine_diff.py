@@ -273,9 +273,9 @@ GOLDEN_LATEX_GUARD = {
     # \sup/\inf 함수명 — 알몸 sup 은 한컴 위첨자 연산자와 충돌해 수식이
     # 통째로 증발하고(실측 S2-51·68), 알몸 inf 는 ∞ 로 그려진다. 인용은
     # 편집기 왕복에서 깨지므로(실측) 낱자 분해가 정준형이다.
-    r"\sup_{n \ge 1} a_n \le \det A": (["s u p"], ["sup_{", '"sup"']),
-    r"\inf_{n \ge 1} b_n": (["i n f"], ["inf_{", '"inf"']),
-    r"\sup_{x \in A} f(x)": (["s u p"], ["sup_{", '"sup"']),
+    r"\sup_{n \ge 1} a_n \le \det A": (["s{}u{}p"], ["sup_{", '"sup"', "s u p"]),
+    r"\inf_{n \ge 1} b_n": (["i{}n{}f"], ["inf_{", '"inf"', "i n f"]),
+    r"\sup_{x \in A} f(x)": (["s{}u{}p"], ["sup_{", '"sup"', "s u p"]),
     r"\begin{vmatrix} a & b \\ c & d \end{vmatrix} = ad - bc": (
         ["dmatrix"], ["vmatrix", "Vmatrix"],
     ),
@@ -320,7 +320,7 @@ GOLDEN_LATEX_GUARD = {
     # 물리 %Diff 절댓값식 — 라벨 정준형: 키워드 품은 pivot 은 낱자 분해,
     # 키워드 없는 cm 은 알몸(무따옴표 안정 표기).
     r"\%Diff = |I_{pivot} - I_{cm}|/I_{cm} \times 100\%": (
-        ["p i v o t", "{ cm }"], ['"pivot"', '"cm"'],
+        ["p{}i{}v{}o{}t", "{ cm }"], ['"pivot"', '"cm"', "p i v o t"],
     ),
     # LaTeX 원문의 '_ {…}' 공백 첨자 — max 는 함수 키워드라 알몸 유지.
     r"\omega _{max} = 2.5 rad/s": (["_{ max }"], ['"max"', "m a x"]),

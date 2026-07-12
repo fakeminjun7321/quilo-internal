@@ -1450,11 +1450,14 @@ def convert_slash_to_over(script: str) -> str:
 # 무따옴표·키워드 유지). 그래서 최종 스크립트의 따옴표를 안정 표기로 푼다:
 #   · 한글/비ASCII·키워드 없는 단어(kg·mol·out·percent) → 알몸 그대로
 #   · 함수명 키워드(max·lim·log…) → 알몸 키워드(업라이트 함수 렌더)
-#   · 키워드를 품은 단어(pivot⊃pi, in, sup) → 낱자 분해 'p i v o t'
-#     (낱자는 독립 토큰이라 그리디 렉싱이 기호로 오해할 수 없다 — hwip 의
-#      낱자 분해 출력이 수 주간 실서비스에서 왕복 안전했던 것과 동일 원리)
+#   · 키워드를 품은 단어(pivot⊃pi, in, sup) → 빈 그룹 삽입 'p{}i{}v{}o{}t'
+#     (2026-07-13 한컴 실측: 낱자+공백 'p i v o t' 는 편집기 넣기가 'pivot'
+#      으로 재결합해 재오픈 시 문서 렌더러가 πvot 로 그린다. 빈 그룹 {} 은
+#      각 글자를 렌더 안 보이는 그룹 경계로 나눠 그리디 렉싱을 원천 차단하고
+#      편집기 재결합도 막는다 — I_{p{}ivot} → pivot 정상 렌더 직접 확인.)
 #   · 단어 사이 실제 공백 → ~ (한컴 일반 공백)
-#   · 구조 문자({}#&^_`~"\)가 든 본문 → 인용 유지(희귀, 안전 우선)
+#   · 구조 문자(#&^_`~"\)가 든 본문 → 인용 유지(희귀, 안전 우선. 단 중괄호
+#     {} 는 아래에서 직접 삽입하므로 unsafe 목록에서 뺀다)
 #
 # 한컴 렉싱 위험 판정용 키워드(대소문자 구분, 2글자 이상). 검증용 파서
 # (hwp_script_parser.KEYWORDS)와 취지는 같지만 여기선 '알몸으로 두면 기호로
@@ -1485,7 +1488,11 @@ _DEQUOTE_FUNC_WORDS = frozenset(
     """sin cos tan cot sec csc arcsin arccos arctan sinh cosh tanh coth ln
     log lg lim max min exp det gcd mod arg deg dim ker hom Pr""".split()
 )
-_DEQUOTE_UNSAFE_CHARS = set('{}#&^_\\`~"')
+# 인용 본문에 이 문자가 있으면 dequote 하지 않고 인용을 유지한다(희귀·안전
+# 우선). 중괄호 {} 는 _split_keyword_run 이 직접 삽입하는 정상 출력 문자이자
+# 인용 본문에 원래 없으므로 목록에서 뺀다 — 넣으면 방금 만든 {} 가 재진입
+# 시 인용 유지로 되돌아가지만, dequote 는 인용을 없앤 뒤라 재진입이 없다.
+_DEQUOTE_UNSAFE_CHARS = set('#&^_\\`~"')
 
 
 def _word_hits_hancom_keyword(word: str) -> bool:
@@ -1501,11 +1508,29 @@ def _word_hits_hancom_keyword(word: str) -> bool:
     return False
 
 
+def _split_keyword_run(word: str) -> str:
+    """키워드를 품은 글자 런의 모든 인접 글자 사이에 빈 그룹 {} 을 끼운다.
+
+    한컴 문서 렌더러는 비인용 글자 런을 부분문자열 최장 일치로 렉싱해
+    'pivot' 의 'pi' 를 π 로, 'initial' 의 'in' 을 ∈ 로 바꾼다. 빈 그룹 {}
+    은 화면에 안 보이는 그룹 경계라, 글자 사이마다 끼우면 어떤 2글자도
+    인접하지 못해 키워드 매칭이 원천 차단된다(2026-07-13 실측: I_{p{}ivot}
+    → pivot 정상).
+
+    '최소 삽입'(위험 키워드 경계에만 {})은 삽입이 새 인접쌍을 만들어 또
+    다른 키워드가 생기는 함정이 있다 — 'initial' 을 in·it 로 끊으면 'ni'
+    (한컴 owns 기호 ∋)가 새로 생겨 T_{i∃tial} 로 깨졌다(실측). 전 글자
+    분리는 이 부류의 2차 파손을 구조적으로 없앤다. 빈 그룹은 렌더·구조
+    동치성 모두 무해하므로(파서가 낱자 분해와 equal 로 인정) 대가가 없다.
+    """
+    return "{}".join(word)
+
+
 def _dequote_word(word: str) -> str:
     if word in _DEQUOTE_FUNC_WORDS:
         return word
     if re.fullmatch(r"[A-Za-z]+", word) and _word_hits_hancom_keyword(word):
-        return " ".join(word)  # 낱자 분해 — 렉싱 오해 원천 차단
+        return _split_keyword_run(word)  # 빈 그룹 전 글자 분리 — 렉싱·재결합 차단
     return word
 
 

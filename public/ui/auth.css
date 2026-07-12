@@ -1,6 +1,6 @@
 .auth-page {
   display: grid;
-  grid-template-rows: 72px minmax(0, 1fr) auto;
+  grid-template-rows: var(--ui-site-header-h, 76px) minmax(0, 1fr) auto;
   min-height: 100vh;
 }
 
@@ -9,7 +9,7 @@
   z-index: 10;
   display: flex;
   align-items: center;
-  min-height: 72px;
+  min-height: var(--ui-site-header-h, 76px);
   padding: 0 36px;
   border-bottom: 1px solid var(--ui-line);
   background: var(--ui-surface);
@@ -26,27 +26,23 @@
 .auth-brand {
   display: inline-flex;
   align-items: center;
-  gap: 11px;
+  gap: 10px;
   color: var(--ui-text);
-  font-size: 21px;
+  font-size: 24px;
   font-weight: 800;
-  letter-spacing: -0.03em;
+  letter-spacing: -0.04em;
 }
 
 .auth-brand:hover {
   text-decoration: none;
 }
 
-.auth-brand__mark {
-  display: grid;
-  place-items: center;
-  width: 36px;
-  height: 36px;
+.auth-brand img {
+  display: block;
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
   border-radius: 9px;
-  background: var(--ui-brand);
-  color: #fff;
-  font-size: 18px;
-  font-weight: 800;
 }
 
 .auth-header__actions {
@@ -59,7 +55,7 @@
 }
 
 .auth-header__link,
-.auth-theme {
+.context-theme {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -73,20 +69,23 @@
   font-weight: 650;
 }
 
-.auth-theme {
-  width: 44px;
-  height: 44px;
-  min-height: 44px;
+.context-theme {
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  min-height: 40px;
   padding: 0;
-  font-size: 18px;
+  border-color: var(--ui-line);
+  background: var(--ui-surface);
 }
 
-.auth-theme__sun { display: none; }
-html[data-theme="dark"] .auth-theme__moon { display: none; }
-html[data-theme="dark"] .auth-theme__sun { display: inline; }
+.context-theme__icon { font-size: 20px; line-height: 1; }
+.context-theme__icon--sun { display: none; }
+html[data-theme="dark"] .context-theme__icon--moon { display: none; }
+html[data-theme="dark"] .context-theme__icon--sun { display: inline; }
 
 .auth-header__link:hover,
-.auth-theme:hover {
+.context-theme:hover {
   border-color: var(--ui-line);
   background: var(--ui-surface-subtle);
   color: var(--ui-text);

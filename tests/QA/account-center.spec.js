@@ -199,8 +199,7 @@ for (const [role, label] of [["free", "Free"], ["pro", "Pro"], ["max", "Max"], [
     await expect(page.locator("#qc-launch")).toHaveCount(0);
     if (role === "admin") await expect(page.locator("#adminLink")).not.toHaveAttribute("hidden", "");
     else await expect(page.locator("#adminLink")).toHaveAttribute("hidden", "");
-    if (role === "free") await expect(page.locator("#navBetaEditor")).toHaveAttribute("hidden", "");
-    else await expect(page.locator("#navBetaEditor")).not.toHaveAttribute("hidden", "");
-    if (role === "max" || role === "admin") await expect(page.locator("#navBetaTranslate")).not.toHaveAttribute("hidden", "");
+    await expect(page.locator("#navBetaEditor, #navBetaTranslate")).toHaveCount(0);
+    await expect(page.locator('.ui-site-nav a[href="/translate.html"]')).toHaveCount(1);
   });
 }

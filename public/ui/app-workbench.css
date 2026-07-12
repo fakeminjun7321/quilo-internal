@@ -40,7 +40,7 @@
 
 /* Code editor */
 .app-shell--editor { overflow: hidden; background: #111827; }
-.app-shell--editor #main-content { height: calc(100vh - var(--app-header-h) - var(--app-status-h)); }
+.app-shell--editor #main-content { height: calc(100vh - var(--ui-site-header-h, 76px) - var(--app-status-h)); }
 .app-shell--editor .gate { margin-top: 80px; }
 .app-shell--editor .qide { display: flex; flex-direction: column; width: 100%; height: 100%; color: #e7ebf3; background: #111827; }
 .app-shell--editor .qt-titlebar { display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 0 12px; border-bottom: 1px solid #2b3443; background: #18202d; }
@@ -68,7 +68,7 @@
 
 /* Studio */
 .app-shell--studio { overflow: hidden; }
-.app-shell--studio #main-content { height: calc(100vh - var(--app-header-h) - var(--app-status-h)); }
+.app-shell--studio #main-content { height: calc(100vh - var(--ui-site-header-h, 76px) - var(--app-status-h)); }
 .app-shell--studio .gate { margin-top: 80px; }
 .app-shell--studio .app { display: grid; grid-template-columns: 330px minmax(0, 1fr); height: 100%; }
 .app-shell--studio .chat { display: flex; min-height: 0; flex-direction: column; border-right: 1px solid var(--app-line); background: var(--app-panel); }

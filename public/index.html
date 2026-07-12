@@ -38,165 +38,13 @@
     </script>
     <link rel="stylesheet" href="/ui/foundation.css" />
     <link rel="stylesheet" href="/ui/workspace.css" />
+    <link rel="stylesheet" href="/ui/shell.css" />
     <link rel="stylesheet" href="/ui/forms.css" />
     <link rel="stylesheet" href="/ui/generation.css" />
     <link rel="stylesheet" href="/ui/account-center.css" />
   </head>
   <body class="home-page" data-auth="pending" data-view="landing">
-    <header class="topnav" id="topnav">
-      <div class="topnav-inner">
-        <a href="/" class="brand">
-          <span class="brand-mark" aria-hidden="true">Q</span>
-          Quilo
-        </a>
-        <button type="button" class="topnav-burger" id="navBurger" aria-label="메뉴 열기" aria-expanded="false">☰</button>
-        <nav class="topnav-menu" id="navMenu" aria-label="주 메뉴">
-          <div class="nav-dd" data-dd>
-            <button type="button" class="nav-dd-btn" aria-expanded="false">제품 <span class="caret" aria-hidden="true"></span></button>
-            <div class="nav-dd-menu nav-mega-menu" aria-label="제품 메뉴">
-              <div class="nav-mega-inner nav-mega-inner--product">
-                <section class="nav-mega-group">
-                  <p class="nav-mega-label">Create</p>
-                  <a href="/?report=chem-pre" data-report="chem-pre"><strong>화학 사전보고서</strong><span>매뉴얼에서 이론과 실험 절차를 정리합니다.</span></a>
-                  <a href="/?report=chem-result" data-report="chem-result"><strong>화학 결과보고서</strong><span>데이터와 사진을 결과 추가분으로 만듭니다.</span></a>
-                  <a href="/?report=phys-result" data-report="phys-result"><strong>물리 결과보고서</strong><span>Capstone·엑셀을 표와 그래프로 분석합니다.</span></a>
-                  <a href="/?report=free" data-report="free"><strong>자유 보고서</strong><span>지시와 자료를 원하는 형식으로 정리합니다.</span></a>
-                </section>
-                <section class="nav-mega-group">
-                  <p class="nav-mega-label">Study</p>
-                  <a href="/?report=reading-log" data-report="reading-log"><strong>독서록</strong><span>도서 정보로 독서활동 기록지를 완성합니다.</span></a>
-                  <a href="/?report=problem-set" id="navBetaProblemSet" hidden><strong>문제집 메이커</strong><span>문제와 해설을 한 번에 구성합니다.</span></a>
-                  <a href="/?report=form-maker" id="navBetaFormMaker" hidden><strong>양식 메이커</strong><span>말과 사진을 편집 가능한 양식으로 바꿉니다.</span></a>
-                </section>
-                <section class="nav-mega-group nav-mega-feature">
-                  <p class="nav-mega-label">Start here</p>
-                  <a href="/?report=free"><strong>무엇이든 초안부터 시작하세요.</strong><span>주제와 자료를 넣으면 적합한 작업 흐름으로 안내합니다.</span><em>Quilo 시작하기 →</em></a>
-                </section>
-              </div>
-            </div>
-          </div>
-          <div class="nav-dd" data-dd>
-            <button type="button" class="nav-dd-btn" aria-expanded="false">솔루션 <span class="caret" aria-hidden="true"></span></button>
-            <div class="nav-dd-menu nav-mega-menu" aria-label="솔루션 메뉴">
-              <div class="nav-mega-inner">
-                <section class="nav-mega-group">
-                  <p class="nav-mega-label">Learn</p>
-                  <a href="/exam-prep.html" id="navExamPrep" hidden><strong>수행평가 도움</strong><span>수학·물리 탐구를 구조화합니다.</span></a>
-                  <a href="/physics-studio.html" id="navBetaPhysStudio" hidden><strong>고급 물리 문제</strong><span>복잡한 문제를 단계별로 풉니다.</span></a>
-                  <a href="/filechat.html" id="navBetaFilechat" hidden><strong>파일 대화</strong><span>내 자료 안에서 근거를 찾아 답합니다.</span></a>
-                </section>
-                <section class="nav-mega-group">
-                  <p class="nav-mega-label">Build</p>
-                  <a href="/create.html" id="navBetaCreate" hidden><strong>창작 스튜디오</strong><span>아이디어를 실제 결과물로 만듭니다.</span></a>
-                  <a href="/vibe-coding.html" id="navBetaVibe" hidden><strong>바이브 코딩</strong><span>요구사항부터 실행 가능한 설계까지 만듭니다.</span></a>
-                  <a href="/editor.html" id="navBetaEditor" hidden><strong>Quilo Code</strong><span>브라우저에서 코드를 작성하고 실행합니다.</span></a>
-                </section>
-                <section class="nav-mega-group">
-                  <p class="nav-mega-label">Transform</p>
-                  <a href="/tools/convert.html"><strong>파일 변환기</strong><span>이미지·PDF·표·수식을 한곳에서 변환합니다.</span></a>
-                  <a href="/translate.html" id="navBetaTranslate" hidden><strong>PDF 통번역</strong><span>문서 구조를 보존하며 번역합니다.</span></a>
-                </section>
-              </div>
-            </div>
-          </div>
-          <div class="nav-dd" data-dd>
-            <button type="button" class="nav-dd-btn" aria-expanded="false">앱 <span class="caret" aria-hidden="true"></span></button>
-            <div class="nav-dd-menu nav-mega-menu" aria-label="앱 메뉴">
-              <div class="nav-mega-inner nav-mega-inner--compact">
-                <section class="nav-mega-group">
-                  <p class="nav-mega-label">Desktop</p>
-                  <a href="/apps/quilo.html"><strong>Quilo Desktop</strong><span>웹에서 하던 작업을 Mac과 Windows에서 이어갑니다.</span></a>
-                </section>
-                <section class="nav-mega-group">
-                  <p class="nav-mega-label">Speech</p>
-                  <a href="/apps/live-translator.html"><strong>Live Translator</strong><span>실시간 음성을 빠르게 받아쓰고 번역합니다.</span></a>
-                </section>
-              </div>
-            </div>
-          </div>
-          <div class="nav-dd" data-dd>
-            <button type="button" class="nav-dd-btn" aria-expanded="false">개발자 <span class="caret" aria-hidden="true"></span></button>
-            <div class="nav-dd-menu nav-mega-menu" aria-label="개발자 메뉴">
-              <div class="nav-mega-inner nav-mega-inner--compact">
-                <section class="nav-mega-group"><p class="nav-mega-label">Platform</p><a href="/developers.html"><strong>개발자 플랫폼</strong><span>Quilo 기능을 API와 Codex에 연결합니다.</span></a></section>
-                <section class="nav-mega-group"><p class="nav-mega-label">Resources</p><a href="/developers.html#catalog"><strong>기능 카탈로그</strong><span>연결 가능한 기능과 요청 형식을 확인합니다.</span></a><a href="/developers.html#tokenCard"><strong>API 토큰</strong><span>범위가 제한된 토큰을 안전하게 관리합니다.</span></a></section>
-              </div>
-            </div>
-          </div>
-          <div class="nav-dd" data-dd>
-            <button type="button" class="nav-dd-btn" aria-expanded="false">리소스 <span class="caret" aria-hidden="true"></span></button>
-            <div class="nav-dd-menu nav-mega-menu" aria-label="리소스 메뉴">
-              <div class="nav-mega-inner">
-                <section class="nav-mega-group"><p class="nav-mega-label">Learn</p><a href="/guide.html"><strong>이용 가이드</strong><span>기능별 시작 방법과 사용 원칙입니다.</span></a><a href="/examples.html"><strong>예시 모음</strong><span>완성된 결과와 활용 방식을 살펴봅니다.</span></a></section>
-                <section class="nav-mega-group"><p class="nav-mega-label">Updates</p><a href="/changelog.html"><strong>업데이트</strong><span>새 기능과 개선 내역을 확인합니다.</span></a><a href="/community.html"><strong>커뮤니티</strong><span>작업 사례와 질문을 나눕니다.</span></a></section>
-                <section class="nav-mega-group"><p class="nav-mega-label">Organizations</p><a href="/school-apply.html"><strong>학교 도입</strong><span>기관용 Quilo 도입을 문의합니다.</span></a></section>
-              </div>
-            </div>
-          </div>
-          <a class="topnav-link" href="/pricing.html">요금</a>
-          <a class="topnav-link" href="https://www.instagram.com/quilo._.official/" target="_blank" rel="noopener">Instagram ↗</a>
-          <!-- 로그아웃 상태: '로그인' 누르면 로그인 폼이 드롭다운으로 내려온다 -->
-          <div class="nav-dd nav-dd-right" data-dd id="loginDd" hidden>
-            <button type="button" class="nav-dd-btn nav-login-trigger" aria-expanded="false">로그인 <span class="caret" aria-hidden="true">▾</span></button>
-            <div class="nav-dd-menu nav-login-menu nav-popover">
-              <form id="loginForm" class="auth-form auth-form--compact">
-                <div class="auth-panel__head">
-                  <p class="auth-kicker">Account sign in</p>
-                  <h2>Quilo에 로그인</h2>
-                  <p>보고서 작업과 생성 파일을 이어서 관리하세요.</p>
-                </div>
-                <div class="field">
-                  <label for="li_username"><span class="field-label">아이디</span></label>
-                  <input id="li_username" name="username" required maxlength="50" autocomplete="username" />
-                </div>
-                <div class="field">
-                  <label for="li_password"><span class="field-label">비밀번호</span></label>
-                  <input id="li_password" name="password" type="password" required autocomplete="current-password" />
-                </div>
-                <div class="auth-form-row">
-                  <label class="auth-check li-remember">
-                    <input id="li_remember" name="remember" type="checkbox" checked />
-                    <span>이 기기에서 로그인 유지</span>
-                  </label>
-                </div>
-                <div class="form-actions">
-                  <button type="submit" id="li_btn" class="btn btn-primary auth-primary">로그인</button>
-                </div>
-                <p id="li_err" class="form-error" role="alert" aria-live="polite"></p>
-                <p class="auth-compact-note">공용 기기에서는 로그인 유지를 해제하세요.</p>
-                <p class="auth-alt">계정이 없으신가요? <a href="/signup.html">회원가입</a></p>
-              </form>
-            </div>
-          </div>
-
-          <!-- 로그인 상태: 계정 메뉴 -->
-          <div class="nav-dd nav-dd-right" data-dd id="acctDd" hidden>
-            <button type="button" class="nav-dd-btn account-trigger" aria-expanded="false"><span class="account-trigger-copy"><span id="user">내 계정</span><small id="accountTriggerMeta">Account</small></span> <span class="caret" aria-hidden="true"></span></button>
-            <div class="nav-dd-menu nav-account-menu nav-popover">
-              <div class="account-menu-head"><strong id="accountMenuName">내 계정</strong><span id="accountMenuMeta">Quilo Account</span></div>
-              <a href="#" data-tab="settings"><strong>Account Center</strong><span>계정·사용량·기본 설정</span></a>
-              <a href="#" data-tab="files"><strong>내 파일</strong><span>최근 생성 파일</span></a>
-              <a href="#integrations" data-tab="integrations"><strong>외부 서비스 연결</strong><span>Dropbox와 API 연결</span></a>
-              <a href="#" data-tab="feedback"><strong>지원 및 건의사항</strong><span>문제 제보와 기능 제안</span></a>
-              <a href="/admin" id="adminLink" hidden>관리자</a>
-              <div class="dd-sep" aria-hidden="true"></div>
-              <a href="#" id="logout">로그아웃</a>
-            </div>
-          </div>
-          <a class="home-start-cta" href="/?report=free">무료로 시작하기</a>
-          <button
-            type="button"
-            id="themeToggle"
-            class="theme-toggle"
-            aria-label="다크 모드로 전환"
-            title="다크 모드로 전환"
-          >
-            <span class="theme-icon-light" aria-hidden="true">🌙</span>
-            <span class="theme-icon-dark" aria-hidden="true">☀️</span>
-          </button>
-        </nav>
-      </div>
-    </header>
+    <header class="ui-site-header" data-ui-shell></header>
 
     <div id="annTicker" class="ann-ticker" hidden aria-label="공지사항">
       <div class="ann-inner">
@@ -2397,6 +2245,7 @@
 
     <script src="/version-footer.js"></script>
     <script src="/theme.js"></script>
+    <script src="/ui/shell.js"></script>
     <script type="module" src="/workspace/bootstrap.js"></script>
     <script src="/chat-widget.js" defer></script>
   </body>

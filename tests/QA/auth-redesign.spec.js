@@ -114,8 +114,8 @@ test("auth theme controls use icon-only moon/sun states and keep accessible labe
     await expect(toggle).toHaveText(/☾\s*☀/);
     await expect(toggle.locator(".auth-theme__moon")).toHaveCount(1);
     await expect(toggle.locator(".auth-theme__sun")).toHaveCount(1);
-    await expect(toggle).toHaveCSS("width", "44px");
-    await expect(toggle).toHaveCSS("height", "44px");
+    await expect(toggle).toHaveCSS("width", "40px");
+    await expect(toggle).toHaveCSS("height", "40px");
     await expect(toggle).toHaveAttribute("aria-label", "다크 모드로 전환");
     await expect(toggle).toHaveAttribute("title", "다크 모드로 전환");
     await expect(toggle.locator(".auth-theme__moon")).toBeVisible();

@@ -108,8 +108,8 @@ const APP_SHELL_ROUTES = Object.freeze([
 ]);
 const APP_SHELL_ROUTE_SET = new Set(APP_SHELL_ROUTES);
 
-// These surfaces intentionally keep dedicated authentication, administration,
-// or CompactAppShell chrome and are not part of the marketing shell matrix.
+// These surfaces keep dedicated authentication or administration chrome, or
+// share the canonical header above a desktop-first work surface.
 const EXCLUDED_ROUTES = Object.freeze({
   auth: Object.freeze(["/login.html", "/signup.html", "/verify-email.html"]),
   admin: Object.freeze(["/admin.html"]),
@@ -429,14 +429,7 @@ for (const viewport of VIEWPORTS) {
         await page.setViewportSize({ width: viewport.width, height: viewport.height });
         await page.goto(`${baseUrl}${route}`, { waitUntil: "networkidle" });
 
-        const staticShell = NEW_STATIC_SHELL_ROUTES.has(route);
-        const appShell = APP_SHELL_ROUTE_SET.has(route);
-        const shellSelector = staticShell
-          ? "[data-ui-shell]"
-          : appShell
-            ? "[data-app-shell]"
-            : "[data-q-shell-root]";
-        await expect(page.locator(shellSelector), `${route} shared shell`).toBeVisible();
+        await expect(page.locator("[data-ui-shell]"), `${route} shared shell`).toBeVisible();
         await expect(page.locator(".ui-site-header"), `${route} visible header`).toBeVisible();
         await expect(page.locator(".ui-site-footer"), `${route} visible footer`).toBeVisible();
         await expect(page.locator("#main-content"), `${route} main landmark`).toHaveCount(1);
@@ -444,27 +437,16 @@ for (const viewport of VIEWPORTS) {
         await expect(page.locator(".landing-nav"), `${route} legacy navigation`).toHaveCount(0);
 
         if (viewport.width > 760) {
-          const navSelector = staticShell ? ".ui-site-nav" : appShell ? ".app-commandbar" : ".q-shell__nav";
-          const actionsSelector = staticShell
-            ? ".ui-site-actions"
-            : appShell
-              ? ".app-commandbar__actions"
-              : ".q-shell__actions";
-          await expect(page.locator(navSelector), `${route} desktop navigation`).toBeVisible();
-          await expect(page.locator(actionsSelector), `${route} desktop actions`).toBeVisible();
-          if (!appShell) {
-            const mobileSelector = staticShell ? ".ui-mobile-menu" : ".q-shell__mobile";
-            await expect(page.locator(mobileSelector), `${route} mobile disclosure`).toBeHidden();
-          }
+          await expect(page.locator(".ui-site-nav"), `${route} desktop navigation`).toBeVisible();
+          await expect(page.locator(".ui-site-actions"), `${route} desktop actions`).toBeVisible();
+          await expect(page.locator(".ui-mobile-menu"), `${route} mobile disclosure`).toBeHidden();
 
-          if (staticShell) {
-            const themeButton = page.locator(".ui-site-actions .ui-theme-toggle");
-            await expect(themeButton, `${route} desktop moon theme control`).toBeVisible();
-            await expect(themeButton).toHaveAttribute("aria-label", /테마로 변경/);
-            const initialTheme = await page.locator("html").getAttribute("data-theme");
-            await themeButton.click();
-            await expect(page.locator("html")).not.toHaveAttribute("data-theme", initialTheme || "light");
-          }
+          const themeButton = page.locator(".ui-site-actions .ui-theme-toggle");
+          await expect(themeButton, `${route} desktop theme control`).toBeVisible();
+          await expect(themeButton).toHaveAttribute("aria-label", /테마로 변경/);
+          const initialTheme = await page.locator("html").getAttribute("data-theme");
+          await themeButton.click();
+          await expect(page.locator("html")).not.toHaveAttribute("data-theme", initialTheme || "light");
         }
 
         const shellClipping = await page.evaluate(() =>
@@ -525,17 +507,27 @@ for (const viewport of VIEWPORTS) {
 for (const viewport of APP_SHELL_VIEWPORTS) {
   test.describe(`app shell ${viewport.name}`, () => {
     for (const route of APP_SHELL_ROUTES) {
-      test(`${route} renders CompactAppShell without overflow or console errors`, async ({ page }) => {
+      test(`${route} renders the shared header and app surface without overflow or console errors`, async ({ page }) => {
         const consoleErrors = collectConsoleErrors(page);
         await page.setViewportSize({ width: viewport.width, height: viewport.height });
         await page.goto(`${baseUrl}${route}`, { waitUntil: "networkidle" });
 
         await expect(page.locator("[data-app-shell]"), `${route} app shell root`).toHaveCount(1);
         await expect(page.locator("[data-app-shell]"), `${route} visible app shell`).toBeVisible();
-        await expect(page.locator(".app-commandbar"), `${route} command bar`).toBeVisible();
+        await expect(page.locator("[data-ui-shell]"), `${route} shared header root`).toHaveCount(1);
+        await expect(page.locator(".ui-site-header"), `${route} shared header`).toBeVisible();
+        await expect(page.locator(".ui-site-nav"), `${route} shared navigation`).toBeVisible();
+        await expect(page.locator(".ui-site-actions"), `${route} shared actions`).toBeVisible();
         await expect(page.locator("#main-content"), `${route} main landmark`).toHaveCount(1);
         await expect(page.locator("#main-content"), `${route} visible main content`).toBeVisible();
-        await expect(page.locator("[data-q-shell-root]"), `${route} removed legacy shell root`).toHaveCount(0);
+        await expect(page.locator(".app-commandbar"), `${route} removed app commandbar`).toHaveCount(0);
+        const headerToken = await page.evaluate(() =>
+          Number.parseInt(
+            getComputedStyle(document.documentElement).getPropertyValue("--ui-site-header-h"),
+            10,
+          ),
+        );
+        expect(headerToken, `${route} common header height token`).toBe(76);
 
         const overflow = await horizontalOverflowReport(page);
         expect(
@@ -548,29 +540,30 @@ for (const viewport of APP_SHELL_VIEWPORTS) {
   });
 }
 
-test("index mobile custom topnav opens as a left-aligned, scroll-contained full-width menu", async ({ page }) => {
+test("index mobile uses the canonical scroll-contained mobile disclosure", async ({ page }) => {
   const consoleErrors = collectConsoleErrors(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${baseUrl}/`, { waitUntil: "networkidle" });
 
   await expect(page.locator("body")).toHaveAttribute("data-auth", "out");
-  const burger = page.locator("#navBurger");
-  const nav = page.locator("#navMenu");
-  await expect(burger).toBeVisible();
-  await burger.click();
-  await expect(burger).toHaveAttribute("aria-expanded", "true");
-  await expect(nav).toHaveClass(/open/);
-  await expect(nav).toBeVisible();
+  const disclosure = page.locator(".ui-mobile-menu");
+  const trigger = disclosure.locator(":scope > .ui-mobile-trigger");
+  const panel = disclosure.locator(":scope > .ui-mobile-panel");
+  await expect(disclosure).toBeVisible();
+  await expect(trigger).toBeVisible();
+  await trigger.click();
+  await expect(disclosure).toHaveAttribute("open", "");
+  await expect(panel).toBeVisible();
 
   const metrics = await page.evaluate(() => {
-    const navElement = document.getElementById("navMenu");
-    const firstMenuButton = navElement.querySelector(".nav-dd-btn");
-    const cta = navElement.querySelector(".home-start-cta");
+    const navElement = document.querySelector(".ui-mobile-panel");
+    const firstMenuLink = navElement.querySelector("a");
+    const cta = navElement.querySelector(".ui-site-cta");
     const navRect = navElement.getBoundingClientRect();
-    const firstRect = firstMenuButton.getBoundingClientRect();
+    const firstRect = firstMenuLink.getBoundingClientRect();
     const ctaRect = cta.getBoundingClientRect();
     const navStyle = getComputedStyle(navElement);
-    const firstStyle = getComputedStyle(firstMenuButton);
+    const firstStyle = getComputedStyle(firstMenuLink);
     return {
       viewportWidth: window.innerWidth,
       viewportHeight: window.innerHeight,
@@ -583,7 +576,8 @@ test("index mobile custom topnav opens as a left-aligned, scroll-contained full-
       navHeight: navRect.height,
       navMaxHeight: navStyle.maxHeight,
       navOverflowY: navStyle.overflowY,
-      navAlignItems: navStyle.alignItems,
+      navDisplay: navStyle.display,
+      navColumns: navStyle.gridTemplateColumns,
       firstLeft: firstRect.left,
       firstTextAlign: firstStyle.textAlign,
       ctaLeft: ctaRect.left,
@@ -595,13 +589,14 @@ test("index mobile custom topnav opens as a left-aligned, scroll-contained full-
   expect(metrics.navBottom).toBeLessThanOrEqual(metrics.viewportHeight + 1);
   expect(metrics.navMaxHeight).not.toBe("none");
   expect(metrics.navOverflowY).toMatch(/auto|scroll/);
-  expect(metrics.navAlignItems).toBe("stretch");
-  expect(Math.abs(metrics.navLeft)).toBeLessThanOrEqual(1);
-  expect(Math.abs(metrics.navRight - metrics.viewportWidth)).toBeLessThanOrEqual(1);
-  expect(metrics.firstTextAlign).toBe("left");
-  expect(metrics.firstLeft).toBeLessThanOrEqual(metrics.navLeft + 28);
-  expect(metrics.ctaLeft).toBeGreaterThanOrEqual(metrics.navLeft + 15);
-  expect(metrics.ctaWidth).toBeGreaterThanOrEqual(metrics.navWidth - 34);
+  expect(metrics.navDisplay).toBe("grid");
+  expect(metrics.navColumns).not.toBe("none");
+  expect(metrics.navLeft).toBeGreaterThanOrEqual(15);
+  expect(metrics.navRight).toBeLessThanOrEqual(metrics.viewportWidth - 15);
+  expect(metrics.firstTextAlign).toMatch(/^(left|start)$/);
+  expect(metrics.firstLeft).toBeGreaterThanOrEqual(metrics.navLeft + 10);
+  expect(metrics.ctaLeft).toBeGreaterThanOrEqual(metrics.navLeft + 10);
+  expect(metrics.ctaWidth).toBeGreaterThan(120);
   expect(metrics.documentWidth).toBeLessThanOrEqual(metrics.viewportWidth + 1);
   expect(consoleErrors, "index mobile topnav console health").toEqual([]);
 });

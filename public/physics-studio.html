@@ -6,6 +6,7 @@
     <meta name="description" content="고급 물리 문제 스튜디오 — 주제·난이도를 고르면 AI가 풀이·힌트·검산이 있는 새로운 심화 물리 문제를 만들어 줍니다." />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/ui/foundation.css" />
+    <link rel="stylesheet" href="/ui/shell.css" />
     <link rel="stylesheet" href="/ui/app-shell.css" />
     <link rel="stylesheet" href="/ui/app-generator.css" />
     <script src="/ui/entitlement-gate.js"></script>
@@ -24,24 +25,8 @@
     </script>
 </head>
   <body id="appShell" class="app-shell app-shell--physics-studio" data-app-shell>
-    <header class="app-commandbar" data-q-shell>
-      <div class="app-commandbar__inner">
-        <a class="app-brand" href="/" aria-label="Quilo 홈">
-          <span class="app-brand__mark" aria-hidden="true">Q</span>
-          <span>Quilo</span>
-        </a>
-        <span class="app-commandbar__divider" aria-hidden="true"></span>
-        <a class="app-back" href="/">← 홈</a>
-        <strong class="app-title">고급 물리 문제 스튜디오</strong>
-        <nav class="app-commandbar__actions" aria-label="계정 및 화면 설정">
-          <a href="/#settings">계정</a>
-          <button type="button" id="themeToggle" class="app-theme" aria-label="다크 모드로 전환" title="다크 모드로 전환">
-            <span class="app-theme__moon" aria-hidden="true">☾</span>
-            <span class="app-theme__sun" aria-hidden="true">☀</span>
-          </button>
-        </nav>
-      </div>
-    </header>
+    <header class="ui-site-header" data-ui-shell data-shell-mode="fixed"></header>
+    <script src="/ui/shell.js"></script>
 <main class="wrap" id="main-content" aria-label="고급 물리 문제 스튜디오">
       <section class="intro">
         <h1>고급 물리 문제 스튜디오</h1>
@@ -243,7 +228,6 @@
       $("go").onclick = generate;
       boot();
     </script>
-    <script src="/theme.js"></script>
 
   </body>
 </html>

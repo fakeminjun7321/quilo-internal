@@ -50,38 +50,11 @@ export function createShellController({ state, router, hooks }) {
   }
 
   function closeDropdowns() {
-    document.querySelectorAll(".nav-dd.open").forEach((dropdown) => {
-      dropdown.classList.remove("open");
-      dropdown.querySelector(".nav-dd-btn")?.setAttribute("aria-expanded", "false");
-    });
-    document.body.classList.remove("nav-disclosure-open");
-  }
-
-  function setDropdownOpen(dropdown, open) {
-    if (!dropdown) return;
-    if (open) closeDropdowns();
-    dropdown.classList.toggle("open", open);
-    dropdown.querySelector(".nav-dd-btn")?.setAttribute("aria-expanded", String(open));
-    document.body.classList.toggle("nav-disclosure-open", open && dropdown.querySelector(".nav-mega-menu"));
+    window.QuiloSiteShell?.closeDropdowns?.();
   }
 
   function openLogin() {
-    const dropdown = byId("loginDd");
-    if (!dropdown || dropdown.hidden) return false;
-    setTimeout(() => {
-      closeDropdowns();
-      setDropdownOpen(dropdown, true);
-      byId("navMenu")?.classList.add("open");
-      byId("li_username")?.focus();
-    }, 0);
-    return true;
-  }
-
-  function syncBurger() {
-    const burger = byId("navBurger");
-    const open = !!byId("navMenu")?.classList.contains("open");
-    burger?.setAttribute("aria-expanded", String(open));
-    burger?.setAttribute("aria-label", open ? "메뉴 닫기" : "메뉴 열기");
+    return window.QuiloSiteShell?.openLogin?.() === true;
   }
 
   function reveal(id) {
@@ -90,11 +63,8 @@ export function createShellController({ state, router, hooks }) {
   }
 
   function refreshDropdownVisibility() {
-    document.querySelectorAll(".nav-dd").forEach((dropdown) => {
-      const menu = dropdown.querySelector(".nav-dd-menu");
-      if (!menu) return;
-      dropdown.hidden = !Array.from(menu.querySelectorAll("a")).some((anchor) => !anchor.hidden);
-    });
+    // The global navigation is deliberately identical for every account tier.
+    // Entitlement gates remain on the destination screens instead of hiding links.
   }
 
   async function loadEntitlements() {
@@ -135,35 +105,7 @@ export function createShellController({ state, router, hooks }) {
   }
 
   function init() {
-    document.querySelectorAll(".nav-dd[data-dd] .nav-dd-btn").forEach((button) => {
-      const dropdown = button.closest(".nav-dd");
-      const menu = dropdown?.querySelector(".nav-dd-menu");
-      if (menu && !menu.id) menu.id = `nav-menu-${Math.random().toString(36).slice(2, 9)}`;
-      if (menu) {
-        menu.setAttribute("role", menu.classList.contains("nav-mega-menu") ? "region" : "menu");
-        button.setAttribute("aria-controls", menu.id);
-        button.setAttribute("aria-haspopup", "true");
-      }
-      button.addEventListener("click", (event) => {
-        event.stopPropagation();
-        const reopen = !dropdown.classList.contains("open");
-        setDropdownOpen(dropdown, reopen);
-      });
-      button.addEventListener("keydown", (event) => {
-        if (event.key !== "ArrowDown") return;
-        event.preventDefault();
-        setDropdownOpen(dropdown, true);
-        menu?.querySelector("a:not([hidden]), input, button:not(.nav-dd-btn)")?.focus();
-      });
-      menu?.addEventListener("keydown", (event) => {
-        if (event.key !== "Escape") return;
-        event.preventDefault();
-        setDropdownOpen(dropdown, false);
-        button.focus();
-      });
-    });
     document.addEventListener("click", (event) => {
-      if (!event.target.closest(".nav-dd")) closeDropdowns();
       const action = event.target.closest("[data-action]");
       if (!action) return;
       if (action.dataset.action === "open-quilo-assist") {
@@ -188,18 +130,7 @@ export function createShellController({ state, router, hooks }) {
         });
       }
     });
-    document.addEventListener("keydown", (event) => {
-      if (event.key !== "Escape") return;
-      const active = document.querySelector(".nav-dd.open .nav-dd-btn");
-      closeDropdowns();
-      active?.focus();
-    });
-    byId("navBurger")?.addEventListener("click", (event) => {
-      event.stopPropagation();
-      byId("navMenu")?.classList.toggle("open");
-      syncBurger();
-    });
-    document.querySelectorAll(".nav-dd-menu a[data-report]").forEach((anchor) => {
+    document.querySelectorAll("[data-ui-shell] a[data-report]").forEach((anchor) => {
       anchor.addEventListener("click", async (event) => {
         event.preventDefault();
         closeDropdowns();
@@ -213,11 +144,9 @@ export function createShellController({ state, router, hooks }) {
         anchor.removeAttribute("aria-busy");
         showTab("reports");
         router.select(anchor.dataset.report, { scroll: true });
-        byId("navMenu")?.classList.remove("open");
-        syncBurger();
       });
     });
-    document.querySelectorAll(".nav-dd-menu a[data-tab], .page-tabs [data-tab]").forEach((anchor) => {
+    document.querySelectorAll("[data-ui-shell] a[data-tab], .page-tabs [data-tab]").forEach((anchor) => {
       anchor.addEventListener("click", (event) => {
         event.preventDefault();
         showTab(anchor.dataset.tab);

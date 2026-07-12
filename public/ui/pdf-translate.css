@@ -1,5 +1,5 @@
 :root {
-  --pdf-header: 76px;
+  --pdf-header: var(--ui-site-header-h, 76px);
   --pdf-status: 34px;
   --pdf-files: 320px;
   --pdf-summary: 330px;
@@ -486,7 +486,13 @@ html[data-theme="dark"] .pdf-analysis { background: var(--ui-surface-subtle); }
 }
 
 @media (max-width: 960px) {
-  .pdf-app { min-width: 960px; }
+  .pdf-app { min-width: 0; padding-inline: 16px; }
+  .pdf-workspace { grid-template-columns: minmax(240px, 0.72fr) minmax(0, 1.28fr); }
+  .pdf-summary {
+    grid-column: 1 / -1;
+    border-top: 1px solid var(--ui-line);
+    border-left: 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

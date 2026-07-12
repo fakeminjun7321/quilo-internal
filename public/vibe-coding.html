@@ -6,6 +6,7 @@
     <meta name="description" content="바이브 코딩 생성기 — 질문 몇 개에 답하면 AI가 아이디어를 프로젝트 설계로 정리하고 개념 이미지까지 만들어 줍니다. 어려운 용어는 쉽게 풀어서." />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/ui/foundation.css" />
+    <link rel="stylesheet" href="/ui/shell.css" />
     <link rel="stylesheet" href="/ui/app-shell.css" />
     <link rel="stylesheet" href="/ui/app-generator.css" />
     <script src="/ui/entitlement-gate.js"></script>
@@ -24,24 +25,8 @@
 
 </head>
   <body id="appShell" class="app-shell app-shell--vibe-coding" data-app-shell>
-    <header class="app-commandbar" data-q-shell>
-      <div class="app-commandbar__inner">
-        <a class="app-brand" href="/" aria-label="Quilo 홈">
-          <span class="app-brand__mark" aria-hidden="true">Q</span>
-          <span>Quilo</span>
-        </a>
-        <span class="app-commandbar__divider" aria-hidden="true"></span>
-        <a class="app-back" href="/">← 홈</a>
-        <strong class="app-title">바이브 코딩 생성기</strong>
-        <nav class="app-commandbar__actions" aria-label="계정 및 화면 설정">
-          <a href="/#settings">계정</a>
-          <button type="button" id="themeToggle" class="app-theme" aria-label="다크 모드로 전환" title="다크 모드로 전환">
-            <span class="app-theme__moon" aria-hidden="true">☾</span>
-            <span class="app-theme__sun" aria-hidden="true">☀</span>
-          </button>
-        </nav>
-      </div>
-    </header>
+    <header class="ui-site-header" data-ui-shell data-shell-mode="fixed"></header>
+    <script src="/ui/shell.js"></script>
 <main class="page" id="main-content" aria-label="바이브 코딩 생성기">
       <div class="intro" id="intro">
         <span class="eyebrow">Vibe coding planner</span>
@@ -451,7 +436,6 @@
       }
       boot();
     </script>
-    <script src="/theme.js"></script>
 
   </body>
 </html>

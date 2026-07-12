@@ -223,8 +223,8 @@ test("server failure remains neutral and never writes to logout", async ({ page 
   expect(snapshot.headerState).toBe("unknown");
   expect(snapshot.bodyState).toBe("unknown");
   expect(snapshot.actions).toEqual([
-    { text: "Quilo로 돌아가기", href: "/", hidden: false, state: "unknown" },
-    { text: "Quilo로 돌아가기", href: "/", hidden: false, state: "unknown" },
+    { text: "계정 확인", href: "/", hidden: false, state: "unknown" },
+    { text: "계정 확인", href: "/", hidden: false, state: "unknown" },
   ]);
   await expect(page.locator("#accountStatus")).toContainText("로그인 상태를 확인하지 못했습니다");
   await expect(page.locator("#createTokenBtn")).toBeDisabled();

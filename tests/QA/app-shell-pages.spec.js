@@ -32,38 +32,38 @@ const PAGES = [
 ];
 
 const EXPECTED_IDS = {
-  "create.html": ["betaNotice", "chips", "cmtClose", "cmtList", "cmtModal", "cmtSend", "cmtSlug", "cmtText", "cmtTitle", "galcount", "gallery", "launch", "main-content", "mineWrap", "mylist", "sort", "themeToggle", "whoami"],
+  "create.html": ["betaNotice", "chips", "cmtClose", "cmtList", "cmtModal", "cmtSend", "cmtSlug", "cmtText", "cmtTitle", "galcount", "gallery", "launch", "main-content", "mineWrap", "mylist", "sort", "whoami"],
   "editor.html": ["agentClear", "agentClose", "agentModel", "agentMsgs", "agentPrompt", "agentSend", "app", "ceFrame", "ceLang", "ceOut", "gate", "ideAgent", "ideFileInput", "ideFiles", "ideNewFile", "ideOpenFile", "ideOpenFolder", "idePanel", "idePanelClose", "ideSide", "ideTabs", "ideWelcome", "main-content", "monaco", "stDownload", "stFormat", "stMinimap", "stMsg", "stPip", "stPos", "stRun", "stSave", "stTheme", "wOpenFile", "wOpenFolder", "wStart"],
   "exam-prep.html": ["badgeCoding", "badgeMath", "badgePhys", "badgeReading", "btnConsole", "btnReset", "btnRunEx", "btnSubmit", "codingGate", "codingMain", "ctAssist", "ctAssistInput", "ctAssistMsgs", "ctAssistSend", "ctDetail", "ctEditor", "ctFallback", "ctList", "ctResults", "ctStatus", "main-content", "mathGate", "mathMain", "paneCoding", "paneMath", "panePhys", "paneReading", "physGate", "physMain", "readingGate", "readingMain", "tabCoding", "tabMath", "tabPhys", "tabReading"],
-  "filechat.html": ["accessNote", "fcChat", "fcClear", "fcFileChips", "fcFiles", "fcInput", "fcModel", "fcSend", "gate", "main-content", "themeToggle", "tool"],
-  "physics-studio.html": ["app", "bal", "copyMd", "cost", "count", "difficulty", "dlMd", "err", "formCard", "gate", "go", "hint", "main-content", "model", "notes", "out", "sol", "style", "themeToggle", "toggleAll", "topic"],
+  "filechat.html": ["accessNote", "fcChat", "fcClear", "fcFileChips", "fcFiles", "fcInput", "fcModel", "fcSend", "gate", "main-content", "tool"],
+  "physics-studio.html": ["app", "bal", "copyMd", "cost", "count", "difficulty", "dlMd", "err", "formCard", "gate", "go", "hint", "main-content", "model", "notes", "out", "sol", "style", "toggleAll", "topic"],
   "studio.html": ["addFileBtn", "app", "balChip", "chips", "devseg", "dlZip", "fileTree", "gate", "imgBtn", "imgFile", "instatus", "main-content", "model", "modeseg", "monacoHost", "msgs", "o", "openPublish", "pCancel", "pCat", "pDo", "pPublic", "pSlug", "pTitle", "popout", "preview", "prompt", "pubModal", "pubModalTitle", "pubStatus", "pv", "pvhost", "refresh", "restoreBar", "restoreMeta", "restoreNo", "restoreYes", "sendBtn", "stage", "tabs", "thumbs", "toStage", "undoBtn"],
-  "study.html": ["analyzeBtn", "assumptionList", "betaOut", "betaRange", "closeZoomBtn", "description", "diagramExplanation", "diagramTitle", "downloadBtn", "etaOut", "etaRange", "eventList", "main-content", "minkowskiCanvas", "minkowskiZoomCanvas", "modelHint", "modelSelect", "openZoomBtn", "problemImage", "resetBtn", "studyGate", "studyMain", "studyMsg", "studyStatus", "studyZoomModal", "studyZoomStage", "studyZoomTitle", "themeToggle", "warningList", "worldlineList", "zoomFitBtn", "zoomMinusBtn", "zoomPlusBtn", "zoomScaleOut"],
+  "study.html": ["analyzeBtn", "assumptionList", "betaOut", "betaRange", "closeZoomBtn", "description", "diagramExplanation", "diagramTitle", "downloadBtn", "etaOut", "etaRange", "eventList", "main-content", "minkowskiCanvas", "minkowskiZoomCanvas", "modelHint", "modelSelect", "openZoomBtn", "problemImage", "resetBtn", "studyGate", "studyMain", "studyMsg", "studyStatus", "studyZoomModal", "studyZoomStage", "studyZoomTitle", "warningList", "worldlineList", "zoomFitBtn", "zoomMinusBtn", "zoomPlusBtn", "zoomScaleOut"],
   "translate.html": ["gate", "genSpinner", "main-content", "progress", "progressArea", "resultArea", "retypesetDlgBody", "retypesetDlgTitle", "retypesetMultiBody", "retypesetMultiTitle", "statusTitle", "stopBtn", "themeToggle", "tool", "trBg", "trBgField", "trBgNotify", "trBgNotifyWrap", "trBtn", "trChartRedraw", "trError", "trEstimate", "trForm", "trMode", "trModeHint", "trModel", "trPdf", "trRestoreOnly"],
-  "vibe-coding.html": ["again", "chatLog", "chatMsg", "chatSend", "copyMd", "costLine", "dlMd", "err", "gate", "goBtn", "heroImg", "i_free", "i_idea", "i_img", "i_model", "intro", "loadMsg", "loadTitle", "loading", "main-content", "nextBtn", "planArea", "prevBtn", "progress", "refineChat", "refineCost", "result", "stage", "themeToggle", "toStudio", "wizard"],
+  "vibe-coding.html": ["again", "chatLog", "chatMsg", "chatSend", "copyMd", "costLine", "dlMd", "err", "gate", "goBtn", "heroImg", "i_free", "i_idea", "i_img", "i_model", "intro", "loadMsg", "loadTitle", "loading", "main-content", "nextBtn", "planArea", "prevBtn", "progress", "refineChat", "refineCost", "result", "stage", "toStudio", "wizard"],
 };
 
 const EXPECTED_DATA = {
-  "create.html": ["data-cat", "data-cmt", "data-del", "data-embed", "data-like", "data-q-shell", "data-report", "data-src", "data-title"],
-  "editor.html": ["data-act", "data-panel", "data-q-shell"],
-  "exam-prep.html": ["data-id", "data-q-shell"],
-  "filechat.html": ["data-q-shell"],
-  "physics-studio.html": ["data-q-shell"],
-  "studio.html": ["data-dev", "data-f", "data-mode", "data-q-shell", "data-rm", "data-tab", "data-tpl", "data-ver"],
-  "study.html": ["data-beta", "data-example", "data-q-shell"],
-  "translate.html": ["data-dz-file", "data-q-shell"],
-  "vibe-coding.html": ["data-chip", "data-ex", "data-opt", "data-q-shell"],
+  "create.html": ["data-cat", "data-cmt", "data-del", "data-embed", "data-like", "data-report", "data-src", "data-title", "data-ui-shell"],
+  "editor.html": ["data-act", "data-panel", "data-ui-shell"],
+  "exam-prep.html": ["data-id", "data-ui-shell"],
+  "filechat.html": ["data-ui-shell"],
+  "physics-studio.html": ["data-ui-shell"],
+  "studio.html": ["data-dev", "data-f", "data-mode", "data-rm", "data-tab", "data-tpl", "data-ui-shell", "data-ver"],
+  "study.html": ["data-beta", "data-example", "data-ui-shell"],
+  "translate.html": ["data-dz-file", "data-ui-shell"],
+  "vibe-coding.html": ["data-chip", "data-ex", "data-opt", "data-ui-shell"],
 };
 
 const EXPECTED_STYLES = {
-  "create.html": ["/ui/foundation.css", "/ui/app-shell.css", "/ui/app-workbench.css"],
-  "editor.html": ["/ui/foundation.css", "/ui/app-shell.css", "/ui/app-workbench.css"],
-  "exam-prep.html": ["/ui/foundation.css", "/ui/app-shell.css", "/ui/app-workbench.css"],
-  "filechat.html": ["/ui/foundation.css", "/ui/app-shell.css", "/ui/app-chat.css"],
-  "physics-studio.html": ["/ui/foundation.css", "/ui/app-shell.css", "/ui/app-generator.css"],
-  "studio.html": ["/ui/foundation.css", "/ui/app-shell.css", "/ui/app-workbench.css"],
-  "study.html": ["/ui/foundation.css", "/ui/app-shell.css", "/ui/app-workbench.css"],
-  "vibe-coding.html": ["/ui/foundation.css", "/ui/app-shell.css", "/ui/app-generator.css"],
+  "create.html": ["/ui/foundation.css", "/ui/shell.css", "/ui/app-shell.css", "/ui/app-workbench.css"],
+  "editor.html": ["/ui/foundation.css", "/ui/shell.css", "/ui/app-shell.css", "/ui/app-workbench.css"],
+  "exam-prep.html": ["/ui/foundation.css", "/ui/shell.css", "/ui/app-shell.css", "/ui/app-workbench.css"],
+  "filechat.html": ["/ui/foundation.css", "/ui/shell.css", "/ui/app-shell.css", "/ui/app-chat.css"],
+  "physics-studio.html": ["/ui/foundation.css", "/ui/shell.css", "/ui/app-shell.css", "/ui/app-generator.css"],
+  "studio.html": ["/ui/foundation.css", "/ui/shell.css", "/ui/app-shell.css", "/ui/app-workbench.css"],
+  "study.html": ["/ui/foundation.css", "/ui/shell.css", "/ui/app-shell.css", "/ui/app-workbench.css"],
+  "vibe-coding.html": ["/ui/foundation.css", "/ui/shell.css", "/ui/app-shell.css", "/ui/app-generator.css"],
 };
 
 const CONTENT_TYPES = {
@@ -152,7 +152,7 @@ test.afterAll(async () => {
   await new Promise((resolve) => server.close(resolve));
 });
 
-test("all work surfaces use the isolated CompactAppShell and preserve DOM contracts", () => {
+test("all work surfaces use the shared Quilo header and preserve app DOM contracts", () => {
   for (const pageName of PAGES) {
     const source = fs.readFileSync(path.join(PUBLIC_DIR, pageName), "utf8");
     const markupOnly = source.replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, "");
@@ -164,6 +164,12 @@ test("all work surfaces use the isolated CompactAppShell and preserve DOM contra
     expect(markupOnly, pageName).not.toMatch(/<style\b|\sstyle\s*=/i);
     expect(markupOnly.match(/<main\b[^>]*id=["']main-content["']/gi) || [], pageName).toHaveLength(1);
     expect(markupOnly, `${pageName} shell root`).toMatch(/<body\b[^>]*data-app-shell/);
+    expect(markupOnly, `${pageName} shared header`).toContain(
+      '<header class="ui-site-header" data-ui-shell data-shell-mode="fixed"></header>',
+    );
+    expect(source, `${pageName} shared header runtime`).toContain('src="/ui/shell.js"');
+    expect(source, `${pageName} removed app commandbar`).not.toContain("app-commandbar");
+    expect(source, `${pageName} removed legacy app header hook`).not.toContain("data-q-shell");
     expect(markupOnly, `${pageName} accessible page name`).toMatch(
       /<main\b[^>]*(?:aria-label=["'][^"']+["'])|<h1\b/i,
     );
@@ -328,11 +334,11 @@ async function exerciseCoreInteraction(page, pageName) {
 
 async function shellGeometry(page) {
   return page.evaluate(() => {
-    const header = document.querySelector(".app-commandbar");
+    const header = document.querySelector("[data-ui-shell]");
     const status = document.querySelector(".app-statusbar");
     const headerRect = header.getBoundingClientRect();
     const statusRect = status.getBoundingClientRect();
-    const commandbarOffenders = [...header.querySelectorAll("a, button")]
+    const headerOffenders = [...header.querySelectorAll("a, button")]
       .filter((element) => {
         const rect = element.getBoundingClientRect();
         return rect.width > 0 && rect.height > 0 && (rect.left < -1 || rect.right > innerWidth + 1);
@@ -342,9 +348,13 @@ async function shellGeometry(page) {
       overflow: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - innerWidth,
       headerPosition: getComputedStyle(header).position,
       headerTop: Math.round(headerRect.top),
+      headerToken: Number.parseInt(
+        getComputedStyle(document.documentElement).getPropertyValue("--ui-site-header-h"),
+        10,
+      ),
       statusPosition: getComputedStyle(status).position,
       statusBottom: Math.round(innerHeight - statusRect.bottom),
-      commandbarOffenders,
+      headerOffenders,
     };
   });
 }
@@ -357,7 +367,7 @@ async function verifyPinnedChrome(page, pageName) {
   await page.evaluate((top) => window.scrollTo(0, top), Math.min(240, maxScroll));
   await page.waitForTimeout(40);
   const pinned = await page.evaluate(() => {
-    const headerRect = document.querySelector(".app-commandbar").getBoundingClientRect();
+    const headerRect = document.querySelector("[data-ui-shell]").getBoundingClientRect();
     const statusRect = document.querySelector(".app-statusbar").getBoundingClientRect();
     return {
       headerTop: Math.round(headerRect.top),
@@ -380,7 +390,9 @@ for (const pageName of PAGES) {
     await page.setViewportSize({ width: 1440, height: 933 });
     await page.goto(`${baseUrl}/${pageName}`, { waitUntil: "networkidle" });
 
-    await expect(page.locator(".app-commandbar")).toBeVisible();
+    await expect(page.locator("[data-ui-shell].ui-site-header")).toBeVisible();
+    await expect(page.locator(".ui-site-nav")).toBeVisible();
+    await expect(page.locator(".ui-site-actions")).toBeVisible();
     await expect(page.locator("#main-content")).toBeVisible();
     await expect(page.locator(".app-statusbar")).toBeVisible();
     await expect(page.locator("body")).toHaveClass(new RegExp(`app-shell--${pageName.replace(/\.html$/, "")}`));
@@ -390,9 +402,10 @@ for (const pageName of PAGES) {
       overflow: 0,
       headerPosition: "fixed",
       headerTop: 0,
+      headerToken: 76,
       statusPosition: "fixed",
       statusBottom: 0,
-      commandbarOffenders: [],
+      headerOffenders: [],
     });
     await verifyPinnedChrome(page, pageName);
     if (["create.html", "filechat.html", "physics-studio.html", "studio.html", "study.html", "vibe-coding.html"].includes(pageName)) {
@@ -421,9 +434,10 @@ test("all work surfaces reflow and respond at the 933px compact desktop width", 
       overflow: 0,
       headerPosition: "fixed",
       headerTop: 0,
+      headerToken: 76,
       statusPosition: "fixed",
       statusBottom: 0,
-      commandbarOffenders: [],
+      headerOffenders: [],
     });
     await verifyPinnedChrome(page, pageName);
     if (["create.html", "studio.html", "translate.html"].includes(pageName)) {
@@ -437,7 +451,7 @@ test("all work surfaces reflow and respond at the 933px compact desktop width", 
   expect(errors).toEqual([]);
 });
 
-test("representative empty, modal, and loading states remain contained in CompactAppShell", async ({ page }) => {
+test("representative empty, modal, and loading states remain contained below the shared header", async ({ page }) => {
   const errors = [];
   page.on("console", (message) => {
     if (message.type() === "error") errors.push(`console: ${message.text()}`);

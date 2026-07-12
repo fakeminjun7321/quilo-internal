@@ -1,5 +1,4 @@
 :root {
-  --app-header-h: 64px;
   --app-status-h: 30px;
   --app-canvas: #f4f6f9;
   --app-panel: #ffffff;
@@ -45,7 +44,7 @@ body.app-shell {
 
 body.app-shell {
   min-height: 100vh;
-  padding: var(--app-header-h) 0 var(--app-status-h);
+  padding: var(--ui-site-header-h, 76px) 0 var(--app-status-h);
   overflow-x: auto;
 }
 
@@ -53,111 +52,12 @@ body.app-shell {
 .app-shell *::before,
 .app-shell *::after { box-sizing: border-box; }
 
-.app-shell a { color: inherit; }
-.app-shell a:hover { text-decoration: none; }
+.app-shell > :not(.ui-site-header) a { color: inherit; }
+.app-shell > :not(.ui-site-header) a:hover { text-decoration: none; }
 .app-shell button,
 .app-shell input,
 .app-shell select,
 .app-shell textarea { font: inherit; }
-
-.app-commandbar {
-  position: fixed;
-  z-index: 300;
-  inset: 0 0 auto;
-  height: var(--app-header-h);
-  border-bottom: 1px solid var(--app-line);
-  background: color-mix(in srgb, var(--app-panel) 96%, transparent);
-  backdrop-filter: blur(14px);
-}
-
-.app-commandbar__inner {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  height: 100%;
-  padding: 0 28px;
-  gap: 16px;
-}
-
-.app-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  flex: 0 0 auto;
-  color: var(--app-ink) !important;
-  font-size: 20px;
-  font-weight: 800;
-  letter-spacing: -0.03em;
-}
-
-.app-brand__mark {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 8px;
-  background: var(--app-blue);
-  color: #fff;
-  font-size: 20px;
-  font-weight: 800;
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--app-blue) 22%, transparent);
-}
-
-.app-commandbar__divider {
-  width: 1px;
-  height: 24px;
-  background: var(--app-line);
-}
-
-.app-back {
-  display: inline-flex;
-  align-items: center;
-  height: 34px;
-  padding: 0 10px;
-  border-radius: 6px;
-  color: var(--app-muted) !important;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.app-back:hover { background: var(--app-panel-muted); color: var(--app-ink) !important; }
-
-.app-title {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 14px;
-  font-weight: 750;
-}
-
-.app-commandbar__actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: auto;
-}
-
-.app-commandbar__actions > a,
-.app-theme {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 36px;
-  padding: 0 12px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--app-muted);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.app-commandbar__actions > a:hover,
-.app-theme:hover { border-color: var(--app-line); background: var(--app-panel-muted); color: var(--app-ink); }
-.app-theme__sun { display: none; }
-html[data-theme="dark"] .app-theme__moon { display: none; }
-html[data-theme="dark"] .app-theme__sun { display: inline; }
 
 .app-statusbar {
   position: fixed;
@@ -336,11 +236,6 @@ html[data-theme="dark"] .app-theme__sun { display: inline; }
 .app-runtime-error, .err { color: var(--app-red); }
 .app-runtime-disabled { opacity: .5; pointer-events: none; }
 .app-runtime-flex-spacer, .sp { flex: 1; }
-
-@media (max-width: 1080px) {
-  .app-commandbar__inner { padding-inline: 20px; }
-  .app-commandbar__actions > a { display: none; }
-}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }

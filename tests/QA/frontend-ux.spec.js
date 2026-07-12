@@ -139,7 +139,7 @@ test("home keeps the approved desktop header at the real 933px viewport", async 
   await page.setViewportSize({ width: 933, height: 897 });
   await page.goto(BASE_URL, { waitUntil: "networkidle" });
 
-  await expect(page.locator("#navBurger")).toBeHidden();
+  await expect(page.locator(".ui-mobile-menu")).toBeHidden();
   await expect(page.locator("#navMenu")).toBeVisible();
   await expect(page.locator("#reportTypeFieldset")).toBeHidden();
   await expect(page.locator("#reportTypes")).toBeHidden();
@@ -158,8 +158,8 @@ test("report runtime is loaded only after an authenticated report choice", async
   expect(requested).not.toContain("/app.js");
   expect(requested).not.toContain("/workspace/report-runtime.js");
   const started = Date.now();
-  await page.locator(".nav-dd-btn").filter({ hasText: "제품" }).click();
-  await page.locator('.nav-dd-menu a[data-report="chem-pre"]').click();
+  await page.locator(".ui-site-disclosure summary").filter({ hasText: /^제품$/ }).click();
+  await page.locator('.ui-site-menu a[data-report="chem-pre"]').click();
   await expect(page.locator('#form[data-report-form="chem-pre"]')).toBeVisible();
   expect(Date.now() - started).toBeLessThan(1500);
   expect(requested).toContain("/app.js");
@@ -223,11 +223,15 @@ test("authentication stays on landing until an explicit report opens the workspa
   await expect(page.locator("#reportTypes")).toBeHidden();
   await expect(page.locator("#reportTypeFieldset")).toBeHidden();
   await expect(page.locator("#loginDd")).toBeHidden();
+  await expect(page.locator("#sessionAction")).toBeVisible();
+  await expect(page.locator("#acctDd")).toBeHidden();
+  await page.locator("#sessionAction").click();
+  await expect(page.locator("#accountSlot")).toHaveClass(/is-open/);
   await expect(page.locator("#acctDd")).toBeVisible();
   await expect(page.locator("#homeHero")).toBeVisible();
 
-  await page.locator('.nav-dd-btn').filter({ hasText: "제품" }).click();
-  await page.locator('.nav-dd-menu a[data-report="chem-pre"]').click();
+  await page.locator('.ui-site-disclosure summary').filter({ hasText: /^제품$/ }).click();
+  await page.locator('.ui-site-menu a[data-report="chem-pre"]').click();
   await page.waitForTimeout(350);
   await expect(page.locator("body")).toHaveAttribute("data-view", "workspace");
   await expect(page.locator("#landingSurface")).toBeHidden();
@@ -304,6 +308,8 @@ test("cloud providers use a separate account tab instead of the files panel", as
   await page.goto(`${BASE_URL}/#integrations`, { waitUntil: "networkidle" });
 
   await expect(page.locator("body")).toHaveAttribute("data-auth", "in");
+  await page.locator("#sessionAction").click();
+  await expect(page.locator("#accountSlot")).toHaveClass(/is-open/);
   await expect(page.locator('#acctDd a[data-tab="integrations"] strong')).toHaveText("외부 서비스 연결");
   await expect(page.locator("#integrationsPanel")).toBeVisible();
   await expect(page.locator("#cloudCard")).toBeVisible();
@@ -334,11 +340,13 @@ test("account utility panels are centered and integrations have a real empty sta
   expect(integrationLayout.width).toBeLessThanOrEqual(920);
   expect(integrationLayout.centerDelta).toBeLessThanOrEqual(2);
 
-  await page.locator('#acctDd button').click();
+  await page.locator("#sessionAction").click();
+  await expect(page.locator("#accountSlot")).toHaveClass(/is-open/);
   await page.locator('#acctDd a[data-tab="files"]').click();
   await expect(page.locator("#filesPanel")).toBeVisible();
   await expect(page.locator("#filesPanel > .settings-card")).toBeVisible();
-  await page.locator('#acctDd button').click();
+  await page.locator("#sessionAction").click();
+  await expect(page.locator("#accountSlot")).toHaveClass(/is-open/);
   await page.locator('#acctDd a[data-tab="feedback"]').click();
   await expect(page.locator("#feedbackPanel")).toBeVisible();
   await expect(page.locator("#feedbackPanel > .settings-card")).toBeVisible();
@@ -354,8 +362,8 @@ test("report entry links bypass the removed intermediary and open the free repor
   await expect(page.locator("#reportsPanel")).toHaveClass(/workspace-mode/);
   await expect(page.locator("#choosePrompt")).toHaveCount(0);
   await expect(page.locator(".home-hero-categories")).toHaveCount(0);
-  await expect(page.locator('.nav-dd-menu a[data-report="free"] strong')).toHaveText("자유 보고서");
-  await expect(page.locator('.home-start-cta[href="/?report=free"]')).toHaveText("무료로 시작하기");
+  await expect(page.locator('.ui-site-menu a[data-report="free"] strong')).toHaveText("자유 보고서");
+  await expect(page.locator('.ui-site-cta[href="/?report=free"]:visible')).toHaveText("무료로 시작하기");
 });
 
 test("all thirteen report routes resolve to a continuous visible form contract", async ({ page }) => {

@@ -220,7 +220,7 @@ test("guide 933px shell keeps the approved full navigation without overflow", as
   await expect(page.locator(".ui-site-nav")).toBeVisible();
   await expect(page.locator(".ui-site-actions")).toBeVisible();
   await expect(page.locator(".ui-mobile-menu")).toBeHidden();
-  await expect(page.locator(".ui-site-nav > details > summary")).toHaveText([
+  await expect(page.locator(".ui-site-disclosure summary")).toHaveText([
     "제품",
     "솔루션",
     "앱",
@@ -269,25 +269,32 @@ test("every public pricing navigation points to the visible pricing page", () =>
   }
 });
 
-test("app shells and developer menu use existing account and section destinations", () => {
-  const compactShellPages = [
+test("shared shell is the single source for account and navigation destinations", () => {
+  const sharedShellPages = [
+    "index.html",
     "create.html", "editor.html", "exam-prep.html", "filechat.html", "physics-studio.html",
-    "studio.html", "study.html", "translate.html", "vibe-coding.html",
+    "studio.html", "study.html", "translate.html", "vibe-coding.html", "developers.html",
   ];
-  for (const file of compactShellPages) {
+  for (const file of sharedShellPages) {
     const source = fs.readFileSync(path.join(PUBLIC_DIR, file), "utf8");
     expect(source, file).not.toContain('/account.html');
-    expect(source, file).toContain('href="/#settings"');
+    expect(source, file).toContain("data-ui-shell");
+    expect(source, file).toContain('src="/ui/shell.js"');
   }
+
+  const shell = fs.readFileSync(path.join(PUBLIC_DIR, "ui", "shell.js"), "utf8");
+  expect(shell).toContain('href="/#settings"');
+  expect(shell).toContain('href="/#files"');
+  expect(shell).toContain('href="/#integrations"');
+  expect(shell).toContain('href="/#feedback"');
+  expect(shell).toContain('/developers.html#catalog');
+  expect(shell).toContain('/developers.html#tokenCard');
 
   const retiredTranslator = fs.readFileSync(path.join(PUBLIC_DIR, "translate-app.html"), "utf8");
   expect(retiredTranslator).toContain('content="0;url=/translate.html"');
   expect(retiredTranslator).toContain('location.replace("/translate.html"');
 
-  const home = fs.readFileSync(path.join(PUBLIC_DIR, "index.html"), "utf8");
   const developers = fs.readFileSync(path.join(PUBLIC_DIR, "developers.html"), "utf8");
-  expect(home).toContain('href="/developers.html#catalog"');
-  expect(home).toContain('href="/developers.html#tokenCard"');
   expect(developers).toContain('id="catalog"');
   expect(developers).toContain('id="tokenCard"');
 });
@@ -296,8 +303,8 @@ test("desktop disclosures keep one menu open and return focus on Escape", async 
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${baseUrl}/guide.html`, { waitUntil: "domcontentloaded" });
 
-  const productSummary = page.locator(".ui-site-nav > details > summary").filter({ hasText: /^제품$/ });
-  const resourceSummary = page.locator(".ui-site-nav > details > summary").filter({ hasText: /^리소스$/ });
+  const productSummary = page.locator(".ui-site-disclosure summary").filter({ hasText: /^제품$/ });
+  const resourceSummary = page.locator(".ui-site-disclosure summary").filter({ hasText: /^리소스$/ });
   const product = productSummary.locator("..");
   const resource = resourceSummary.locator("..");
 
@@ -307,14 +314,14 @@ test("desktop disclosures keep one menu open and return focus on Escape", async 
   await resourceSummary.click();
   await expect(resource).toHaveAttribute("open", "");
   await expect(product).not.toHaveAttribute("open", "");
-  await expect(page.locator(".ui-site-nav > details[open]")).toHaveCount(1);
+  await expect(page.locator(".ui-site-disclosure[open]")).toHaveCount(1);
 
   const focusedMenuLink = resource.locator('a[href="/guide.html"]');
   await focusedMenuLink.focus();
   await expect(focusedMenuLink).toBeFocused();
   await focusedMenuLink.press("Escape");
 
-  await expect(page.locator(".ui-site-nav > details[open]")).toHaveCount(0);
+  await expect(page.locator(".ui-site-disclosure[open]")).toHaveCount(0);
   await expect(resourceSummary).toBeFocused();
 });
 
@@ -337,11 +344,24 @@ test("guide mobile shell exposes the same real destinations", async ({ page }) =
     links.map((link) => link.getAttribute("href")),
   );
   expect(mobileHrefs).toEqual([
+    "/?report=chem-pre",
+    "/?report=chem-result",
+    "/?report=phys-result",
     "/?report=free",
     "/tools/index.html",
+    "/translate.html",
     "/apps/quilo.html",
+    "/apps/live-translator.html",
     "/developers.html",
+    "/developers.html#catalog",
+    "/developers.html#tokenCard",
     "/guide.html",
+    "/examples.html",
+    "/changelog.html",
+    "/community.html",
+    "/school-apply.html",
+    "/pricing.html",
+    "https://www.instagram.com/quilo._.official/",
     "/?login=1",
     "/?report=free",
   ]);
@@ -354,10 +374,11 @@ test("login query opens the logged-out login dropdown without a write request", 
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${baseUrl}/?login=1`, { waitUntil: "domcontentloaded" });
 
+  const accountSlot = page.locator("#accountSlot");
   const loginDropdown = page.locator("#loginDd");
   await expect(page.locator("body")).toHaveAttribute("data-auth", "out");
+  await expect(accountSlot).toHaveClass(/is-open/);
   await expect(loginDropdown).toBeVisible();
-  await expect(loginDropdown).toHaveClass(/open/);
   await expect(page.locator("#li_username")).toBeFocused();
 });
 
@@ -366,7 +387,8 @@ test("logged-out report entry preserves intent and opens login instead of the re
   await page.goto(`${baseUrl}/?report=free`, { waitUntil: "domcontentloaded" });
 
   await expect(page.locator("body")).toHaveAttribute("data-auth", "out");
-  await expect(page.locator("#loginDd")).toHaveClass(/open/);
+  await expect(page.locator("#accountSlot")).toHaveClass(/is-open/);
+  await expect(page.locator("#loginDd")).toBeVisible();
   await expect(page.locator("#choosePrompt")).toHaveCount(0);
   expect(await page.evaluate(() => sessionStorage.getItem("pendingReportType"))).toBe("free");
 });

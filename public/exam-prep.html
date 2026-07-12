@@ -6,6 +6,7 @@
     <meta name="description" content="수행평가 도움 — 물리·수학 수행평가 보고서 초안과 독서활동 기록지(독서록)를 학교 양식(.hwpx)으로 한곳에서 만듭니다." />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/ui/foundation.css" />
+    <link rel="stylesheet" href="/ui/shell.css" />
     <link rel="stylesheet" href="/ui/app-shell.css" />
     <link rel="stylesheet" href="/ui/app-workbench.css" />
     <script src="/ui/app-assets.js"></script>
@@ -23,24 +24,8 @@
     </script>
 </head>
   <body id="appShell" class="app-shell app-shell--exam-prep" data-app-shell>
-    <header class="app-commandbar" data-q-shell>
-      <div class="app-commandbar__inner">
-        <a class="app-brand" href="/" aria-label="Quilo 홈">
-          <span class="app-brand__mark" aria-hidden="true">Q</span>
-          <span>Quilo</span>
-        </a>
-        <span class="app-commandbar__divider" aria-hidden="true"></span>
-        <a class="app-back" href="/">← 홈</a>
-        <strong class="app-title">수행평가 도움</strong>
-        <nav class="app-commandbar__actions" aria-label="계정 및 화면 설정">
-          <a href="/#settings">계정</a>
-          <button type="button" id="themeToggle" class="app-theme" aria-label="다크 모드로 전환" title="다크 모드로 전환">
-            <span class="app-theme__moon" aria-hidden="true">☾</span>
-            <span class="app-theme__sun" aria-hidden="true">☀</span>
-          </button>
-        </nav>
-      </div>
-    </header>
+    <header class="ui-site-header" data-ui-shell data-shell-mode="fixed"></header>
+    <script src="/ui/shell.js"></script>
 <main class="epwrap" id="main-content" aria-label="수행평가 도움">
 
       <div class="eptabs" role="tablist" aria-label="수행평가 도움 탭">
@@ -722,6 +707,5 @@
       })();
     </script>
 
-      <script src="/theme.js"></script>
   </body>
 </html>

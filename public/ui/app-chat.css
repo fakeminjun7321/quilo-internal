@@ -1,7 +1,7 @@
 .app-shell--filechat { overflow: hidden; }
 
 .app-shell--filechat #main-content {
-  height: calc(100vh - var(--app-header-h) - var(--app-status-h));
+  height: calc(100vh - var(--ui-site-header-h, 76px) - var(--app-status-h));
   min-height: 610px;
   padding: 0;
 }

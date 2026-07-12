@@ -347,8 +347,13 @@ export function createAccountController({ state, router, hooks }) {
       const saved = localStorage.getItem("lastUsername");
       if (saved && byId("li_username") && !byId("li_username").value) byId("li_username").value = saved;
     } catch (_) {}
-    try { applyAuth(true, await requestJson("/api/me")); }
-    catch (_) {
+    try {
+      const shellSession = window.QuiloShellAuth?.ready
+        ? await window.QuiloShellAuth.ready
+        : { state: "authenticated", user: await requestJson("/api/me") };
+      if (shellSession.state !== "authenticated") throw new Error("anonymous");
+      applyAuth(true, shellSession.user);
+    } catch (_) {
       applyAuth(false);
       if (new URLSearchParams(location.search).get("login") === "1") hooks.shell?.openLogin();
     }

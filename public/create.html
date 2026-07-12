@@ -6,6 +6,7 @@
     <meta name="description" content="창작 — AI로 미니 웹앱·시각자료를 대화로 만들고 공유하는 바이브 코딩 스튜디오." />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/ui/foundation.css" />
+    <link rel="stylesheet" href="/ui/shell.css" />
     <link rel="stylesheet" href="/ui/app-shell.css" />
     <link rel="stylesheet" href="/ui/app-workbench.css" />
     <title>창작 — AI로 만들고 공유하기</title>
@@ -21,24 +22,8 @@
 
 </head>
   <body id="appShell" class="app-shell app-shell--create" data-app-shell>
-    <header class="app-commandbar" data-q-shell>
-      <div class="app-commandbar__inner">
-        <a class="app-brand" href="/" aria-label="Quilo 홈">
-          <span class="app-brand__mark" aria-hidden="true">Q</span>
-          <span>Quilo</span>
-        </a>
-        <span class="app-commandbar__divider" aria-hidden="true"></span>
-        <a class="app-back" href="/">← 홈</a>
-        <strong class="app-title">창작 갤러리</strong>
-        <nav class="app-commandbar__actions" aria-label="계정 및 화면 설정">
-          <a href="/#settings">계정</a>
-          <button type="button" id="themeToggle" class="app-theme" aria-label="다크 모드로 전환" title="다크 모드로 전환">
-            <span class="app-theme__moon" aria-hidden="true">☾</span>
-            <span class="app-theme__sun" aria-hidden="true">☀</span>
-          </button>
-        </nav>
-      </div>
-    </header>
+    <header class="ui-site-header" data-ui-shell data-shell-mode="fixed"></header>
+    <script src="/ui/shell.js"></script>
 <main class="container" id="main-content" aria-label="창작 갤러리">
       <section class="create-intro">
         <h1>창작 갤러리</h1>
@@ -259,7 +244,6 @@
       $("cmtText").onkeydown=(e)=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); sendComment(); } };
       init();
     </script>
-    <script src="/theme.js"></script>
 
   </body>
 </html>

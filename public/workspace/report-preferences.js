@@ -82,6 +82,10 @@ export function initDefaultReportPreferences() {
   const styleSelect = document.getElementById("prefStyleSel");
   const status = document.getElementById("prefSaveStatus");
   if (!modelSelect || !styleSelect) return { apply() {} };
+  if (modelSelect.dataset.preferenceInit === "1") {
+    return { apply: () => window.applyPrefsToForm?.() };
+  }
+  modelSelect.dataset.preferenceInit = "1";
 
   const get = (key) => {
     try { return localStorage.getItem(key) || ""; }

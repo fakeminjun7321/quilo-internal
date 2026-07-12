@@ -41,7 +41,7 @@ const EXPECTED_IDS = {
   "physics-studio.html": ["MathJax-script", "app", "bal", "copyMd", "cost", "count", "difficulty", "dlMd", "err", "formCard", "gate", "go", "hint", "main-content", "model", "notes", "out", "sol", "style", "themeToggle", "toggleAll", "topic"],
   "studio.html": ["addFileBtn", "app", "balChip", "chips", "devseg", "dlZip", "fileTree", "gate", "imgBtn", "imgFile", "instatus", "main-content", "model", "modeseg", "monacoHost", "msgs", "o", "openPublish", "pCancel", "pCat", "pDo", "pPublic", "pSlug", "pTitle", "popout", "preview", "prompt", "pubModal", "pubModalTitle", "pubStatus", "pv", "pvhost", "refresh", "restoreBar", "restoreMeta", "restoreNo", "restoreYes", "sendBtn", "stage", "tabs", "thumbs", "toStage", "undoBtn"],
   "study.html": ["analyzeBtn", "assumptionList", "betaOut", "betaRange", "closeZoomBtn", "description", "diagramExplanation", "diagramTitle", "downloadBtn", "etaOut", "etaRange", "eventList", "main-content", "minkowskiCanvas", "minkowskiZoomCanvas", "modelHint", "modelSelect", "openZoomBtn", "problemImage", "resetBtn", "studyGate", "studyMain", "studyMsg", "studyStatus", "studyZoomModal", "studyZoomStage", "studyZoomTitle", "themeToggle", "warningList", "worldlineList", "zoomFitBtn", "zoomMinusBtn", "zoomPlusBtn", "zoomScaleOut"],
-  "translate-app.html": ["agree", "app", "code", "drop", "est", "file", "gate", "gateBtn", "gateErr", "go", "log", "logout", "main-content", "mode", "model", "result", "terms", "termsClose", "termsLink", "termsLink2", "themeToggle"],
+  "translate-app.html": ["agree", "app", "drop", "est", "file", "gate", "gateBtn", "gateErr", "gateLoginForm", "gatePassword", "gateRemember", "gateUsername", "go", "log", "logout", "main-content", "mode", "model", "result", "terms", "termsClose", "termsLink", "termsLink2", "themeToggle"],
   "translate.html": ["gate", "genSpinner", "main-content", "progress", "progressArea", "resultArea", "retypesetDlgBody", "retypesetDlgTitle", "retypesetMultiBody", "retypesetMultiTitle", "statusTitle", "stopBtn", "themeToggle", "tool", "trBg", "trBgField", "trBgNotify", "trBgNotifyWrap", "trBtn", "trChartRedraw", "trError", "trEstimate", "trForm", "trMode", "trModeHint", "trModel", "trPdf", "trRestoreOnly"],
   "vibe-coding.html": ["again", "chatLog", "chatMsg", "chatSend", "copyMd", "costLine", "dlMd", "err", "gate", "goBtn", "heroImg", "i_free", "i_idea", "i_img", "i_model", "intro", "loadMsg", "loadTitle", "loading", "main-content", "nextBtn", "planArea", "prevBtn", "progress", "refineChat", "refineCost", "result", "stage", "themeToggle", "toStudio", "wizard"],
 };
@@ -73,7 +73,7 @@ let baseUrl;
 
 function fixture(pathname) {
   const fixtures = {
-    "/api/me": { authed: true, isAdmin: false, name: "QA 사용자" },
+    "/api/me": { user: "QA 사용자", username: "qa-user", isAdmin: false },
     "/api/me/beta": { admin: false, features: ["create", "relativity-study"], blockedReportTypes: [] },
     "/api/me/balance": { credits: 8, isAdmin: false, modelCredits: { "claude-sonnet-5": 1 } },
     "/api/artifacts": { artifacts: [], persistent: true },
@@ -172,6 +172,30 @@ test("all work surfaces use the isolated CompactAppShell and preserve DOM contra
     const source = fs.readFileSync(path.join(PUBLIC_DIR, pageName), "utf8");
     expect(source, `${pageName} runtime markup`).not.toMatch(/\sstyle\s*=/i);
   }
+});
+
+test("translate app uses the production Quilo account contract instead of the retired access code", () => {
+  const source = fs.readFileSync(path.join(PUBLIC_DIR, "translate-app.html"), "utf8");
+  expect(source).not.toContain("me.authed");
+  expect(source).not.toContain('id="code"');
+  expect(source).not.toContain("JSON.stringify({ code })");
+  expect(source).toContain('id="gateUsername"');
+  expect(source).toContain('id="gatePassword"');
+  expect(source).toContain('href="/login.html"');
+  expect(source).toContain("JSON.stringify({ username, password, remember })");
+});
+
+test("translate app shows the account login form when the production me endpoint returns 401", async ({ page }) => {
+  await page.route("**/api/me", (route) =>
+    route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ error: "로그인이 필요합니다." }) }),
+  );
+  await page.goto(`${baseUrl}/translate-app.html`, { waitUntil: "networkidle" });
+  await expect(page.locator("#gate")).toBeVisible();
+  await expect(page.locator("#app")).toBeHidden();
+  await expect(page.locator("#gateUsername")).toBeFocused();
+  await expect(page.locator('#gateLoginForm input[name="username"]')).toHaveAttribute("autocomplete", "username");
+  await expect(page.locator('#gateLoginForm input[name="password"]')).toHaveAttribute("autocomplete", "current-password");
+  await expect(page.locator('#gate a[href="/login.html"]')).toHaveText("전체 로그인 페이지 열기");
 });
 
 async function installNetworkFixtures(page, writes) {

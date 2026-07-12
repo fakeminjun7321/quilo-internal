@@ -7,6 +7,7 @@ import {
   storeStudentId,
   storeStyleNote,
 } from "./state.js";
+import { initDefaultReportPreferences } from "./report-preferences.js";
 
 function setStatus(node, text, tone = "muted") {
   if (!node) return;
@@ -100,26 +101,54 @@ export function createAccountController({ state, router, hooks }) {
   async function loadUsage() {
     const credits = byId("usageCredits");
     if (!credits) return;
+    const card = byId("usageCard");
+    const recent = byId("usageRecent");
+    card?.setAttribute("aria-busy", "true");
+    if (recent) {
+      recent.dataset.state = "loading";
+      const loading = document.createElement("p");
+      loading.className = "account-state-copy";
+      loading.textContent = "사용 내역을 불러오는 중입니다.";
+      recent.replaceChildren(loading);
+    }
     try {
       const data = await requestJson("/api/me/usage");
-      credits.textContent = data.isAdmin ? "관리자 (무제한)" : data.unlimited ? "무제한" : `${data.credits ?? 0} 크레딧`;
-      if (byId("usageGen")) byId("usageGen").textContent = `${data.genCount ?? 0} / ${data.genLimit ?? 5} 건`;
-      const restrictDt = byId("usageRestrictDt");
-      const restrict = byId("usageRestrict");
-      if (restrictDt) restrictDt.hidden = !data.restrictedModel;
-      if (restrict) { restrict.hidden = !data.restrictedModel; restrict.textContent = data.restrictedModel || "-"; }
-      const recent = byId("usageRecent");
+      const unlimited = data.isAdmin || data.unlimited;
+      credits.textContent = unlimited ? "무제한" : `${data.credits ?? 0}`;
+      const generated = Math.max(0, Number(data.genCount) || 0);
+      const limit = Math.max(1, Number(data.genLimit) || 5);
+      if (byId("usageGen")) byId("usageGen").textContent = unlimited ? `${generated}회` : `${generated} / ${limit}`;
+      if (byId("usageGenLabel")) byId("usageGenLabel").textContent = unlimited ? "이번 시간 · 제한 없음" : "생성";
+      const restriction = byId("usageRestriction");
+      if (restriction) restriction.hidden = !data.restrictedModel;
+      if (byId("usageRestrict")) byId("usageRestrict").textContent = data.restrictedModel || "-";
+      const meter = byId("usageMeter");
+      if (meter) {
+        meter.hidden = unlimited;
+        meter.max = limit;
+        meter.value = Math.min(limit, generated);
+      }
       if (!recent) return;
       const rows = Array.isArray(data.recent) ? data.recent : [];
       if (!rows.length) {
         const empty = document.createElement("p");
-        empty.className = "hint";
+        empty.className = "account-state-copy";
         empty.textContent = "최근 생성 기록이 없습니다.";
+        recent.dataset.state = "empty";
         recent.replaceChildren(empty);
         return;
       }
       const table = document.createElement("table");
-      table.className = "usage-table";
+      table.className = "account-usage-table";
+      const head = document.createElement("thead");
+      const headRow = document.createElement("tr");
+      ["날짜", "작업", "모델", "크레딧"].forEach((label) => {
+        const cell = document.createElement("th");
+        cell.scope = "col";
+        cell.textContent = label;
+        headRow.appendChild(cell);
+      });
+      head.appendChild(headRow);
       const body = document.createElement("tbody");
       rows.forEach((entry) => {
         const row = document.createElement("tr");
@@ -132,11 +161,49 @@ export function createAccountController({ state, router, hooks }) {
         values.forEach((value) => { const cell = document.createElement("td"); cell.textContent = value; row.append(cell); });
         body.append(row);
       });
-      table.append(body);
+      table.append(head, body);
+      recent.dataset.state = "ready";
       recent.replaceChildren(table);
     } catch (_) {
-      setStatus(credits, "사용 내역을 불러오지 못했습니다.", "danger");
+      if (recent) {
+        const error = document.createElement("p");
+        error.className = "account-state-copy";
+        error.dataset.tone = "danger";
+        error.textContent = "사용 내역을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.";
+        recent.dataset.state = "error";
+        recent.replaceChildren(error);
+      }
+    } finally {
+      card?.setAttribute("aria-busy", "false");
     }
+  }
+
+  function bindAccountNavigation() {
+    const panel = byId("settingsPanel");
+    if (!panel) return;
+    const links = Array.from(panel.querySelectorAll("[data-account-nav]"));
+    const sections = Array.from(panel.querySelectorAll("[data-account-section]"));
+    const activate = (name) => links.forEach((link) => {
+      const active = link.dataset.accountNav === name;
+      link.classList.toggle("is-active", active);
+      if (active) link.setAttribute("aria-current", "location");
+      else link.removeAttribute("aria-current");
+    });
+    links.forEach((link) => link.addEventListener("click", (event) => {
+      event.preventDefault();
+      const target = panel.querySelector(link.getAttribute("href"));
+      if (!target) return;
+      activate(link.dataset.accountNav);
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }));
+    if (!("IntersectionObserver" in window)) return;
+    const observer = new IntersectionObserver((entries) => {
+      const visible = entries
+        .filter((entry) => entry.isIntersecting)
+        .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+      if (visible?.target?.dataset.accountSection) activate(visible.target.dataset.accountSection);
+    }, { rootMargin: "-20% 0px -65% 0px", threshold: [0, .1, .35] });
+    sections.forEach((section) => observer.observe(section));
   }
 
   function applyAuth(loggedIn, user = null) {
@@ -153,6 +220,7 @@ export function createAccountController({ state, router, hooks }) {
       return;
     }
     if (byId("user")) byId("user").textContent = `${user.user} 님`;
+    if (byId("accountMenuName")) byId("accountMenuName").textContent = user.user;
     if (byId("settingsUserName")) byId("settingsUserName").textContent = user.user;
     if (byId("settingsUserRole")) byId("settingsUserRole").textContent = user.isAdmin ? "관리자" : "일반 사용자";
     setStudentId(user.studentId || getStoredStudentId());
@@ -162,6 +230,7 @@ export function createAccountController({ state, router, hooks }) {
       if (node) node.textContent = state.get().studentId ? `${state.get().studentId} ${user.user}` : `${user.user} (학번 미설정)`;
     });
     if (byId("adminLink")) byId("adminLink").hidden = !user.isAdmin;
+    hooks.shell?.loadEntitlements?.();
     if (user.isAdmin) {
       if (!user.fableDisabled) document.querySelectorAll("label.fable-model").forEach((node) => { node.hidden = false; });
       document.querySelectorAll("label.beta-model").forEach((node) => { node.hidden = false; });
@@ -272,6 +341,8 @@ export function createAccountController({ state, router, hooks }) {
 
   async function init() {
     bindForms();
+    bindAccountNavigation();
+    initDefaultReportPreferences();
     try {
       const saved = localStorage.getItem("lastUsername");
       if (saved && byId("li_username") && !byId("li_username").value) byId("li_username").value = saved;
@@ -285,4 +356,3 @@ export function createAccountController({ state, router, hooks }) {
 
   return { init, applyAuth, loadBalance, loadUsage, balanceState, setStudentId };
 }
-

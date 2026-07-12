@@ -67,7 +67,12 @@ function fixture(pathname) {
   if (pathname === "/api/admin/beta") return { features: [] };
   if (pathname === "/api/admin/beta/pro/testers") return { testers: [] };
   if (pathname === "/api/announcements/all" || pathname === "/api/announcements") {
-    return { announcements: [] };
+    return {
+      announcements: [
+        { id: "ann-1", category: "공지", title: "Quilo 전용 도메인 안내", active: true, link: "/guide.html" },
+        { id: "ann-2", category: "점검", title: "시스템 점검 안내", active: false, link: "" },
+      ],
+    };
   }
   if (pathname === "/api/grants") return { grants: [] };
   if (pathname === "/api/subscriptions") return { subscriptions: [] };
@@ -132,7 +137,6 @@ test("admin console keeps all operational groups reachable without write request
   expect(localStylesheets).toEqual([
     "/ui/foundation.css",
     "/ui/admin.css",
-    "/ui/chat.css",
   ]);
   expect(localStylesheets).not.toEqual(
     expect.arrayContaining(["/style.css", "/admin-redesign.css", "/site-shell.css"]),
@@ -160,7 +164,7 @@ test("admin console keeps all operational groups reachable without write request
   await expect(page.locator("#adminTabs .atab.on")).toHaveCount(1);
   await expect(page.locator('#adminTabs .atab[data-go="ai"]')).toHaveCSS(
     "background-color",
-    "rgb(35, 79, 168)",
+    "rgb(23, 41, 70)",
   );
   await expect(page.locator('#adminTabs .atab[data-go="editor"]')).toHaveCSS(
     "background-color",
@@ -184,6 +188,71 @@ test("admin console keeps all operational groups reachable without write request
   expect(writes).toEqual([]);
 });
 
+test("users and announcements use dense list and inspector workflows", async ({ page }) => {
+  const consoleErrors = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(`${baseUrl}/admin.html`, { waitUntil: "networkidle" });
+
+  await page.locator('#adminTabs .atab[data-go="users"]').click();
+  const userList = page.locator('section[data-atab="users"]:has(#userTable)');
+  const userInspector = page.locator('section[data-atab="users"]:has(#addForm)');
+  await expect(userList).toBeVisible();
+  await expect(userInspector).toBeVisible();
+  await page.locator("#adminUserFilter").fill("qa-user");
+  await expect(page.locator('#userTbody tr[data-user-id="qa-user"]')).toBeVisible();
+  await page.locator('#userTbody tr[data-user-id="qa-user"] td').first().click();
+  await expect(page.locator("#userInspectorDetails")).toContainText("QA 사용자");
+  const userListBox = await userList.boundingBox();
+  const userInspectorBox = await userInspector.boundingBox();
+  expect(userListBox.x + userListBox.width).toBeLessThanOrEqual(userInspectorBox.x + 1);
+  await page.screenshot({ path: "/tmp/quilo-admin-users-console.png", fullPage: false });
+
+  await page.locator('#adminTabs .atab[data-go="announce"]').click();
+  await expect(page.locator("#adminAnnSection .announcement-inspector")).toBeVisible();
+  await expect(page.locator("#annAdminList .announcement-item")).toHaveCount(2);
+  await page.locator("#annTitle").fill("새 운영 공지");
+  await page.locator("#annCat").fill("업데이트");
+  await expect(page.locator("#annPreviewTitle")).toHaveText("새 운영 공지");
+  await expect(page.locator("#annPreviewCategory")).toHaveText("업데이트");
+  const announcementListBox = await page.locator("#annAdminList").boundingBox();
+  const announcementInspectorBox = await page.locator("#adminAnnSection .announcement-inspector").boundingBox();
+  expect(announcementListBox.x + announcementListBox.width).toBeLessThanOrEqual(announcementInspectorBox.x + 1);
+  await page.screenshot({ path: "/tmp/quilo-admin-announcements-console.png", fullPage: false });
+  expect(consoleErrors).toEqual([]);
+});
+
+test("subscription, system, usage, feedback, and development panels keep dense console geometry", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(`${baseUrl}/admin.html`, { waitUntil: "networkidle" });
+
+  await page.locator('#adminTabs .atab[data-go="subs"]').click();
+  const maxPanel = await page.locator("#bgSubsSection").boundingBox();
+  const proPanel = await page.locator("#proTierSection").boundingBox();
+  const openPanel = await page.locator("#openFeatureSection").boundingBox();
+  expect(maxPanel.x + maxPanel.width).toBeLessThanOrEqual(proPanel.x + 1);
+  expect(proPanel.y).toBeLessThan(openPanel.y);
+  await page.screenshot({ path: "/tmp/quilo-admin-subscriptions-console.png", fullPage: false });
+
+  await page.locator('#adminTabs .atab[data-go="beta"]').click();
+  const featurePanel = await page.locator("#betaSection").boundingBox();
+  const systemPanel = await page.locator("#problemsetSection").boundingBox();
+  expect(featurePanel.x + featurePanel.width).toBeLessThanOrEqual(systemPanel.x + 1);
+
+  for (const group of ["logs", "appeals", "schools", "editor"]) {
+    await page.locator(`#adminTabs .atab[data-go="${group}"]`).click();
+    await expect(page.locator(`section.settings-card[data-atab="${group}"]`).first()).toBeVisible();
+  }
+  await page.locator('#adminTabs .atab[data-go="logs"]').click();
+  await expect(page.locator("#logTable")).toBeVisible();
+  await page.screenshot({ path: "/tmp/quilo-admin-usage-console.png", fullPage: false });
+
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+});
+
 test("destructive operations retain confirmation gates and cancel without writes", async ({ page }) => {
   const writes = [];
   page.on("request", (request) => {
@@ -200,6 +269,7 @@ test("destructive operations retain confirmation gates and cancel without writes
     confirmationMessage = dialog.message();
     await dialog.dismiss();
   });
+  await page.locator('.row-action-menu:has(button[data-act="delete"][data-id="qa-user"]) summary').click();
   await page.locator('button[data-act="delete"][data-id="qa-user"]').click();
   expect(confirmationMessage).toBe("정말 삭제할까요?");
   expect(writes).toEqual([]);

@@ -56,8 +56,8 @@ export function createChatView({ helpEnabled, onToggle, onSend, onLaunch }) {
 
   const head = element("div");
   head.id = "qc-head";
-  head.appendChild(element("b", null, "Quilo 도우미"));
-  head.appendChild(element("span", "qc-sub", "AI"));
+  head.appendChild(element("b", null, "Quilo"));
+  head.appendChild(element("span", "qc-sub", "AI assistant"));
   const closeButton = element("button", null, "×");
   closeButton.id = "qc-close";
   closeButton.type = "button";
@@ -69,7 +69,7 @@ export function createChatView({ helpEnabled, onToggle, onSend, onLaunch }) {
   const modebar = element("div");
   modebar.id = "qc-modebar";
   modebar.hidden = true;
-  const modeLabel = element("span", null, "📝 메모 작성 도우미");
+  const modeLabel = element("span", null, "메모 작성");
   modeLabel.id = "qc-modelabel";
   modebar.appendChild(modeLabel);
   const modeActions = element("div", "qc-mode-actions");
@@ -78,7 +78,7 @@ export function createChatView({ helpEnabled, onToggle, onSend, onLaunch }) {
   modelSelect.title = "AI 모델 선택";
   modelSelect.hidden = true;
   modeActions.appendChild(modelSelect);
-  const modeBack = element("button", null, "일반 도움말 ✕");
+  const modeBack = element("button", null, "일반 대화로 돌아가기");
   modeBack.type = "button";
   modeActions.appendChild(modeBack);
   modebar.appendChild(modeActions);
@@ -140,7 +140,7 @@ export function createChatView({ helpEnabled, onToggle, onSend, onLaunch }) {
   const disclaimer = element(
     "div",
     null,
-    "AI 도우미 · 부정확할 수 있어요. 중요한 건 직접 확인하세요.",
+    "AI 응답은 부정확할 수 있습니다. 중요한 내용은 직접 확인하세요.",
   );
   disclaimer.id = "qc-disc";
   footer.appendChild(disclaimer);
@@ -154,12 +154,12 @@ export function createChatView({ helpEnabled, onToggle, onSend, onLaunch }) {
   }
 
   let launchButton = null;
-  if (helpEnabled) {
+  if (helpEnabled && !inlineMount) {
     launchButton = element("button", null, "💬");
     launchButton.id = "qc-launch";
     launchButton.type = "button";
     if (inlineMount) launchButton.classList.add("qc-home-launch");
-    launchButton.setAttribute("aria-label", "Quilo 도우미 열기");
+    launchButton.setAttribute("aria-label", "Quilo AI 열기");
     launchButton.addEventListener("click", onLaunch);
     document.body.appendChild(launchButton);
   }

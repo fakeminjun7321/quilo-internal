@@ -2,6 +2,7 @@
 require("dotenv").config({ path: ".env.local" });
 require("dotenv").config();
 const express = require("express");
+const compression = require("compression");
 // 세션은 '무상태(stateless) 서명 쿠키'로. express-session 의 기본 MemoryStore 는 서버
 // 재시작 때 모두 날아가 자동 로그아웃되므로, 세션 데이터를 서명된 쿠키 자체에 담는다
 // (재시작·재배포에도 로그인 유지). 키만 안정적이면 됨(아래 SESSION_SECRET).
@@ -883,6 +884,16 @@ app.use((req, res, next) => {
   next();
 });
 
+// MIT-licensed Express compression middleware. EventSource responses are kept
+// uncompressed so progress events flush immediately instead of being buffered.
+app.use(compression({
+  threshold: 1024,
+  filter(req, res) {
+    if (String(req.headers.accept || "").includes("text/event-stream")) return false;
+    return compression.filter(req, res);
+  },
+}));
+
 // 창작(artifacts)은 생성·업로드 이미지(데이터 URL)나 임베드 미디어로 본문이 커질 수
 // 있어 별도로 상향(8MB). 전역 파서보다 먼저 매칭돼 해당 경로만 큰 본문을 허용한다.
 app.use("/api/artifacts", express.json({ limit: "8mb" }));
@@ -932,7 +943,7 @@ app.use((req, res, next) => {
   if (allowedPaths.has(req.path)) return next();
 
   const message = "사이트가 폐쇄되었습니다.";
-  if (req.path.startsWith("/api/") || req.accepts("json")) {
+  if (isApiRequest(req) || req.accepts("json")) {
     return res.status(410).json({
       ok: false,
       closed: true,
@@ -1120,12 +1131,18 @@ async function refreshSessionUser(req, { failClosed = false } = {}) {
   }
 }
 
+function isApiRequest(req) {
+  const original = String(req.originalUrl || `${req.baseUrl || ""}${req.path || ""}`);
+  const pathname = original.split("?", 1)[0];
+  return pathname === "/api" || pathname.startsWith("/api/");
+}
+
 function requireAuth(req, res, next) {
   if (getSessionUser(req)) return next();
   // /api/* 는 Accept 헤더와 무관하게 **항상 JSON 401** 로 응답한다. (이전엔 EventSource
   // 처럼 Accept 가 json 이 아니면 빈 본문 302 redirect 가 나가 프런트의 res.json() 이
   // "Unexpected end of JSON input" 으로 깨졌다.) 페이지(비-/api) 네비게이션만 redirect.
-  if (req.path.startsWith("/api/")) {
+  if (isApiRequest(req)) {
     return res.status(401).json({ error: "로그인이 필요합니다." });
   }
   return res.redirect("/login.html");
@@ -1225,10 +1242,12 @@ function requireAdminOrBeta(key) {
     if (!u) return res.status(401).json({ error: "로그인이 필요합니다." });
     if (u.isAdmin) return next();
     try {
-      if (
-        (await isFeatureOpenFor(key, u)) ||
-        (supa.isEnabled() && u.id && (await supa.userHasBeta(u.id, key)))
-      ) {
+      const [opened, betaAccess, maxAccess] = await Promise.all([
+        isFeatureOpenFor(key, u),
+        supa.isEnabled() && u.id ? supa.userHasBeta(u.id, key) : false,
+        supa.isEnabled() && u.id ? supa.getActiveBackgroundSub(u.id).then(Boolean) : false,
+      ]);
+      if (opened || betaAccess || maxAccess) {
         return next();
       }
     } catch {
@@ -3946,18 +3965,27 @@ app.post(
 app.get("/api/me/beta", requireAuth, async (req, res) => {
   const u = getSessionUser(req);
   // Supabase 미사용 환경에서도 관리자는 베타 기능을 볼 수 있게 admin 플래그를 알린다.
-  if (!supa.isEnabled()) return res.json({ features: [], admin: !!u.isAdmin });
+  if (!supa.isEnabled()) {
+    return res.json({ features: [], admin: !!u.isAdmin, tier: u.isAdmin ? "admin" : "free" });
+  }
   try {
     if (u.isAdmin) {
       const all = await supa.listBetaFeatures();
       return res.json({
         features: all.filter((f) => f.enabled).map((f) => f.key),
         admin: true, // 관리자는 한도 면제
+        tier: "admin",
       });
     }
-    let keys = await supa.getUserBetaFeatures(u.id);
+    const [assignedKeys, maxSubscription] = await Promise.all([
+      supa.getUserBetaFeatures(u.id),
+      supa.getActiveBackgroundSub(u.id),
+    ]);
+    let keys = [...assignedKeys];
+    const tier = maxSubscription ? "max" : assignedKeys.length ? "pro" : "free";
     // 'pro' 우산 회원: 모든 활성 Pro 기능을 노출(메뉴·허브 표시용 — 게이트는 userHasBeta가 처리).
-    if (keys.includes("pro")) {
+    // Max는 Pro의 상위 등급이므로 같은 기능을 모두 노출하고 서버 게이트도 동일하게 허용한다.
+    if (keys.includes("pro") || tier === "max") {
       try {
         const all = await supa.listBetaFeatures();
         keys = all
@@ -3969,8 +3997,8 @@ app.get("/api/me/beta", requireAuth, async (req, res) => {
     }
     // 임시 공개 중이고 이 사용자 등급이 대상이면 노출(메뉴·허브 표시용).
     // isProUser: pro 확장 후 keys 에 뭔가 있으면 Pro 취급(합집합 기준). Max 는 필요 시 1회 조회.
-    const isProUser = keys.length > 0;
-    let isMaxUser = null;
+    const isProUser = tier === "pro" || tier === "max";
+    let isMaxUser = tier === "max";
     for (const [k, meta] of featureOpenUntil) {
       if (!(meta && Number(meta.until) > Date.now()) || keys.includes(k)) continue;
       const aud = meta.audience || "all";
@@ -3995,9 +4023,9 @@ app.get("/api/me/beta", requireAuth, async (req, res) => {
         used: rateLimit.getBetaUsageCount(u.id, k),
       };
     });
-    return res.json({ features: keys, usage });
+    return res.json({ features: keys, usage, tier, admin: false });
   } catch {
-    return res.json({ features: [] });
+    return res.json({ features: [], tier: "free", admin: false });
   }
 });
 
@@ -7822,7 +7850,7 @@ app.use("/api", (req, res) => {
 app.use((err, req, res, next) => {
   if (res.headersSent) return next(err);
   const status = err.status || err.statusCode || 500;
-  const isApi = req.path && req.path.startsWith("/api/");
+  const isApi = isApiRequest(req);
   if (status >= 500) console.error("[unhandled]", req.method, req.path, err);
   if (isApi || (req.accepts && req.accepts("json") && !req.accepts("html"))) {
     return res.status(status).json({

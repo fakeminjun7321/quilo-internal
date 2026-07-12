@@ -40,6 +40,7 @@
     <link rel="stylesheet" href="/ui/workspace.css" />
     <link rel="stylesheet" href="/ui/forms.css" />
     <link rel="stylesheet" href="/ui/generation.css" />
+    <link rel="stylesheet" href="/ui/account-center.css" />
   </head>
   <body class="home-page" data-auth="pending" data-view="landing">
     <header class="topnav" id="topnav">
@@ -50,67 +51,94 @@
         </a>
         <button type="button" class="topnav-burger" id="navBurger" aria-label="메뉴 열기" aria-expanded="false">☰</button>
         <nav class="topnav-menu" id="navMenu" aria-label="주 메뉴">
-          <!-- 제품 -->
           <div class="nav-dd" data-dd>
-            <button type="button" class="nav-dd-btn" aria-expanded="false">제품 <span class="caret" aria-hidden="true">▾</span></button>
-            <div class="nav-dd-menu">
-              <a href="#" data-report="chem-pre">화학 사전보고서</a>
-              <a href="#" data-report="chem-result">화학 결과보고서</a>
-              <a href="#" data-report="phys-result">물리 결과보고서</a>
-              <a href="#" data-report="free">자유 보고서</a>
-              <a href="#" data-report="reading-log">독서록</a>
-              <a href="/?report=problem-set" id="navBetaProblemSet" hidden>문제집 메이커</a>
-              <a href="/?report=form-maker" id="navBetaFormMaker" hidden>양식 메이커</a>
+            <button type="button" class="nav-dd-btn" aria-expanded="false">제품 <span class="caret" aria-hidden="true"></span></button>
+            <div class="nav-dd-menu nav-mega-menu" aria-label="제품 메뉴">
+              <div class="nav-mega-inner nav-mega-inner--product">
+                <section class="nav-mega-group">
+                  <p class="nav-mega-label">Create</p>
+                  <a href="/?report=chem-pre" data-report="chem-pre"><strong>화학 사전보고서</strong><span>매뉴얼에서 이론과 실험 절차를 정리합니다.</span></a>
+                  <a href="/?report=chem-result" data-report="chem-result"><strong>화학 결과보고서</strong><span>데이터와 사진을 결과 추가분으로 만듭니다.</span></a>
+                  <a href="/?report=phys-result" data-report="phys-result"><strong>물리 결과보고서</strong><span>Capstone·엑셀을 표와 그래프로 분석합니다.</span></a>
+                  <a href="/?report=free" data-report="free"><strong>자유 보고서</strong><span>지시와 자료를 원하는 형식으로 정리합니다.</span></a>
+                </section>
+                <section class="nav-mega-group">
+                  <p class="nav-mega-label">Study</p>
+                  <a href="/?report=reading-log" data-report="reading-log"><strong>독서록</strong><span>도서 정보로 독서활동 기록지를 완성합니다.</span></a>
+                  <a href="/?report=problem-set" id="navBetaProblemSet" hidden><strong>문제집 메이커</strong><span>문제와 해설을 한 번에 구성합니다.</span></a>
+                  <a href="/?report=form-maker" id="navBetaFormMaker" hidden><strong>양식 메이커</strong><span>말과 사진을 편집 가능한 양식으로 바꿉니다.</span></a>
+                </section>
+                <section class="nav-mega-group nav-mega-feature">
+                  <p class="nav-mega-label">Start here</p>
+                  <a href="/?report=free"><strong>무엇이든 초안부터 시작하세요.</strong><span>주제와 자료를 넣으면 적합한 작업 흐름으로 안내합니다.</span><em>Quilo 시작하기 →</em></a>
+                </section>
+              </div>
             </div>
           </div>
-          <!-- 솔루션 -->
           <div class="nav-dd" data-dd>
-            <button type="button" class="nav-dd-btn" aria-expanded="false">솔루션 <span class="caret" aria-hidden="true">▾</span></button>
-            <div class="nav-dd-menu">
-              <a href="/exam-prep.html" id="navExamPrep" hidden>수행평가 도움</a>
-              <a href="/physics-studio.html" id="navBetaPhysStudio" hidden>고급 물리 문제</a>
-              <a href="/create.html" id="navBetaCreate" hidden>창작 스튜디오</a>
-              <a href="/vibe-coding.html" id="navBetaVibe" hidden>바이브 코딩 생성기</a>
-              <a href="/editor.html" id="navBetaEditor" hidden>Quilo Code</a>
-              <a href="/filechat.html" id="navBetaFilechat" hidden>파일 챗봇</a>
-              <a href="/tools/convert.html">파일 변환기 <span class="nav-item-meta">· 이미지·PDF·수식</span></a>
-              <a href="/translate.html" id="navBetaTranslate" hidden>PDF 통번역</a>
+            <button type="button" class="nav-dd-btn" aria-expanded="false">솔루션 <span class="caret" aria-hidden="true"></span></button>
+            <div class="nav-dd-menu nav-mega-menu" aria-label="솔루션 메뉴">
+              <div class="nav-mega-inner">
+                <section class="nav-mega-group">
+                  <p class="nav-mega-label">Learn</p>
+                  <a href="/exam-prep.html" id="navExamPrep" hidden><strong>수행평가 도움</strong><span>수학·물리 탐구를 구조화합니다.</span></a>
+                  <a href="/physics-studio.html" id="navBetaPhysStudio" hidden><strong>고급 물리 문제</strong><span>복잡한 문제를 단계별로 풉니다.</span></a>
+                  <a href="/filechat.html" id="navBetaFilechat" hidden><strong>파일 대화</strong><span>내 자료 안에서 근거를 찾아 답합니다.</span></a>
+                </section>
+                <section class="nav-mega-group">
+                  <p class="nav-mega-label">Build</p>
+                  <a href="/create.html" id="navBetaCreate" hidden><strong>창작 스튜디오</strong><span>아이디어를 실제 결과물로 만듭니다.</span></a>
+                  <a href="/vibe-coding.html" id="navBetaVibe" hidden><strong>바이브 코딩</strong><span>요구사항부터 실행 가능한 설계까지 만듭니다.</span></a>
+                  <a href="/editor.html" id="navBetaEditor" hidden><strong>Quilo Code</strong><span>브라우저에서 코드를 작성하고 실행합니다.</span></a>
+                </section>
+                <section class="nav-mega-group">
+                  <p class="nav-mega-label">Transform</p>
+                  <a href="/tools/convert.html"><strong>파일 변환기</strong><span>이미지·PDF·표·수식을 한곳에서 변환합니다.</span></a>
+                  <a href="/translate.html" id="navBetaTranslate" hidden><strong>PDF 통번역</strong><span>문서 구조를 보존하며 번역합니다.</span></a>
+                </section>
+              </div>
             </div>
           </div>
-          <!-- 앱 -->
           <div class="nav-dd" data-dd>
-            <button type="button" class="nav-dd-btn" aria-expanded="false">앱 <span class="caret" aria-hidden="true">▾</span></button>
-            <div class="nav-dd-menu">
-              <a href="/apps/quilo.html">Quilo Desktop</a>
-              <a href="/apps/live-translator.html">Live Translator</a>
+            <button type="button" class="nav-dd-btn" aria-expanded="false">앱 <span class="caret" aria-hidden="true"></span></button>
+            <div class="nav-dd-menu nav-mega-menu" aria-label="앱 메뉴">
+              <div class="nav-mega-inner nav-mega-inner--compact">
+                <section class="nav-mega-group">
+                  <p class="nav-mega-label">Desktop</p>
+                  <a href="/apps/quilo.html"><strong>Quilo Desktop</strong><span>웹에서 하던 작업을 Mac과 Windows에서 이어갑니다.</span></a>
+                </section>
+                <section class="nav-mega-group">
+                  <p class="nav-mega-label">Speech</p>
+                  <a href="/apps/live-translator.html"><strong>Live Translator</strong><span>실시간 음성을 빠르게 받아쓰고 번역합니다.</span></a>
+                </section>
+              </div>
             </div>
           </div>
-          <!-- 개발자 -->
           <div class="nav-dd" data-dd>
-            <button type="button" class="nav-dd-btn" aria-expanded="false">개발자 <span class="caret" aria-hidden="true">▾</span></button>
-            <div class="nav-dd-menu">
-              <a href="/developers.html">개발자 플랫폼</a>
-              <a href="/developers.html#catalogSection">API 기능 카탈로그</a>
-              <a href="/developers.html#tokenSection">API 토큰</a>
+            <button type="button" class="nav-dd-btn" aria-expanded="false">개발자 <span class="caret" aria-hidden="true"></span></button>
+            <div class="nav-dd-menu nav-mega-menu" aria-label="개발자 메뉴">
+              <div class="nav-mega-inner nav-mega-inner--compact">
+                <section class="nav-mega-group"><p class="nav-mega-label">Platform</p><a href="/developers.html"><strong>개발자 플랫폼</strong><span>Quilo 기능을 API와 Codex에 연결합니다.</span></a></section>
+                <section class="nav-mega-group"><p class="nav-mega-label">Resources</p><a href="/developers.html#catalog"><strong>기능 카탈로그</strong><span>연결 가능한 기능과 요청 형식을 확인합니다.</span></a><a href="/developers.html#tokenCard"><strong>API 토큰</strong><span>범위가 제한된 토큰을 안전하게 관리합니다.</span></a></section>
+              </div>
             </div>
           </div>
-          <!-- 리소스 -->
           <div class="nav-dd" data-dd>
-            <button type="button" class="nav-dd-btn" aria-expanded="false">리소스 <span class="caret" aria-hidden="true">▾</span></button>
-            <div class="nav-dd-menu">
-              <a href="/examples.html">예시 모음</a>
-              <a href="/guide.html">이용 가이드</a>
-              <a href="/changelog.html">패치노트</a>
-              <a href="/community.html">커뮤니티</a>
-              <a href="/school-apply.html">학교 도입 신청</a>
+            <button type="button" class="nav-dd-btn" aria-expanded="false">리소스 <span class="caret" aria-hidden="true"></span></button>
+            <div class="nav-dd-menu nav-mega-menu" aria-label="리소스 메뉴">
+              <div class="nav-mega-inner">
+                <section class="nav-mega-group"><p class="nav-mega-label">Learn</p><a href="/guide.html"><strong>이용 가이드</strong><span>기능별 시작 방법과 사용 원칙입니다.</span></a><a href="/examples.html"><strong>예시 모음</strong><span>완성된 결과와 활용 방식을 살펴봅니다.</span></a></section>
+                <section class="nav-mega-group"><p class="nav-mega-label">Updates</p><a href="/changelog.html"><strong>업데이트</strong><span>새 기능과 개선 내역을 확인합니다.</span></a><a href="/community.html"><strong>커뮤니티</strong><span>작업 사례와 질문을 나눕니다.</span></a></section>
+                <section class="nav-mega-group"><p class="nav-mega-label">Organizations</p><a href="/school-apply.html"><strong>학교 도입</strong><span>기관용 Quilo 도입을 문의합니다.</span></a></section>
+              </div>
             </div>
           </div>
-          <a class="topnav-link" href="#balanceBox">요금</a>
-          <a class="topnav-link" href="https://www.instagram.com/" target="_blank" rel="noopener">Instagram ↗</a>
+          <a class="topnav-link" href="/pricing.html">요금</a>
+          <a class="topnav-link" href="https://www.instagram.com/quilo._.official/" target="_blank" rel="noopener">Instagram ↗</a>
           <!-- 로그아웃 상태: '로그인' 누르면 로그인 폼이 드롭다운으로 내려온다 -->
           <div class="nav-dd nav-dd-right" data-dd id="loginDd" hidden>
             <button type="button" class="nav-dd-btn nav-login-trigger" aria-expanded="false">로그인 <span class="caret" aria-hidden="true">▾</span></button>
-            <div class="nav-dd-menu nav-login-menu">
+            <div class="nav-dd-menu nav-login-menu nav-popover">
               <form id="loginForm" class="auth-form auth-form--compact">
                 <div class="auth-panel__head">
                   <p class="auth-kicker">Account sign in</p>
@@ -143,12 +171,13 @@
 
           <!-- 로그인 상태: 계정 메뉴 -->
           <div class="nav-dd nav-dd-right" data-dd id="acctDd" hidden>
-            <button type="button" class="nav-dd-btn" aria-expanded="false"><span id="user">내 계정</span> <span class="caret" aria-hidden="true">▾</span></button>
-            <div class="nav-dd-menu">
-              <a href="#" data-tab="files">내 파일</a>
-              <a href="#integrations" data-tab="integrations">외부 서비스 연결</a>
-              <a href="#" data-tab="settings">개인 설정</a>
-              <a href="#" data-tab="feedback">건의사항</a>
+            <button type="button" class="nav-dd-btn account-trigger" aria-expanded="false"><span class="account-trigger-copy"><span id="user">내 계정</span><small id="accountTriggerMeta">Account</small></span> <span class="caret" aria-hidden="true"></span></button>
+            <div class="nav-dd-menu nav-account-menu nav-popover">
+              <div class="account-menu-head"><strong id="accountMenuName">내 계정</strong><span id="accountMenuMeta">Quilo Account</span></div>
+              <a href="#" data-tab="settings"><strong>Account Center</strong><span>계정·사용량·기본 설정</span></a>
+              <a href="#" data-tab="files"><strong>내 파일</strong><span>최근 생성 파일</span></a>
+              <a href="#integrations" data-tab="integrations"><strong>외부 서비스 연결</strong><span>Dropbox와 API 연결</span></a>
+              <a href="#" data-tab="feedback"><strong>지원 및 건의사항</strong><span>문제 제보와 기능 제안</span></a>
               <a href="/admin" id="adminLink" hidden>관리자</a>
               <div class="dd-sep" aria-hidden="true"></div>
               <a href="#" id="logout">로그아웃</a>
@@ -170,8 +199,11 @@
     </header>
 
     <div id="annTicker" class="ann-ticker" hidden aria-label="공지사항">
-      <span class="ann-bell" aria-hidden="true">🔔</span>
-      <div class="ann-track" id="annTrack"></div>
+      <div class="ann-inner">
+        <span class="ann-label">공지</span>
+        <div class="ann-track" id="annTrack"></div>
+        <button type="button" class="ann-dismiss" id="annDismiss" aria-label="공지 닫기">×</button>
+      </div>
     </div>
 
     <p class="slim-disclaimer" data-workspace-only>
@@ -183,7 +215,7 @@
     <div id="landingSurface" aria-label="Quilo 홈">
     <section class="home-hero home-hero-v2" id="homeHero">
       <h1>What can Quilo help you create?</h1>
-      <p class="sr-only">Quilo 기능과 보고서 작성, 크레딧 사용법을 기존 Quilo 도우미에게 물어보세요.</p>
+      <p class="sr-only">Quilo 기능과 보고서 작성, 크레딧 사용법을 AI에게 물어보세요.</p>
       <div id="quiloBotMount" class="quilo-bot-mount" aria-live="polite">
         <div class="quilo-bot-fallback">실험 자료를 분석해줘</div>
       </div>
@@ -2128,167 +2160,172 @@
       </div>
     </section>
 
-    <section id="settingsPanel" class="tab-panel" data-tab-panel="settings" hidden>
-      <nav class="settings-shortcuts" aria-label="설정 바로가기">
-        <a href="#settingsAccountCard">계정</a>
-        <a href="#tierCard">등급</a>
-        <a href="#usageCard">사용 내역</a>
-        <a href="#byokCard">API 키</a>
-        <a href="/developers.html">Codex 연동</a>
-        <a href="#settingsProfileCard">학번</a>
-        <a href="#settingsStyleCard">글 스타일</a>
-        <a href="#settingsDefaultsCard">기본값</a>
-        <a href="#settingsPasswordCard">비밀번호</a>
-      </nav>
+    <section id="settingsPanel" class="tab-panel account-center" data-tab-panel="settings" hidden>
+      <div class="account-center-shell">
+        <nav class="account-local-nav" aria-label="계정 센터 메뉴">
+          <a href="#settingsAccountCard" data-account-nav="overview" class="is-active">개요</a>
+          <a href="#usageCard" data-account-nav="usage">사용량</a>
+          <a href="#byokCard" data-account-nav="connections">연결</a>
+          <a href="#settingsDefaultsCard" data-account-nav="defaults">기본 설정</a>
+          <a href="#settingsPasswordCard" data-account-nav="security">보안</a>
+        </nav>
 
-      <div class="settings-card" id="settingsAccountCard">
-        <h2>개인 설정</h2>
-        <p class="hint">계정 정보를 확인하고 비밀번호를 변경할 수 있습니다.</p>
-        <dl class="settings-summary">
-          <dt>이름</dt>
-          <dd id="settingsUserName">-</dd>
-          <dt>학번</dt>
-          <dd id="settingsStudentId">-</dd>
-          <dt>권한</dt>
-          <dd id="settingsUserRole">일반 사용자</dd>
-        </dl>
-      </div>
+        <div class="account-center-content">
+          <header class="account-center-head">
+            <h1>Account Center</h1>
+            <p>계정 정보와 사용 현황을 관리하세요.</p>
+          </header>
 
-      <div class="settings-card" id="tierCard">
-        <h2>내 등급</h2>
-        <div id="tierStatus" class="hint status-block">확인 중…</div>
-        <div id="maxUpsell" hidden>
-          <p class="hint copy-relaxed" id="maxPlanInfo"></p>
-          <div class="form-actions">
-            <button type="button" class="btn btn-primary" id="maxRequestBtn">Max 업그레이드 신청</button>
-          </div>
+          <section class="account-section" id="settingsAccountCard" data-account-section="overview" aria-labelledby="accountOverviewTitle">
+            <div class="account-section-head">
+              <h2 id="accountOverviewTitle">계정 개요</h2>
+            </div>
+            <dl class="account-definition-list">
+              <dt>이름</dt>
+              <dd id="settingsUserName">-</dd>
+              <dt>학번</dt>
+              <dd class="account-student-row">
+                <span id="settingsStudentId">-</span>
+                <details class="account-profile-inline" id="settingsProfileCard">
+                  <summary>변경</summary>
+                  <form id="profileForm" class="account-inline-form">
+                    <label class="account-visually-hidden" for="settingsStudentIdInput">학번</label>
+                    <input id="settingsStudentIdInput" type="text" inputmode="numeric" maxlength="20" placeholder="예: 2402" autocomplete="off" />
+                    <button type="submit" class="account-button" id="profileBtn">저장</button>
+                    <span class="account-form-status" id="profileStatus" aria-live="polite"></span>
+                  </form>
+                </details>
+              </dd>
+              <dt>플랜</dt>
+              <dd><span id="tierStatus" class="account-inline-status" data-state="loading">확인 중…</span></dd>
+              <dt>권한</dt>
+              <dd id="settingsUserRole">일반 사용자</dd>
+            </dl>
+
+            <div id="tierCard" class="account-plan-details">
+              <div id="maxUpsell" class="account-upgrade" hidden>
+                <p id="maxPlanInfo"></p>
+                <button type="button" class="account-button account-button--outline" id="maxRequestBtn">Max 업그레이드 신청</button>
+              </div>
+            </div>
+
+          </section>
+
+          <section class="account-section" id="usageCard" data-account-section="usage" aria-labelledby="usageTitle" aria-busy="true">
+            <div class="account-section-head">
+              <h2 id="usageTitle">이번 달 사용량</h2>
+            </div>
+            <div class="account-usage-summary">
+              <div><strong id="usageCredits">-</strong><span>보유 크레딧</span></div>
+              <div><strong id="usageGen">-</strong><span id="usageGenLabel">생성</span></div>
+              <div id="usageRestriction" hidden><strong id="usageRestrict">-</strong><span id="usageRestrictDt">모델 제한</span></div>
+            </div>
+            <progress class="account-usage-meter" id="usageMeter" value="0" max="5" aria-label="생성 사용량"></progress>
+            <div class="account-recent" id="usageRecent" aria-live="polite" data-state="loading">
+              <p class="account-state-copy">사용 내역을 불러오는 중입니다.</p>
+            </div>
+          </section>
+
+          <section class="account-section" id="byokCard" data-account-section="connections" aria-labelledby="connectionsTitle" aria-busy="true">
+            <div class="account-section-head account-section-head--split">
+              <div>
+                <h2 id="connectionsTitle">API 연결</h2>
+                <p>개인 API 키는 서버에 암호화되어 저장되며, 연결한 제공자의 생성은 크레딧을 차감하지 않습니다.</p>
+              </div>
+              <span id="byokStatus" class="account-inline-status" data-state="loading">불러오는 중…</span>
+            </div>
+
+            <details class="account-provider" data-provider="anthropic">
+              <summary class="account-provider-head">
+                <div><strong>Anthropic</strong><span>Claude 모델</span></div>
+                <span id="byokAnthropicStatus" class="account-provider-status">확인 중</span>
+              </summary>
+              <div class="account-provider-controls">
+                <label for="byokAnthropicInput">API 키</label>
+                <input id="byokAnthropicInput" type="password" placeholder="sk-ant-..." autocomplete="off" />
+                <button type="button" class="account-button" id="byokSaveAnthropic">등록</button>
+                <button type="button" class="account-button account-button--quiet" id="byokDelAnthropic">삭제</button>
+              </div>
+            </details>
+
+            <details class="account-provider" data-provider="openai">
+              <summary class="account-provider-head">
+                <div><strong>OpenAI</strong><span>GPT 모델</span></div>
+                <span id="byokOpenaiStatus" class="account-provider-status">확인 중</span>
+              </summary>
+              <div class="account-provider-controls">
+                <label for="byokOpenaiInput">API 키</label>
+                <input id="byokOpenaiInput" type="password" placeholder="sk-..." autocomplete="off" />
+                <button type="button" class="account-button" id="byokSaveOpenai">등록</button>
+                <button type="button" class="account-button account-button--quiet" id="byokDelOpenai">삭제</button>
+              </div>
+            </details>
+            <p id="byokMsg" class="account-form-status" aria-live="polite"></p>
+          </section>
+
+          <section class="account-section" id="settingsDefaultsCard" data-account-section="defaults" aria-labelledby="defaultsTitle">
+            <div class="account-section-head">
+              <h2 id="defaultsTitle">기본 설정</h2>
+              <p>보고서 작성 화면을 열 때 자동으로 적용할 값을 정합니다.</p>
+            </div>
+            <div class="account-preference-grid">
+              <label>기본 AI 모델
+                <select id="prefModelSel">
+                  <option value="">매번 직접 선택</option>
+                  <option value="claude-opus-4-8">Opus 4.8 (정밀 · 4크레딧)</option>
+                  <option value="claude-sonnet-5">Sonnet 5 (빠름 · 2크레딧)</option>
+                  <option value="gpt-5.5">GPT-5.5 (정밀 · 4크레딧)</option>
+                  <option value="gpt-5.4">GPT-5.4 (중간 · 1크레딧)</option>
+                  <option value="gpt-5.4-mini">GPT-5.4 mini (빠름 · 무료)</option>
+                </select>
+              </label>
+              <label>기본 양식
+                <select id="prefStyleSel">
+                  <option value="">매번 직접 선택</option>
+                  <option value="default">기본 양식</option>
+                  <option value="minimal">간단 양식</option>
+                </select>
+              </label>
+            </div>
+            <p class="account-form-status" id="prefSaveStatus" aria-live="polite"></p>
+
+            <div class="account-subsection account-subsection--stack" id="settingsStyleCard">
+              <div class="account-subsection-copy">
+                <h3>내 기본 글 스타일</h3>
+                <p>문체의 특징만 저장합니다. 보고서 내용은 저장하거나 복사하지 않습니다.</p>
+              </div>
+              <textarea id="settingsStyleNote" rows="4" maxlength="1500" placeholder="예: 직관을 먼저 설명하고, 수식은 단계별로 유도해 주세요."></textarea>
+              <div class="account-actions">
+                <button type="button" class="account-button" id="styleSaveBtn">저장</button>
+                <a class="account-help-link" href="/guide.html">글 스타일 작성 도움말</a>
+                <span class="account-form-status" id="styleSaveStatus" aria-live="polite"></span>
+              </div>
+            </div>
+          </section>
+
+          <section class="account-section" id="settingsPasswordCard" data-account-section="security" aria-labelledby="securityTitle">
+            <div class="account-section-head">
+              <h2 id="securityTitle">보안</h2>
+              <p>비밀번호 변경은 10분당 3회까지 시도할 수 있습니다.</p>
+            </div>
+            <form id="pwForm" class="account-security-form">
+              <label>현재 비밀번호
+                <input id="currentPw" type="password" required autocomplete="current-password" />
+              </label>
+              <label>새 비밀번호
+                <input id="newPw" type="password" required minlength="5" autocomplete="new-password" />
+                <small>최소 5자</small>
+              </label>
+              <label>새 비밀번호 확인
+                <input id="confirmPw" type="password" required minlength="5" autocomplete="new-password" />
+              </label>
+              <div class="account-actions">
+                <button type="submit" class="account-button" id="pwBtn">비밀번호 변경</button>
+                <span class="account-form-status" id="pwStatus" aria-live="polite"></span>
+              </div>
+            </form>
+          </section>
         </div>
-      </div>
-
-      <div class="settings-card" id="byokCard">
-        <h2>내 API 키 (BYOK)</h2>
-        <p class="hint">본인 <b>Anthropic</b>/<b>OpenAI</b> API 키를 등록하면 AI 생성이 <b>크레딧 차감 없이 내 키로</b> 실행됩니다. 등급 내 기능·모델에만 적용되며, AI 개념도 이미지 생성 크레딧은 별도입니다. 키는 서버에 암호화되어 저장됩니다.</p>
-        <div id="byokStatus" class="hint status-block">불러오는 중…</div>
-        <label>Anthropic 키
-          <input id="byokAnthropicInput" type="password" placeholder="sk-ant-..." autocomplete="off" />
-        </label>
-        <div class="form-actions actions-space-bottom">
-          <button type="button" class="btn" id="byokSaveAnthropic">저장</button>
-          <button type="button" class="btn" id="byokDelAnthropic">삭제</button>
-        </div>
-        <label>OpenAI(GPT) 키
-          <input id="byokOpenaiInput" type="password" placeholder="sk-..." autocomplete="off" />
-        </label>
-        <div class="form-actions actions-space-top">
-          <button type="button" class="btn" id="byokSaveOpenai">저장</button>
-          <button type="button" class="btn" id="byokDelOpenai">삭제</button>
-        </div>
-        <p id="byokMsg" class="hint space-top-8"></p>
-      </div>
-
-      <div class="settings-card" id="usageCard">
-        <h2>사용 내역</h2>
-        <dl class="settings-summary">
-          <dt>보유 크레딧</dt>
-          <dd id="usageCredits">-</dd>
-          <dt>이번 시간 생성</dt>
-          <dd id="usageGen">-</dd>
-          <dt id="usageRestrictDt" hidden>모델 제한</dt>
-          <dd id="usageRestrict" hidden>-</dd>
-        </dl>
-        <h3 class="section-label-small">최근 생성</h3>
-        <div class="text-13" id="usageRecent"><p class="hint">불러오는 중…</p></div>
-      </div>
-
-      <div class="settings-card" id="settingsProfileCard">
-        <h2>학번</h2>
-        <form id="profileForm" class="compact-form">
-          <p>
-            <label>학번:<br>
-              <input id="settingsStudentIdInput" type="text" inputmode="numeric" maxlength="20" placeholder="예: 2402" autocomplete="off" />
-            </label>
-          </p>
-          <p>
-            <button type="submit" id="profileBtn">저장</button>
-            <span class="status-inline" id="profileStatus"></span>
-          </p>
-          <p class="hint">
-            저장한 학번은 보고서 표지와 파일명에 자동으로 들어갑니다.
-          </p>
-        </form>
-      </div>
-
-      <div class="settings-card" id="settingsStyleCard">
-        <h2>내 기본 글 스타일</h2>
-        <p class="hint">저장해두면 모든 보고서의 '내 글 스타일' 칸에 자동으로 채워집니다. 생성할 때 바꿀 수 있어요. (문체만 반영 · 내용은 안 들어감)</p>
-        <div class="compact-form">
-          <p>
-            <textarea id="settingsStyleNote" rows="4" maxlength="1500" class="tool-input input-readable" placeholder="예: 영어 소제목 + 구어체로 직관 먼저 설명하고, 헷갈리는 지점을 짚으며 수식은 단계별로 유도하는 느낌"></textarea>
-          </p>
-          <p>
-            <button type="button" id="styleSaveBtn">저장</button>
-            <button type="button" class="qc-style-btn qc-assist-trigger qc-assist-trigger--inline" data-action="open-quilo-assist" data-assist-kind="style" data-target="settingsStyleNote">✨ AI로 내 스타일 정리받기</button>
-            <span class="status-inline" id="styleSaveStatus"></span>
-          </p>
-        </div>
-      </div>
-
-      <div class="settings-card" id="settingsDefaultsCard">
-        <h2>기본 모델 · 양식 선호</h2>
-        <p class="hint">보고서 작성 화면을 열 때 자동으로 선택될 기본값입니다. 생성할 때 언제든 바꿀 수 있습니다.</p>
-        <div class="compact-form">
-          <p>
-            <label>기본 AI 모델:<br>
-              <select id="prefModelSel" class="tool-input select-compact">
-                <option value="">매번 직접 선택</option>
-                <option value="claude-opus-4-8">Opus 4.8 (정밀 · 4크레딧)</option>
-                <option value="claude-sonnet-5">Sonnet 5 (빠름 · 2크레딧)</option>
-                <option value="gpt-5.5">GPT-5.5 (정밀 · 4크레딧)</option>
-                <option value="gpt-5.4">GPT-5.4 (중간 · 1크레딧)</option>
-                <option value="gpt-5.4-mini">GPT-5.4 mini (빠름 · 무료)</option>
-              </select>
-            </label>
-          </p>
-          <p>
-            <label>기본 양식(화학 사전보고서):<br>
-              <select id="prefStyleSel" class="tool-input select-compact">
-                <option value="">매번 직접 선택</option>
-                <option value="default">기본 양식</option>
-                <option value="minimal">간단 양식</option>
-              </select>
-            </label>
-          </p>
-          <p class="hint status-min-height" id="prefSaveStatus"></p>
-        </div>
-      </div>
-
-      <div class="settings-card" id="settingsPasswordCard">
-        <h2>비밀번호 변경</h2>
-      <form id="pwForm" class="compact-form">
-        <p>
-          <label>현재 비밀번호:<br>
-            <input id="currentPw" type="password" required autocomplete="current-password" />
-          </label>
-        </p>
-        <p>
-          <label>새 비밀번호:<br>
-            <input id="newPw" type="password" required minlength="5" autocomplete="new-password" />
-            <small>(최소 5자)</small>
-          </label>
-        </p>
-        <p>
-          <label>새 비밀번호 확인:<br>
-            <input id="confirmPw" type="password" required minlength="5" autocomplete="new-password" />
-          </label>
-        </p>
-        <p>
-          <button type="submit" id="pwBtn">변경</button>
-          <span class="status-inline" id="pwStatus"></span>
-        </p>
-        <p class="hint">
-          10분당 3회까지 변경을 시도할 수 있습니다.
-        </p>
-      </form>
       </div>
     </section>
     </div>
@@ -2311,6 +2348,6 @@
     <script src="/version-footer.js"></script>
     <script src="/theme.js"></script>
     <script type="module" src="/workspace/bootstrap.js"></script>
-  <script src="/chat-widget.js" defer></script>
+    <script src="/chat-widget.js" defer></script>
   </body>
 </html>

@@ -29,7 +29,7 @@
         <a class="app-back" href="/">← 홈</a>
         <strong class="app-title">PDF 통번역</strong>
         <nav class="app-commandbar__actions" aria-label="계정 및 화면 설정">
-          <a href="/account.html">계정</a>
+          <a href="/#settings">계정</a>
           <button type="button" id="themeToggle" class="app-theme" aria-label="다크 모드로 전환" title="다크 모드로 전환">
             <span class="app-theme__moon" aria-hidden="true">☾</span>
             <span class="app-theme__sun" aria-hidden="true">☀</span>
@@ -38,15 +38,25 @@
       </div>
     </header>
 <main id="main-content" aria-label="PDF 통번역">
-    <!-- 코드 게이트 -->
+    <!-- Quilo 계정 로그인 게이트 -->
     <div id="gate">
       <div class="box">
         <div class="logo app-inline-translate-app-1">Q</div>
         <h1 class="app-inline-translate-app-2">PDF 통번역</h1>
-        <p class="sub app-inline-translate-app-3">접근 코드를 입력하세요.</p>
-        <input id="code" type="password" placeholder="초대 코드" autocomplete="off" aria-label="접근 코드" />
-        <div class="err" id="gateErr" role="alert" aria-live="assertive"></div>
-        <button id="gateBtn" class="app-inline-translate-app-4">입장</button>
+        <p class="sub app-inline-translate-app-3">Quilo 계정으로 로그인하면 통번역 작업을 시작할 수 있습니다.</p>
+        <form id="gateLoginForm">
+          <label for="gateUsername">아이디</label>
+          <input id="gateUsername" name="username" autocomplete="username" required />
+          <label for="gatePassword">비밀번호</label>
+          <input id="gatePassword" name="password" type="password" autocomplete="current-password" required />
+          <label class="app-inline-translate-app-7">
+            <input id="gateRemember" name="remember" type="checkbox" class="app-inline-translate-app-8" checked />
+            <span>이 기기에서 로그인 유지</span>
+          </label>
+          <div class="err" id="gateErr" role="alert" aria-live="assertive"></div>
+          <button id="gateBtn" type="submit" class="app-inline-translate-app-4">로그인</button>
+        </form>
+        <p class="sub app-inline-translate-app-3"><a href="/login.html">전체 로그인 페이지 열기</a></p>
       </div>
     </div>
 
@@ -128,22 +138,48 @@
 
       async function init() {
         try {
-          const me = await fetch("/api/me").then((r) => r.json());
-          if (me.authed) { $("gate").hidden = true; $("app").hidden = false; }
-          else { $("gate").hidden = false; $("code").focus(); }
-        } catch { $("gate").hidden = false; }
+          const response = await fetch("/api/me", { headers: { Accept: "application/json" } });
+          if (!response.ok) {
+            throw new Error(response.status === 401 ? "로그인이 필요합니다." : "계정 정보를 확인할 수 없습니다.");
+          }
+          const me = await response.json();
+          const authenticated = !!(
+            me &&
+            (me.isAdmin === true || String(me.user || me.username || "").trim())
+          );
+          if (!authenticated) throw new Error("로그인이 필요합니다.");
+          $("gate").hidden = true;
+          $("app").hidden = false;
+        } catch {
+          $("gate").hidden = false;
+          $("app").hidden = true;
+          $("gateUsername").focus();
+        }
       }
-      async function login() {
-        const code = $("code").value.trim();
+      async function login(event) {
+        event.preventDefault();
+        const username = $("gateUsername").value.trim();
+        const password = $("gatePassword").value;
+        const remember = $("gateRemember").checked;
         $("gateErr").textContent = "";
+        $("gateBtn").disabled = true;
+        $("gateBtn").textContent = "로그인 중...";
         try {
-          const r = await fetch("/api/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code }) });
-          if (r.ok) location.reload();
-          else $("gateErr").textContent = (await r.json()).error || "코드가 올바르지 않습니다.";
-        } catch { $("gateErr").textContent = "오류가 발생했습니다."; }
+          const response = await fetch("/api/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username, password, remember }),
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(data.error || "로그인에 실패했습니다.");
+          location.reload();
+        } catch (error) {
+          $("gateErr").textContent = error.message || "오류가 발생했습니다.";
+          $("gateBtn").disabled = false;
+          $("gateBtn").textContent = "로그인";
+        }
       }
-      $("gateBtn").onclick = login;
-      $("code").addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });
+      $("gateLoginForm").addEventListener("submit", login);
       $("logout").onclick = async () => { await fetch("/api/logout", { method: "POST" }); location.reload(); };
 
       // 파일 선택

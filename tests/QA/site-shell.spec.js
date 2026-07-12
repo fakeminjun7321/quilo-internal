@@ -203,8 +203,8 @@ test("guide desktop shell renders with real navigation destinations", async ({ p
     "/changelog.html",
     "/community.html",
     "/school-apply.html",
-    "/#balanceBox",
-    "https://www.instagram.com/",
+    "/pricing.html",
+    "https://www.instagram.com/quilo._.official/",
   ]);
   await expect(page.locator('.ui-site-actions a[href="/?login=1"]')).toHaveText("로그인");
   await expect(page.locator('.ui-site-actions .ui-site-cta[href="/?report=free"]')).toHaveText("무료로 시작하기");
@@ -236,6 +236,56 @@ test("guide 933px shell keeps the approved full navigation without overflow", as
     document: document.documentElement.scrollWidth,
   }));
   expect(overflow.document).toBeLessThanOrEqual(overflow.viewport + 1);
+});
+
+test("pricing page explains plan differences without inventing a fixed price", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${baseUrl}/pricing.html`, { waitUntil: "domcontentloaded" });
+
+  await expect(page).toHaveTitle("요금 및 플랜 — Quilo");
+  await expect(page.locator("#main-content h1")).toHaveText("요금 및 플랜");
+  await expect(page.locator("#main-content tbody th")).toHaveText(["Free", "Pro", "Max"]);
+  await expect(page.locator('#main-content a[href="/?login=1"]')).toHaveText("로그인하고 현재 플랜 확인");
+  await expect(page.locator("#main-content")).toContainText("Max 가격·기간·입금 안내는 그 화면에 표시되는 현재 운영 설정을 기준으로 합니다.");
+  const mainText = await page.locator("#main-content").innerText();
+  expect(mainText).not.toMatch(/\d[\d,]*\s*원/);
+});
+
+test("every public pricing navigation points to the visible pricing page", () => {
+  const htmlFiles = [];
+  const visit = (directory) => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const target = path.join(directory, entry.name);
+      if (entry.isDirectory()) visit(target);
+      else if (entry.isFile() && entry.name.endsWith(".html")) htmlFiles.push(target);
+    }
+  };
+  visit(PUBLIC_DIR);
+
+  expect(fs.existsSync(path.join(PUBLIC_DIR, "pricing.html"))).toBe(true);
+  for (const file of htmlFiles) {
+    const source = fs.readFileSync(file, "utf8");
+    expect(source, path.relative(PUBLIC_DIR, file)).not.toMatch(/href=["']\/?#balanceBox["']/);
+  }
+});
+
+test("app shells and developer menu use existing account and section destinations", () => {
+  const compactShellPages = [
+    "create.html", "editor.html", "exam-prep.html", "filechat.html", "physics-studio.html",
+    "studio.html", "study.html", "translate-app.html", "translate.html", "vibe-coding.html",
+  ];
+  for (const file of compactShellPages) {
+    const source = fs.readFileSync(path.join(PUBLIC_DIR, file), "utf8");
+    expect(source, file).not.toContain('/account.html');
+    expect(source, file).toContain('href="/#settings"');
+  }
+
+  const home = fs.readFileSync(path.join(PUBLIC_DIR, "index.html"), "utf8");
+  const developers = fs.readFileSync(path.join(PUBLIC_DIR, "developers.html"), "utf8");
+  expect(home).toContain('href="/developers.html#catalog"');
+  expect(home).toContain('href="/developers.html#tokenCard"');
+  expect(developers).toContain('id="catalog"');
+  expect(developers).toContain('id="tokenCard"');
 });
 
 test("desktop disclosures keep one menu open and return focus on Escape", async ({ page }) => {

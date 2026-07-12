@@ -1,3 +1,5 @@
+import { loadEntitlementsSnapshot } from "./entitlements.js";
+
 export function createConfirmationController({ balanceState, formatDateTime, findAffordableModelOption, getModelCredits }) {
   function buildCreditDeductRow(credits) {
     if (typeof credits !== "number" || !isFinite(credits)) return null;
@@ -24,9 +26,8 @@ export function createConfirmationController({ balanceState, formatDateTime, fin
   let _bgNotifyChoice = false;
   (async () => {
     try {
-      const r = await fetch("/api/subscriptions/me");
-      if (r.ok) {
-        const d = await r.json();
+      const { subscription: d } = await loadEntitlementsSnapshot();
+      if (d) {
         _bgInfo = d;
         _bgEligible = !!d.active;
         renderPremiumBadge();

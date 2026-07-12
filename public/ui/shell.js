@@ -20,6 +20,10 @@
   const themeButtons = [...document.querySelectorAll("[data-ui-theme]")];
   const currentPath = window.location.pathname;
 
+  header.querySelectorAll('a[href*="instagram.com"]').forEach((link) => {
+    link.href = "https://www.instagram.com/quilo._.official/";
+  });
+
   function syncTheme() {
     const dark = document.documentElement.dataset.theme === "dark";
     themeButtons.forEach((button) => {
@@ -40,6 +44,14 @@
   });
 
   disclosures.forEach((details) => {
+    const summary = details.querySelector(":scope > summary");
+    const menu = details.querySelector(":scope > .ui-site-menu");
+    if (summary && menu) {
+      if (!menu.id) menu.id = `site-menu-${Math.random().toString(36).slice(2, 9)}`;
+      menu.setAttribute("role", "region");
+      menu.setAttribute("aria-label", `${summary.textContent.trim()} 메뉴`);
+      summary.setAttribute("aria-controls", menu.id);
+    }
     details.addEventListener("toggle", () => {
       if (!details.open) return;
       disclosures.forEach((other) => {

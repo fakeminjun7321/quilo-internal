@@ -1,3 +1,5 @@
+const DISMISSED_KEY = "quiloDismissedAnnouncement";
+
 function safeUrl(link) {
   const raw = String(link == null ? "" : link).trim();
   if (!raw) return "";
@@ -5,52 +7,90 @@ function safeUrl(link) {
   try {
     const url = new URL(raw, window.location.origin);
     return url.protocol === "http:" || url.protocol === "https:" ? url.href : "";
-  } catch (_) { return ""; }
+  } catch (_) {
+    return "";
+  }
+}
+
+function announcementKey(item) {
+  return String(item?.id || `${item?.category || ""}:${item?.title || ""}`);
+}
+
+function wasDismissed(key) {
+  try { return sessionStorage.getItem(DISMISSED_KEY) === key; }
+  catch (_) { return false; }
+}
+
+function rememberDismissed(key) {
+  try { sessionStorage.setItem(DISMISSED_KEY, key); }
+  catch (_) {}
+}
+
+function createAnnouncement(item, total) {
+  const href = safeUrl(item.link);
+  const node = document.createElement(href ? "a" : "div");
+  node.className = "ann-item";
+  if (href) {
+    node.href = href;
+    const target = new URL(href, window.location.origin);
+    if (target.origin !== window.location.origin) {
+      node.target = "_blank";
+      node.rel = "noopener";
+    }
+  }
+
+  const title = document.createElement("span");
+  title.className = "ann-item-title";
+  title.textContent = String(item.title || "Quilo 새 소식");
+  node.appendChild(title);
+
+  const meta = document.createElement("span");
+  meta.className = "ann-item-meta";
+  const category = String(item.category || "").trim();
+  meta.textContent = total > 1 ? `${category || "새 소식"} · 외 ${total - 1}건` : category;
+  if (meta.textContent) node.appendChild(meta);
+
+  if (href) {
+    const more = document.createElement("span");
+    more.className = "ann-item-more";
+    more.textContent = "자세히 →";
+    node.appendChild(more);
+  }
+  return node;
 }
 
 export async function loadAnnouncements() {
   const ticker = document.getElementById("annTicker");
   const track = document.getElementById("annTrack");
+  const dismiss = document.getElementById("annDismiss");
   if (!ticker || !track) return;
+
   try {
     const response = await fetch("/api/announcements");
+    if (!response.ok) throw new Error("announcement request failed");
     const data = await response.json();
-    const list = Array.isArray(data.announcements) ? data.announcements : [];
-    if (!list.length) { ticker.hidden = true; return; }
-    const createNodes = (announcement) => {
-      const href = safeUrl(announcement.link);
-      const item = document.createElement(href ? "a" : "span");
-      item.className = "ann-item";
-      if (href) {
-        item.href = href;
-        item.target = "_blank";
-        item.rel = "noopener";
-      }
-      if (announcement.category) {
-        const category = document.createElement("span");
-        category.className = "ann-cat";
-        category.textContent = String(announcement.category);
-        item.appendChild(category);
-      }
-      const title = document.createElement("span");
-      title.textContent = String(announcement.title || "");
-      item.appendChild(title);
-      const separator = document.createElement("span");
-      separator.className = "ann-dot";
-      separator.textContent = "•";
-      return [item, separator];
-    };
-    const textLength = list.reduce((total, item) => total + String(item.category || "").length + String(item.title || "").length + 8, 0);
-    let repetitions = 1;
-    while (textLength * repetitions < 180 && repetitions < 4) repetitions += 1;
-    const group = document.createElement("span");
-    group.className = "ann-group";
-    for (let i = 0; i < repetitions; i += 1) {
-      list.forEach((announcement) => createNodes(announcement).forEach((node) => group.appendChild(node)));
+    const list = Array.isArray(data.announcements)
+      ? data.announcements.filter((item) => String(item?.title || "").trim())
+      : [];
+    if (!list.length) {
+      ticker.hidden = true;
+      return;
     }
-    track.replaceChildren(group.cloneNode(true), group.cloneNode(true));
-    const duration = Math.max(20, Math.min(90, list.length * repetitions * 5));
-    track.style.setProperty("--ann-dur", `${duration}s`);
+
+    const primary = list[0];
+    const key = announcementKey(primary);
+    if (wasDismissed(key)) {
+      ticker.hidden = true;
+      return;
+    }
+
+    track.replaceChildren(createAnnouncement(primary, list.length));
+    dismiss?.addEventListener("click", () => {
+      rememberDismissed(key);
+      ticker.hidden = true;
+    }, { once: true });
     ticker.hidden = false;
-  } catch (_) { ticker.hidden = true; }
+  } catch (_) {
+    ticker.hidden = true;
+  }
 }

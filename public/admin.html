@@ -64,6 +64,7 @@
           <span class="operations-brand__mark" aria-hidden="true">Q</span>
           <span class="operations-brand__copy"><strong>Quilo</strong><small>Operations</small></span>
         </a>
+        <strong id="adminPageTitle" class="operations-commandbar__title">운영 개요</strong>
         <div class="operations-commandbar__actions">
           <a href="/">메인으로</a>
           <a href="#" id="logout">로그아웃</a>
@@ -85,24 +86,21 @@
       <span class="admin-nav-label">Workspace</span>
       <button type="button" class="atab" data-go="ai" role="tab" aria-selected="false">AI 관리자 보조</button>
       <button type="button" class="atab" data-go="users" role="tab" aria-selected="false">사용자</button>
-      <button type="button" class="atab" data-go="subs" role="tab" aria-selected="false">등급 관리</button>
+      <button type="button" class="atab" data-go="subs" role="tab" aria-selected="false">구독·등급</button>
       <button type="button" class="atab" data-go="grants" role="tab" aria-selected="false">권한·위임</button>
-      <button type="button" class="atab" data-go="beta" role="tab" aria-selected="false">기능 운영</button>
+      <button type="button" class="atab" data-go="beta" role="tab" aria-selected="false">시스템·기능</button>
       <span class="admin-nav-label">Governance</span>
       <button type="button" class="atab" data-go="schools" role="tab" aria-selected="false">학교 신청</button>
-      <button type="button" class="atab" data-go="logs" role="tab" aria-selected="false">생성 로그</button>
+      <button type="button" class="atab" data-go="logs" role="tab" aria-selected="false">사용량</button>
       <button type="button" class="atab" data-go="announce" role="tab" aria-selected="false">공지</button>
-      <button type="button" class="atab" data-go="appeals" role="tab" aria-selected="false">소명·제재</button>
+      <button type="button" class="atab" data-go="appeals" role="tab" aria-selected="false">피드백·제재</button>
       <span class="admin-nav-label">Development</span>
       <button type="button" class="atab" data-go="editor" role="tab" aria-selected="false">코드 에디터</button>
     </nav>
 
     <main class="operations-main">
       <div class="operations-heading">
-        <div>
-          <h1 id="adminPageTitle">운영 개요</h1>
-          <p>사용자 계정과 서비스 권한, 생성 기록을 안전하게 관리합니다.</p>
-        </div>
+        <p id="adminPageDescription">사용자 계정과 서비스 권한, 생성 기록을 안전하게 관리합니다.</p>
         <p id="rateInfo" class="operations-rate">환율 로딩 중...</p>
       </div>
 
@@ -123,20 +121,33 @@
     </section>
 
     <section class="settings-card operations-panel" id="adminAnnSection" data-atab="announce">
-      <h2>공지사항 (상단 티커)</h2>
-      <p class="hint">여기 등록한 공지는 메인 화면 상단에 흐르는 띠(티커)로 계속 노출됩니다. 활성/비활성·삭제로 관리하세요.</p>
+      <div class="card-head"><h2>공지 목록</h2><span id="annStatus" class="inline-status announcement-status"></span></div>
+      <p class="hint">메인 상단 공지 레일에 노출되는 항목을 검색·활성화하고, 오른쪽 편집 인스펙터에서 새 공지를 미리 확인합니다.</p>
+      <div id="annAdminList" class="announcement-list"></div>
+      <aside class="announcement-inspector" aria-label="공지 편집 인스펙터">
+        <h3>공지 편집</h3>
       <div class="compact-form announcement-form">
         <label class="announcement-form__title">제목<br><input id="annTitle" class="field-full" maxlength="200" placeholder="예: 1학기 기말 대비 점검 안내"></label>
         <label class="announcement-form__category">분류<br><input id="annCat" class="field-full" maxlength="40" placeholder="공지"></label>
         <label class="announcement-form__link">링크(선택)<br><input id="annLink" class="field-full" maxlength="500" placeholder="https://..."></label>
-        <button id="annAddBtn" class="secondary compact">추가</button>
+        <button id="annAddBtn" class="primary compact">공지 게시</button>
       </div>
-      <span id="annStatus" class="inline-status announcement-status"></span>
-      <div id="annAdminList" class="announcement-list"></div>
+        <div class="announcement-preview" aria-label="공지 미리보기">
+          <span class="announcement-category" id="annPreviewCategory">공지</span>
+          <strong id="annPreviewTitle">공지 제목을 입력하세요</strong>
+          <span class="announcement-preview__action">자세히 ›</span>
+        </div>
+        <p class="hint">실제 공개 화면의 단일 공지 레일 형태로 표시됩니다.</p>
+      </aside>
     </section>
 
     <section class="settings-card operations-panel" data-atab="users">
-      <h2>사용자 추가</h2>
+      <h2>사용자 인스펙터</h2>
+      <div id="userInspectorDetails" class="user-inspector-details">
+        <b>사용자를 선택하세요</b>
+        <span>목록의 행을 누르면 계정·인증·플랜 정보를 여기에서 확인합니다.</span>
+      </div>
+      <h3>새 사용자</h3>
       <form id="addForm" class="compact-form">
         <div class="field">
           <label>
@@ -163,7 +174,10 @@
     <section class="settings-card operations-panel" data-atab="users">
       <div class="card-head">
         <h2>사용자 목록</h2>
-        <button id="refresh" class="secondary compact">새로고침</button>
+        <div class="console-toolbar__actions">
+          <input id="adminUserFilter" class="console-search" type="search" placeholder="이름·아이디 검색" aria-label="사용자 검색" />
+          <button id="refresh" class="secondary compact">새로고침</button>
+        </div>
       </div>
       <div class="table-wrapper">
         <table id="userTable">
@@ -647,7 +661,9 @@
         return `<span class="${tone}">${c} 크레딧</span>${restr}`;
       }
 
+      let adminUsersCache = [];
       function renderUsers(users) {
+        adminUsersCache = Array.isArray(users) ? users.slice() : [];
         const tbody = document.getElementById("userTbody");
         tbody.innerHTML = "";
         for (const u of users) {
@@ -671,6 +687,8 @@
             ? `<br><small class="tone-muted">@${escape(u.username)}</small>`
             : "";
           const tr = document.createElement("tr");
+          tr.className = "admin-user-row";
+          tr.dataset.userId = String(u.id);
           tr.innerHTML = `
             <td>${escape(u.name)}${uname}</td>
             <td>${verifyCell}</td>
@@ -682,13 +700,18 @@
             <td>${rateText}</td>
             <td class="table-meta">${new Date(u.created_at).toLocaleDateString()}</td>
             <td>
-              ${approveBtn}
-              ${unlockBtn}
-              <button data-act="edit" data-id="${u.id}">수정</button>
-              <button data-act="model" data-id="${u.id}">모델: ${u.restricted_model ? modelShortList(u.restricted_model) + "만" : "전체"}</button>
-              <button data-act="reports" data-id="${u.id}" data-blocked="${(u.blocked_report_types || []).join(",")}">보고서: ${reportAccessLabel(u.blocked_report_types)}</button>
-              <button data-act="reset" data-id="${u.id}">사용량 0</button>
-              <button data-act="delete" data-id="${u.id}">삭제</button>
+              <details class="row-action-menu">
+                <summary>관리</summary>
+                <div class="row-action-menu__items">
+                  ${approveBtn}
+                  ${unlockBtn}
+                  <button data-act="edit" data-id="${u.id}">비밀번호</button>
+                  <button data-act="model" data-id="${u.id}">모델: ${u.restricted_model ? modelShortList(u.restricted_model) + "만" : "전체"}</button>
+                  <button data-act="reports" data-id="${u.id}" data-blocked="${(u.blocked_report_types || []).join(",")}">보고서: ${reportAccessLabel(u.blocked_report_types)}</button>
+                  <button data-act="reset" data-id="${u.id}">사용량 초기화</button>
+                  <button data-act="delete" data-id="${u.id}">사용자 삭제</button>
+                </div>
+              </details>
             </td>
           `;
           tbody.appendChild(tr);
@@ -718,6 +741,21 @@
       }
 
       document.getElementById("userTbody").addEventListener("click", async (e) => {
+        const row = e.target.closest("tr[data-user-id]");
+        if (row) {
+          document.querySelectorAll("#userTbody .admin-user-row").forEach((item) => item.classList.toggle("is-selected", item === row));
+          const selected = adminUsersCache.find((user) => String(user.id) === row.dataset.userId);
+          const inspector = document.getElementById("userInspectorDetails");
+          if (selected && inspector) {
+            inspector.innerHTML =
+              '<div class="user-inspector-details__title"><b>' + escape(selected.name || "(이름 없음)") + '</b><span>' + escape(selected.username ? "@" + selected.username : "ID " + selected.id) + '</span></div>' +
+              '<dl><div><dt>인증</dt><dd>' + (selected.email_verified ? "이메일 인증" : "미인증") + ' · ' + (selected.approved ? "승인" : "승인 대기") + '</dd></div>' +
+              '<div><dt>권한</dt><dd>' + (selected.is_admin ? "관리자" : "일반 사용자") + '</dd></div>' +
+              '<div><dt>크레딧</dt><dd>' + escape(String(selected.credits == null ? 0 : selected.credits)) + '</dd></div>' +
+              '<div><dt>누적 사용</dt><dd>' + fmtBoth(selected.spent_usd) + '</dd></div>' +
+              '<div><dt>가입일</dt><dd>' + escape(new Date(selected.created_at).toLocaleDateString()) + '</dd></div></dl>';
+          }
+        }
         const btn = e.target.closest("button");
         if (!btn) return;
         const id = btn.dataset.id;
@@ -897,6 +935,12 @@
       }
 
       document.getElementById("refresh").addEventListener("click", loadUsers);
+      document.getElementById("adminUserFilter").addEventListener("input", (event) => {
+        const query = event.target.value.trim().toLowerCase();
+        document.querySelectorAll("#userTbody tr[data-user-id]").forEach((row) => {
+          row.hidden = !!query && !row.textContent.toLowerCase().includes(query);
+        });
+      });
 
       // ── Add user form ─────────────────────────────────────────────────────
       // 사용자 추가는 이름·비번·관리자 권한만. 충전은 사용자 목록의 ‘+ 충전’ 버튼.
@@ -1257,6 +1301,16 @@
       (function () {
         const btn = document.getElementById("annAddBtn");
         if (!btn) return;
+        const titleInput = document.getElementById("annTitle");
+        const categoryInput = document.getElementById("annCat");
+        const previewTitle = document.getElementById("annPreviewTitle");
+        const previewCategory = document.getElementById("annPreviewCategory");
+        const syncPreview = () => {
+          previewTitle.textContent = titleInput.value.trim() || "공지 제목을 입력하세요";
+          previewCategory.textContent = categoryInput.value.trim() || "공지";
+        };
+        titleInput.addEventListener("input", syncPreview);
+        categoryInput.addEventListener("input", syncPreview);
         btn.addEventListener("click", async () => {
           const title = document.getElementById("annTitle").value.trim();
           const category = document.getElementById("annCat").value.trim();
@@ -1270,6 +1324,7 @@
             if (!r.ok) throw new Error(d.error || "오류");
             document.getElementById("annTitle").value = "";
             document.getElementById("annLink").value = "";
+            syncPreview();
             setStatusTone(st, "success"); st.textContent = "등록 완료" + (d.store === "memory" ? " (임시 저장)" : "");
             loadAnn();
           } catch (e) { setStatusTone(st, "danger"); st.textContent = e.message; }
@@ -1283,7 +1338,6 @@
       loadBeta();
       loadAnn();
     </script>
-      <script src="/chat-widget.js" defer></script>
     <script>
       (function () {
         var msgs = [],
@@ -1553,6 +1607,20 @@
           });
           var pageTitle = document.getElementById("adminPageTitle");
           if (pageTitle) pageTitle.textContent = titles[tab] || "운영 개요";
+          var descriptions = {
+            ai: "운영 지표를 조회하고 승인이 필요한 작업을 검토합니다.",
+            users: "사용자 목록과 계정 인스펙터를 한 화면에서 관리합니다.",
+            subs: "Pro·Max 등급과 임시 공개, 구독 승인을 관리합니다.",
+            grants: "서버 API 키 위임 기간과 대상을 관리합니다.",
+            beta: "Pro 기능과 시스템 한도를 조정합니다.",
+            schools: "학교 도입 신청을 검토하고 처리 상태를 기록합니다.",
+            logs: "생성 요청별 비용·토큰·웹 검색 사용량을 추적합니다.",
+            announce: "공지 목록과 편집 인스펙터를 함께 확인합니다.",
+            appeals: "사용자 피드백과 소명, 제재 해제 요청을 검토합니다.",
+            editor: "관리자용 코드 편집·실행·미리보기 도구입니다.",
+          };
+          var description = document.getElementById("adminPageDescription");
+          if (description) description.textContent = descriptions[tab] || descriptions.ai;
           try {
             localStorage.setItem("adminTab", tab);
           } catch (e) {}

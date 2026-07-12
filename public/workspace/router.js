@@ -21,7 +21,8 @@ export function createRouter({ state, hooks }) {
     if (!radio || radio.disabled || radio.closest("label")?.hidden) return false;
     radio.checked = true;
     state.set({ reportType: radio.value });
-    hooks.selectReport?.(radio.value, options);
+    if (hooks.selectReport) hooks.selectReport(radio.value, options);
+    else hooks.ensureReportRuntime?.().then(() => hooks.selectReport?.(radio.value, options));
     return true;
   }
 
@@ -38,4 +39,3 @@ export function createRouter({ state, hooks }) {
 
   return { setPending, takePending, consumePending, requestedReport, select };
 }
-

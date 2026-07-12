@@ -9,7 +9,6 @@ import { createConfirmationController } from "./confirmation-controller.js";
 import { createJobStreamController } from "./job-stream.js";
 import { createReportPreferences, initDefaultReportPreferences } from "./report-preferences.js";
 import { createStudentIdBannerController } from "./student-id-banner.js";
-import { loadAnnouncements } from "./announcements.js";
 import { createBackgroundJobsController } from "./background-jobs.js";
 import {
   USE_POLICY_NOTE, appendPolicyAcknowledgements, findAffordableModelOption, formatBytes,
@@ -26,7 +25,6 @@ import {
   costRangeText, estimateChemResultCost, estimateCost, estimateFreeReportCost,
   estimateGenSeconds, estimatePhysResultCost, formatDuration,
 } from "./report-estimates.js";
-import "./account-extensions.js";
 
 const runtime = window.__quiloWorkspaceRuntime;
 if (!runtime) throw new Error("Quilo workspace runtime is not initialized");
@@ -321,4 +319,3 @@ createChecklistController({
 studentIdBanners.update();
 reportPreferences.restoreLast();
 initDefaultReportPreferences();
-loadAnnouncements();

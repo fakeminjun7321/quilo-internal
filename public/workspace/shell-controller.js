@@ -1,4 +1,5 @@
 import { byId } from "./dom-contract.js";
+import { loadEntitlementsSnapshot } from "./entitlements.js";
 
 const TAB_TITLES = Object.freeze({
   files: "내 파일",
@@ -42,7 +43,10 @@ export function createShellController({ state, router, hooks }) {
     });
     if (tabName === "files") filesController()?.loadFiles();
     if (tabName === "integrations") filesController()?.loadCloudStatus();
-    if (tabName === "settings") accountController()?.loadUsage();
+    if (tabName === "settings") {
+      hooks.ensureAccountExtensions?.();
+      accountController()?.loadUsage();
+    }
   }
 
   function closeDropdowns() {
@@ -50,6 +54,15 @@ export function createShellController({ state, router, hooks }) {
       dropdown.classList.remove("open");
       dropdown.querySelector(".nav-dd-btn")?.setAttribute("aria-expanded", "false");
     });
+    document.body.classList.remove("nav-disclosure-open");
+  }
+
+  function setDropdownOpen(dropdown, open) {
+    if (!dropdown) return;
+    if (open) closeDropdowns();
+    dropdown.classList.toggle("open", open);
+    dropdown.querySelector(".nav-dd-btn")?.setAttribute("aria-expanded", String(open));
+    document.body.classList.toggle("nav-disclosure-open", open && dropdown.querySelector(".nav-mega-menu"));
   }
 
   function openLogin() {
@@ -57,8 +70,7 @@ export function createShellController({ state, router, hooks }) {
     if (!dropdown || dropdown.hidden) return false;
     setTimeout(() => {
       closeDropdowns();
-      dropdown.classList.add("open");
-      dropdown.querySelector(".nav-dd-btn")?.setAttribute("aria-expanded", "true");
+      setDropdownOpen(dropdown, true);
       byId("navMenu")?.classList.add("open");
       byId("li_username")?.focus();
     }, 0);
@@ -86,15 +98,20 @@ export function createShellController({ state, router, hooks }) {
   }
 
   async function loadEntitlements() {
-    fetch("/api/subscriptions/me")
-      .then((response) => response.ok ? response.json() : { active: false })
-      .then((subscription) => { if (subscription.active) reveal("navBetaTranslate"); refreshDropdownVisibility(); })
-      .catch(() => {});
-    fetch("/api/me/beta")
-      .then((response) => response.ok ? response.json() : { features: [] })
-      .then((beta) => {
-        const features = Array.isArray(beta.features) ? beta.features : [];
-        const has = (name) => beta.admin === true || features.includes(name);
+    loadEntitlementsSnapshot()
+      .then(({ subscription, beta }) => {
+        if (subscription?.active) reveal("navBetaTranslate");
+        const tier = subscription?.admin || beta?.admin
+          ? "Admin"
+          : subscription?.active || beta?.tier === "max"
+            ? "Max"
+            : beta?.tier === "pro"
+              ? "Pro"
+              : "Free";
+        if (byId("accountTriggerMeta")) byId("accountTriggerMeta").textContent = tier;
+        if (byId("accountMenuMeta")) byId("accountMenuMeta").textContent = `${tier} plan`;
+        const features = Array.isArray(beta?.features) ? beta.features : [];
+        const has = (name) => beta?.admin === true || features.includes(name);
         if (has("code-editor")) reveal("navBetaEditor");
         if (has("create")) reveal("navBetaCreate");
         if (has("vibe-coding")) reveal("navBetaVibe");
@@ -119,13 +136,30 @@ export function createShellController({ state, router, hooks }) {
 
   function init() {
     document.querySelectorAll(".nav-dd[data-dd] .nav-dd-btn").forEach((button) => {
+      const dropdown = button.closest(".nav-dd");
+      const menu = dropdown?.querySelector(".nav-dd-menu");
+      if (menu && !menu.id) menu.id = `nav-menu-${Math.random().toString(36).slice(2, 9)}`;
+      if (menu) {
+        menu.setAttribute("role", menu.classList.contains("nav-mega-menu") ? "region" : "menu");
+        button.setAttribute("aria-controls", menu.id);
+        button.setAttribute("aria-haspopup", "true");
+      }
       button.addEventListener("click", (event) => {
         event.stopPropagation();
-        const dropdown = button.closest(".nav-dd");
         const reopen = !dropdown.classList.contains("open");
-        closeDropdowns();
-        dropdown.classList.toggle("open", reopen);
-        button.setAttribute("aria-expanded", String(reopen));
+        setDropdownOpen(dropdown, reopen);
+      });
+      button.addEventListener("keydown", (event) => {
+        if (event.key !== "ArrowDown") return;
+        event.preventDefault();
+        setDropdownOpen(dropdown, true);
+        menu?.querySelector("a:not([hidden]), input, button:not(.nav-dd-btn)")?.focus();
+      });
+      menu?.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape") return;
+        event.preventDefault();
+        setDropdownOpen(dropdown, false);
+        button.focus();
       });
     });
     document.addEventListener("click", (event) => {
@@ -154,13 +188,19 @@ export function createShellController({ state, router, hooks }) {
         });
       }
     });
+    document.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      const active = document.querySelector(".nav-dd.open .nav-dd-btn");
+      closeDropdowns();
+      active?.focus();
+    });
     byId("navBurger")?.addEventListener("click", (event) => {
       event.stopPropagation();
       byId("navMenu")?.classList.toggle("open");
       syncBurger();
     });
     document.querySelectorAll(".nav-dd-menu a[data-report]").forEach((anchor) => {
-      anchor.addEventListener("click", (event) => {
+      anchor.addEventListener("click", async (event) => {
         event.preventDefault();
         closeDropdowns();
         if (state.get().auth !== "in") {
@@ -168,6 +208,9 @@ export function createShellController({ state, router, hooks }) {
           openLogin();
           return;
         }
+        anchor.setAttribute("aria-busy", "true");
+        await hooks.ensureReportRuntime?.();
+        anchor.removeAttribute("aria-busy");
         showTab("reports");
         router.select(anchor.dataset.report, { scroll: true });
         byId("navMenu")?.classList.remove("open");
@@ -185,10 +228,9 @@ export function createShellController({ state, router, hooks }) {
     byId("workspaceHomeBtn")?.addEventListener("click", () => {
       setView("landing");
       try { history.replaceState({}, "", location.pathname); } catch (_) {}
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      window.scrollTo({ top: 0, behavior: "auto" });
     });
-    loadEntitlements();
   }
 
-  return { init, setView, showTab, openLogin, closeDropdowns };
+  return { init, setView, showTab, openLogin, closeDropdowns, loadEntitlements };
 }

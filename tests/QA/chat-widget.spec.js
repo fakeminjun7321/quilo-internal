@@ -114,7 +114,7 @@ test("inline chat becomes one compact conversation surface after the first messa
   await expect(actions.nth(0)).toHaveCSS("border-top-width", "0px");
 });
 
-test("home inline chat moves into the floating panel without duplicating the widget", async ({ page }) => {
+test("home inline chat has no duplicate legacy floating launcher", async ({ page }) => {
   await installChatFixtures(page);
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(baseUrl);
@@ -125,15 +125,10 @@ test("home inline chat moves into the floating panel without duplicating the wid
   await expect(panel).toHaveClass(/open/);
   expect(await panel.evaluate((node) => node.parentElement.id)).toBe("quiloBotMount");
 
-  await page.locator("#qc-launch").click();
-  await expect(panel).not.toHaveClass(/qc-inline/);
-  await expect(panel).not.toHaveClass(/qc-idle/);
-  await expect(panel).toHaveClass(/open/);
-  expect(await panel.evaluate((node) => node.parentElement.tagName)).toBe("BODY");
   await expect(page.locator("#qc-panel")).toHaveCount(1);
-  await expect(page.locator("#qc-launch")).toHaveCount(1);
+  await expect(page.locator("#qc-launch")).toHaveCount(0);
   await expect(page.locator('link[data-quilo-chat-css]')).toHaveCount(1);
-  await expect(page.locator("#qc-in")).toHaveAttribute("placeholder", "메시지를 입력하세요…");
+  await expect(page.locator("#qc-in")).toHaveAttribute("placeholder", "실험 자료를 분석해줘");
 });
 
 test("Korean IME Enter confirms composition without sending or leaving a syllable behind", async ({ page }) => {

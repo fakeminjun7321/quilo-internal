@@ -33,6 +33,8 @@ const STYLE_SUGGESTIONS = [
 ];
 const DEFAULT_PLACEHOLDER = "메시지를 입력하세요…";
 const INLINE_PLACEHOLDER = "Quilo 기능과 사용법을 물어보세요";
+const CHAT_STORAGE_KEY = "quiloChat:v2";
+const CHAT_STORAGE_TTL_MS = 2 * 60 * 60 * 1000;
 
 let initializationPromise;
 
@@ -90,14 +92,27 @@ function createChatController() {
 
   function saveConversation() {
     try {
-      sessionStorage.setItem("quiloChat", JSON.stringify({ m: messages, mode: currentMode }));
+      sessionStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify({
+        m: messages,
+        mode: currentMode,
+        savedAt: Date.now(),
+        surface: view?.inlineMount ? "home" : "floating",
+      }));
+      sessionStorage.removeItem("quiloChat");
     } catch (_) {}
   }
 
   function loadConversation() {
     try {
-      const saved = JSON.parse(sessionStorage.getItem("quiloChat") || "null");
+      sessionStorage.removeItem("quiloChat");
+      const saved = JSON.parse(sessionStorage.getItem(CHAT_STORAGE_KEY) || "null");
       if (!saved || !Array.isArray(saved.m)) return false;
+      if (!saved.savedAt || Date.now() - Number(saved.savedAt) > CHAT_STORAGE_TTL_MS) {
+        sessionStorage.removeItem(CHAT_STORAGE_KEY);
+        return false;
+      }
+      const currentSurface = view?.inlineMount ? "home" : "floating";
+      if (saved.surface && saved.surface !== currentSurface) return false;
       messages = saved.m;
       if (["help", "memo", "style"].includes(saved.mode)) currentMode = saved.mode;
       return true;
@@ -109,7 +124,7 @@ function createChatController() {
   function updateModebar() {
     if (!view) return;
     view.modebar.hidden = !isAssist();
-    view.modeLabel.textContent = currentMode === "style" ? "✍️ 글 스타일 도우미" : "📝 메모 작성 도우미";
+    view.modeLabel.textContent = currentMode === "style" ? "글 스타일 정리" : "메모 작성";
     view.modelSelect.hidden = !(writeAssistEnabled && models.length);
   }
 

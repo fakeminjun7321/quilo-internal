@@ -149,7 +149,24 @@ test("home keeps the approved desktop header at the real 933px viewport", async 
   expect(overflow).toBe(0);
 });
 
-test("production-style announcements stay in one compact marquee row", async ({ page }) => {
+test("report runtime is loaded only after an authenticated report choice", async ({ page }) => {
+  await mockLoggedInApis(page);
+  const requested = [];
+  page.on("request", (request) => requested.push(new URL(request.url()).pathname));
+  await page.goto(BASE_URL, { waitUntil: "networkidle" });
+
+  expect(requested).not.toContain("/app.js");
+  expect(requested).not.toContain("/workspace/report-runtime.js");
+  const started = Date.now();
+  await page.locator(".nav-dd-btn").filter({ hasText: "제품" }).click();
+  await page.locator('.nav-dd-menu a[data-report="chem-pre"]').click();
+  await expect(page.locator('#form[data-report-form="chem-pre"]')).toBeVisible();
+  expect(Date.now() - started).toBeLessThan(1500);
+  expect(requested).toContain("/app.js");
+  expect(requested).toContain("/workspace/report-runtime.js");
+});
+
+test("production announcements render as one quiet dismissible rail", async ({ page }) => {
   await page.route("**/api/**", (route) => {
     const pathname = new URL(route.request().url()).pathname;
     if (pathname === "/api/me") return route.fulfill({ status: 401, json: { error: "로그인이 필요합니다." } });
@@ -170,23 +187,21 @@ test("production-style announcements stay in one compact marquee row", async ({ 
   const metrics = await page.evaluate(() => {
     const ticker = document.getElementById("annTicker");
     const track = document.getElementById("annTrack");
-    const tickerStyle = getComputedStyle(ticker);
+    const title = track.querySelector(".ann-item-title");
     return {
       height: ticker.getBoundingClientRect().height,
       scrollHeight: ticker.scrollHeight,
-      whiteSpace: tickerStyle.whiteSpace,
-      overflow: tickerStyle.overflow,
+      titleWhiteSpace: title ? getComputedStyle(title).whiteSpace : "",
       animationName: getComputedStyle(track).animationName,
       itemCount: track.querySelectorAll(".ann-item").length,
       pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
     };
   });
-  expect(metrics.height).toBe(38);
-  expect(metrics.scrollHeight).toBeLessThanOrEqual(38);
-  expect(metrics.whiteSpace).toBe("nowrap");
-  expect(metrics.overflow).toBe("hidden");
-  expect(metrics.animationName).toBe("ann-marquee");
-  expect(metrics.itemCount).toBeLessThanOrEqual(8);
+  expect(metrics.height).toBeLessThanOrEqual(44);
+  expect(metrics.scrollHeight).toBeLessThanOrEqual(44);
+  expect(metrics.titleWhiteSpace).toBe("nowrap");
+  expect(metrics.animationName).toBe("none");
+  expect(metrics.itemCount).toBe(1);
   expect(metrics.pageOverflow).toBe(0);
 });
 
@@ -284,7 +299,7 @@ test("cloud providers use a separate account tab instead of the files panel", as
   await page.goto(`${BASE_URL}/#integrations`, { waitUntil: "networkidle" });
 
   await expect(page.locator("body")).toHaveAttribute("data-auth", "in");
-  await expect(page.locator('#acctDd a[data-tab="integrations"]')).toHaveText("외부 서비스 연결");
+  await expect(page.locator('#acctDd a[data-tab="integrations"] strong')).toHaveText("외부 서비스 연결");
   await expect(page.locator("#integrationsPanel")).toBeVisible();
   await expect(page.locator("#cloudCard")).toBeVisible();
   await expect(page.locator("#integrationsPanel")).toContainText("Google Drive·Docs");
@@ -303,7 +318,7 @@ test("report entry links bypass the removed intermediary and open the free repor
   await expect(page.locator("#reportsPanel")).toHaveClass(/workspace-mode/);
   await expect(page.locator("#choosePrompt")).toHaveCount(0);
   await expect(page.locator(".home-hero-categories")).toHaveCount(0);
-  await expect(page.locator('.nav-dd-menu a[data-report="free"]')).toHaveText("자유 보고서");
+  await expect(page.locator('.nav-dd-menu a[data-report="free"] strong')).toHaveText("자유 보고서");
   await expect(page.locator('.home-start-cta[href="/?report=free"]')).toHaveText("무료로 시작하기");
 });
 

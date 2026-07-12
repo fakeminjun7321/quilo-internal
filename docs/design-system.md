@@ -21,7 +21,7 @@
 |---|---|---|
 | 공개·마케팅·가이드·도구·앱 소개 | `/ui/foundation.css` → `/ui/shell.css` → `/ui/pages.css` | `/ui/shell.js` |
 | 로그인·회원가입·이메일 인증 | `/ui/foundation.css` → `/ui/auth.css` | 페이지 인증 스크립트 |
-| 메인·보고서 작업공간 | `/ui/foundation.css` → `/ui/workspace.css` → `/ui/forms.css` → `/ui/generation.css` | `/app.js` |
+| 메인·보고서 작업공간 | `/ui/foundation.css` → `/ui/workspace.css` → `/ui/shell.css` → `/ui/forms.css` → `/ui/generation.css` | `/ui/shell.js` → `/workspace/bootstrap.js` |
 | 관리자 콘솔 | `/ui/foundation.css` → `/ui/admin.css` | 관리자 페이지 스크립트 |
 | 독립 작업 앱 | `/ui/foundation.css` → `/ui/app-shell.css` | 페이지별 스크립트 |
 | Quilo Bot | 위 화면의 stylesheet + loader가 추가하는 `/ui/chat.css` | `/chat-widget.js` → `/chat/index.js` |
@@ -33,7 +33,7 @@
 | 파일 | 책임 |
 |---|---|
 | `public/ui/foundation.css` | 의미론 색상, 폰트, box sizing, 기본 요소, 라이트·다크 토큰 |
-| `public/ui/shell.css` | 공개 사이트 헤더, 드롭다운, 모바일 메뉴, 푸터, skip link |
+| `public/ui/shell.css` | 공개 사이트 헤더, 단일 메가 패널, 컴팩트 메뉴, 푸터, skip link |
 | `public/ui/pages.css` | 공개 페이지의 버튼, 입력, 카드, 법적 문서, 도구, 앱 소개 레이아웃 |
 | `public/ui/auth.css` | 인증 전용 header, 카드, 폼, 상태 안내 |
 | `public/ui/workspace.css` | 메인 상단바, 랜딩 hero, 보고서 선택·작업공간 shell |
@@ -79,9 +79,13 @@
 
 - 루트: `[data-ui-shell]`
 - 데스크톱: `.ui-site-nav`, `.ui-site-actions`
-- 모바일: `.ui-mobile-menu`
+- 데스크톱 메가 패널: `#uiSiteMega`, `[data-ui-menu-trigger]`
+- 컴팩트 메뉴: `[data-ui-mobile-trigger]`, `#uiMobilePanel`
 - 모든 공개 페이지는 동일한 header/footer 목적지와 skip link를 유지한다.
-- 드롭다운은 한 번에 하나만 열고, 바깥 클릭과 `Escape`로 닫히며 focus를 summary로 돌려준다.
+- 메가 패널은 하나만 존재하며 메뉴 그룹을 바꾸면 같은 패널의 내용이 전환된다.
+- 메가 패널은 바깥 클릭과 `Escape`로 닫히며 focus를 마지막 메뉴 버튼으로 돌려준다.
+- 기능은 숨기지 않고 Public, Free, Pro, Max, 준비 중 상태를 함께 표시한다.
+- 비로그인 상태에서만 `로그인`과 `무료로 시작하기`를 표시하고, 로그인 후에는 계정 동작만 표시한다.
 
 대상: 가이드, 예시, 업데이트, 커뮤니티, 개발자, 학교 도입, 약관·개인정보·환불, 브라우저 도구, 앱 소개 페이지.
 

@@ -4,144 +4,219 @@
   const header = document.querySelector("[data-ui-shell]");
   if (!header) return;
 
-  const MENU_GROUPS = Object.freeze([
-    {
-      label: "제품",
-      items: [
-        ["/?report=chem-pre", "화학 사전보고서", "매뉴얼 PDF에서 사전보고서 초안 생성", "chem-pre"],
-        ["/?report=chem-result", "화학 결과보고서", "데이터와 사진에서 결과 추가분 생성", "chem-result"],
-        ["/?report=phys-result", "물리 결과보고서", "Capstone·엑셀 기반 결과보고서 생성", "phys-result"],
-        ["/?report=free", "자유 보고서", "지시와 자료를 원하는 형식으로 정리", "free"],
-      ],
-    },
-    {
-      label: "솔루션",
-      items: [
-        ["/tools/index.html", "보고서 도구", "파일·이미지·PDF·수식 도구"],
-        ["/translate.html", "PDF 통번역", "문서 구조를 지키는 번역 작업"],
-      ],
-    },
-    {
-      label: "앱",
-      items: [
-        ["/apps/quilo.html", "Quilo Desktop", "Mac과 Windows용 작업 공간"],
-        ["/apps/live-translator.html", "Live Translator", "실시간 음성 번역 앱"],
-      ],
-    },
-    {
-      label: "개발자",
-      items: [
-        ["/developers.html", "개발자 플랫폼", "API·ChatGPT·Codex 연결"],
-        ["/developers.html#catalog", "기능 카탈로그", "연결 가능한 Quilo 기능"],
-        ["/developers.html#tokenCard", "API 토큰", "범위 제한 토큰 관리"],
-      ],
-    },
-    {
-      label: "리소스",
-      items: [
-        ["/guide.html", "가이드", "기능별 시작 방법과 사용 원칙"],
-        ["/examples.html", "예시", "Quilo로 만든 결과물 살펴보기"],
-        ["/changelog.html", "업데이트", "새 기능과 개선 내역"],
-        ["/community.html", "커뮤니티", "작업 사례와 질문 나누기"],
-        ["/school-apply.html", "학교 도입", "기관용 도입 문의"],
-      ],
-    },
-  ]);
+  const FALLBACK_FEATURES = Object.freeze([
+    ["chem-pre", "화학 사전보고서", "실험 매뉴얼에서 사전보고서 초안을 만듭니다.", "/?report=chem-pre", "member", "active"],
+    ["chem-result", "화학 결과보고서", "데이터와 사진으로 결과와 분석을 작성합니다.", "/?report=chem-result", "member", "active"],
+    ["phys-result", "물리 결과보고서", "Capstone과 엑셀을 표와 그래프로 정리합니다.", "/?report=phys-result", "member", "active"],
+    ["free", "자유 보고서", "지시와 자료를 원하는 문서 형식으로 정리합니다.", "/?report=free", "member", "active"],
+    ["reading-log", "독서활동 기록지", "도서 정보를 학교 독서록 양식으로 작성합니다.", "/?report=reading-log", "member", "active"],
+    ["reading-log-bulk", "독서록 대량 생성", "여러 독서록을 만들고 ZIP으로 묶습니다.", "/?report=reading-log-bulk", "member", "active"],
+    ["problem-set", "문제집 메이커", "교재에서 문제지와 해설지 세트를 만듭니다.", "/?report=problem-set", "pro", "pro"],
+    ["form-maker", "양식 메이커", "설명이나 사진에서 편집 가능한 양식을 만듭니다.", "/?report=form-maker", "pro", "pro"],
+    ["phys-inquiry", "물리 수행평가", "탐구와 사고 과정을 보고서로 구조화합니다.", "/exam-prep.html", "pro", "paused"],
+    ["math-inquiry", "수학 수행평가", "필기와 탐구 주제로 수학 보고서를 작성합니다.", "/exam-prep.html", "pro", "paused"],
+    ["eng-exam-prep", "영어 시험대비 세트", "지문에서 시험과 학습 자료를 만듭니다.", "/exam-prep.html", "pro", "paused"],
+    ["korean-lit-exam", "국어 문학 시험 세트", "시험지와 답안, 해설을 만듭니다.", "/exam-prep.html", "pro", "paused"],
+    ["phys-mock-exam", "물리 모의고사", "기출과 단원에서 새 문제와 풀이를 만듭니다.", "/exam-prep.html", "pro", "paused"],
+    ["physics-studio", "고급 물리 문제 스튜디오", "심화 물리 문제와 풀이를 생성합니다.", "/physics-studio.html", "pro", "pro"],
+    ["coding-test", "코딩 수행평가 대비", "브라우저 채점과 튜터로 코딩을 연습합니다.", "/exam-prep.html", "pro", "pro"],
+    ["relativity-study", "상대론 학습", "민코프스키 평면으로 상대론을 학습합니다.", "/study.html", "pro", "pro"],
+    ["create", "창작 스튜디오", "대화형 미리보기로 웹 결과물을 만듭니다.", "/create.html", "pro", "pro"],
+    ["vibe-coding", "바이브 코딩 생성기", "아이디어에서 프로젝트 구조를 설계합니다.", "/vibe-coding.html", "pro", "pro"],
+    ["quilo-code", "Quilo Code", "코드를 생성하고 수정하며 미리 봅니다.", "/editor.html", "pro", "pro"],
+    ["file-chat", "파일 챗봇", "업로드한 파일을 바탕으로 대화합니다.", "/filechat.html", "pro", "pro"],
+    ["pdf-translate", "PDF 통번역", "문서 구조를 지키며 번역하고 재조판합니다.", "/translate.html", "max", "max"],
+    ["cap-translate", "Capstone 번역", "측정 구조를 보존해 Capstone 파일을 번역합니다.", "/?report=cap-translate", "pro", "pro"],
+    ["file-convert", "파일 및 PDF 도구", "파일, 이미지, PDF를 브라우저에서 처리합니다.", "/tools/index.html", "public", "active"],
+    ["equation", "LaTeX 한글 수식", "수식을 한글 수식 객체로 변환합니다.", "/equation/index.html", "public", "active"],
+    ["image-ocr", "이미지 OCR", "사진과 표, 수식을 구조화해 추출합니다.", "/tools/convert.html", "pro", "pro"],
+    ["pdf-analysis", "PDF 분석", "페이지와 텍스트층, 수식 밀도를 분석합니다.", "/developers.html#catalog", "member", "active"],
+  ].map(([id, title, summary, path, audience, status]) => ({ id, title, summary, path, audience, status })));
 
-  const escapeHtml = (value) => String(value)
+  const STATIC_LINKS = Object.freeze({
+    developer: [
+      { title: "개발자 플랫폼", summary: "API, Codex, ChatGPT 연결을 시작합니다.", path: "/developers.html" },
+      { title: "API 문서", summary: "인증, scope, 요청 형식을 확인합니다.", path: "/developers.html#api" },
+      { title: "기능 카탈로그", summary: "연결 가능한 전체 기능을 탐색합니다.", path: "/developers.html#catalog" },
+      { title: "API 토큰", summary: "범위를 제한한 액세스 토큰을 관리합니다.", path: "/developers.html#tokenCard", audience: "member" },
+    ],
+    resources: [
+      { title: "이용 가이드", summary: "기능별 입력 방법과 사용 원칙", path: "/guide.html" },
+      { title: "예시", summary: "Quilo로 만든 실제 결과물", path: "/examples.html" },
+      { title: "업데이트", summary: "새 기능과 개선 내역", path: "/changelog.html" },
+      { title: "커뮤니티", summary: "질문과 기능 요청, 작업 사례", path: "/community.html" },
+      { title: "학교 도입", summary: "기관용 도입 문의", path: "/school-apply.html" },
+    ],
+    apps: [
+      { title: "Quilo Desktop", summary: "macOS와 Windows용 작업 공간", path: "/apps/quilo.html" },
+      { title: "Live Translator", summary: "로컬 실시간 음성 번역 앱", path: "/apps/live-translator.html" },
+    ],
+  });
+
+  const escapeHtml = (value) => String(value == null ? "" : value)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
 
-  function menuItem([href, title, description, report]) {
+  const featureMap = new Map(FALLBACK_FEATURES.map((feature) => [feature.id, feature]));
+
+  function feature(id) {
+    return featureMap.get(id) || null;
+  }
+
+  function tierLabel(item) {
+    if (!item) return "";
+    if (item.status === "paused") return "준비 중";
+    if (item.audience === "public") return "Public";
+    if (item.audience === "member") return "Free";
+    if (item.audience === "pro") return "Pro";
+    if (item.audience === "max") return "Max";
+    return "";
+  }
+
+  function reportTypeForPath(path) {
+    try { return new URL(String(path || "/"), window.location.origin).searchParams.get("report") || ""; }
+    catch (_) { return ""; }
+  }
+
+  function groupModel() {
+    const items = (ids) => ids.map(feature).filter(Boolean);
+    return [
+      {
+        label: "제품",
+        sections: [
+          { title: "보고서", items: items(["chem-pre", "chem-result", "phys-result", "free", "reading-log"]) },
+          { title: "문서 제작", items: items(["reading-log-bulk", "form-maker", "problem-set"]) },
+          { title: "추천 작업", items: items(["pdf-translate", "file-convert", "create"]) },
+        ],
+        all: { title: "전체 기능 보기", path: "/developers.html#catalog" },
+      },
+      {
+        label: "학습",
+        sections: [
+          { title: "수행평가", items: items(["phys-inquiry", "math-inquiry", "coding-test"]) },
+          { title: "시험 대비", items: items(["problem-set", "eng-exam-prep", "korean-lit-exam", "phys-mock-exam"]) },
+          { title: "심화 학습", items: items(["physics-studio", "relativity-study", "file-chat"]) },
+        ],
+        all: { title: "학습 기능 전체 보기", path: "/developers.html#catalog" },
+      },
+      {
+        label: "창작",
+        sections: [
+          { title: "만들기", items: items(["create", "vibe-coding", "quilo-code"]) },
+          { title: "앱", items: STATIC_LINKS.apps },
+        ],
+        all: { title: "창작 갤러리 보기", path: "/create.html" },
+      },
+      {
+        label: "파일 및 번역",
+        sections: [
+          { title: "번역", items: items(["pdf-translate", "cap-translate"]) },
+          { title: "문서 도구", items: items(["file-convert", "equation", "image-ocr", "pdf-analysis"]) },
+        ],
+        all: { title: "브라우저 도구 전체 보기", path: "/tools/index.html" },
+      },
+      {
+        label: "개발자",
+        sections: [
+          { title: "플랫폼", items: STATIC_LINKS.developer },
+          { title: "계산 API", items: items(["word-count", "statistics", "regression", "unit-convert", "graph"]) },
+        ],
+        all: { title: "개발자 플랫폼 열기", path: "/developers.html" },
+      },
+      {
+        label: "리소스",
+        sections: [
+          { title: "도움말", items: STATIC_LINKS.resources.slice(0, 3) },
+          { title: "Quilo", items: STATIC_LINKS.resources.slice(3) },
+        ],
+        all: { title: "이용 가이드 열기", path: "/guide.html" },
+      },
+    ];
+  }
+
+  function itemMarkup(item) {
+    const path = String(item.path || "/");
+    const report = reportTypeForPath(path);
     const reportData = report ? ` data-report="${escapeHtml(report)}"` : "";
-    return `<a href="${escapeHtml(href)}"${reportData}><strong>${escapeHtml(title)}</strong><span>${escapeHtml(description)}</span></a>`;
+    const tier = tierLabel(item);
+    const tierMarkup = tier
+      ? `<span class="ui-site-tier" data-tier="${escapeHtml(tier.toLowerCase().replace(/\s+/g, "-"))}">${escapeHtml(tier)}</span>`
+      : "";
+    return `<a class="ui-site-menu-item" href="${escapeHtml(path)}"${reportData}>
+      <span class="ui-site-menu-item__copy"><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.summary || "")}</small></span>
+      ${tierMarkup}
+    </a>`;
   }
 
-  function desktopMenu(group, index) {
-    const id = `ui-site-menu-${index + 1}`;
-    const menuSize = Math.min(Math.max(group.items.length, 2), 5);
-    return `
-      <details class="ui-site-disclosure" data-ui-disclosure>
-        <summary aria-controls="${id}">${escapeHtml(group.label)}</summary>
-        <div class="ui-site-menu" id="${id}" role="region" aria-label="${escapeHtml(group.label)} 메뉴">
-          <div class="ui-site-menu__inner ui-site-menu__inner--${menuSize}">
-            ${group.items.map(menuItem).join("")}
-          </div>
-        </div>
-      </details>`;
+  function panelMarkup(group) {
+    return `<div class="ui-site-mega__layout">
+      ${group.sections.map((section) => `<section class="ui-site-menu-section"><h2>${escapeHtml(section.title)}</h2><div>${section.items.map(itemMarkup).join("")}</div></section>`).join("")}
+      <a class="ui-site-menu-all" href="${escapeHtml(group.all.path)}">${escapeHtml(group.all.title)}<span aria-hidden="true">→</span></a>
+    </div>`;
   }
 
-  function mobileLinks() {
-    return MENU_GROUPS.flatMap((group) => group.items)
-      .map(([href, title, , report]) => {
-        const reportData = report ? ` data-report="${escapeHtml(report)}"` : "";
-        return `<a href="${escapeHtml(href)}"${reportData}>${escapeHtml(title)}</a>`;
-      })
-      .join("");
+  function navTriggersMarkup(groups) {
+    return groups.map((group, index) => `<button type="button" class="ui-site-nav-trigger" data-ui-menu-trigger="${index}" aria-expanded="false" aria-controls="uiSiteMega">${escapeHtml(group.label)}<span aria-hidden="true"></span></button>`).join("");
   }
+
+  function mobileMarkup(groups) {
+    return groups.map((group) => `<section class="ui-mobile-section"><h2>${escapeHtml(group.label)}</h2>${group.sections.flatMap((section) => section.items).map((item) => {
+      const tier = tierLabel(item);
+      const report = reportTypeForPath(item.path);
+      return `<a href="${escapeHtml(item.path || "/")}"${report ? ` data-report="${escapeHtml(report)}"` : ""}><span>${escapeHtml(item.title)}</span>${tier ? `<small>${escapeHtml(tier)}</small>` : ""}</a>`;
+    }).join("")}</section>`).join("");
+  }
+
+  function themeIcon(dark) {
+    return dark
+      ? '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>'
+      : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5 8.5 8.5 0 1 0 20.5 14.2Z"></path></svg>';
+  }
+
+  let groups = groupModel();
 
   function shellMarkup() {
-    return `
-      <div class="ui-site-header__inner">
-        <a class="ui-site-brand" href="/" aria-label="Quilo 홈">
-          <img src="/favicon.png" alt="" width="38" height="38" />
-          <span>Quilo</span>
-        </a>
-        <nav class="ui-site-nav" id="navMenu" aria-label="주요 메뉴">
-          ${MENU_GROUPS.map(desktopMenu).join("")}
-          <a class="ui-site-link" href="/pricing.html">요금</a>
-          <a class="ui-site-link" href="https://www.instagram.com/quilo._.official/" target="_blank" rel="noopener">Instagram ↗</a>
-        </nav>
-        <div class="ui-site-actions">
-          <div class="ui-session-slot" id="accountSlot">
-            <a class="ui-site-action ui-session-trigger" id="sessionAction" data-ui-auth-action href="/?login=1" hidden><span id="user" data-ui-auth-label>로그인</span></a>
-            <small class="ui-session-tier" id="accountTriggerMeta" aria-hidden="true" hidden>Account</small>
-            <div class="ui-session-panel ui-login-panel" id="loginDd" hidden>
-              <form id="loginForm" class="ui-login-form">
-                <div class="ui-login-head">
-                  <span>Account sign in</span>
-                  <strong>Quilo에 로그인</strong>
-                  <p>작업과 생성 파일을 이어서 관리하세요.</p>
-                </div>
-                <label for="li_username">아이디</label>
-                <input id="li_username" name="username" required maxlength="50" autocomplete="username" />
-                <label for="li_password">비밀번호</label>
-                <input id="li_password" name="password" type="password" required autocomplete="current-password" />
-                <label class="ui-login-remember"><input id="li_remember" name="remember" type="checkbox" checked /> 로그인 유지</label>
-                <button type="submit" id="li_btn">로그인</button>
-                <p id="li_err" class="ui-login-error" role="alert" aria-live="polite"></p>
-                <a class="ui-login-alt" href="/signup.html">계정 만들기</a>
-              </form>
-            </div>
-            <div class="ui-session-panel ui-account-panel" id="acctDd" hidden>
-              <div class="ui-account-head"><strong id="accountMenuName">내 계정</strong><span id="accountMenuMeta">Quilo Account</span></div>
-              <a href="/#settings" data-tab="settings"><strong>Account Center</strong><span>계정·사용량·기본 설정</span></a>
-              <a href="/#files" data-tab="files"><strong>내 파일</strong><span>최근 생성 파일</span></a>
-              <a href="/#integrations" data-tab="integrations"><strong>외부 서비스 연결</strong><span>Dropbox와 API 연결</span></a>
-              <a href="/#feedback" data-tab="feedback"><strong>건의사항</strong><span>문제 제보와 기능 제안</span></a>
-              <a href="/admin.html" id="adminLink" hidden><strong>관리자</strong><span>운영 화면 열기</span></a>
-              <button type="button" id="logout">로그아웃</button>
-            </div>
+    return `<div class="ui-site-header__inner">
+      <a class="ui-site-brand" href="/" aria-label="Quilo 홈"><img src="/favicon.png" alt="" width="36" height="36" /><span>Quilo</span></a>
+      <nav class="ui-site-nav" id="navMenu" aria-label="주요 메뉴">
+        <div class="ui-site-nav__groups" data-ui-nav-groups>${navTriggersMarkup(groups)}</div>
+        <a class="ui-site-link" href="/pricing.html">요금</a>
+        <a class="ui-site-link ui-site-link--social" href="https://www.instagram.com/quilo._.official/" target="_blank" rel="noopener">Instagram<span class="ui-external-mark" aria-hidden="true">↗</span></a>
+      </nav>
+      <div class="ui-site-actions">
+        <div class="ui-session-slot" id="accountSlot">
+          <a class="ui-site-action ui-session-trigger" id="sessionAction" data-ui-auth-action href="/?login=1" hidden><span id="user" data-ui-auth-label>로그인</span></a>
+          <small class="ui-session-tier" id="accountTriggerMeta" aria-hidden="true" hidden>Account</small>
+          <div class="ui-session-panel ui-login-panel" id="loginDd" hidden>
+            <form id="loginForm" class="ui-login-form">
+              <div class="ui-login-head"><span>Account sign in</span><strong>Quilo에 로그인</strong><p>작업과 생성 파일을 이어서 관리하세요.</p></div>
+              <label for="li_username">아이디</label><input id="li_username" name="username" required maxlength="50" autocomplete="username" />
+              <label for="li_password">비밀번호</label><input id="li_password" name="password" type="password" required autocomplete="current-password" />
+              <label class="ui-login-remember"><input id="li_remember" name="remember" type="checkbox" checked /> 로그인 유지</label>
+              <button type="submit" id="li_btn">로그인</button><p id="li_err" class="ui-login-error" role="alert" aria-live="polite"></p>
+              <a class="ui-login-alt" href="/signup.html">계정 만들기</a>
+            </form>
           </div>
-          <button type="button" class="ui-site-action ui-theme-toggle" id="themeToggle" data-ui-theme>
-            <span aria-hidden="true">🌙</span>
-          </button>
-          <a class="ui-site-action ui-site-cta" data-ui-start-action href="/signup.html">무료로 시작하기</a>
+          <div class="ui-session-panel ui-account-panel" id="acctDd" hidden>
+            <div class="ui-account-head"><strong id="accountMenuName">내 계정</strong><span id="accountMenuMeta">Quilo Account</span></div>
+            <a href="/#settings" data-tab="settings"><strong>Account Center</strong><span>계정, 사용량, 기본 설정</span></a>
+            <a href="/#files" data-tab="files"><strong>내 파일</strong><span>최근 생성 파일</span></a>
+            <a href="/#integrations" data-tab="integrations"><strong>외부 서비스 연결</strong><span>Dropbox와 API 연결</span></a>
+            <a href="/#feedback" data-tab="feedback"><strong>건의사항</strong><span>문제 제보와 기능 제안</span></a>
+            <a href="/admin.html" id="adminLink" hidden><strong>관리자</strong><span>운영 화면 열기</span></a>
+            <button type="button" id="logout">로그아웃</button>
+          </div>
         </div>
-        <details class="ui-mobile-menu" data-ui-mobile>
-          <summary class="ui-mobile-trigger">메뉴</summary>
-          <nav class="ui-mobile-panel" aria-label="모바일 메뉴">
-            ${mobileLinks()}
-            <a href="/pricing.html">요금</a>
-            <a href="https://www.instagram.com/quilo._.official/" target="_blank" rel="noopener">Instagram ↗</a>
-            <button type="button" data-ui-theme><span aria-hidden="true">🌙</span></button>
-            <a data-ui-auth-action href="/?login=1" hidden><span data-ui-auth-label>로그인</span></a>
-            <a class="ui-site-cta" data-ui-start-action href="/signup.html">무료로 시작하기</a>
-          </nav>
-        </details>
-      </div>`;
+        <button type="button" class="ui-site-action ui-theme-toggle" id="themeToggle" data-ui-theme></button>
+        <a class="ui-site-action ui-site-cta" data-ui-start-action href="/signup.html" hidden>무료로 시작하기</a>
+      </div>
+      <button type="button" class="ui-mobile-trigger" data-ui-mobile-trigger aria-expanded="false" aria-controls="uiMobilePanel"><span>메뉴</span><i aria-hidden="true"></i></button>
+    </div>
+    <div class="ui-site-scrim" data-ui-scrim aria-hidden="true"></div>
+    <div class="ui-site-mega" id="uiSiteMega" aria-hidden="true"><div class="ui-site-mega__clip"><div class="ui-site-mega__inner" data-ui-mega-content></div></div></div>
+    <div class="ui-mobile-panel" id="uiMobilePanel" aria-hidden="true"><div class="ui-mobile-panel__inner" data-ui-mobile-content>${mobileMarkup(groups)}</div><div class="ui-mobile-actions"><a href="/pricing.html">요금</a><a href="https://www.instagram.com/quilo._.official/" target="_blank" rel="noopener">Instagram ↗</a><button type="button" data-ui-theme></button><a data-ui-auth-action href="/?login=1" hidden><span data-ui-auth-label>로그인</span></a><a class="ui-site-cta" data-ui-start-action href="/signup.html" hidden>무료로 시작하기</a></div></div>`;
   }
 
   header.className = "ui-site-header";
@@ -151,31 +226,78 @@
   header.setAttribute("aria-busy", "true");
   header.innerHTML = shellMarkup();
 
-  const disclosures = [...header.querySelectorAll("[data-ui-disclosure], [data-ui-mobile]")];
   const accountSlot = header.querySelector("#accountSlot");
   const loginPanel = header.querySelector("#loginDd");
   const accountPanel = header.querySelector("#acctDd");
-  const authActions = [...header.querySelectorAll("[data-ui-auth-action]")];
+  const megaPanel = header.querySelector("#uiSiteMega");
+  const megaContent = header.querySelector("[data-ui-mega-content]");
+  const scrim = header.querySelector("[data-ui-scrim]");
+  const mobilePanel = header.querySelector("#uiMobilePanel");
+  const mobileTrigger = header.querySelector("[data-ui-mobile-trigger]");
   const currentUrl = new URL(window.location.href);
   let currentAuthState = { state: "pending", user: null, status: null };
+  let openMenuIndex = -1;
+
+  function authActions() { return [...header.querySelectorAll("[data-ui-auth-action]")]; }
 
   function accountName(user) {
     return String(user?.user || user?.name || user?.username || "내 계정").trim() || "내 계정";
   }
 
-  function closeDropdowns({ restoreFocus = false } = {}) {
-    const active = header.querySelector("[data-ui-disclosure][open] > summary, .ui-session-slot.is-open .ui-session-trigger");
-    disclosures.forEach((details) => { details.open = false; });
+  function closeSessionPanel({ restoreFocus = false } = {}) {
+    const trigger = header.querySelector("#sessionAction");
+    const wasOpen = accountSlot?.classList.contains("is-open");
     accountSlot?.classList.remove("is-open");
     loginPanel?.classList.remove("open");
     accountPanel?.classList.remove("open");
-    header.querySelector("#sessionAction")?.setAttribute("aria-expanded", "false");
-    if (restoreFocus) active?.focus();
+    trigger?.setAttribute("aria-expanded", "false");
+    if (restoreFocus && wasOpen) trigger?.focus();
+  }
+
+  function closeMega({ restoreFocus = false } = {}) {
+    const trigger = openMenuIndex >= 0 ? header.querySelector(`[data-ui-menu-trigger="${openMenuIndex}"]`) : null;
+    header.classList.remove("has-open-menu");
+    megaPanel?.classList.remove("is-open");
+    megaPanel?.setAttribute("aria-hidden", "true");
+    scrim?.setAttribute("aria-hidden", "true");
+    header.querySelectorAll("[data-ui-menu-trigger]").forEach((button) => button.setAttribute("aria-expanded", "false"));
+    openMenuIndex = -1;
+    if (restoreFocus) trigger?.focus();
+  }
+
+  function closeMobile({ restoreFocus = false } = {}) {
+    header.classList.remove("has-open-mobile");
+    mobilePanel?.setAttribute("aria-hidden", "true");
+    mobileTrigger?.setAttribute("aria-expanded", "false");
+    if (restoreFocus) mobileTrigger?.focus();
+  }
+
+  function closeDropdowns(options = {}) {
+    closeMega(options);
+    closeMobile(options);
+    closeSessionPanel(options);
+  }
+
+  function openMega(index) {
+    const group = groups[index];
+    if (!group || !megaPanel || !megaContent) return;
+    closeSessionPanel();
+    closeMobile();
+    openMenuIndex = index;
+    megaContent.innerHTML = panelMarkup(group);
+    header.querySelectorAll("[data-ui-menu-trigger]").forEach((button) => {
+      button.setAttribute("aria-expanded", String(Number(button.dataset.uiMenuTrigger) === index));
+    });
+    megaPanel.setAttribute("aria-hidden", "false");
+    scrim?.setAttribute("aria-hidden", "false");
+    header.classList.add("has-open-menu");
+    requestAnimationFrame(() => megaPanel.classList.add("is-open"));
   }
 
   function openSessionPanel(kind) {
-    if (!accountSlot || currentAuthState.state === "unknown" || currentAuthState.state === "pending") return false;
-    disclosures.forEach((details) => { details.open = false; });
+    if (!accountSlot || ["unknown", "pending"].includes(currentAuthState.state)) return false;
+    closeMega();
+    closeMobile();
     const expected = kind || (currentAuthState.state === "authenticated" ? "account" : "login");
     if (loginPanel) loginPanel.hidden = expected !== "login";
     if (accountPanel) accountPanel.hidden = expected !== "account";
@@ -183,22 +305,37 @@
     accountPanel?.classList.toggle("open", expected === "account");
     accountSlot.classList.add("is-open");
     header.querySelector("#sessionAction")?.setAttribute("aria-expanded", "true");
-    if (expected === "login") setTimeout(() => header.querySelector("#li_username")?.focus(), 0);
+    if (expected === "login") requestAnimationFrame(() => header.querySelector("#li_username")?.focus());
     return true;
   }
 
-  disclosures.forEach((details) => {
-    details.addEventListener("toggle", () => {
-      if (!details.open) return;
-      accountSlot?.classList.remove("is-open");
-      disclosures.forEach((other) => { if (other !== details) other.open = false; });
-    });
+  header.addEventListener("click", (event) => {
+    const menuTrigger = event.target.closest?.("[data-ui-menu-trigger]");
+    if (menuTrigger) {
+      const index = Number(menuTrigger.dataset.uiMenuTrigger);
+      if (openMenuIndex === index && megaPanel?.classList.contains("is-open")) closeMega({ restoreFocus: true });
+      else openMega(index);
+      return;
+    }
+    if (event.target.closest?.("[data-ui-scrim]")) {
+      closeDropdowns({ restoreFocus: true });
+      return;
+    }
+    const mobileButton = event.target.closest?.("[data-ui-mobile-trigger]");
+    if (mobileButton) {
+      const opening = !header.classList.contains("has-open-mobile");
+      closeMega();
+      closeSessionPanel();
+      header.classList.toggle("has-open-mobile", opening);
+      mobilePanel?.setAttribute("aria-hidden", String(!opening));
+      mobileTrigger?.setAttribute("aria-expanded", String(opening));
+    }
   });
 
   header.querySelector("#sessionAction")?.addEventListener("click", (event) => {
     if (!["anonymous", "authenticated"].includes(currentAuthState.state)) return;
     event.preventDefault();
-    if (accountSlot?.classList.contains("is-open")) closeDropdowns();
+    if (accountSlot?.classList.contains("is-open")) closeSessionPanel();
     else openSessionPanel();
   });
 
@@ -209,13 +346,15 @@
     if (event.key === "Escape") closeDropdowns({ restoreFocus: true });
   });
 
-  header.querySelectorAll("a[href]").forEach((link) => {
-    const target = new URL(link.href, currentUrl);
-    if (target.origin !== currentUrl.origin) return;
-    if (target.pathname === currentUrl.pathname && target.search === currentUrl.search && target.hash === currentUrl.hash) {
-      link.setAttribute("aria-current", "page");
-    }
-  });
+  function syncCurrentLinks() {
+    header.querySelectorAll("a[href]").forEach((link) => {
+      let target;
+      try { target = new URL(link.href, currentUrl); } catch (_) { return; }
+      if (target.origin === currentUrl.origin && target.pathname === currentUrl.pathname && target.search === currentUrl.search && target.hash === currentUrl.hash) link.setAttribute("aria-current", "page");
+      else link.removeAttribute("aria-current");
+    });
+  }
+  syncCurrentLinks();
 
   function syncTheme() {
     const dark = document.documentElement.dataset.theme === "dark";
@@ -223,8 +362,7 @@
       button.setAttribute("aria-pressed", String(dark));
       button.setAttribute("aria-label", dark ? "라이트 테마로 변경" : "다크 테마로 변경");
       button.setAttribute("title", dark ? "라이트 테마로 변경" : "다크 테마로 변경");
-      const label = button.querySelector("span") || button;
-      label.textContent = dark ? "☀️" : "🌙";
+      button.innerHTML = themeIcon(dark);
     });
   }
 
@@ -232,14 +370,12 @@
     try { return new URL(script.src, currentUrl).pathname === "/theme.js"; } catch (_) { return false; }
   });
   if (!usesThemeJs) {
-    header.querySelectorAll("[data-ui-theme]").forEach((button) => {
-      button.addEventListener("click", () => {
-        const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
-        document.documentElement.dataset.theme = next;
-        try { localStorage.setItem("theme", next); } catch (_) {}
-        syncTheme();
-      });
-    });
+    header.querySelectorAll("[data-ui-theme]").forEach((button) => button.addEventListener("click", () => {
+      const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+      document.documentElement.dataset.theme = next;
+      try { localStorage.setItem("theme", next); } catch (_) {}
+      syncTheme();
+    }));
   }
   document.addEventListener("quilo:theme-change", syncTheme);
   syncTheme();
@@ -257,13 +393,9 @@
     const compactName = [...name].length > 14 ? `${[...name].slice(0, 14).join("")}…` : name;
 
     document.querySelectorAll("[data-ui-start-action]").forEach((action) => {
-      if (authenticated) {
-        action.href = "/?report=free";
-        action.textContent = "작업 시작하기";
-      } else {
-        action.href = "/signup.html";
-        action.textContent = "무료로 시작하기";
-      }
+      action.href = "/signup.html";
+      action.textContent = "무료로 시작하기";
+      action.hidden = !anonymous;
     });
 
     if (loginPanel) loginPanel.hidden = !anonymous;
@@ -275,7 +407,7 @@
     const accountTier = header.querySelector("#accountTriggerMeta");
     if (accountTier) accountTier.hidden = !authenticated;
 
-    authActions.forEach((action) => {
+    authActions().forEach((action) => {
       const label = action.querySelector("[data-ui-auth-label]") || action;
       action.hidden = false;
       action.dataset.uiAuthState = result.state;
@@ -302,11 +434,7 @@
 
   async function syncAuthState() {
     try {
-      const response = await fetch("/api/me", {
-        cache: "no-store",
-        credentials: "same-origin",
-        headers: { accept: "application/json" },
-      });
+      const response = await fetch("/api/me", { cache: "no-store", credentials: "same-origin", headers: { accept: "application/json" } });
       if (response.status === 401) return renderAuthState({ state: "anonymous", user: null, status: 401 });
       if (!response.ok) return renderAuthState({ state: "unknown", user: null, status: response.status });
       return renderAuthState({ state: "authenticated", user: await response.json(), status: response.status });
@@ -316,19 +444,24 @@
   }
 
   const authReady = syncAuthState();
-  window.QuiloShellAuth = Object.freeze({
-    ready: authReady,
-    refresh: syncAuthState,
-    current: () => currentAuthState,
-  });
-  window.QuiloSiteShell = Object.freeze({
-    closeDropdowns,
-    openLogin: () => openSessionPanel("login"),
-    openAccount: () => openSessionPanel("account"),
-  });
+  window.QuiloShellAuth = Object.freeze({ ready: authReady, refresh: syncAuthState, current: () => currentAuthState });
+  window.QuiloSiteShell = Object.freeze({ closeDropdowns, openLogin: () => openSessionPanel("login"), openAccount: () => openSessionPanel("account") });
 
-  // Warm likely next pages without blocking the current document. Render can
-  // otherwise add a visible round-trip whenever a user opens a header menu.
+  fetch("/api/catalog", { headers: { accept: "application/json" } })
+    .then((response) => response.ok ? response.json() : null)
+    .then((data) => {
+      if (!Array.isArray(data?.features) || !data.features.length) return;
+      data.features.forEach((item) => featureMap.set(item.id, item));
+      groups = groupModel();
+      closeMega();
+      const nav = header.querySelector("[data-ui-nav-groups]");
+      const mobile = header.querySelector("[data-ui-mobile-content]");
+      if (nav) nav.innerHTML = navTriggersMarkup(groups);
+      if (mobile) mobile.innerHTML = mobileMarkup(groups);
+      syncCurrentLinks();
+    })
+    .catch(() => {});
+
   const prefetched = new Set();
   function prefetchPage(link) {
     if (!(link instanceof HTMLAnchorElement)) return;
@@ -358,18 +491,14 @@
       event.preventDefault();
       const button = header.querySelector("#li_btn");
       const error = header.querySelector("#li_err");
-      if (button) { button.disabled = true; button.textContent = "로그인 중…"; }
+      if (button) { button.disabled = true; button.textContent = "로그인 중..."; }
       if (error) error.textContent = "";
       try {
         const response = await fetch("/api/login", {
           method: "POST",
           credentials: "same-origin",
           headers: { "content-type": "application/json", accept: "application/json" },
-          body: JSON.stringify({
-            username: header.querySelector("#li_username")?.value || "",
-            password: header.querySelector("#li_password")?.value || "",
-            remember: header.querySelector("#li_remember")?.checked !== false,
-          }),
+          body: JSON.stringify({ username: header.querySelector("#li_username")?.value || "", password: header.querySelector("#li_password")?.value || "", remember: header.querySelector("#li_remember")?.checked !== false }),
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || "로그인하지 못했습니다.");
@@ -385,33 +514,37 @@
     });
   }
 
+  document.querySelectorAll(".ui-site-footer, body.home-page > footer.site-footer").forEach((footer) => {
+    footer.className = "ui-site-footer";
+    footer.innerHTML = `<div class="ui-site-footer__inner">
+      <section class="ui-site-footer__brand"><a href="/" class="ui-site-footer__logo">Quilo</a><p>학습과 연구의 전 과정을 연결하는 AI Workspace.</p><nav aria-label="Quilo 외부 채널"><a href="https://www.instagram.com/quilo._.official/" target="_blank" rel="noopener">Instagram ↗</a><a href="https://github.com/fakeminjun7321/lab-report-generator-web" target="_blank" rel="noopener">GitHub ↗</a><a href="https://blog.naver.com/physicjun1905" target="_blank" rel="noopener">블로그 ↗</a></nav></section>
+      <nav class="ui-site-footer__nav" aria-label="푸터 메뉴">
+        <section><h2>제품</h2><a href="/?report=chem-pre">화학 사전보고서</a><a href="/?report=phys-result">물리 결과보고서</a><a href="/?report=free">자유 보고서</a><a href="/translate.html">PDF 통번역</a></section>
+        <section><h2>학습 및 창작</h2><a href="/?report=problem-set">문제집 메이커</a><a href="/exam-prep.html">물리 수행평가</a><a href="/create.html">창작 스튜디오</a><a href="/editor.html">Quilo Code</a></section>
+        <section><h2>개발자</h2><a href="/developers.html">개발자 플랫폼</a><a href="/developers.html#api">API 문서</a><a href="/developers.html#catalog">기능 카탈로그</a></section>
+        <section><h2>리소스</h2><a href="/guide.html">이용 가이드</a><a href="/examples.html">예시</a><a href="/changelog.html">업데이트</a><a href="/community.html">커뮤니티</a><a href="/school-apply.html">학교 도입</a></section>
+      </nav>
+      <div class="ui-site-footer__legal"><span>© 2026 Quilo</span><nav aria-label="법적 고지"><a href="/terms.html">이용약관</a><a href="/privacy.html">개인정보처리방침</a><a href="/refund.html">환불정책</a><a href="/healthz" target="_blank" rel="noopener">서비스 상태</a></nav><span data-site-version>버전 확인 중...</span></div>
+    </div>`;
+  });
+
   const downloadButtons = [...document.querySelectorAll("[data-app-download]")];
   const downloadStatus = document.querySelector("[data-app-download-status]");
-  downloadButtons.forEach((button) => {
-    button.addEventListener("click", () => {
-      const platform = button.dataset.platform === "mac" ? "macOS" : "Windows";
-      const appName = button.dataset.app === "live-translator" ? "Live Translator" : "Quilo Desktop";
-      if (downloadStatus) {
-        downloadStatus.classList.remove("is-error");
-        downloadStatus.textContent = `${appName} ${platform} 다운로드를 시작했습니다.`;
-      }
-    });
-  });
+  downloadButtons.forEach((button) => button.addEventListener("click", () => {
+    const platform = button.dataset.platform === "mac" ? "macOS" : "Windows";
+    const appName = button.dataset.app === "live-translator" ? "Live Translator" : "Quilo Desktop";
+    if (downloadStatus) { downloadStatus.classList.remove("is-error"); downloadStatus.textContent = `${appName} ${platform} 다운로드를 시작했습니다.`; }
+  }));
 
   const versionNodes = [...document.querySelectorAll("[data-site-version]")];
   if (versionNodes.length) {
     fetch("/api/version", { cache: "no-store" })
-      .then((response) => {
-        if (!response.ok) throw new Error("version fetch failed");
-        return response.json();
-      })
+      .then((response) => { if (!response.ok) throw new Error("version fetch failed"); return response.json(); })
       .then((info) => {
-        if (!info?.version) throw new Error("version missing");
-        const label = info.shortCommit ? `v${info.version} · ${info.shortCommit}` : `v${info.version}`;
-        versionNodes.forEach((node) => {
-          node.textContent = label;
-          node.title = info.commit ? `commit ${info.commit}` : "현재 배포 버전";
-        });
+        const release = info?.releaseVersion || info?.version;
+        if (!release) throw new Error("version missing");
+        const label = info.shortCommit ? `v${release} · ${info.shortCommit}` : `v${release}`;
+        versionNodes.forEach((node) => { node.textContent = label; node.title = info.commit ? `commit ${info.commit}` : "현재 배포 버전"; });
       })
       .catch(() => versionNodes.forEach((node) => { node.textContent = "버전 확인 불가"; }));
   }

@@ -536,7 +536,9 @@ def build_references(doc, content):
 
 def build_pcei(doc, content):
     pcei = content.get("pcei") or {}
-    if not any(pcei.get(k) for k in ("perception", "curiosity", "exploration", "insight")):
+    # DEF-033: 4개 필드가 전부 비었으면(공백만 있어도) 섹션 전체 생략.
+    # docx-gen.js buildPCEI와 동일 기준.
+    if not any(str(pcei.get(k) or "").strip() for k in ("perception", "curiosity", "exploration", "insight")):
         return
     pre.add_heading(doc, "추가 작성 (PCEI)", size=pre.SIZE_TITLE, space_before=pre.SPACE_HEADING_LV1, space_after=pre.SPACE_HEADING_LV2)
     labels = [

@@ -117,6 +117,26 @@ def make_text_run(text: str, run_attrs: dict[str, str]) -> ET.Element:
     return run
 
 
+def _estimate_base_line(script: str) -> str:
+    """편집기가 계산하는 baseLine(객체 높이 대비 글줄 기준선 위치 %)의 근사.
+
+    넣기 후 XML 실측(2026-07-13): 분수/근호/큰 연산이 있으면 64~68,
+    첨자만 있으면 72, 평문은 86. 정확값은 레이아웃 계산이 필요하지만
+    이 근사만으로도 '넣기 후와 같은 정상 모양'이 된다(속성 프로브 B/C/E/G
+    판정). 종전의 baseLine=0 은 문장 속 인라인 수식이 글줄에 어긋나 보이던
+    원인이었다.
+    """
+    if re.search(
+        r"\bover\b|\batop\b|\bsqrt\b|\bmatrix\b|\bcases\b|\bsum\b|\bint\b"
+        r"|\bprod\b|\bCHOOSE\b|\bpmatrix\b|\bdmatrix\b|\bbmatrix\b",
+        script,
+    ):
+        return "68"
+    if "_" in script or "^" in script:
+        return "72"
+    return "86"
+
+
 def make_equation(
     script: str,
     equation_id: str,
@@ -127,17 +147,28 @@ def make_equation(
         # 빈 hp:script 는 validate_hwpx_equations 가 fatal 로 보므로
         # 빈 수식 객체는 생성 단계에서 차단한다(호출부가 미리 걸러야 한다).
         raise ValueError("empty equation script")
+    # 속성은 수식 편집기 '넣기'가 부여하는 정준 집합을 그대로 쓴다(넣기
+    # 전후 XML diff + 속성 프로브 실측, 2026-07-13). 이 속성이 없으면
+    # (특히 version/font/lineMode/baseLine) 문서를 열 때 수식이 구식
+    # 렌더러로 그려져 글꼴·기준선이 어긋나고, 사용자가 수식마다 넣기를
+    # 눌러야 정상으로 보이는 문제(P1)가 생긴다. version="Equation Version
+    # 60" 은 새로 열 때의 스크립트 방언(토큰 단위 렉싱)까지 바꾼다.
     equation = ET.Element(
         qname(HP_NS, "equation"),
         {
             "id": equation_id,
-            "type": "0",
+            "zOrder": "0",
+            "numberingType": "NONE",
+            "textWrap": "TOP_AND_BOTTOM",
+            "textFlow": "BOTH_SIDES",
+            "lock": "0",
+            "dropcapstyle": "None",
+            "version": "Equation Version 60",
+            "baseLine": _estimate_base_line(script),
             "textColor": style.text_color,
             "baseUnit": str(style.base_unit),
-            "letterSpacing": str(style.letter_spacing),
-            "lineThickness": str(style.line_thickness),
-            # Hancom can recalculate this when the file opens.
-            "baseLine": "0",
+            "lineMode": "CHAR",
+            "font": "HYhwpEQ",
         },
     )
     ET.SubElement(
@@ -1410,6 +1441,127 @@ def convert_slash_to_over(script: str) -> str:
     return "".join(out)
 
 
+# ── 무따옴표 안정 표기(dequote) ──────────────────────────────────────────
+# 편집기 왕복 실측(2026-07-12): 문서 초기 렌더러는 "..." 를 리터럴로 그리지만
+# 한컴 수식 편집기는 넣기 시 따옴표를 일반 글자로 취급하고 내용을 재토큰화
+# 한다 — "sup" 이 “”(sup 이 위첨자 연산자로 소모)로, "inf" 가 “∞”로 깨진다.
+# 반면 키워드 단어(pi·approx·sqrt…)와 낱자 분해 표기는 왕복 안전하다(사용자
+# 실보고서 2503codex_단진자.hwpx 의 편집기 제작 수식 19개에서 확인 — 전부
+# 무따옴표·키워드 유지). 그래서 최종 스크립트의 따옴표를 안정 표기로 푼다:
+#   · 한글/비ASCII·키워드 없는 단어(kg·mol·out·percent) → 알몸 그대로
+#   · 함수명 키워드(max·lim·log…) → 알몸 키워드(업라이트 함수 렌더)
+#   · 키워드를 품은 단어(pivot⊃pi, in, sup) → 빈 그룹 삽입 'p{}i{}v{}o{}t'
+#     (2026-07-13 한컴 실측: 낱자+공백 'p i v o t' 는 편집기 넣기가 'pivot'
+#      으로 재결합해 재오픈 시 문서 렌더러가 πvot 로 그린다. 빈 그룹 {} 은
+#      각 글자를 렌더 안 보이는 그룹 경계로 나눠 그리디 렉싱을 원천 차단하고
+#      편집기 재결합도 막는다 — I_{p{}ivot} → pivot 정상 렌더 직접 확인.)
+#   · 단어 사이 실제 공백 → ~ (한컴 일반 공백)
+#   · 구조 문자(#&^_`~"\)가 든 본문 → 인용 유지(희귀, 안전 우선. 단 중괄호
+#     {} 는 아래에서 직접 삽입하므로 unsafe 목록에서 뺀다)
+#
+# 한컴 렉싱 위험 판정용 키워드(대소문자 구분, 2글자 이상). 검증용 파서
+# (hwp_script_parser.KEYWORDS)와 취지는 같지만 여기선 '알몸으로 두면 기호로
+# 바뀔 수 있는가'의 보수적 안전판이다 — 과잉 포함은 낱자 분해가 늘 뿐 무해.
+_HANCOM_LEX_KEYWORDS = frozenset(
+    """alpha beta gamma delta epsilon varepsilon zeta eta theta vartheta iota
+    kappa lambda mu nu xi omicron pi varpi rho varrho sigma varsigma tau
+    upsilon phi varphi chi psi omega Gamma GAMMA Delta DELTA Theta THETA
+    Lambda LAMBDA Xi XI Pi PI Sigma SIGMA Upsilon UPSILON Phi PHI Psi PSI
+    Omega OMEGA Alpha Beta Epsilon Zeta Eta Iota Kappa Mu Nu Omicron Rho Tau
+    Chi sin cos tan cot sec csc arcsin arccos arctan sinh cosh tanh coth ln
+    log lg lim Lim max min exp Exp det gcd mod arg deg dim ker hom Pr sup
+    inf INF over atop CHOOSE sqrt root of cases matrix pmatrix bmatrix
+    dmatrix smallmatrix LEFT RIGHT REL BUILDREL vec hat bar dot ddot tilde
+    acute grave check under dyad bold rm it not times TIMES div DIV cdot
+    plusminus minusplus approx APPROX equiv leq geq neq sim simeq cong
+    propto prec succ asymp in IN owns notin subset supset subseteq supseteq
+    union inter cup cap sqcap sqcup emptyset aleph uplus oplus ominus otimes
+    odot oslash vee wedge circ bullet ast star partial nabla forall exist
+    exists therefore because diamond angle triangle dagger ddagger top bot
+    models vdash prime hbar int oint dint tint qint sum prod DEG ANGSTROM
+    ELL cdots ldots vdots ddots larrow rarrow lrarrow LARROW RARROW LRARROW
+    uparrow downarrow udarrow mapsto hookleft hookright VERT""".split()
+)
+# 알몸으로 두어도 업라이트 함수명으로 렌더되는 키워드 — 라벨 "max" 등은
+# 이대로 두는 쪽이 보기 좋다(∞/∈ 처럼 기호로 바뀌는 sup/inf/in 은 제외).
+_DEQUOTE_FUNC_WORDS = frozenset(
+    """sin cos tan cot sec csc arcsin arccos arctan sinh cosh tanh coth ln
+    log lg lim max min exp det gcd mod arg deg dim ker hom Pr""".split()
+)
+# 인용 본문에 이 문자가 있으면 dequote 하지 않고 인용을 유지한다(희귀·안전
+# 우선). 중괄호 {} 는 _split_keyword_run 이 직접 삽입하는 정상 출력 문자이자
+# 인용 본문에 원래 없으므로 목록에서 뺀다 — 넣으면 방금 만든 {} 가 재진입
+# 시 인용 유지로 되돌아가지만, dequote 는 인용을 없앤 뒤라 재진입이 없다.
+_DEQUOTE_UNSAFE_CHARS = set('#&^_\\`~"')
+
+
+def _word_hits_hancom_keyword(word: str) -> bool:
+    """비인용 글자 런을 한컴 그리디 렉서가 기호로 오해할 수 있는가."""
+    n = len(word)
+    i = 0
+    while i < n:
+        for j in range(n, i + 1, -1):
+            piece = word[i:j]
+            if len(piece) >= 2 and piece in _HANCOM_LEX_KEYWORDS:
+                return True
+        i += 1
+    return False
+
+
+def _split_keyword_run(word: str) -> str:
+    """키워드를 품은 글자 런의 모든 인접 글자 사이에 빈 그룹 {} 을 끼운다.
+
+    한컴 문서 렌더러는 비인용 글자 런을 부분문자열 최장 일치로 렉싱해
+    'pivot' 의 'pi' 를 π 로, 'initial' 의 'in' 을 ∈ 로 바꾼다. 빈 그룹 {}
+    은 화면에 안 보이는 그룹 경계라, 글자 사이마다 끼우면 어떤 2글자도
+    인접하지 못해 키워드 매칭이 원천 차단된다(2026-07-13 실측: I_{p{}ivot}
+    → pivot 정상).
+
+    '최소 삽입'(위험 키워드 경계에만 {})은 삽입이 새 인접쌍을 만들어 또
+    다른 키워드가 생기는 함정이 있다 — 'initial' 을 in·it 로 끊으면 'ni'
+    (한컴 owns 기호 ∋)가 새로 생겨 T_{i∃tial} 로 깨졌다(실측). 전 글자
+    분리는 이 부류의 2차 파손을 구조적으로 없앤다. 빈 그룹은 렌더·구조
+    동치성 모두 무해하므로(파서가 낱자 분해와 equal 로 인정) 대가가 없다.
+    """
+    return "{}".join(word)
+
+
+def _dequote_word(word: str) -> str:
+    if word in _DEQUOTE_FUNC_WORDS:
+        return word
+    if re.fullmatch(r"[A-Za-z]+", word) and _word_hits_hancom_keyword(word):
+        return _split_keyword_run(word)  # 빈 그룹 전 글자 분리 — 렉싱·재결합 차단
+    return word
+
+
+def dequote_script(script: str) -> str:
+    """인용 리터럴("...")을 편집기 왕복 안전 표기로 푼다."""
+    if '"' not in script:
+        return script
+
+    def _wordy(w: str) -> bool:
+        # '단어'(눈에 보이는 공백을 사이에 둘 대상) — 2글자 이상 또는 비ASCII
+        # (한글은 한 글자도 단어). 낱자 분해된 알파벳 1글자는 토큰 구분용
+        # 공백만 두면 붙어 보인다(한컴 공백은 렌더되지 않음).
+        return len(w) >= 2 or any(ord(c) > 127 for c in w)
+
+    def _repl(m: "re.Match[str]") -> str:
+        body = m.group(1)
+        if not body.strip():
+            return " "
+        if any(c in _DEQUOTE_UNSAFE_CHARS for c in body):
+            return m.group(0)  # 구조 문자 포함 — 인용 유지가 안전
+        words = [w for w in body.split(" ") if w]
+        parts: list[str] = []
+        for i, w in enumerate(words):
+            if i and _wordy(words[i - 1]) and _wordy(w):
+                parts.append("~")
+            parts.append(_dequote_word(w))
+        return " " + " ".join(parts) + " "
+
+    return re.sub(r'"([^"]*)"', _repl, script)
+
+
 def normalize_hwp_script(script: str) -> str:
     text = str(script or "").strip()
     text = _normalize_raw_unicode_math(text)
@@ -1439,10 +1591,29 @@ def normalize_hwp_script(script: str) -> str:
         lambda m: "{}^{" + (m.group("braced") or m.group("bare")) + "} sqrt ",
         text,
     )
-    # 'lnot' 은 한컴 키워드가 아니다 — 그리디 렉싱이 ln+otp 로 쪼갠다
-    # (렌더 시트 S2-92 실측: \neg p → 'ln otp'). 부정 기호는 글리프로 낸다
-    # (한컴 스크립트의 알몸 유니코드 글리프는 정상 렌더 — °C 등 실측).
-    text = re.sub(r"(?<![A-Za-z])lnot(?![A-Za-z])", "¬", text)
+    # 'lnot'(소문자)은 한컴 키워드가 아니다 — 문서 렌더러가 ln+otp 로 쪼갠다
+    # (렌더 시트 S2-92 실측). 정준 키워드는 대문자 LNOT — 편집기 왕복 XML
+    # 에서 확인했고(¬→LNOT 재직렬화) 문서 렌더러도 ¬p 로 정상 렌더(3라운드
+    # after S1-9 실측). ¬ 글리프 입력도 같은 키워드로 접는다.
+    text = re.sub(r"(?<![A-Za-z])lnot(?![A-Za-z])", " LNOT ", text)
+    text = text.replace("¬", " LNOT ")
+    # OVERBRACE/UNDERBRACE 는 한컴 키워드가 아니다 — 어느 인자 형태든 수식이
+    # 통째로 빈 렌더가 된다(렌더 시트 2라운드 S1-9~11 실측: 2인자·후첨자·
+    # 단일 인자 전멸). 내용 소실이 가장 나쁘므로 우아한 강등을 택한다:
+    # 겹브레이스는 윗줄(bar)+위첨자 라벨로, 밑브레이스는 본문+아래첨자 라벨로.
+    text = re.sub(  # hwip 2인자형: OVERBRACE {라벨} {본문}
+        r"OVERBRACE[ \t]*\{(?P<l>[^{}]*)\}[ \t]*\{(?P<b>[^{}]*)\}",
+        r"bar {\g<b>}^{\g<l>}",
+        text,
+    )
+    text = re.sub(
+        r"UNDERBRACE[ \t]*\{(?P<l>[^{}]*)\}[ \t]*\{(?P<b>[^{}]*)\}",
+        r"{\g<b>}_{\g<l>}",
+        text,
+    )
+    # 잔여(빌트인 후첨자형 'OVERBRACE {a+b}^{n}'·단일 인자) — 키워드만 강등.
+    text = re.sub(r"(?<![A-Za-z])OVERBRACE(?![A-Za-z])", "bar", text)
+    text = re.sub(r"(?<![A-Za-z])UNDERBRACE(?![A-Za-z])[ \t]*", "", text)
     text = (
         # '=>' 는 한컴에서 ⇒ 가 아니라 '=' '>' 두 글자로 렌더된다(렌더 시트
         # S1-3 실측) — 겹줄 화살표는 키워드 RARROW 로.
@@ -1485,6 +1656,12 @@ def normalize_hwp_script(script: str) -> str:
     text = quote_textual_subscripts(text)
     text = compact_chemical_spacing(text)
     text = convert_slash_to_over(text)
+    # 따옴표 리터럴 → 무따옴표 안정 표기(편집기 왕복 안전). 반드시 위의
+    # 인용 보호 패스들(compact/slash) 뒤, 공백 정리 앞에서 실행한다.
+    text = dequote_script(text)
+    # 리터럴 중괄호 센티널(preprocess 가 균형 \{\} 를 ⟬⟭ 로 보냄) → 스트레치
+    # 중괄호. hwip 이 비ASCII 를 인용해도 dequote 가 먼저 벗겨 준다.
+    text = text.replace("⟬", " LEFT{ ").replace("⟭", " RIGHT} ")
     text = re.sub(r"\b(APPROX|TIMES|DIV)(?=[A-Za-z0-9{])", r"\1 ", text)
     text = re.sub(r"(?<=[A-Za-z0-9}])(?=(APPROX|TIMES|DIV)\b)", " ", text)
     text = re.sub(r"\s{2,}", " ", text)
@@ -1908,6 +2085,15 @@ def preprocess_latex_body(raw_latex: str) -> str:
     # 'intercal' 영단어가 렌더된다. 양 엔진 진입 전 평문 T 로 강등한다
     # (빌트인 COMMANDS 의 T 매핑과 동일 결과, 구조 동치성 검사로 발견).
     s = re.sub(r"\\intercal(?![A-Za-z])", "{T}", s)
+    # 리터럴 중괄호 \{ \} — 짝이 맞으면 센티널 글리프(⟬⟭)로 바꿔 양 엔진을
+    # 통과시킨 뒤 normalize 가 스트레치 중괄호 LEFT{ RIGHT} 로 되살린다
+    # (렌더 시트 2라운드 S1-4 실측: LEFT{ RIGHT} 정상 렌더, 인용("{")보다
+    # 편집기 왕복에 안전). 짝이 안 맞으면 그대로 두어 빌트인 인용 폴백
+    # (+_HWIP_UNSAFE_RE 의 hwip 우회)으로 흐른다.
+    s = re.sub(r"\\lbrace(?![A-Za-z])", r"\\{", s)
+    s = re.sub(r"\\rbrace(?![A-Za-z])", r"\\}", s)
+    if s.count(r"\{") and s.count(r"\{") == s.count(r"\}"):
+        s = s.replace(r"\{", " ⟬ ").replace(r"\}", " ⟭ ")
     # align/gather 계열 환경 — 빌트인은 matrix 로 접지만 hwip 은 내용만 남겨
     # 정렬 & 와 행 구분 # 이 환경 밖 알몸으로 노출된다(한컴 렌더 미보장).
     # 양 엔진 진입 전 matrix 로 정규화해 출력 구조를 일치시킨다. alignat

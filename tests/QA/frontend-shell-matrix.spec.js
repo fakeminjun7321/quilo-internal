@@ -436,10 +436,10 @@ for (const viewport of VIEWPORTS) {
         await expect(page.locator("#main-content"), `${route} visible main content`).toBeVisible();
         await expect(page.locator(".landing-nav"), `${route} legacy navigation`).toHaveCount(0);
 
-        if (viewport.width > 760) {
+        if (viewport.width > 1120) {
           await expect(page.locator(".ui-site-nav"), `${route} desktop navigation`).toBeVisible();
           await expect(page.locator(".ui-site-actions"), `${route} desktop actions`).toBeVisible();
-          await expect(page.locator(".ui-mobile-menu"), `${route} mobile disclosure`).toBeHidden();
+          await expect(page.locator("[data-ui-mobile-trigger]"), `${route} mobile trigger`).toBeHidden();
 
           const themeButton = page.locator(".ui-site-actions .ui-theme-toggle");
           await expect(themeButton, `${route} desktop theme control`).toBeVisible();
@@ -447,6 +447,10 @@ for (const viewport of VIEWPORTS) {
           const initialTheme = await page.locator("html").getAttribute("data-theme");
           await themeButton.click();
           await expect(page.locator("html")).not.toHaveAttribute("data-theme", initialTheme || "light");
+        } else {
+          await expect(page.locator(".ui-site-nav"), `${route} compact navigation`).toBeHidden();
+          await expect(page.locator(".ui-site-actions"), `${route} compact actions`).toBeHidden();
+          await expect(page.locator("[data-ui-mobile-trigger]"), `${route} compact menu trigger`).toBeVisible();
         }
 
         const shellClipping = await page.evaluate(() =>
@@ -516,8 +520,14 @@ for (const viewport of APP_SHELL_VIEWPORTS) {
         await expect(page.locator("[data-app-shell]"), `${route} visible app shell`).toBeVisible();
         await expect(page.locator("[data-ui-shell]"), `${route} shared header root`).toHaveCount(1);
         await expect(page.locator(".ui-site-header"), `${route} shared header`).toBeVisible();
-        await expect(page.locator(".ui-site-nav"), `${route} shared navigation`).toBeVisible();
-        await expect(page.locator(".ui-site-actions"), `${route} shared actions`).toBeVisible();
+        if (viewport.width > 1120) {
+          await expect(page.locator(".ui-site-nav"), `${route} shared navigation`).toBeVisible();
+          await expect(page.locator(".ui-site-actions"), `${route} shared actions`).toBeVisible();
+        } else {
+          await expect(page.locator(".ui-site-nav"), `${route} compact navigation`).toBeHidden();
+          await expect(page.locator(".ui-site-actions"), `${route} compact actions`).toBeHidden();
+          await expect(page.locator("[data-ui-mobile-trigger]"), `${route} compact menu trigger`).toBeVisible();
+        }
         await expect(page.locator("#main-content"), `${route} main landmark`).toHaveCount(1);
         await expect(page.locator("#main-content"), `${route} visible main content`).toBeVisible();
         await expect(page.locator(".app-commandbar"), `${route} removed app commandbar`).toHaveCount(0);
@@ -527,7 +537,7 @@ for (const viewport of APP_SHELL_VIEWPORTS) {
             10,
           ),
         );
-        expect(headerToken, `${route} common header height token`).toBe(76);
+        expect(headerToken, `${route} common header height token`).toBe(viewport.width > 1120 ? 72 : 68);
 
         const overflow = await horizontalOverflowReport(page);
         expect(
@@ -540,19 +550,17 @@ for (const viewport of APP_SHELL_VIEWPORTS) {
   });
 }
 
-test("index mobile uses the canonical scroll-contained mobile disclosure", async ({ page }) => {
+test("index mobile uses the canonical scroll-contained mobile panel", async ({ page }) => {
   const consoleErrors = collectConsoleErrors(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${baseUrl}/`, { waitUntil: "networkidle" });
 
   await expect(page.locator("body")).toHaveAttribute("data-auth", "out");
-  const disclosure = page.locator(".ui-mobile-menu");
-  const trigger = disclosure.locator(":scope > .ui-mobile-trigger");
-  const panel = disclosure.locator(":scope > .ui-mobile-panel");
-  await expect(disclosure).toBeVisible();
+  const trigger = page.locator("[data-ui-mobile-trigger]");
+  const panel = page.locator("#uiMobilePanel");
   await expect(trigger).toBeVisible();
   await trigger.click();
-  await expect(disclosure).toHaveAttribute("open", "");
+  await expect(trigger).toHaveAttribute("aria-expanded", "true");
   await expect(panel).toBeVisible();
 
   const metrics = await page.evaluate(() => {
@@ -574,7 +582,6 @@ test("index mobile uses the canonical scroll-contained mobile disclosure", async
       navBottom: navRect.bottom,
       navWidth: navRect.width,
       navHeight: navRect.height,
-      navMaxHeight: navStyle.maxHeight,
       navOverflowY: navStyle.overflowY,
       navDisplay: navStyle.display,
       navColumns: navStyle.gridTemplateColumns,
@@ -587,12 +594,10 @@ test("index mobile uses the canonical scroll-contained mobile disclosure", async
 
   expect(metrics.navHeight).toBeGreaterThan(120);
   expect(metrics.navBottom).toBeLessThanOrEqual(metrics.viewportHeight + 1);
-  expect(metrics.navMaxHeight).not.toBe("none");
   expect(metrics.navOverflowY).toMatch(/auto|scroll/);
-  expect(metrics.navDisplay).toBe("grid");
-  expect(metrics.navColumns).not.toBe("none");
-  expect(metrics.navLeft).toBeGreaterThanOrEqual(15);
-  expect(metrics.navRight).toBeLessThanOrEqual(metrics.viewportWidth - 15);
+  expect(metrics.navDisplay).toBe("block");
+  expect(metrics.navLeft).toBeGreaterThanOrEqual(0);
+  expect(metrics.navRight).toBeLessThanOrEqual(metrics.viewportWidth);
   expect(metrics.firstTextAlign).toMatch(/^(left|start)$/);
   expect(metrics.firstLeft).toBeGreaterThanOrEqual(metrics.navLeft + 10);
   expect(metrics.ctaLeft).toBeGreaterThanOrEqual(metrics.navLeft + 10);

@@ -294,7 +294,13 @@ async function exerciseCoreInteraction(page, pageName) {
     await expect(page.locator("#sort")).toHaveValue("likes");
   } else if (pageName === "editor.html") {
     const before = await page.locator("html").getAttribute("data-theme");
-    await page.locator("#themeToggle").click();
+    const desktopTheme = page.locator("#themeToggle");
+    if (await desktopTheme.isVisible()) {
+      await desktopTheme.click();
+    } else {
+      await page.locator("[data-ui-mobile-trigger]").click();
+      await page.locator("#uiMobilePanel [data-ui-theme]").click();
+    }
     await expect(page.locator("html")).not.toHaveAttribute("data-theme", before || "light");
   } else if (pageName === "exam-prep.html") {
     await page.locator("#tabReading").click();
@@ -402,7 +408,7 @@ for (const pageName of PAGES) {
       overflow: 0,
       headerPosition: "fixed",
       headerTop: 0,
-      headerToken: 76,
+      headerToken: 72,
       statusPosition: "fixed",
       statusBottom: 0,
       headerOffenders: [],
@@ -434,7 +440,7 @@ test("all work surfaces reflow and respond at the 933px compact desktop width", 
       overflow: 0,
       headerPosition: "fixed",
       headerTop: 0,
-      headerToken: 76,
+      headerToken: 68,
       statusPosition: "fixed",
       statusBottom: 0,
       headerOffenders: [],

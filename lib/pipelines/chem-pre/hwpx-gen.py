@@ -26,9 +26,24 @@ import re
 import base64
 import struct
 from copy import deepcopy
+from pathlib import Path
 from lxml import etree
 
 from hwpx import HwpxDocument
+
+# ── 수식 공통 로직 단일 소스 선로딩 (DEF-012 이중 미러 단일화) ──────────────
+# EQ_SCRIPT_KEYWORD / compact_chemical_spacing / 마커 오타 교정 / 단독 LaTeX
+# 기호 강등 로직은 과거 이 파일과 lib/equation/hwpx_equation_tool.py 에 같은
+# 구현이 2벌(이중 미러)로 있었고, 한쪽만 고치는 회귀가 반복됐다. equation
+# tool 을 단일 소스로 정하고 이 파일은 아래(수식 유틸 구획)의 위임 스텁만
+# 유지한다. 경로 주입은 _postprocess_equations 의 기존 로딩 메커니즘과 동일.
+# 로드 실패는 fatal 이 맞다: 어차피 모든 HWPX 출력이 같은 모듈로
+# _postprocess_equations 를 거쳐야 하고, 그 실패는 기존 관례상 fatal 이다
+# (CLAUDE.md '수식 postprocess 실패는 fatal').
+_EQUATION_TOOL_DIR = str(Path(__file__).resolve().parents[2] / "equation")
+if _EQUATION_TOOL_DIR not in sys.path:
+    sys.path.insert(0, _EQUATION_TOOL_DIR)
+import hwpx_equation_tool  # noqa: E402  (경로 주입 후 import, 실패=fatal)
 
 # ── XML 비허용 제어문자 방어 (코드 리뷰 ⑧) ────────────────────────────────
 # Claude 출력이나 사용자 업로드(엑셀/CSV/텍스트)에 섞인 XML 1.0 비허용 제어문자
@@ -606,32 +621,50 @@ MANUAL_NUMBER_RE = re.compile(
     r"^\s*(?:(?:\(\s*\d{1,2}\s*\)|[①-⑳❶-❿]|\d{1,2}[.)])[\s:：-]+)+"
 )
 
-# 근접 오타 마커 교정 — lib/equation/hwpx_equation_tool.py
-# 의 canonicalize_equation_marker_prefixes 미러. 둘 다 함께 수정할 것.
-# 잡는 변형: 소문자({{eq:), 콜론 앞뒤 공백({{EQN-LATEX :), 전각 콜론
-# ({{EQ-LATEX：), 하이픈 누락/언더스코어/공백 구분({{EQLATEX:, {{EQ_LATEX:,
-# {{EQ LATEX:), 단일 여는 중괄호({EQ-LATEX:). 콜론이 반드시 따라와야 매칭되어
-# 일반 산문·한컴 스크립트 그룹({EQN} 등)은 건드리지 않는다.
-_EQ_PREFIX_RESCUE_RE = re.compile(
-    r"\{\{?\s*(EQN|EQ)\s*[-_]?\s*(LATEX)?\s*[:：]", re.IGNORECASE
-)
+# ── 수식 공통 로직 위임 스텁 (DEF-012 이중 미러 단일화) ─────────────────────
+# 단일 소스는 lib/equation/hwpx_equation_tool.py 다. 아래 8개 심볼
+# (EQ_SCRIPT_KEYWORD, _EQ_PREFIX_RESCUE_RE, _BARE_LATEX_SYMBOL_MAP,
+# _BARE_LATEX_SYMBOL_CMD_RE, _canonical_eq_prefix,
+# canonicalize_equation_marker_prefixes, compact_chemical_spacing,
+# replace_bare_latex_symbol_commands)은 과거 두 파일에 동일 구현이 2벌로
+# 존재하던 것을 위임 스텁으로 바꾼 것이다. 구현 수정은 equation tool 쪽에서만
+# 한다(잡는 변형·화이트리스트 의미 등 상세 주석도 tool 참조).
+#
+# 스텁이 모듈 별칭 대신 __import__("hwpx_equation_tool") 인라인 참조를 쓰는
+# 이유: scripts/eq_engine_diff.py 의 check_mirror_sync 가 이 이름들의 최상위
+# FunctionDef/Assign 노드만 AST 로 떼어 {"re": re} 네임스페이스에서 exec 해
+# tool 과의 동일성(동작 프로브 포함)을 회귀 검사한다. 모듈 별칭 참조는 그
+# 네임스페이스에서 NameError 가 나고, __import__ 는 sys.modules/sys.path 로
+# 어디서든 해석된다(이 모듈 최상단에서 tool 경로 주입+선로딩을 마쳤으므로
+# 실행 시엔 캐시 조회일 뿐이다).
+#
+# 아래 4개 할당 스텁은 이제 이 파일 안에서 직접 참조되진 않지만, 위 미러
+# 검사와 이 모듈을 import 해 쓰는 하위 파이프라인(pre.*) 호환을 위해 이름을
+# 유지한다.
+EQ_SCRIPT_KEYWORD = __import__("hwpx_equation_tool").EQ_SCRIPT_KEYWORD
+_EQ_PREFIX_RESCUE_RE = __import__("hwpx_equation_tool")._EQ_PREFIX_RESCUE_RE
+_BARE_LATEX_SYMBOL_MAP = __import__("hwpx_equation_tool")._BARE_LATEX_SYMBOL_MAP
+_BARE_LATEX_SYMBOL_CMD_RE = __import__("hwpx_equation_tool")._BARE_LATEX_SYMBOL_CMD_RE
 
 
 def _canonical_eq_prefix(m):
-    """교정 콜백 — 어간(EQ/EQN)과 LATEX 유무로 정규 프리픽스를 재조립한다.
-
-    단일 중괄호 입력도 항상 '{{' 로 정규화한다(이후 스캐너가 인식하도록).
-    """
-    stem = m.group(1).upper()
-    return "{{" + stem + ("-LATEX:" if m.group(2) else ":")
+    """마커 프리픽스 교정 콜백. 단일 소스(hwpx_equation_tool) 위임."""
+    return __import__("hwpx_equation_tool")._canonical_eq_prefix(m)
 
 
 def canonicalize_equation_marker_prefixes(text):
-    """마커 프리픽스의 흔한 오타를 정규형('{{EQ[-LATEX]:')으로 교정."""
-    s = str(text or "")
-    if "{" not in s:
-        return s
-    return _EQ_PREFIX_RESCUE_RE.sub(_canonical_eq_prefix, s)
+    """마커 프리픽스 오타를 정규형('{{EQ[-LATEX]:')으로 교정. 단일 소스 위임."""
+    return __import__("hwpx_equation_tool").canonicalize_equation_marker_prefixes(text)
+
+
+def compact_chemical_spacing(script):
+    """화학식 원소 토큰 압축(한컴 키워드 보호 포함). 단일 소스 위임."""
+    return __import__("hwpx_equation_tool").compact_chemical_spacing(script)
+
+
+def replace_bare_latex_symbol_commands(text):
+    r"""평문 속 단독 LaTeX 기호 명령(\times, \nu 등) 유니코드 강등. 단일 소스 위임."""
+    return __import__("hwpx_equation_tool").replace_bare_latex_symbol_commands(text)
 
 
 def find_equation_spans(text):
@@ -706,36 +739,8 @@ def brace_unbraced_scripts(script):
     return s
 
 
-# 한컴 수식 키워드 보호 — lib/equation/hwpx_equation_tool.py 의 동일 로직 미러.
-# 키워드(DELTA/Delta/LEFT(/RIGHT) 등)를 통째로 보호한 뒤 화학식 압축을 하고
-# 복원한다. 종전 정규식은 키워드 중간 글자에서 매칭해 'DELTA G'→'DELTAG' 처럼
-# 키워드를 파손했다(깁스 식). 대소문자 구분이라 In(인듐)·Ta(탄탈럼)은 안전.
-EQ_SCRIPT_KEYWORD = (
-    r"\b(?:BUILDREL|TIMES|DIV|APPROX|INF|DELTA|SIGMA|GAMMA|THETA|LAMBDA|XI|PI|"
-    r"OMEGA|PHI|PSI|LEFT|RIGHT|IN|DEG|CASES|"
-    r"ANGSTROM|ASYMP|BOX|CHOOSE|COPROD|DOWNARROW|ELL|EXARROW|IMAG|IMATH|JMATH|"
-    r"LARROW|LLL|LRARROW|OVERBRACE|RARROW|REIMAGE|REL|SQSUBSETEQ|SQSUBSET|"
-    r"SQSUPSETEQ|SQSUPSET|TRIANGLED|UDARROW|UNDERBRACE|UPARROW|VERT|WP|"
-    r"Alpha|Beta|Gamma|Delta|Epsilon|Zeta|Eta|Theta|Iota|Kappa|Lambda|Mu|Nu|"
-    r"Xi|Pi|Rho|Sigma|Tau|Upsilon|Phi|Chi|Psi|Omega)\b"
-)
-
-
-def compact_chemical_spacing(script):
-    text = str(script or "")
-    protected = []
-
-    def _protect(match):
-        protected.append(match.group(0))
-        return "\x00%d\x00" % (len(protected) - 1)
-
-    # 인용 리터럴("percent difference", "Part A")은 통째로 보호한다 —
-    # 내부의 대문자·공백을 화학식 압축이 이어 붙이면 안 된다.
-    text = re.sub(r'"[^"]*"', _protect, text)
-    text = re.sub(EQ_SCRIPT_KEYWORD, _protect, text)
-    token = r"(?:[A-Z][a-z]?|\)(?:_\{[^}]+\})?)(?:_\{[^}]+\})?"
-    text = re.sub(rf"({token})\s+(?=[A-Z][a-z]?|\()", r"\1", text)
-    return re.sub(r"\x00(\d+)\x00", lambda m: protected[int(m.group(1))], text)
+# EQ_SCRIPT_KEYWORD / compact_chemical_spacing 은 위 위임 스텁 구획 참조
+# (단일 소스: lib/equation/hwpx_equation_tool.py, DEF-012).
 
 
 def lift_functional_group_subscripts(script):
@@ -921,76 +926,10 @@ def _rescue_bare_latex_fragments(text):
     )
 
 
-# 단독 LaTeX 기호 명령 → 유니코드/평문 강등 화이트리스트. 수식화(조각 래핑)
-# 시도 후에도 남은, 인자 없는 기호 명령만 안전하게 평문 문자로 바꾼다 —
-# \times 100, E = h\nu, \Delta G 처럼 frac/sqrt 류 구조가 없어 검출
-# (_LATEX_RESIDUE_RE)도 구제(조각 래핑)도 못 잡던 사각의 보수적 폴백이다.
-# '=' 포함 산문 전체를 수식으로 승격하는 공격적 방식은 오탐 위험으로 금지,
-# 검출(fatal) 확대도 금지. 구조 명령(frac/sqrt/sum/lim/int …)과 미지 명령은
-# 절대 넣지 않는다(미지 명령은 보존 — 조용한 의미 파괴 방지).
-# 주의: lib/equation/hwpx_equation_tool.py 에 동일 미러가 있다 — 함께 수정할
-# 것(scripts/eq_engine_diff.py 의 미러 동기화 검사가 불일치를 잡는다).
-_BARE_LATEX_SYMBOL_MAP = {
-    # 연산자/관계
-    "times": "×", "cdot": "·", "div": "÷", "pm": "±", "mp": "∓",
-    "approx": "≈", "sim": "~", "simeq": "≃", "cong": "≅", "equiv": "≡",
-    "neq": "≠", "ne": "≠", "leq": "≤", "le": "≤", "geq": "≥", "ge": "≥",
-    "ll": "≪", "gg": "≫", "propto": "∝", "infty": "∞", "partial": "∂",
-    "nabla": "∇", "degree": "°", "circ": "°", "bullet": "•",
-    "ldots": "…", "cdots": "⋯", "dots": "…", "prime": "′", "prod": "∏",
-    # 화살표
-    "rightarrow": "→", "to": "→", "longrightarrow": "→", "Rightarrow": "⇒",
-    "leftarrow": "←", "longleftarrow": "←", "Leftarrow": "⇐",
-    "leftrightarrow": "↔", "Leftrightarrow": "⇔", "rightleftharpoons": "⇌",
-    "uparrow": "↑", "downarrow": "↓",
-    # 그리스 소문자
-    "alpha": "α", "beta": "β", "gamma": "γ", "delta": "δ",
-    "epsilon": "ε", "varepsilon": "ε", "zeta": "ζ", "eta": "η",
-    "theta": "θ", "vartheta": "ϑ", "iota": "ι", "kappa": "κ",
-    "lambda": "λ", "mu": "μ", "nu": "ν", "xi": "ξ", "pi": "π",
-    "varpi": "ϖ", "rho": "ρ", "varrho": "ϱ", "sigma": "σ",
-    "varsigma": "ς", "tau": "τ", "upsilon": "υ", "phi": "φ",
-    "varphi": "φ", "chi": "χ", "psi": "ψ", "omega": "ω",
-    # 그리스 대문자
-    "Gamma": "Γ", "Delta": "Δ", "Theta": "Θ", "Lambda": "Λ", "Xi": "Ξ",
-    "Pi": "Π", "Sigma": "Σ", "Upsilon": "Υ", "Phi": "Φ", "Psi": "Ψ",
-    "Omega": "Ω",
-    # 함수명 — 백슬래시만 벗긴다(업라이트 평문 표기)
-    "ln": "ln", "log": "log", "lg": "lg", "exp": "exp",
-    "sin": "sin", "cos": "cos", "tan": "tan", "cot": "cot",
-    "sec": "sec", "csc": "csc", "sinh": "sinh", "cosh": "cosh",
-    "tanh": "tanh", "arcsin": "arcsin", "arccos": "arccos",
-    "arctan": "arctan", "min": "min", "max": "max", "deg": "deg",
-    "mod": "mod",
-}
-_BARE_LATEX_SYMBOL_CMD_RE = re.compile(r"\\([A-Za-z]+)")
-
-
-def replace_bare_latex_symbol_commands(text):
-    r"""평문 속 단독 LaTeX 기호 명령(\times, \nu, \Delta …)을 유니코드로 강등.
-
-    _BARE_LATEX_SYMBOL_MAP 화이트리스트에 있는 명령만 바꾸고, 미지 명령
-    (\nuclear 등 — 명령 이름은 [A-Za-z]+ 최장 일치라 \nu 가 \nuclear 의
-    일부를 먹는 일은 없다)과 구조 명령은 그대로 둔다. 마커({{EQ*:...}})
-    본문 보호는 호출부 몫이다 — 반드시 마커 밖 구간만 넘길 것.
-    주의: lib/equation/hwpx_equation_tool.py 에 동일 미러가 있다 — 함께 수정할 것.
-    """
-    s = str(text or "")
-    if "\\" not in s:
-        return s
-
-    def _one(m):
-        repl = _BARE_LATEX_SYMBOL_MAP.get(m.group(1))
-        if repl is None:
-            return m.group(0)
-        prev = s[m.start() - 1] if m.start() > 0 else ""
-        # 'ln'/'log' 같은 영문자 치환이 앞 토큰에 들러붙지 않게 한 칸 띄운다
-        # (-RT\ln K → -RT ln K). 기호(×, Δ …) 치환은 그대로 잇는다(h\nu → hν).
-        if repl[:1].isascii() and repl[:1].isalpha() and prev.isascii() and prev.isalnum():
-            return " " + repl
-        return repl
-
-    return _BARE_LATEX_SYMBOL_CMD_RE.sub(_one, s)
+# _BARE_LATEX_SYMBOL_MAP / _BARE_LATEX_SYMBOL_CMD_RE /
+# replace_bare_latex_symbol_commands 는 위 위임 스텁 구획 참조
+# (단일 소스: lib/equation/hwpx_equation_tool.py, DEF-012. 화이트리스트
+# 의미·확장 금지 규칙 주석도 tool 쪽에 있다).
 
 
 def _demote_bare_latex_symbols_outside_markers(text):
@@ -1497,7 +1436,7 @@ def add_figure_placeholder(doc, fig):
 
     head = f"[그림 {number}] {tokens_plain(caption)}"
     if description:
-        head += f" — {tokens_plain(description)}"
+        head += f" - {tokens_plain(description)}"
 
     dashed_id = make_dashed_border_fill(doc)
 
@@ -1662,14 +1601,31 @@ def build_chemicals_summary_table(doc, rows):
             )
 
 
+# 기구 영문 병기 중복 방지 (DEF-035): name_en(공백 제거·소문자화)이 이미
+# name 안에 부분 문자열로 들어 있으면 괄호 병기를 생략한다.
+# 예: name '뷰렛(Buret)' + name_en 'Buret' 은 '(Buret)' 를 다시 붙이지 않는다.
+# docx 생성기(chem-pre/docx-gen.js 의 shouldAppendEnName)와 동일 기준이므로
+# 함께 수정할 것.
+def _should_append_en_name(name, name_en):
+    core = re.sub(r"\s+", "", str(name_en or "")).lower()
+    if not core:
+        return False
+    base = re.sub(r"\s+", "", str(name or "")).lower()
+    return core not in base
+
+
 def build_apparatus_and_chemicals(doc, content):
     add_heading(doc, "3. 실험 기구 및 시약", size=SIZE_TITLE,
                 space_before=SPACE_HEADING_LV1, space_after=SPACE_HEADING_LV2)
     add_heading(doc, "가. 실험 기구", size=SIZE_HEADING,
                 space_after=SPACE_BODY)
     for idx, ap in enumerate(content.get("apparatus", []), 1):
-        en = f" ({ap.get('name_en')})" if ap.get("name_en") else ""
         name = strip_manual_numbering(ap.get("name", ""))
+        en = (
+            f" ({ap.get('name_en')})"
+            if _should_append_en_name(name, ap.get("name_en"))
+            else ""
+        )
         line = (
             f"{numbered_marker(idx)} **{name}**{en}: "
             f"{ap.get('description', '')}"
@@ -2230,6 +2186,81 @@ def generate_hwpx(content):
     return doc
 
 
+def collect_preview_text_from_hwpx(hwpx_path):
+    r"""저장된 HWPX 본문에서 미리보기 평문(제목+본문 앞부분)을 뽑는다 (DEF-002).
+
+    phys-result/hwpx-gen.py 의 collect_preview_text 는 content JSON 스키마에
+    묶여 있어 스키마가 서로 다른 chem-pre/chem-result 공용 루트에서는 쓸 수
+    없다. 여기서는 최종 문서(Contents/section*.xml)에서 문단 텍스트를 문서
+    순서대로 직접 추출한다. 제목 문단이 문서 맨 앞이므로 자연히 '문서 제목 +
+    본문 앞부분'이 되고, 수식 스크립트(hp:script)는 hp:t 가 아니어서 자동
+    제외된다. 줄 구분(\r\n)·8000자 상한·후행 \r\n 은 phys 구현과 동일 형식.
+    """
+    import zipfile
+
+    lines = []
+    with zipfile.ZipFile(str(hwpx_path), "r") as zf:
+        section_names = sorted(
+            n for n in zf.namelist()
+            if re.match(r"Contents/section\d+\.xml$", n)
+        )
+        for section_name in section_names:
+            root = etree.fromstring(zf.read(section_name))
+            last_para = None
+            for t in root.iter(f"{NS_HP}t"):
+                chunk = "".join(t.itertext())
+                if not chunk.strip():
+                    continue
+                # 같은 문단(hp:p)의 텍스트 런은 한 줄로 잇는다. 표 셀처럼
+                # 중첩된 문단은 각자 제 문단으로 귀속되므로 중복 집계가 없다.
+                para = t.getparent()
+                while para is not None and para.tag != f"{NS_HP}p":
+                    para = para.getparent()
+                if para is not last_para or not lines:
+                    lines.append(chunk)
+                    last_para = para
+                else:
+                    lines[-1] += chunk
+    joined = "\r\n".join(ln.strip() for ln in lines if ln.strip())
+    return joined.strip()[:8000] + "\r\n"
+
+
+def update_preview_text(hwpx_path, text):
+    """Preview/PrvText.txt 를 교체한다.
+
+    인코딩(UTF-8)·zip 재작성 방식은 phys-result/hwpx-gen.py 의
+    update_preview_text 와 동일하다(그쪽이 참조 구현).
+    """
+    import shutil
+    import tempfile
+    import zipfile
+    from pathlib import Path
+
+    src = Path(hwpx_path)
+    with tempfile.NamedTemporaryFile(
+        suffix=".hwpx", dir=src.parent, delete=False
+    ) as tf:
+        tmp = Path(tf.name)
+    try:
+        with zipfile.ZipFile(src, "r") as zin, zipfile.ZipFile(
+            tmp, "w", zipfile.ZIP_DEFLATED
+        ) as zout:
+            replaced = False
+            for item in zin.infolist():
+                if item.filename == "Preview/PrvText.txt":
+                    zout.writestr(item, text.encode("utf-8"))
+                    replaced = True
+                else:
+                    zout.writestr(item, zin.read(item.filename))
+            if not replaced:
+                zout.writestr("Preview/PrvText.txt", text.encode("utf-8"))
+        shutil.move(str(tmp), str(src))
+    except Exception:
+        if tmp.exists():
+            tmp.unlink()
+        raise
+
+
 def _postprocess_equations(hwpx_path):
     """Run hwpx_equation_tool.replace_equation_placeholders so every
     {{EQ:...}} / {{EQN:...}} marker becomes a real <hp:equation> object that
@@ -2281,6 +2312,20 @@ def _postprocess_equations(hwpx_path):
             if tmp_out.exists():
                 tmp_out.unlink()
             raise
+
+        # DEF-002: 수식 변환까지 끝난 최종 본문으로 Preview/PrvText.txt 를
+        # 채운다. 이 함수는 chem-pre 뿐 아니라 chem-result main 도 공용으로
+        # 호출하는 루트 경로라 두 파이프라인이 함께 커버된다. phys/free 등
+        # 하위 생성기는 이 뒤에 자기 content 기반 미리보기로 다시 덮어쓰므로
+        # 동작이 변하지 않는다. 미리보기는 본문 품질과 무관한 부가물이라
+        # 실패해도 fatal 로 올리지 않는다(수식 postprocess fatal 규칙과 별개).
+        try:
+            update_preview_text(src, collect_preview_text_from_hwpx(src))
+        except Exception as prv_exc:
+            print(
+                f"[hwpx-gen] PrvText refresh skipped: {prv_exc}",
+                file=sys.stderr,
+            )
     except Exception as e:
         raise RuntimeError(f"HWPX equation post-process failed: {e}") from e
 

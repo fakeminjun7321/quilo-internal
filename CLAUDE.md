@@ -214,6 +214,15 @@ python3 -m py_compile lib/pipelines/phys-result/hwpx-gen.py
 python3 -m py_compile lib/equation/hwpx_equation_tool.py
 ```
 
+수식 엔진(`lib/equation/*`, 각 hwpx-gen.py 의 수식 경로)을 수정했다면 게이트를 일괄 실행한다.
+
+```bash
+bash scripts/eq_gate.sh
+```
+
+한컴 수식 렌더러의 실측 특이사항(이중 렌더러 방언, 따옴표 금지, 정준 속성 등)과
+실측 절차는 `docs/hwp-equation-quirks.md` 를 먼저 읽는다.
+
 HWPX generator는 Python 의존성이 필요하다. Render와 맞추려면 `.venv`가 있으면 `.venv/bin/python3` 또는 `PYTHON_BIN`을 우선 사용한다.
 
 실제 품질 검증은 최소한 아래를 확인한다.

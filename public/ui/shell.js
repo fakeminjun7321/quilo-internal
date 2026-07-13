@@ -46,7 +46,8 @@
       { title: "자료실", summary: "스탭이 정리한 학습·실험 자료", path: "/resources.html" },
       { title: "예시", summary: "Quilo로 만든 실제 결과물", path: "/examples.html" },
       { title: "업데이트", summary: "새 기능과 개선 내역", path: "/changelog.html" },
-      { title: "커뮤니티", summary: "질문과 기능 요청, 작업 사례", path: "/community.html" },
+      { title: "커뮤니티", summary: "질문, 사용 팁, 작업 사례 공유", path: "/community.html" },
+      { title: "고객센터", summary: "문의 접수와 자주 묻는 질문", path: "/support.html" },
       { title: "학교 도입", summary: "기관용 도입 문의", path: "/school-apply.html" },
     ],
     apps: [
@@ -206,7 +207,7 @@
             <a href="/#settings" data-tab="settings"><strong>Account Center</strong><span>계정, 사용량, 기본 설정</span></a>
             <a href="/#files" data-tab="files"><strong>내 파일</strong><span>최근 생성 파일</span></a>
             <a href="/#integrations" data-tab="integrations"><strong>외부 서비스 연결</strong><span>Dropbox와 API 연결</span></a>
-            <a href="/#feedback" data-tab="feedback"><strong>건의사항</strong><span>문제 제보와 기능 제안</span></a>
+            <a href="/support.html"><strong>고객센터</strong><span>문의, 버그 제보와 기능 제안</span></a>
             <a href="/admin.html" id="adminLink" hidden><strong>관리자</strong><span>운영 화면 열기</span></a>
             <button type="button" id="logout">로그아웃</button>
           </div>
@@ -524,7 +525,7 @@
         <section><h2>제품</h2><a href="/?report=chem-pre">화학 사전보고서</a><a href="/?report=phys-result">물리 결과보고서</a><a href="/?report=free">자유 보고서</a><a href="/translate.html">PDF 통번역</a></section>
         <section><h2>학습 및 창작</h2><a href="/?report=problem-set">문제집 메이커</a><a href="/exam-prep.html">물리 수행평가</a><a href="/create.html">창작 스튜디오</a><a href="/editor.html">Quilo Code</a></section>
         <section><h2>개발자</h2><a href="/developers.html">개발자 플랫폼</a><a href="/developers.html#api">API 문서</a><a href="/developers.html#catalog">기능 카탈로그</a></section>
-        <section><h2>리소스</h2><a href="/developer-notes.html">개발 노트</a><a href="/resources.html">자료실</a><a href="/guide.html">이용 가이드</a><a href="/changelog.html">업데이트</a><a href="/school-apply.html">학교 도입</a></section>
+        <section><h2>리소스</h2><a href="/developer-notes.html">개발 노트</a><a href="/resources.html">자료실</a><a href="/guide.html">이용 가이드</a><a href="/community.html">커뮤니티</a><a href="/support.html">고객센터</a><a href="/changelog.html">업데이트</a><a href="/school-apply.html">학교 도입</a></section>
       </nav>
       <div class="ui-site-footer__legal"><span>© 2026 Quilo</span><nav aria-label="법적 고지"><a href="/terms.html">이용약관</a><a href="/privacy.html">개인정보처리방침</a><a href="/refund.html">환불정책</a><a href="/status.html">서비스 상태</a></nav><span data-site-version>버전 확인 중...</span></div>
     </div>`;

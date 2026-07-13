@@ -6,13 +6,25 @@
   <meta name="robots" content="noindex">
   <title>새 글 작성 — Quilo</title>
   <link rel="icon" href="/favicon.png">
+  <script>
+    (function () {
+      try {
+        var theme = localStorage.getItem("theme");
+        if (!theme) theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        document.documentElement.setAttribute("data-theme", theme);
+      } catch (_) {}
+    })();
+  </script>
+  <link rel="stylesheet" href="/ui/foundation.css">
+  <link rel="stylesheet" href="/ui/shell.css">
   <link rel="stylesheet" href="/ui/editorial.css">
 </head>
-<body data-editorial-page="write" class="ed-writing-page">
-  <a class="ed-skip" href="#editorTitle">제목으로 건너뛰기</a>
-  <header class="ed-editor-header">
+<body data-editorial-page="write" class="q-shell-page editorial-page ed-writing-page">
+  <a class="ui-skip-link" href="#editorTitle">제목으로 건너뛰기</a>
+  <header class="ui-site-header" data-ui-shell></header>
+  <div class="ed-editor-header" role="toolbar" aria-label="글 저장 및 발행">
     <div class="ed-editor-header__left">
-      <a class="ed-brand" href="/" aria-label="Quilo 홈">Quilo</a><span class="ed-editor-divider"></span><strong id="editorKindLabel">개발 노트</strong>
+      <a class="ed-editor-back" href="/developer-notes.html" id="leaveEditor" aria-label="목록으로 돌아가기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg></a><strong id="editorKindLabel">개발 노트</strong>
     </div>
     <div class="ed-save-state" id="saveState" role="status" aria-live="polite"><i></i><span>새 글</span></div>
     <div class="ed-editor-actions">
@@ -21,8 +33,8 @@
       <button type="button" class="ed-primary-action" id="publishButton">발행</button>
       <button class="ed-editor-more" type="button" aria-label="문서 메뉴" aria-expanded="false" data-editor-more><span></span><span></span><span></span></button>
     </div>
-    <div class="ed-editor-menu" data-editor-menu hidden><button type="button" id="discardLocal">로컬 임시 저장 삭제</button><a href="/developer-notes.html" id="leaveEditor">나가기</a></div>
-  </header>
+    <div class="ed-editor-menu" data-editor-menu hidden><button type="button" id="discardLocal">로컬 임시 저장 삭제</button></div>
+  </div>
 
   <main class="ed-editor-shell" id="editorShell" aria-label="글 작성" hidden>
     <section class="ed-document-column" aria-label="글 편집">
@@ -77,9 +89,10 @@
     <aside class="ed-publish-rail" aria-label="글 설정">
       <div class="ed-rail-section"><h2>발행 설정</h2><label for="kindSelect">공간</label><select id="kindSelect"><option value="developer">개발 노트</option><option value="resource">자료실</option></select></div>
       <div class="ed-rail-section"><label for="categorySelect">카테고리</label><select id="categorySelect"><option value="Quilo 활용">Quilo 활용</option><option value="개발">개발</option><option value="보고서 작성">보고서 작성</option><option value="새 소식">새 소식</option></select></div>
-      <div class="ed-rail-section"><label for="tagInput">태그</label><input id="tagInput" type="text" maxlength="160" placeholder="쉼표로 구분"><small>최대 8개까지 입력할 수 있습니다.</small></div>
+      <div class="ed-rail-section"><label for="tagInput">태그</label><input id="tagInput" type="text" maxlength="160" placeholder="쉼표로 구분"><small>최대 8개까지 입력할 수 있습니다.</small><div id="tagSuggestions" class="ed-tag-suggestions" role="group" aria-label="추천 주제"></div></div>
       <div class="ed-rail-section"><label for="slugInput">고유 주소</label><div class="ed-slug-field"><span>/</span><input id="slugInput" type="text" maxlength="100" placeholder="자동 생성"></div></div>
       <div class="ed-rail-section"><div class="ed-rail-heading"><h2>첨부 파일</h2><button type="button" data-upload-file>추가</button></div><div id="uploadStatus" class="ed-upload-status" role="status" aria-live="polite"></div><div id="attachmentList" class="ed-editor-attachments"><p>첨부된 파일이 없습니다.</p></div></div>
+      <div class="ed-rail-section" data-taxonomy-admin-section hidden><button class="ed-taxonomy-manage-trigger ed-taxonomy-manage-trigger--rail" type="button" data-manage-taxonomies data-taxonomy-kind="developer">분류와 주제 관리</button></div>
       <div class="ed-rail-section ed-danger-zone" id="editorDangerZone" hidden><button type="button" id="deletePostButton">이 글 삭제</button></div>
     </aside>
   </main>
@@ -89,7 +102,9 @@
   <dialog id="previewDialog" class="ed-preview-dialog"><div class="ed-dialog-header"><strong>글 미리보기</strong><button type="button" data-close-dialog aria-label="미리보기 닫기">×</button></div><article><p class="ed-article-category" data-preview-category></p><h1 data-preview-title>제목 없음</h1><p class="ed-article-summary" data-preview-summary></p><div class="ed-rich-body" data-preview-body></div></article></dialog>
   <dialog id="tableDialog" class="ed-small-dialog"><form method="dialog"><h2>표 삽입</h2><label>행 수<input id="tableRows" type="number" min="1" max="20" value="3"></label><label>열 수<input id="tableCols" type="number" min="1" max="10" value="3"></label><div><button type="button" value="cancel" data-close-table>취소</button><button type="submit" value="default" id="insertTableConfirm">삽입</button></div></form></dialog>
   <div id="emojiPopover" class="ed-emoji-popover" hidden role="dialog" aria-label="이모지 선택"></div>
+  <footer class="ui-site-footer"></footer>
   <div id="editorialToast" class="ed-toast" role="status" aria-live="polite" hidden></div>
+  <script src="/ui/shell.js"></script>
   <script src="/ui/editorial.js" defer></script>
   <script src="/ui/rich-editor.js" defer></script>
 </body>

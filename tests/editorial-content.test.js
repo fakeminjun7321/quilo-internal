@@ -1,7 +1,9 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const http = require("node:http");
+const path = require("node:path");
 const test = require("node:test");
 const express = require("express");
 const sharp = require("sharp");
@@ -166,6 +168,332 @@ test("database migration errors become an explicit 503 contract", () => {
   assert.equal(error.status, 503);
   assert.equal(error.code, "EDITORIAL_SCHEMA_MISSING");
   assert.match(error.message, /20260714_add_editorial_platform\.sql/);
+});
+
+test("taxonomy input accepts tag aliases and validates names, slugs and ordering", () => {
+  const normalized = editorial.normalizeTaxonomyInput({
+    kind: "developer_note",
+    type: "tag",
+    name: "  API · 자동화  ",
+    sortOrder: "12",
+    isActive: true,
+  });
+  assert.deepEqual(normalized, {
+    kind: "developer",
+    type: "topic",
+    name: "API · 자동화",
+    slug: "api-자동화",
+    sort_order: 12,
+    is_active: true,
+  });
+
+  assert.equal(editorial.normalizeTaxonomyType("tags"), "topic");
+  assert.equal(editorial.normalizeTaxonomySlug(undefined, "물리 실험 자료"), "물리-실험-자료");
+  assert.throws(
+    () => editorial.normalizeTaxonomyInput({ kind: "unknown", type: "category", name: "기타" }),
+    (error) => error.code === "EDITORIAL_TAXONOMY_VALIDATION_ERROR" && error.status === 400,
+  );
+  assert.throws(
+    () => editorial.normalizeTaxonomyInput({ kind: "resource", type: "label", name: "기타" }),
+    (error) => error.code === "EDITORIAL_TAXONOMY_VALIDATION_ERROR",
+  );
+  assert.throws(
+    () => editorial.normalizeTaxonomyInput({ kind: "resource", type: "topic", name: " ", slug: "bad slug" }),
+    (error) => error.code === "EDITORIAL_TAXONOMY_VALIDATION_ERROR",
+  );
+  assert.throws(
+    () => editorial.normalizeTaxonomySlug("bad/slug"),
+    (error) => error.code === "EDITORIAL_TAXONOMY_VALIDATION_ERROR",
+  );
+  assert.throws(
+    () => editorial.normalizeTaxonomyInput({ kind: "resource", type: "topic", name: "자료", sortOrder: 1.5 }),
+    (error) => error.code === "EDITORIAL_TAXONOMY_VALIDATION_ERROR",
+  );
+  assert.throws(
+    () => editorial.normalizeTaxonomyInput({ kind: "resource", type: "topic", name: "자료", isActive: "true" }),
+    (error) => error.code === "EDITORIAL_TAXONOMY_VALIDATION_ERROR",
+  );
+});
+
+test("taxonomy reorder rejects duplicate IDs and response groups retain legacy post field mapping", () => {
+  const firstId = "11111111-1111-4111-8111-111111111111";
+  const secondId = "22222222-2222-4222-8222-222222222222";
+  assert.deepEqual(editorial.normalizeTaxonomyReorder([
+    { id: firstId, sortOrder: 20 },
+    { id: secondId, sort_order: -5 },
+  ]), [
+    { id: firstId, sort_order: 20 },
+    { id: secondId, sort_order: -5 },
+  ]);
+  assert.throws(
+    () => editorial.normalizeTaxonomyReorder([
+      { id: firstId, sortOrder: 0 },
+      { id: firstId, sortOrder: 1 },
+    ]),
+    (error) => error.code === "EDITORIAL_TAXONOMY_VALIDATION_ERROR",
+  );
+
+  const topic = editorial.taxonomyShape({
+    id: firstId,
+    kind: "developer",
+    type: "topic",
+    slug: "api",
+    name: "API",
+    sort_order: 20,
+    is_active: true,
+  });
+  const category = editorial.taxonomyShape({
+    id: secondId,
+    kind: "resource",
+    type: "category",
+    slug: "physics",
+    name: "물리",
+    sort_order: -5,
+    is_active: true,
+  });
+  assert.equal(topic.value, "API");
+  assert.equal(topic.postField, "tags");
+  assert.equal(category.postField, "category");
+  assert.deepEqual(editorial.groupTaxonomies([topic, category]), {
+    developer: { categories: [], topics: [topic] },
+    resource: { categories: [category], topics: [] },
+  });
+});
+
+test("post taxonomy validation rejects values outside the active admin vocabulary", async (t) => {
+  const supa = require("../lib/supabase");
+  const originalGetClient = supa.getClient;
+  const rows = [
+    { id: "11111111-1111-4111-8111-111111111111", kind: "developer", type: "category", slug: "development", name: "개발", sort_order: 10, is_active: true },
+    { id: "22222222-2222-4222-8222-222222222222", kind: "developer", type: "topic", slug: "api", name: "API", sort_order: 10, is_active: true },
+  ];
+  supa.getClient = () => ({
+    from(table) {
+      assert.equal(table, "editorial_taxonomies");
+      const query = {
+        select() { return this; },
+        order() { return this; },
+        eq() { return this; },
+        then(resolve, reject) { return Promise.resolve({ data: rows, error: null }).then(resolve, reject); },
+      };
+      return query;
+    },
+  });
+  t.after(() => { supa.getClient = originalGetClient; });
+
+  await assert.doesNotReject(() => editorial.assertPostTaxonomies("developer", "개발", ["API"]));
+  await assert.rejects(
+    () => editorial.assertPostTaxonomies("developer", "임의 분류", ["API"]),
+    (error) => error.code === "EDITORIAL_TAXONOMY_INVALID_CATEGORY" && error.status === 400,
+  );
+  await assert.rejects(
+    () => editorial.assertPostTaxonomies("developer", "개발", ["임의 주제"]),
+    (error) => error.code === "EDITORIAL_TAXONOMY_INVALID_TOPIC" && error.status === 400,
+  );
+});
+
+test("resource request routes keep personal request history authenticated and user-scoped", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../lib/editorial-routes.js"), "utf8");
+  assert.match(source, /router\.get\("\/resource-requests", requireAuth/);
+  assert.match(source, /listResourceRequests\(\{\s*userId: user\.id/);
+});
+
+test("taxonomy migration errors identify the exact required migration", () => {
+  const source = {
+    code: "PGRST205",
+    message: "Could not find the table 'public.editorial_taxonomies' in the schema cache",
+  };
+  const error = editorial.dbError("분류 목록 조회", source);
+  assert.equal(error.status, 503);
+  assert.equal(error.code, "EDITORIAL_TAXONOMY_SCHEMA_MISSING");
+  assert.match(error.message, /20260715_add_editorial_taxonomies\.sql/);
+});
+
+test("safe taxonomy deletion consumes the atomic RPC result and preserves used post values", async (t) => {
+  const supa = require("../lib/supabase");
+  const originalGetClient = supa.getClient;
+  const taxonomyId = "33333333-3333-4333-8333-333333333333";
+  const adminId = "44444444-4444-4444-8444-444444444444";
+  let rpcCall = null;
+  supa.getClient = () => ({
+    rpc: async (name, args) => {
+      rpcCall = { name, args };
+      return {
+        data: {
+          taxonomy: {
+            id: taxonomyId,
+            kind: "resource",
+            type: "category",
+            slug: "physics",
+            name: "물리",
+            sort_order: 1,
+            is_active: false,
+          },
+          deleted: false,
+          deactivated: true,
+          inUseCount: 7,
+        },
+        error: null,
+      };
+    },
+  });
+  t.after(() => { supa.getClient = originalGetClient; });
+
+  const result = await editorial.deleteTaxonomy(taxonomyId, adminId);
+  assert.deepEqual(rpcCall, {
+    name: "delete_editorial_taxonomy_safely",
+    args: { p_id: taxonomyId, p_updated_by: adminId },
+  });
+  assert.equal(result.deleted, false);
+  assert.equal(result.deactivated, true);
+  assert.equal(result.inUseCount, 7);
+  assert.equal(result.taxonomy.isActive, false);
+  assert.equal(result.taxonomy.postField, "category");
+});
+
+test("taxonomy routes expose active public data and admin CRUD with a stable contract", async (t) => {
+  const adminId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const taxonomyId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const taxonomy = {
+    id: taxonomyId,
+    kind: "developer",
+    type: "topic",
+    slug: "api",
+    name: "API",
+    value: "API",
+    postField: "tags",
+    sortOrder: 3,
+    isActive: true,
+    createdAt: "2026-07-14T00:00:00.000Z",
+    updatedAt: "2026-07-14T00:00:00.000Z",
+  };
+  const calls = [];
+  const original = {
+    listTaxonomies: editorial.listTaxonomies,
+    createTaxonomy: editorial.createTaxonomy,
+    updateTaxonomy: editorial.updateTaxonomy,
+    reorderTaxonomies: editorial.reorderTaxonomies,
+    deleteTaxonomy: editorial.deleteTaxonomy,
+  };
+  editorial.listTaxonomies = async (options) => {
+    calls.push(["list", options]);
+    return [taxonomy];
+  };
+  editorial.createTaxonomy = async (body, actorId) => {
+    calls.push(["create", body, actorId]);
+    return taxonomy;
+  };
+  editorial.updateTaxonomy = async (id, body, actorId) => {
+    calls.push(["update", id, body, actorId]);
+    return { ...taxonomy, ...body };
+  };
+  editorial.reorderTaxonomies = async (items, actorId) => {
+    calls.push(["reorder", items, actorId]);
+    return [{ ...taxonomy, sortOrder: items[0].sortOrder }];
+  };
+  editorial.deleteTaxonomy = async (id, actorId) => {
+    calls.push(["delete", id, actorId]);
+    return { taxonomy: { ...taxonomy, isActive: false }, deleted: false, deactivated: true, inUseCount: 4 };
+  };
+  t.after(() => Object.assign(editorial, original));
+
+  const app = express();
+  app.use(express.json());
+  app.use("/api/editorial", createEditorialRouter({
+    requireAuth: (_req, _res, next) => next(),
+    requireAdmin: (_req, _res, next) => next(),
+    getSessionUser: () => ({ id: adminId, name: "관리자" }),
+    refreshSessionUser: async () => ({ id: adminId, name: "관리자" }),
+    upload: { single: () => (_req, _res, next) => next() },
+  }));
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => server.close());
+  const base = `http://127.0.0.1:${server.address().port}/api/editorial`;
+
+  const publicResponse = await fetch(`${base}/taxonomies?kind=developer&type=tag`);
+  assert.equal(publicResponse.status, 200);
+  const publicBody = await publicResponse.json();
+  assert.deepEqual(publicBody.taxonomies, [taxonomy]);
+  assert.deepEqual(publicBody.groups.developer.topics, [taxonomy]);
+  assert.deepEqual(calls.shift(), ["list", { kind: "developer", type: "tag", activeOnly: true }]);
+
+  const adminList = await fetch(`${base}/admin/taxonomies?active=false`);
+  assert.equal(adminList.status, 200);
+  assert.deepEqual(calls.shift(), ["list", { kind: null, type: null, activeOnly: false }]);
+
+  const badFilter = await fetch(`${base}/admin/taxonomies?active=maybe`);
+  assert.equal(badFilter.status, 400);
+  assert.equal((await badFilter.json()).code, "EDITORIAL_TAXONOMY_VALIDATION_ERROR");
+
+  const create = await fetch(`${base}/admin/taxonomies`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ kind: "developer", type: "topic", name: "API" }),
+  });
+  assert.equal(create.status, 201);
+  assert.equal((await create.json()).taxonomy.id, taxonomyId);
+  assert.deepEqual(calls.shift(), [
+    "create",
+    { kind: "developer", type: "topic", name: "API" },
+    adminId,
+  ]);
+
+  const reorder = await fetch(`${base}/admin/taxonomies/reorder`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ items: [{ id: taxonomyId, sortOrder: 11 }] }),
+  });
+  assert.equal(reorder.status, 200);
+  assert.equal((await reorder.json()).taxonomies[0].sortOrder, 11);
+  assert.deepEqual(calls.shift(), ["reorder", [{ id: taxonomyId, sortOrder: 11 }], adminId]);
+
+  const update = await fetch(`${base}/admin/taxonomies/${taxonomyId}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ slug: "api-tips" }),
+  });
+  assert.equal(update.status, 200);
+  assert.deepEqual(calls.shift(), ["update", taxonomyId, { slug: "api-tips" }, adminId]);
+
+  const deactivate = await fetch(`${base}/admin/taxonomies/${taxonomyId}/deactivate`, { method: "POST" });
+  assert.equal(deactivate.status, 200);
+  assert.equal((await deactivate.json()).taxonomy.isActive, false);
+  assert.deepEqual(calls.shift(), ["update", taxonomyId, { isActive: false }, adminId]);
+
+  const remove = await fetch(`${base}/admin/taxonomies/${taxonomyId}`, { method: "DELETE" });
+  assert.equal(remove.status, 200);
+  assert.deepEqual(await remove.json(), {
+    ok: true,
+    taxonomy: { ...taxonomy, isActive: false },
+    deleted: false,
+    deactivated: true,
+    inUseCount: 4,
+  });
+  assert.deepEqual(calls.shift(), ["delete", taxonomyId, adminId]);
+  assert.deepEqual(calls, []);
+});
+
+test("taxonomy administration routes remain admin-only", async (t) => {
+  const app = express();
+  app.use(express.json());
+  app.use("/api/editorial", createEditorialRouter({
+    requireAuth: (_req, _res, next) => next(),
+    requireAdmin: (_req, res) => res.status(403).json({ error: "관리자 전용", code: "ADMIN_REQUIRED" }),
+    getSessionUser: () => null,
+    refreshSessionUser: async () => null,
+    upload: { single: () => (_req, _res, next) => next() },
+  }));
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => server.close());
+  const response = await fetch(`http://127.0.0.1:${server.address().port}/api/editorial/admin/taxonomies`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ kind: "developer", type: "topic", name: "API" }),
+  });
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).code, "ADMIN_REQUIRED");
 });
 
 test("router blocks cross-account draft edits and attachment downloads", async (t) => {

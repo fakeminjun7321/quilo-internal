@@ -6,28 +6,29 @@
   <meta name="description" content="Quilo 개발 노트와 자료실 글을 읽습니다.">
   <title>글 읽기 — Quilo</title>
   <link rel="icon" href="/favicon.png">
+  <script>
+    (function () {
+      try {
+        var theme = localStorage.getItem("theme");
+        if (!theme) theme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        document.documentElement.setAttribute("data-theme", theme);
+      } catch (_) {}
+    })();
+  </script>
+  <link rel="stylesheet" href="/ui/foundation.css">
+  <link rel="stylesheet" href="/ui/shell.css">
   <link rel="stylesheet" href="/ui/editorial.css">
 </head>
-<body data-editorial-page="article">
-  <a class="ed-skip" href="#articleContent">본문으로 건너뛰기</a>
-  <header class="ed-header">
-    <div class="ed-header__inner">
-      <a class="ed-brand" href="/" aria-label="Quilo 홈">Quilo</a>
-      <nav class="ed-nav" aria-label="리소스 메뉴"><a href="/developer-notes.html">개발 노트</a><a href="/resources.html">자료실</a><a href="/changelog.html">업데이트</a></nav>
-      <div class="ed-header__actions">
-        <a class="ed-primary-action" href="/editorial-write.html" data-write-action hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4Z"></path><path d="m13.5 6.5 4 4"></path></svg>글쓰기</a>
-        <a class="ed-account-link" href="/login.html" data-account-link>로그인</a>
-        <button class="ed-mobile-toggle" type="button" aria-label="메뉴 열기" aria-expanded="false" data-mobile-toggle><span></span><span></span></button>
-      </div>
-    </div>
-    <div class="ed-mobile-nav" data-mobile-nav hidden><a href="/developer-notes.html">개발 노트</a><a href="/resources.html">자료실</a><a href="/changelog.html">업데이트</a></div>
-  </header>
+<body class="q-shell-page editorial-page" data-editorial-page="article">
+  <a class="ui-skip-link" href="#articleContent">본문으로 건너뛰기</a>
+  <header class="ui-site-header" data-ui-shell></header>
 
   <main id="articleContent" class="ed-article-main">
     <div id="articleLoading" class="ed-article-loading" role="status">글을 불러오는 중입니다.</div>
     <article id="article" hidden>
       <header class="ed-article-header ed-reading-width">
         <a id="articleBack" class="ed-back-link" href="/developer-notes.html"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg><span>목록으로</span></a>
+        <p class="ed-legacy-notice" data-legacy-notice hidden>이 글은 기존 Quilo Lab에서 이전된 읽기 전용 기록입니다.</p>
         <div class="ed-article-category" id="articleCategory"></div>
         <h1 id="articleTitle">글 제목</h1>
         <p id="articleSummary" class="ed-article-summary"></p>
@@ -55,8 +56,9 @@
     </article>
     <section id="articleError" class="ed-error-state" hidden><span>404</span><h1>글을 찾을 수 없습니다</h1><p>주소가 바뀌었거나 공개되지 않은 글일 수 있습니다.</p><a href="/developer-notes.html">개발 노트로 돌아가기</a></section>
   </main>
-  <footer class="ed-footer"><div class="ed-container"><a href="/">Quilo</a><span>© 2026 Quilo</span><nav aria-label="정책 메뉴"><a href="/terms.html">이용약관</a><a href="/privacy.html">개인정보처리방침</a></nav></div></footer>
+  <footer class="ui-site-footer"></footer>
   <div id="editorialToast" class="ed-toast" role="status" aria-live="polite" hidden></div>
+  <script src="/ui/shell.js"></script>
   <script src="/ui/editorial.js" defer></script>
 </body>
 </html>

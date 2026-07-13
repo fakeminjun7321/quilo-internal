@@ -67,6 +67,7 @@ const GENERAL_PUBLIC_ROUTES = Object.freeze([
   "/refund.html",
   "/school-apply.html",
   "/status.html",
+  "/support.html",
   "/terms.html",
 ]);
 
@@ -112,6 +113,7 @@ const COMMON_NAV_DESTINATIONS = Object.freeze([
   "/examples.html",
   "/changelog.html",
   "/community.html",
+  "/support.html",
   "/school-apply.html",
   "/pricing.html",
   "https://www.instagram.com/quilo._.official/",
@@ -417,12 +419,12 @@ test.afterEach(async ({ page }) => {
 
 test("canonical header route inventory and destinations are explicit", () => {
   expect(TOOL_ROUTES).toHaveLength(13);
-  expect(GENERAL_PUBLIC_ROUTES).toHaveLength(12);
+  expect(GENERAL_PUBLIC_ROUTES).toHaveLength(13);
   expect(DOWNLOAD_APP_ROUTES).toHaveLength(2);
   expect(WORK_APP_ROUTES).toHaveLength(8);
-  expect(HEADER_ROUTES).toHaveLength(37);
+  expect(HEADER_ROUTES).toHaveLength(38);
   expect(new Set(HEADER_ROUTES).size).toBe(HEADER_ROUTES.length);
-  expect(COMMON_NAV_DESTINATIONS).toHaveLength(18);
+  expect(COMMON_NAV_DESTINATIONS).toHaveLength(19);
   expect(new Set(COMMON_NAV_DESTINATIONS).size).toBe(COMMON_NAV_DESTINATIONS.length);
 
   for (const route of HEADER_ROUTES) {

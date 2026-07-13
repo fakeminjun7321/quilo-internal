@@ -74,6 +74,7 @@ const USER_ROUTES = Object.freeze([
   "/studio.html",
   "/study.html",
   "/status.html",
+  "/support.html",
   "/terms.html",
   "/tools/convert.html",
   "/tools/image.html",
@@ -311,8 +312,8 @@ test.afterAll(async () => {
 });
 
 test("the explicit inventory contains all 45 user-facing HTML routes", () => {
-  expect(USER_ROUTES).toHaveLength(45);
-  expect(new Set(USER_ROUTES).size).toBe(45);
+  expect(USER_ROUTES).toHaveLength(46);
+  expect(new Set(USER_ROUTES).size).toBe(46);
   expect([...USER_ROUTES].sort()).toEqual(discoverUserHtmlRoutes());
   expect(USER_ROUTES).not.toContain("/admin.html");
   expect(USER_ROUTES).not.toContain("/build.html");

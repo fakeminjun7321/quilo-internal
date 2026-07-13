@@ -354,9 +354,10 @@ test("account utility panels are centered and integrations have a real empty sta
   await expect(page.locator("#filesPanel > .settings-card")).toBeVisible();
   await page.locator("#sessionAction").click();
   await expect(page.locator("#accountSlot")).toHaveClass(/is-open/);
-  await page.locator('#acctDd a[data-tab="feedback"]').click();
-  await expect(page.locator("#feedbackPanel")).toBeVisible();
-  await expect(page.locator("#feedbackPanel > .settings-card")).toBeVisible();
+  const supportLink = page.locator('#acctDd a[href="/support.html"]');
+  await expect(supportLink).toBeVisible();
+  await expect(supportLink).toContainText("고객센터");
+  await expect(page.locator('#acctDd a[data-tab="feedback"]')).toHaveCount(0);
 });
 
 test("report entry links bypass the removed intermediary and open the free report form", async ({ page }) => {

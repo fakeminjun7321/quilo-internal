@@ -3425,6 +3425,12 @@ app.post("/api/feedback", requireAuth, async (req, res) => {
       ...feedback,
       message,
     });
+    return res.status(503).json({
+      ok: false,
+      error: "현재 문의 저장 채널에 연결할 수 없습니다. 잠시 후 다시 시도하거나 fakeminjun7321@quilolab.com으로 보내 주세요.",
+      emailSent: false,
+      stored: false,
+    });
   }
 
   return res.json({

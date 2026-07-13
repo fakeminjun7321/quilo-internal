@@ -67,6 +67,7 @@ const GENERAL_PUBLIC_ROUTES = Object.freeze([
   "/refund.html",
   "/school-apply.html",
   "/status.html",
+  "/support.html",
   "/terms.html",
 ]);
 
@@ -94,6 +95,7 @@ const NEW_STATIC_SHELL_ROUTES = new Set([
   "/refund.html",
   "/school-apply.html",
   "/status.html",
+  "/support.html",
   "/terms.html",
   ...APP_ROUTES,
 ]);
@@ -360,9 +362,9 @@ test.afterEach(async ({ page }) => {
 
 test("shell matrix inventory is explicit and excludes specialized chrome", () => {
   expect(TOOL_ROUTES).toHaveLength(13);
-  expect(GENERAL_PUBLIC_ROUTES).toHaveLength(12);
+  expect(GENERAL_PUBLIC_ROUTES).toHaveLength(13);
   expect(APP_ROUTES).toHaveLength(2);
-  expect(COMMON_SHELL_ROUTES).toHaveLength(27);
+  expect(COMMON_SHELL_ROUTES).toHaveLength(28);
   expect(APP_SHELL_ROUTES).toHaveLength(8);
   expect(new Set(COMMON_SHELL_ROUTES).size).toBe(COMMON_SHELL_ROUTES.length);
 

@@ -303,7 +303,7 @@ test("shared shell is the single source for account and navigation destinations"
   expect(shell).toContain('href="/#settings"');
   expect(shell).toContain('href="/#files"');
   expect(shell).toContain('href="/#integrations"');
-  expect(shell).toContain('href="/#feedback"');
+  expect(shell).toContain('href="/support.html"');
   expect(shell).toContain('/developers.html#catalog');
   expect(shell).toContain('/developers.html#tokenCard');
 

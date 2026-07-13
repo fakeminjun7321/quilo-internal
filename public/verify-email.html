@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#215fe5" />
     <meta name="robots" content="noindex" />
-    <meta name="description" content="Quilo 학생 계정의 학교 이메일 인증을 완료하세요." />
+    <meta name="description" content="Quilo 계정의 이메일 인증을 안전하게 완료하세요." />
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <title>학교 이메일 인증 — Quilo</title>
+    <title>이메일 인증 — Quilo</title>
     <script>
       (function () {
         try {
@@ -32,7 +32,7 @@
           <span>Quilo</span>
         </a>
         <div class="auth-header__actions">
-          <span class="auth-header__copy">학교 이메일 인증</span>
+          <span class="auth-header__copy">이메일 인증</span>
           <a class="auth-header__link" href="/">메인으로</a>
           <button type="button" id="themeToggle" class="context-theme auth-theme" aria-label="다크 모드로 전환" title="다크 모드로 전환">
             <span class="context-theme__icon context-theme__icon--moon auth-theme__moon" aria-hidden="true">☾</span>
@@ -46,14 +46,14 @@
       <div class="auth-frame">
         <aside class="auth-context" aria-label="인증 절차">
           <p class="auth-context__label">Email confirmation</p>
-          <h1>학교 계정 확인을<br />완료해 주세요.</h1>
+          <h1>계정 이메일 확인을<br />완료해 주세요.</h1>
           <p class="auth-context__lead">
             메일 링크를 연 기기에서 확인 버튼을 눌러야 인증 토큰이 사용됩니다. 페이지를 여는 것만으로는 인증되지 않습니다.
           </p>
           <div class="auth-progress">
             <div class="auth-progress__step is-complete"><span>1</span><strong>계정 생성 완료</strong></div>
-            <div class="auth-progress__step is-active"><span>2</span><strong>학교 이메일 인증</strong></div>
-            <div class="auth-progress__step"><span>3</span><strong>관리자 승인</strong></div>
+            <div class="auth-progress__step is-active"><span>2</span><strong>이메일 인증</strong></div>
+            <div class="auth-progress__step"><span>3</span><strong>권한 확인</strong></div>
           </div>
         </aside>
 
@@ -61,8 +61,8 @@
           <div class="auth-card auth-confirm">
             <div id="iconWrap" class="auth-confirm__state" aria-live="polite">확인 대기</div>
             <div>
-              <p class="auth-card__label">Student verification</p>
-              <h1 id="verifyPageTitle">학교 이메일 인증</h1>
+              <p class="auth-card__label">Account verification</p>
+              <h1 id="verifyPageTitle">이메일 인증</h1>
               <p id="lead" class="auth-card__intro">인증 링크가 맞는지 확인한 뒤 아래 버튼을 눌러 주세요.</p>
             </div>
 
@@ -123,9 +123,13 @@
             if (!response.ok) throw new Error(data.error || "인증 실패");
 
             setState("success", "인증 완료");
-            lead.textContent = "학교 이메일 인증이 완료되었습니다.";
+            lead.textContent = data.staffGranted
+              ? "Quilo 조직 이메일 인증과 스탭 권한 활성화가 완료되었습니다."
+              : "학교 이메일 인증이 완료되었습니다.";
             result.classList.add("is-success");
-            result.textContent = "이제 관리자 승인을 기다려 주세요. 승인되면 보고서 생성을 사용할 수 있습니다. 잠시 후 메인으로 이동합니다.";
+            result.textContent = data.staffGranted
+              ? "자료실과 자료 요청 관리 등 스탭 기능을 사용할 수 있습니다. 잠시 후 메인으로 이동합니다."
+              : "이제 관리자 승인을 기다려 주세요. 승인되면 보고서 생성을 사용할 수 있습니다. 잠시 후 메인으로 이동합니다.";
             button.style.display = "none";
             setTimeout(() => {
               location.href = "/";

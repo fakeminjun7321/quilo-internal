@@ -50,11 +50,14 @@ const USER_ROUTES = Object.freeze([
   "/",
   "/apps/live-translator.html",
   "/apps/quilo.html",
+  "/article.html",
   "/changelog.html",
   "/community.html",
   "/create.html",
+  "/developer-notes.html",
   "/developers.html",
   "/editor.html",
+  "/editorial-write.html",
   "/equation/index.html",
   "/exam-prep.html",
   "/examples.html",
@@ -65,10 +68,12 @@ const USER_ROUTES = Object.freeze([
   "/pricing.html",
   "/privacy.html",
   "/refund.html",
+  "/resources.html",
   "/school-apply.html",
   "/signup.html",
   "/studio.html",
   "/study.html",
+  "/status.html",
   "/terms.html",
   "/tools/convert.html",
   "/tools/image.html",
@@ -305,9 +310,9 @@ test.afterAll(async () => {
   expect(unsafeServerRequests, "contract suite must never send write requests").toEqual([]);
 });
 
-test("the explicit inventory contains all 40 user-facing HTML routes", () => {
-  expect(USER_ROUTES).toHaveLength(40);
-  expect(new Set(USER_ROUTES).size).toBe(40);
+test("the explicit inventory contains all 45 user-facing HTML routes", () => {
+  expect(USER_ROUTES).toHaveLength(45);
+  expect(new Set(USER_ROUTES).size).toBe(45);
   expect([...USER_ROUTES].sort()).toEqual(discoverUserHtmlRoutes());
   expect(USER_ROUTES).not.toContain("/admin.html");
   expect(USER_ROUTES).not.toContain("/build.html");

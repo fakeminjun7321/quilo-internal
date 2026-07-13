@@ -398,7 +398,12 @@ test("redesigned static pages use only the new independent stylesheet stack", ()
     const source = fs.readFileSync(path.join(PUBLIC_DIR, route.replace(/^\/+/, "")), "utf8");
     expect(source, route).toContain('href="/ui/foundation.css"');
     expect(source, route).toContain('href="/ui/shell.css"');
-    expect(source, route).toContain('href="/ui/pages.css"');
+    if (route === "/developers.html") {
+      expect(source, route).toContain('href="/ui/developers.css"');
+      expect(source, route).not.toContain('href="/ui/pages.css"');
+    } else {
+      expect(source, route).toContain('href="/ui/pages.css"');
+    }
     expect(source, route).not.toMatch(/href="\/(?:style|site-shell|home-redesign|auth-ui)\.css"/);
     expect(source, route).not.toContain('href="/apps/apps.css"');
     expect(source, route).not.toMatch(/<style\b|style="/);

@@ -8,6 +8,10 @@ document.addEventListener("DOMContentLoaded", () => {
   $("copyTokenBtn").addEventListener("click", copyToken);
   $("catalogSearch").addEventListener("input", renderCatalog);
   $("refreshLogsBtn").addEventListener("click", loadApiRequests);
+  document.querySelectorAll("[data-copy-target]").forEach((button) => {
+    button.addEventListener("click", () => copyElementText(button));
+  });
+  observeDocumentSections();
   void Promise.all([loadStatus(), loadCatalog(), loadAccount()]);
 });
 
@@ -26,7 +30,7 @@ async function loadStatus() {
   try {
     const data = await api("/api/version");
     $("serviceDot").classList.add("ok");
-    $("serviceStatus").textContent = `Quilo ${data.version || ""} · 운영 서버 정상`;
+    $("serviceStatus").textContent = `Quilo ${data.version || ""} 운영 서버 정상`;
   } catch (error) {
     $("serviceStatus").textContent = `서버 확인 실패 · ${error.message}`;
   }
@@ -46,12 +50,10 @@ async function loadAccount() {
 
   state.sessionState = session.state;
   document.body.dataset.sessionState = session.state;
-  $("accountDot").classList.remove("ok");
 
   if (session.state === "authenticated") {
     const data = session.user || {};
     state.loggedIn = true;
-    $("accountDot").classList.add("ok");
     $("accountStatus").textContent = `${data.name || data.user || data.username || "사용자"} 계정으로 로그인됨`;
     $("loginLink").textContent = "Quilo로 돌아가기";
     $("loginLink").href = "/";
@@ -100,15 +102,15 @@ function renderCatalog() {
   const html = Object.entries(state.catalog.categories).map(([id, category]) => {
     const features = items.filter((item) => item.category === id);
     if (!features.length) return "";
-    return `<section class="category"><h3>${escapeHtml(category.title)}</h3><p class="dev-muted">${escapeHtml(category.description)}</p><div class="feature-grid">${features.map(featureCard).join("")}</div></section>`;
+    return `<section class="category"><div class="category-head"><h3>${escapeHtml(category.title)}</h3><p>${escapeHtml(category.description)}</p></div><div class="feature-list">${features.map(featureRow).join("")}</div></section>`;
   }).join("");
-  $("catalogBody").innerHTML = html || '<p class="dev-muted">검색 결과가 없습니다.</p>';
+  $("catalogBody").innerHTML = html || '<p>검색 결과가 없습니다.</p>';
 }
 
-function featureCard(item) {
+function featureRow(item) {
   const label = { active: "운영 중", pro: "Pro", max: "Max", beta: "Beta", paused: "중단" }[item.status] || item.status;
   const execution = { remote: "API 실행", local: "로컬 실행", "read-only": "읽기", handoff: "웹 연결", paused: "중단" }[item.execution] || item.execution;
-  return `<a class="feature" href="${escapeAttr(item.path)}"><span class="feature-top"><strong>${escapeHtml(item.title)}</strong><span class="badge ${escapeAttr(item.status)}">${escapeHtml(label)}</span></span><p>${escapeHtml(item.summary)}</p><small>${escapeHtml(execution)} · ${escapeHtml(item.audience)} · ${escapeHtml(item.kind)}</small></a>`;
+  return `<a class="feature" href="${escapeAttr(item.path)}"><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.summary)}</p><span class="feature-meta">${escapeHtml(execution)} · ${escapeHtml(item.audience)} · ${escapeHtml(item.kind)}</span><span class="badge ${escapeAttr(item.status)}">${escapeHtml(label)}</span><svg class="dev-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg></a>`;
 }
 
 async function loadTokens() {
@@ -148,6 +150,37 @@ async function copyToken() {
   await navigator.clipboard.writeText(value);
   $("copyTokenBtn").textContent = "복사됨";
   setTimeout(() => { $("copyTokenBtn").textContent = "복사"; }, 1200);
+}
+
+async function copyElementText(button) {
+  const target = $(button.dataset.copyTarget);
+  if (!target) return;
+  const value = target.textContent.trim();
+  if (!value) return;
+  try {
+    await navigator.clipboard.writeText(value);
+    const original = button.textContent;
+    button.textContent = "복사됨";
+    setTimeout(() => { button.textContent = original; }, 1200);
+  } catch (_) {
+    button.textContent = "복사 실패";
+    setTimeout(() => { button.textContent = "복사"; }, 1200);
+  }
+}
+
+function observeDocumentSections() {
+  const links = [...document.querySelectorAll(".dev-sidebar a[href^='#']")];
+  if (!("IntersectionObserver" in window) || !links.length) return;
+  const byId = new Map(links.map((link) => [link.hash.slice(1), link]));
+  const observer = new IntersectionObserver((entries) => {
+    const visible = entries.filter((entry) => entry.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
+    if (!visible) return;
+    links.forEach((link) => link.classList.toggle("is-active", link === byId.get(visible.target.id)));
+  }, { rootMargin: "-18% 0px -68% 0px", threshold: 0 });
+  byId.forEach((_, id) => {
+    const section = $(id);
+    if (section) observer.observe(section);
+  });
 }
 
 function renderTokens(tokens) {

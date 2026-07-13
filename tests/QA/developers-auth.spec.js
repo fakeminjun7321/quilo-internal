@@ -77,7 +77,11 @@ function createStaticServer() {
 function apiFixture(pathname) {
   const fixtures = {
     "/api/announcements": { announcements: [] },
-    "/api/catalog": { total: 0, categories: {}, features: [] },
+    "/api/catalog": {
+      total: 1,
+      categories: { reports: { title: "보고서", description: "보고서 생성 기능" } },
+      features: [{ id: "chem-pre", title: "화학 사전보고서", summary: "실험 매뉴얼에서 사전보고서 초안을 만듭니다.", category: "reports", path: "/?report=chem-pre", status: "active", execution: "remote", audience: "member", kind: "generator" }],
+    },
     "/api/chat/status": { enabled: false, writeAssistEnabled: false },
     "/api/cloud/providers/status": { integrations: {} },
     "/api/integrations/api-requests": { requests: [] },
@@ -248,5 +252,51 @@ test("pending shell hides login copy until the account check resolves", async ({
   await expect(page.locator("[data-ui-shell]")).toHaveAttribute("data-ui-auth-state", "authenticated");
   snapshot = await headerAuthSnapshot(page);
   expect(snapshot.actions.every((action) => !action.hidden && action.text === "세션사용자 님")).toBeTruthy();
+  expect(network.calls.filter((call) => call.method !== "GET" && call.method !== "HEAD")).toEqual([]);
+});
+
+test("developer portal presents a focused navigation and responsive documentation flow", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("theme", "light"));
+  const network = await installApi(page, {
+    meStatus: 401,
+    meBody: { error: "로그인이 필요합니다." },
+  });
+
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${baseUrl}/developers.html`, { waitUntil: "networkidle" });
+
+  await expect(page.locator("#devHeroTitle")).toHaveText("Quilo를 연결하고,작업을 확장하세요.");
+  await expect(page.locator(".dev-route-strip a")).toHaveText([
+    /빠른 시작/, /API 문서/, /액세스 토큰/, /API 기록/,
+  ]);
+  await expect(page.locator(".dev-sidebar")).toBeVisible();
+  await expect(page.locator(".dev-endpoints > div")).toHaveCount(6);
+  await expect(page.locator("#catalogBody .feature")).toHaveCount(1);
+
+  const developerMenu = page.locator("[data-ui-menu-trigger]", { hasText: "개발자" });
+  await developerMenu.click();
+  await expect(page.locator("#uiSiteMega")).toContainText("빠른 시작");
+  await expect(page.locator("#uiSiteMega")).toContainText("액세스 토큰");
+  await expect(page.locator("#uiSiteMega")).not.toContainText("계산 API");
+  await page.waitForTimeout(250);
+  await page.screenshot({ path: "/tmp/quilo-developer-menu-light-1440.png", fullPage: false });
+  await developerMenu.press("Escape");
+
+  await page.locator("#catalogSearch").fill("화학");
+  await expect(page.locator("#catalogBody .feature strong")).toHaveText("화학 사전보고서");
+  await page.locator("#catalogSearch").fill("없는 기능");
+  await expect(page.locator("#catalogBody")).toHaveText("검색 결과가 없습니다.");
+  await page.locator("#catalogSearch").fill("");
+
+  const desktopOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(desktopOverflow).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: "/tmp/quilo-developers-light-1440.png", fullPage: false });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.locator(".dev-sidebar")).toBeHidden();
+  const mobileOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(mobileOverflow).toBeLessThanOrEqual(1);
+  await page.screenshot({ path: "/tmp/quilo-developers-light-390.png", fullPage: false });
+
   expect(network.calls.filter((call) => call.method !== "GET" && call.method !== "HEAD")).toEqual([]);
 });

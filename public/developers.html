@@ -6,10 +6,10 @@
   <link rel="icon" href="/favicon.ico" sizes="any" />
   <link rel="icon" type="image/png" href="/favicon.png" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-  <meta name="theme-color" content="#3157d5" />
+  <meta name="theme-color" content="#ffffff" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta name="description" content="Quilo Codex 플러그인과 외부 API를 연결하고 전체 기능을 살펴보세요." />
-  <title>개발자·플러그인 — Quilo</title>
+  <meta name="description" content="ChatGPT, Codex와 API에서 Quilo의 보고서, 파일, 학습 도구를 안전하게 연결하세요." />
+  <title>Quilo 개발자 플랫폼 | API, ChatGPT, Codex 연결</title>
   <script>
     (function () {
       try {
@@ -19,148 +19,227 @@
       } catch (e) {}
     })();
   </script>
-
-    <link rel="stylesheet" href="/ui/foundation.css" />
-    <link rel="stylesheet" href="/ui/shell.css" />
-    <link rel="stylesheet" href="/ui/pages.css" />
-  </head>
+  <link rel="stylesheet" href="/ui/foundation.css" />
+  <link rel="stylesheet" href="/ui/shell.css" />
+  <link rel="stylesheet" href="/ui/developers.css" />
+</head>
 <body class="landing q-shell-page dev-page ui-page">
-  <div class="landing-bg" aria-hidden="true"></div>
-    <a class="ui-skip-link" href="#main-content">본문으로 건너뛰기</a>
-    <header class="ui-site-header" data-ui-shell></header>
+  <a class="ui-skip-link" href="#main-content">본문으로 건너뛰기</a>
+  <header class="ui-site-header" data-ui-shell></header>
 
-  <main class="dev-shell" id="main-content">
-    <section class="dev-hero" aria-labelledby="devHeroTitle">
-      <div class="dev-hero-copy">
-        <span class="dev-kicker">ChatGPT app · Codex plugin · API v1</span>
-        <h1 id="devHeroTitle">Quilo 전체를<br />Codex와 연결하세요.</h1>
-        <p>보고서 생성기 하나가 아닙니다. 번역, 학습, 창작, 코딩, 파일, 커뮤니티와 내 작업까지 하나의 기능 카탈로그와 범위 제한 API로 연결합니다.</p>
-        <div class="dev-actions"><a class="dev-btn" href="#connect">플러그인 연결</a><a class="dev-btn secondary" href="#catalog">전체 기능 보기</a></div>
-      </div>
+  <nav class="dev-route-strip" aria-label="개발자 주요 경로">
+    <div class="dev-route-strip__inner">
+      <a href="#quickstart">
+        <span class="dev-route-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m8 9-3 3 3 3M16 9l3 3-3 3M14 5l-4 14" /></svg></span>
+        <span><strong>빠른 시작</strong><small>첫 요청을 보내는 순서</small></span>
+        <svg class="dev-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+      </a>
+      <a href="#api">
+        <span class="dev-route-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M4 5.5v16M8 7h8M8 11h8"/></svg></span>
+        <span><strong>API 문서</strong><small>인증과 엔드포인트</small></span>
+        <svg class="dev-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+      </a>
+      <a href="#tokenCard">
+        <span class="dev-route-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m11 12 8-8M15 8l3 3M17 6l2 2"/></svg></span>
+        <span><strong>액세스 토큰</strong><small>권한을 제한해 발급</small></span>
+        <svg class="dev-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+      </a>
+      <a href="#apiLogsCard">
+        <span class="dev-route-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5"/></svg></span>
+        <span><strong>API 기록</strong><small>요청 상태와 오류 확인</small></span>
+        <svg class="dev-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+      </a>
+    </div>
+  </nav>
 
-      <aside class="dev-hero-console" aria-label="Quilo 개발자 플랫폼 구성">
-        <div class="dev-console-head"><span>quilo.platform</span><span class="dev-console-status">ready</span></div>
-        <div class="dev-console-list">
-          <div class="dev-console-row"><span>01</span><div><b>Live catalog</b><small>운영 상태와 사용 대상을 한곳에서 탐색합니다.</small></div></div>
-          <div class="dev-console-row"><span>02</span><div><b>Scoped access</b><small>필요한 읽기·실행 권한만 선택해 연결합니다.</small></div></div>
-          <div class="dev-console-row"><span>03</span><div><b>One workspace</b><small>작업, 파일, 도구와 스튜디오를 같은 흐름으로 다룹니다.</small></div></div>
+  <main class="dev-layout" id="main-content">
+    <aside class="dev-sidebar" aria-label="개발자 문서 목차">
+      <nav>
+        <a class="is-active" href="#overview">개요</a>
+        <a href="#quickstart">빠른 시작</a>
+        <span>연결</span>
+        <a href="#chatgpt">ChatGPT 연결</a>
+        <a href="#local">Codex 연결</a>
+        <span>인증</span>
+        <a href="#api">API 인증</a>
+        <a href="#tokenCard">액세스 토큰</a>
+        <span>운영</span>
+        <a href="#apiLogsCard">API 기록</a>
+        <a href="#catalog">기능 카탈로그</a>
+      </nav>
+    </aside>
+
+    <div class="dev-content">
+      <section class="dev-hero" id="overview" aria-labelledby="devHeroTitle">
+        <div class="dev-hero-copy">
+          <h1 id="devHeroTitle">Quilo를 연결하고,<br />작업을 확장하세요.</h1>
+          <p>ChatGPT, Codex와 API에서 Quilo의 보고서, 파일, 학습 도구를 안전하게 사용합니다.</p>
+          <div class="dev-actions">
+            <a class="dev-btn dev-btn--primary" href="#quickstart">빠른 시작</a>
+            <a class="dev-btn dev-btn--secondary" href="#api">API 문서</a>
+          </div>
+          <div class="dev-service-state">
+            <span class="status-dot" id="serviceDot" aria-hidden="true"></span>
+            <span id="serviceStatus">운영 서버 확인 중...</span>
+          </div>
         </div>
-        <div class="dev-console-foot"><span>secure by default</span><span>OAuth 2.1 + PKCE</span></div>
-      </aside>
-    </section>
 
-    <nav class="dev-quicknav" aria-label="개발자 페이지 바로가기">
-      <a href="#connect"><span>01</span>연결 상태</a>
-      <a href="#tokenCard"><span>02</span>액세스 토큰</a>
-      <a href="#apiLogsCard"><span>03</span>API 기록</a>
-      <a href="#catalog"><span>04</span>기능 카탈로그</a>
-    </nav>
-
-    <div class="dev-grid" id="connect">
-      <section class="dev-card dev-card--status">
-        <span class="dev-section-label">Connection</span>
-        <h2>연결 상태</h2>
-        <p class="dev-muted">사이트, 계정, 플러그인 API를 순서대로 확인합니다.</p>
-        <div class="status-line"><span class="status-dot" id="serviceDot"></span><span id="serviceStatus">서버 확인 중…</span></div>
-        <div class="status-line"><span class="status-dot" id="accountDot"></span><span id="accountStatus">로그인 확인 중…</span></div>
-        <div class="dev-actions"><a class="dev-btn dark" id="loginLink" href="/login.html">Quilo 로그인</a></div>
+        <div class="dev-code-window" aria-label="API 요청 예시">
+          <div class="dev-code-window__head"><span>API v1</span><button type="button" data-copy-target="heroCode">복사</button></div>
+          <pre id="heroCode"><code>curl https://quilolab.com/api/v1/account \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"</code></pre>
+          <div class="dev-code-window__result"><span>200 OK</span><code>{ "plan": "pro", "credits": 12 }</code></div>
+        </div>
       </section>
 
-      <section class="dev-card dev-card--api">
-        <span class="dev-section-label">API surface</span>
-        <h2>API v1</h2>
-        <p class="dev-muted">브라우저 쿠키를 복사하지 않고, 필요한 권한만 가진 토큰으로 연결합니다.</p>
-        <pre aria-label="API v1 주요 엔드포인트"><code>GET  /api/catalog
-GET  /api/openapi.json
-GET  /api/v1/account
-GET  /api/v1/api-requests
-GET  /api/v1/jobs
-GET  /api/v1/jobs/:id
-GET  /api/v1/files
-POST /api/v1/reports</code></pre>
-      </section>
-
-      <section class="dev-card wide">
-        <span class="dev-section-label">ChatGPT integration</span>
-        <h2>ChatGPT에 Quilo 연결</h2>
-        <p class="dev-muted">원격 MCP는 Quilo 로그인과 OAuth 2.1 + PKCE를 사용합니다. 액세스 토큰을 대화창에 붙여 넣지 않아도 되고, 연결할 때 권한을 직접 확인합니다.</p>
-        <pre><code>Remote MCP URL  https://quilolab.com/mcp
-OAuth metadata  https://quilolab.com/.well-known/oauth-protected-resource/mcp</code></pre>
-        <ol class="dev-muted">
-          <li>ChatGPT 설정의 <b>Security and login</b>에서 Developer Mode를 켭니다.</li>
-          <li>Plugins에서 새 개발자 앱을 추가하고 위 Remote MCP URL을 입력합니다.</li>
-          <li>Quilo 로그인 후 권한 화면에서 연결을 허용합니다.</li>
+      <section class="dev-section" id="quickstart" aria-labelledby="quickstartTitle">
+        <div class="dev-section-head">
+          <div><span class="dev-section-number">01</span><h2 id="quickstartTitle">10분 안에 연결하기</h2></div>
+          <p>로그인하고 필요한 권한만 선택한 뒤 첫 요청으로 연결을 확인합니다.</p>
+        </div>
+        <ol class="dev-steps">
+          <li><span>1</span><div><strong>Quilo 계정 확인</strong><p id="accountStatus">로그인 상태 확인 중...</p><a class="dev-text-link" id="loginLink" href="/?login=1">Quilo 로그인</a></div></li>
+          <li><span>2</span><div><strong>액세스 토큰 발급</strong><p>Test 토큰으로 시작하면 크레딧을 사용하지 않고 연결을 점검할 수 있습니다.</p><a class="dev-text-link" href="#tokenCard">토큰 설정 열기</a></div></li>
+          <li><span>3</span><div><strong>첫 요청 보내기</strong><p><code>GET /api/v1/account</code> 요청으로 인증과 계정 범위를 확인합니다.</p><a class="dev-text-link" href="#api">요청 형식 보기</a></div></li>
         </ol>
-        <div class="dev-actions"><a class="dev-btn dark" href="https://chatgpt.com/plugins" target="_blank" rel="noopener">ChatGPT Plugins 열기</a><a class="dev-btn" href="https://developers.openai.com/apps-sdk/deploy/connect-chatgpt" target="_blank" rel="noopener">공식 연결 가이드</a></div>
       </section>
 
-      <section class="dev-card dev-card--accent wide" id="tokenCard">
-        <span class="dev-section-label">Scoped access</span>
-        <h2>Codex 액세스 토큰</h2>
-        <p class="dev-muted">토큰은 생성 직후 한 번만 표시됩니다. 비밀번호나 브라우저 세션 쿠키를 플러그인에 입력하지 마세요.</p>
+      <section class="dev-section" id="chatgpt" aria-labelledby="chatgptTitle">
+        <div class="dev-section-head">
+          <div><span class="dev-section-number">02</span><h2 id="chatgptTitle">ChatGPT에 연결</h2></div>
+          <p>원격 MCP는 Quilo 로그인과 OAuth 2.1 + PKCE를 사용합니다. 토큰을 대화창에 붙여 넣지 않습니다.</p>
+        </div>
+        <div class="dev-connect-grid">
+          <div class="dev-connect-copy">
+            <ol>
+              <li>ChatGPT 설정의 <strong>Security and login</strong>에서 Developer Mode를 켭니다.</li>
+              <li>Plugins에서 새 개발자 앱을 추가합니다.</li>
+              <li>아래 Remote MCP URL을 입력하고 Quilo 권한 화면에서 연결을 허용합니다.</li>
+            </ol>
+            <div class="dev-actions">
+              <a class="dev-btn dev-btn--primary" href="https://chatgpt.com/plugins" target="_blank" rel="noopener">ChatGPT Plugins 열기</a>
+              <a class="dev-text-link" href="https://developers.openai.com/apps-sdk/deploy/connect-chatgpt" target="_blank" rel="noopener">공식 연결 가이드</a>
+            </div>
+          </div>
+          <div class="dev-copy-field">
+            <span>Remote MCP URL</span>
+            <code id="mcpUrl">https://quilolab.com/mcp</code>
+            <button type="button" data-copy-target="mcpUrl">복사</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="dev-section" id="api" aria-labelledby="apiTitle">
+        <div class="dev-section-head">
+          <div><span class="dev-section-number">03</span><h2 id="apiTitle">API v1</h2></div>
+          <p>브라우저 쿠키를 복사하지 않고 범위가 제한된 Bearer 토큰으로 요청합니다.</p>
+        </div>
+        <div class="dev-api-layout">
+          <div>
+            <h3>인증</h3>
+            <p>모든 계정 API 요청의 <code>Authorization</code> 헤더에 토큰을 포함합니다.</p>
+            <div class="dev-copy-field dev-copy-field--stacked">
+              <span>Request header</span>
+              <code id="authHeader">Authorization: Bearer YOUR_ACCESS_TOKEN</code>
+              <button type="button" data-copy-target="authHeader">복사</button>
+            </div>
+          </div>
+          <div>
+            <h3>주요 엔드포인트</h3>
+            <div class="dev-endpoints" aria-label="API v1 주요 엔드포인트">
+              <div><b>GET</b><code>/api/catalog</code><span>기능 목록</span></div>
+              <div><b>GET</b><code>/api/openapi.json</code><span>OpenAPI 스키마</span></div>
+              <div><b>GET</b><code>/api/v1/account</code><span>계정 정보</span></div>
+              <div><b>GET</b><code>/api/v1/jobs</code><span>작업 목록</span></div>
+              <div><b>GET</b><code>/api/v1/files</code><span>파일 목록</span></div>
+              <div><b class="is-post">POST</b><code>/api/v1/reports</code><span>보고서 생성</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="dev-section" id="tokenCard" aria-labelledby="tokenTitle">
+        <div class="dev-section-head">
+          <div><span class="dev-section-number">04</span><h2 id="tokenTitle">액세스 토큰</h2></div>
+          <p>토큰은 생성 직후 한 번만 표시됩니다. 브라우저 세션 쿠키나 비밀번호를 외부 도구에 입력하지 마세요.</p>
+        </div>
         <div class="token-form">
-          <input id="tokenName" maxlength="80" value="Codex on my Mac" aria-label="토큰 이름" />
-          <select id="tokenDays" aria-label="만료 기간"><option value="30">30일</option><option value="90">90일</option><option value="365">1년</option></select>
-          <select id="tokenMode" aria-label="토큰 환경"><option value="test">Test · 무과금</option><option value="live">Live · 실제 실행</option></select>
+          <label><span>토큰 이름</span><input id="tokenName" maxlength="80" value="Codex on my Mac" /></label>
+          <label><span>만료 기간</span><select id="tokenDays"><option value="30">30일</option><option value="90">90일</option><option value="365">1년</option></select></label>
+          <label><span>환경</span><select id="tokenMode"><option value="test">Test, 무과금</option><option value="live">Live, 실제 실행</option></select></label>
         </div>
-        <div class="scope-grid" id="scopeGrid">
-          <label class="scope-item"><input type="checkbox" value="account:read" checked /><span><b>계정 읽기</b><br /><small>등급·크레딧 확인</small></span></label>
-          <label class="scope-item"><input type="checkbox" value="jobs:read" checked /><span><b>작업 읽기</b><br /><small>진행·완료 상태 확인</small></span></label>
-          <label class="scope-item"><input type="checkbox" value="files:read" checked /><span><b>파일 읽기</b><br /><small>완료 파일 목록·다운로드</small></span></label>
-          <label class="scope-item"><input type="checkbox" value="reports:write" /><span><b>보고서 생성</b><br /><small>크레딧이 차감되는 작업 제출</small></span></label>
-          <label class="scope-item"><input type="checkbox" value="jobs:write" /><span><b>작업 중단</b><br /><small>진행 중 작업 취소</small></span></label>
-          <label class="scope-item"><input type="checkbox" value="translations:read" /><span><b>번역 분석</b><br /><small>PDF 방식·예상 비용 확인</small></span></label>
-          <label class="scope-item"><input type="checkbox" value="translations:write" /><span><b>PDF 통번역</b><br /><small>Max 권한으로 번역 작업 제출</small></span></label>
-          <label class="scope-item"><input type="checkbox" value="conversions:write" /><span><b>문서 변환</b><br /><small>DOCX를 HWPX로 변환</small></span></label>
-          <label class="scope-item"><input type="checkbox" value="studios:read" /><span><b>스튜디오 설정</b><br /><small>모델·스타일·비용 확인</small></span></label>
-          <label class="scope-item"><input type="checkbox" value="studios:write" /><span><b>AI 스튜디오</b><br /><small>Vibe Coding·물리 문제 생성</small></span></label>
-          <label class="scope-item"><input type="checkbox" value="chat:write" /><span><b>파일 챗봇</b><br /><small>선택 파일과 메시지 전송</small></span></label>
-          <label class="scope-item"><input type="checkbox" value="knowledge:read" /><span><b>Quilo Lab</b><br /><small>기술 문서 읽기</small></span></label>
-          <label class="scope-item"><input type="checkbox" value="community:read" /><span><b>커뮤니티 읽기</b><br /><small>게시글·댓글 확인</small></span></label>
-          <label class="scope-item"><input type="checkbox" value="community:write" /><span><b>커뮤니티 쓰기</b><br /><small>글·댓글·공감 작성</small></span></label>
-          <label class="scope-item"><input type="checkbox" value="documents:read" /><span><b>문서 분석</b><br /><small>PDF 구조 분석</small></span></label>
-          <label class="scope-item"><input type="checkbox" value="documents:write" /><span><b>문서 처리</b><br /><small>OCR·HWPX 수식 변환</small></span></label>
-          <label class="scope-item"><input type="checkbox" value="tools:read" /><span><b>계산 도구</b><br /><small>통계·회귀·그래프·단위</small></span></label>
-          <label class="scope-item"><input type="checkbox" value="webhooks:read" /><span><b>Webhook 읽기</b><br /><small>endpoint·전송 기록</small></span></label>
-          <label class="scope-item"><input type="checkbox" value="webhooks:write" /><span><b>Webhook 관리</b><br /><small>endpoint 생성·삭제</small></span></label>
-          <label class="scope-item"><input type="checkbox" value="integrations:read" /><span><b>외부 연동 읽기</b><br /><small>Dropbox·Google·Notion·BYOK 상태</small></span></label>
-          <label class="scope-item"><input type="checkbox" value="integrations:write" /><span><b>외부 연동 쓰기</b><br /><small>Drive 업로드·Docs·Notion 생성</small></span></label>
+        <details class="scope-disclosure" open>
+          <summary><span><strong>권한 선택</strong><small>연결에 필요한 범위만 허용하세요.</small></span><span>21개 권한</span></summary>
+          <div class="scope-grid" id="scopeGrid">
+            <label class="scope-item"><input type="checkbox" value="account:read" checked /><span><b>계정 읽기</b><small>등급과 크레딧 확인</small></span></label>
+            <label class="scope-item"><input type="checkbox" value="jobs:read" checked /><span><b>작업 읽기</b><small>진행과 완료 상태 확인</small></span></label>
+            <label class="scope-item"><input type="checkbox" value="files:read" checked /><span><b>파일 읽기</b><small>완료 파일 목록과 다운로드</small></span></label>
+            <label class="scope-item"><input type="checkbox" value="reports:write" /><span><b>보고서 생성</b><small>크레딧이 차감되는 작업 제출</small></span></label>
+            <label class="scope-item"><input type="checkbox" value="jobs:write" /><span><b>작업 중단</b><small>진행 중 작업 취소</small></span></label>
+            <label class="scope-item"><input type="checkbox" value="translations:read" /><span><b>번역 분석</b><small>PDF 방식과 예상 비용 확인</small></span></label>
+            <label class="scope-item"><input type="checkbox" value="translations:write" /><span><b>PDF 통번역</b><small>Max 권한으로 번역 작업 제출</small></span></label>
+            <label class="scope-item"><input type="checkbox" value="conversions:write" /><span><b>문서 변환</b><small>DOCX를 HWPX로 변환</small></span></label>
+            <label class="scope-item"><input type="checkbox" value="studios:read" /><span><b>스튜디오 설정</b><small>모델과 스타일, 비용 확인</small></span></label>
+            <label class="scope-item"><input type="checkbox" value="studios:write" /><span><b>AI 스튜디오</b><small>Vibe Coding과 물리 문제 생성</small></span></label>
+            <label class="scope-item"><input type="checkbox" value="chat:write" /><span><b>파일 챗봇</b><small>선택 파일과 메시지 전송</small></span></label>
+            <label class="scope-item"><input type="checkbox" value="knowledge:read" /><span><b>Quilo Lab</b><small>기술 문서 읽기</small></span></label>
+            <label class="scope-item"><input type="checkbox" value="community:read" /><span><b>커뮤니티 읽기</b><small>게시글과 댓글 확인</small></span></label>
+            <label class="scope-item"><input type="checkbox" value="community:write" /><span><b>커뮤니티 쓰기</b><small>글과 댓글, 공감 작성</small></span></label>
+            <label class="scope-item"><input type="checkbox" value="documents:read" /><span><b>문서 분석</b><small>PDF 구조 분석</small></span></label>
+            <label class="scope-item"><input type="checkbox" value="documents:write" /><span><b>문서 처리</b><small>OCR과 HWPX 수식 변환</small></span></label>
+            <label class="scope-item"><input type="checkbox" value="tools:read" /><span><b>계산 도구</b><small>통계와 회귀, 그래프, 단위</small></span></label>
+            <label class="scope-item"><input type="checkbox" value="webhooks:read" /><span><b>Webhook 읽기</b><small>endpoint와 전송 기록</small></span></label>
+            <label class="scope-item"><input type="checkbox" value="webhooks:write" /><span><b>Webhook 관리</b><small>endpoint 생성과 삭제</small></span></label>
+            <label class="scope-item"><input type="checkbox" value="integrations:read" /><span><b>외부 연동 읽기</b><small>Dropbox, Google, Notion, BYOK 상태</small></span></label>
+            <label class="scope-item"><input type="checkbox" value="integrations:write" /><span><b>외부 연동 쓰기</b><small>Drive 업로드와 Docs, Notion 생성</small></span></label>
+          </div>
+        </details>
+        <div class="dev-token-action">
+          <button class="dev-btn dev-btn--primary" id="createTokenBtn" type="button" disabled>새 토큰 만들기</button>
+          <p id="tokenMessage" aria-live="polite"></p>
         </div>
-        <button class="dev-btn dark" id="createTokenBtn" type="button" disabled>새 토큰 만들기</button>
-        <p class="dev-muted" id="tokenMessage" aria-live="polite"></p>
-        <div class="token-secret" id="tokenSecret" hidden><b>지금 복사하세요</b><code id="tokenValue"></code><button class="dev-btn" type="button" id="copyTokenBtn">복사</button></div>
+        <div class="token-secret" id="tokenSecret" hidden><strong>지금 복사하세요</strong><code id="tokenValue"></code><button class="dev-btn dev-btn--secondary" type="button" id="copyTokenBtn">복사</button></div>
         <div class="token-list" id="tokenList"></div>
       </section>
 
-      <section class="dev-card wide" id="apiLogsCard">
-        <span class="dev-section-label">Observability</span>
-        <div class="catalog-head"><div><h2>API 사용·오류 기록</h2><p class="dev-muted">최근 외부 API 요청의 상태, 지연시간과 오류 코드를 확인합니다.</p></div><button class="dev-btn dark" type="button" id="refreshLogsBtn">새로고침</button></div>
-        <div class="api-log-wrap"><table class="api-log"><caption class="dev-visually-hidden">최근 외부 API 요청 기록</caption><thead><tr><th>시간</th><th>요청</th><th>상태</th><th>지연</th><th>오류</th><th>Request ID</th></tr></thead><tbody id="apiLogBody"><tr><td colspan="6" class="dev-muted">로그인 후 표시됩니다.</td></tr></tbody></table></div>
+      <section class="dev-section" id="apiLogsCard" aria-labelledby="apiLogsTitle">
+        <div class="dev-section-head dev-section-head--action">
+          <div><span class="dev-section-number">05</span><h2 id="apiLogsTitle">API 기록</h2></div>
+          <p>최근 외부 API 요청의 상태, 지연 시간과 오류 코드를 확인합니다.</p>
+          <button class="dev-btn dev-btn--secondary" type="button" id="refreshLogsBtn">새로고침</button>
+        </div>
+        <div class="api-log-wrap"><table class="api-log"><caption class="dev-visually-hidden">최근 외부 API 요청 기록</caption><thead><tr><th>시간</th><th>요청</th><th>상태</th><th>지연</th><th>오류</th><th>Request ID</th></tr></thead><tbody id="apiLogBody"><tr><td colspan="6">로그인 후 표시됩니다.</td></tr></tbody></table></div>
       </section>
 
-      <section class="dev-card wide">
-        <span class="dev-section-label">Local setup</span>
-        <h2>로컬 플러그인에 연결</h2>
-        <p class="dev-muted">발급한 토큰을 로컬 자격 증명 파일에 저장하면 Quilo 플러그인이 계정·작업·파일 도구를 활성화합니다. 파일 업로드·다운로드는 명시한 폴더 안에서만 허용됩니다.</p>
-        <pre><code>node ~/plugins/quilo/scripts/configure.mjs 'quilo_live_...'
+      <section class="dev-section" id="local" aria-labelledby="localTitle">
+        <div class="dev-section-head">
+          <div><span class="dev-section-number">06</span><h2 id="localTitle">Codex에 연결</h2></div>
+          <p>발급한 토큰을 로컬 자격 증명에 저장하고 허용할 파일 폴더를 명시합니다.</p>
+        </div>
+        <div class="dev-code-window dev-code-window--light">
+          <div class="dev-code-window__head"><span>로컬 설정</span><button type="button" data-copy-target="localCode">복사</button></div>
+          <pre id="localCode"><code>node ~/plugins/quilo/scripts/configure.mjs 'quilo_live_...'
 export QUILO_UPLOAD_ROOTS="$HOME/Downloads:$HOME/Documents/Quilo"
 codex plugin add quilo@personal</code></pre>
-        <p class="dev-muted">새로운 Codex task를 열어 <b>“Quilo에서 내가 쓸 수 있는 기능 찾아줘”</b>라고 말해보세요.</p>
+        </div>
+      </section>
+
+      <section class="dev-section dev-catalog" id="catalog" aria-labelledby="catalogTitle">
+        <div class="dev-section-head">
+          <div><span class="dev-section-number">07</span><h2 id="catalogTitle">기능 카탈로그</h2></div>
+          <p id="catalogSummary">기능 카탈로그를 불러오는 중...</p>
+        </div>
+        <label class="catalog-search-wrap">
+          <span class="dev-visually-hidden">기능 카탈로그 검색</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input class="catalog-search" id="catalogSearch" placeholder="기능 검색" />
+        </label>
+        <div id="catalogBody"></div>
       </section>
     </div>
-
-    <section class="dev-card wide ui-inline-developers-1" id="catalog">
-      <span class="dev-section-label">Live catalog</span>
-      <div class="catalog-head"><div><h2>Quilo 전체 기능</h2><p class="dev-muted" id="catalogSummary">기능 카탈로그를 불러오는 중…</p></div><input class="catalog-search" id="catalogSearch" aria-label="기능 카탈로그 검색" placeholder="번역, 코딩, 물리, 파일…" /></div>
-      <div id="catalogBody"></div>
-    </section>
   </main>
-    <footer class="ui-site-footer">
-      <div class="ui-site-footer__inner">
-        <nav class="ui-site-footer__links" aria-label="푸터 메뉴"><a href="/terms.html">이용약관</a><a href="/privacy.html">개인정보처리방침</a><a href="/refund.html">환불정책</a><a href="/guide.html">이용 가이드</a><a href="/community.html">커뮤니티</a><a href="https://github.com/fakeminjun7321/lab-report-generator-web" target="_blank" rel="noopener">GitHub</a></nav>
-        <div class="ui-site-footer__copy">© 2026 Quilo · <span data-site-version>버전 확인 중...</span></div>
-      </div>
-    </footer>
+
+  <footer class="ui-site-footer"></footer>
   <script src="/ui/shell.js"></script>
   <script src="/developers.js" defer></script>
 </body>

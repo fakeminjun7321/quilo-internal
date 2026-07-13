@@ -26,7 +26,11 @@ function clone(value) {
   return structuredClone(value);
 }
 
-function visualInputBinding(summary, runtimeEvidence) {
+function visualInputBinding(summary, runtimeEvidence, {
+  provider = "mock-vision",
+  model = "mock-vision-judge-v1",
+  requestId = "visual-request-schema",
+} = {}) {
   const riskTokens = summary.risk_tokens
     .filter((token) => token.needs_visual_adjudication)
     .map((token) => ({
@@ -79,10 +83,15 @@ function visualInputBinding(summary, runtimeEvidence) {
     input_commitment: inputCommitment,
     input_digest: inputDigest,
     render_attestation: {
-      schema_version: 1,
+      schema_version: 2,
       proof_type: "ocr-visual-source-render-attestation",
       source_pdf_sha256: inputCommitment.source_pdf_sha256,
       input_digest: inputDigest,
+      adjudicator_identity_sha256: sha256Canonical({
+        provider,
+        model,
+        request_id: requestId,
+      }),
       rendered_page_count: inputCommitment.rendered_pages.length,
       rendered_tile_count: renderedTileCount,
       binding_hmac_sha256: "a".repeat(64),
@@ -386,6 +395,375 @@ test("official OCR 4 mock requests blocks and word confidence, then binds exact 
   assert.equal(fetchImpl.calls[0].body.table_format, "markdown");
   assert.equal(fetchImpl.calls[0].body.include_image_base64, false);
   assert.match(fetchImpl.calls[0].body.document.document_url, /^data:application\/pdf;base64,/);
+});
+
+test("large OCR inputs use a temporary signed file and delete it after strict evidence", async () => {
+  const calls = [];
+  const response = (payload, { status = 200, requestId = null } = {}) => ({
+    status,
+    ok: status >= 200 && status < 300,
+    headers: {
+      get(name) {
+        return String(name).toLowerCase() === "x-request-id" ? requestId : null;
+      },
+    },
+    async text() {
+      return payload == null ? "" : JSON.stringify(payload);
+    },
+    async arrayBuffer() {
+      return new ArrayBuffer(0);
+    },
+  });
+  const fetchImpl = async (url, options = {}) => {
+    calls.push({ url, method: options.method, body: options.body });
+    if (url.endsWith("/files") && options.method === "POST") {
+      assert.ok(options.body instanceof FormData);
+      return response({ id: "temporary-ocr-file" });
+    }
+    if (url.includes("/files/temporary-ocr-file/url")) {
+      return response({ url: "https://signed.example.test/document.pdf" });
+    }
+    if (url.endsWith("/ocr")) {
+      const body = JSON.parse(options.body);
+      assert.equal(
+        body.document.document_url,
+        "https://signed.example.test/document.pdf",
+      );
+      return response(fixture05Response(), { requestId: "large-ocr-request" });
+    }
+    if (url.endsWith("/files/temporary-ocr-file") && options.method === "DELETE") {
+      return response({ id: "temporary-ocr-file", deleted: true });
+    }
+    throw new Error(`unexpected mock request: ${options.method} ${url}`);
+  };
+
+  const evidence = await ocrPdfToEvidenceStrict(FIXTURE_05_PDF, {
+    apiKey: "test-key",
+    sourcePages: [A4_SOURCE_PAGE],
+    fetchImpl,
+    sleepImpl: async () => {},
+    inlineMaxBytes: 1,
+  });
+
+  assert.equal(evidence.request_id, "large-ocr-request");
+  assert.deepEqual(
+    calls.map((call) => [call.method, call.url]),
+    [
+      ["POST", "https://api.mistral.ai/v1/files"],
+      ["GET", "https://api.mistral.ai/v1/files/temporary-ocr-file/url?expiry=1"],
+      ["POST", "https://api.mistral.ai/v1/ocr"],
+      ["DELETE", "https://api.mistral.ai/v1/files/temporary-ocr-file"],
+    ],
+  );
+});
+
+test("temporary OCR cleanup rejects an empty successful deletion response", async () => {
+  const response = (payload, { status = 200, requestId = null } = {}) => ({
+    status,
+    ok: status >= 200 && status < 300,
+    headers: {
+      get(name) {
+        return String(name).toLowerCase() === "x-request-id" ? requestId : null;
+      },
+    },
+    async text() { return payload == null ? "" : JSON.stringify(payload); },
+    async arrayBuffer() { return new ArrayBuffer(0); },
+  });
+  const fetchImpl = async (url, options = {}) => {
+    if (url.endsWith("/files") && options.method === "POST") {
+      return response({ id: "empty-cleanup-file" });
+    }
+    if (url.includes("/files/empty-cleanup-file/url")) {
+      return response({ url: "https://signed.example.test/empty-cleanup.pdf" });
+    }
+    if (url.endsWith("/ocr")) {
+      return response(fixture05Response(), { requestId: "empty-cleanup-ocr" });
+    }
+    if (url.endsWith("/files/empty-cleanup-file") && options.method === "DELETE") {
+      return response(null);
+    }
+    throw new Error(`unexpected mock request: ${options.method} ${url}`);
+  };
+
+  await assert.rejects(
+    () => ocrPdfToEvidenceStrict(FIXTURE_05_PDF, {
+      apiKey: "test-key",
+      sourcePages: [A4_SOURCE_PAGE],
+      fetchImpl,
+      sleepImpl: async () => {},
+      inlineMaxBytes: 1,
+    }),
+    expectCode("OCR_FILE_CLEANUP_FAILED"),
+  );
+});
+
+test("OCR request and cleanup failure is surfaced with both sanitized causes", async () => {
+  const response = (payload, status = 200) => ({
+    status,
+    ok: status >= 200 && status < 300,
+    headers: { get() { return null; } },
+    async text() { return payload == null ? "" : JSON.stringify(payload); },
+    async arrayBuffer() { return new ArrayBuffer(0); },
+  });
+  const fetchImpl = async (url, options = {}) => {
+    if (url.endsWith("/files") && options.method === "POST") {
+      return response({ id: "ocr-and-cleanup-fail" });
+    }
+    if (url.includes("/files/ocr-and-cleanup-fail/url")) {
+      return response({ url: "https://signed.example.test/ocr-fail.pdf" });
+    }
+    if (url.endsWith("/ocr")) return response({ message: "provider failure" }, 500);
+    if (url.endsWith("/files/ocr-and-cleanup-fail") && options.method === "DELETE") {
+      return response(null);
+    }
+    throw new Error(`unexpected mock request: ${options.method} ${url}`);
+  };
+
+  await assert.rejects(
+    () => ocrPdfToEvidenceStrict(FIXTURE_05_PDF, {
+      apiKey: "test-key",
+      sourcePages: [A4_SOURCE_PAGE],
+      fetchImpl,
+      sleepImpl: async () => {},
+      inlineMaxBytes: 1,
+    }),
+    (error) => (
+      expectCode("OCR_FILE_CLEANUP_FAILED")(error) &&
+      error.details.primary_code === "OCR_PROVIDER_HTTP_ERROR" &&
+      error.details.cleanup_code === "OCR_FILE_CLEANUP_FAILED"
+    ),
+  );
+});
+
+test("ambiguous temporary file upload failures are not retried", async () => {
+  let uploadCalls = 0;
+  await assert.rejects(
+    () => ocrPdfToEvidenceStrict(FIXTURE_05_PDF, {
+      apiKey: "test-key",
+      sourcePages: [A4_SOURCE_PAGE],
+      inlineMaxBytes: 1,
+      sleepImpl: async () => {},
+      fetchImpl: async (url, options = {}) => {
+        if (url.endsWith("/files") && options.method === "POST") {
+          uploadCalls += 1;
+          throw new Error("ambiguous network failure");
+        }
+        throw new Error(`unexpected mock request: ${options.method} ${url}`);
+      },
+    }),
+    expectCode("OCR_FILE_UPLOAD_FAILED"),
+  );
+  assert.equal(uploadCalls, 1);
+});
+
+test("101-page OCR inputs share one temporary file across 50+50+1 page batches", async () => {
+  const calls = [];
+  const response = (payload, { status = 200, requestId = null } = {}) => ({
+    status,
+    ok: status >= 200 && status < 300,
+    headers: {
+      get(name) {
+        return String(name).toLowerCase() === "x-request-id" ? requestId : null;
+      },
+    },
+    async text() {
+      return payload == null ? "" : JSON.stringify(payload);
+    },
+    async arrayBuffer() {
+      return new ArrayBuffer(0);
+    },
+  });
+  const fetchImpl = async (url, options = {}) => {
+    calls.push({ url, method: options.method, body: options.body });
+    if (url.endsWith("/files") && options.method === "POST") {
+      return response({ id: "batched-ocr-file" });
+    }
+    if (url.includes("/files/batched-ocr-file/url")) {
+      return response({ url: "https://signed.example.test/batched.pdf" });
+    }
+    if (url.endsWith("/ocr")) {
+      const body = JSON.parse(options.body);
+      assert.equal(body.document.document_url, "https://signed.example.test/batched.pdf");
+      const pages = body.pages.map((index) => {
+        const page = clone(fixture05Response().pages[0]);
+        page.index = index;
+        return page;
+      });
+      return response({
+        model: "mistral-ocr-4-0",
+        pages,
+        usage_info: {
+          pages_processed: pages.length,
+          doc_size_bytes: FIXTURE_05_PDF.length,
+        },
+      }, { requestId: `batch-${body.pages[0]}` });
+    }
+    if (url.endsWith("/files/batched-ocr-file") && options.method === "DELETE") {
+      return response({ id: "batched-ocr-file", deleted: true });
+    }
+    throw new Error(`unexpected mock request: ${options.method} ${url}`);
+  };
+  const sourcePages = Array.from({ length: 101 }, (_, index) => ({
+    ...A4_SOURCE_PAGE,
+    index,
+  }));
+
+  const evidence = await ocrPdfToEvidenceStrict(FIXTURE_05_PDF, {
+    apiKey: "test-key",
+    sourcePages,
+    fetchImpl,
+    sleepImpl: async () => {},
+    providerBatchPages: 50,
+    providerConcurrency: 2,
+  });
+
+  assert.equal(evidence.pages.length, 101);
+  assert.deepEqual(evidence.pages.map((page) => page.index), Array.from({ length: 101 }, (_, index) => index));
+  assert.match(evidence.request_id, /^batch-[a-f0-9]{64}$/);
+  const requestedBatches = calls
+    .filter((call) => call.url.endsWith("/ocr"))
+    .map((call) => JSON.parse(call.body).pages)
+    .sort((left, right) => left[0] - right[0]);
+  assert.deepEqual(requestedBatches, [
+    Array.from({ length: 50 }, (_, index) => index),
+    Array.from({ length: 50 }, (_, index) => index + 50),
+    [100],
+  ]);
+  assert.equal(calls.filter((call) => call.url.endsWith("/files")).length, 1);
+  assert.equal(
+    calls.filter((call) => call.url.endsWith("/files/batched-ocr-file") && call.method === "DELETE").length,
+    1,
+  );
+});
+
+test("temporary OCR files are deleted when signed URL creation fails", async () => {
+  const calls = [];
+  const response = (payload, status = 200) => ({
+    status,
+    ok: status >= 200 && status < 300,
+    headers: { get() { return null; } },
+    async text() { return JSON.stringify(payload); },
+    async arrayBuffer() { return new ArrayBuffer(0); },
+  });
+  const fetchImpl = async (url, options = {}) => {
+    calls.push([options.method, url]);
+    if (url.endsWith("/files") && options.method === "POST") {
+      return response({ id: "cleanup-after-url-failure" });
+    }
+    if (url.includes("/files/cleanup-after-url-failure/url")) {
+      return response({ message: "temporary error" }, 503);
+    }
+    if (url.endsWith("/files/cleanup-after-url-failure") && options.method === "DELETE") {
+      return response({ id: "cleanup-after-url-failure", deleted: true });
+    }
+    throw new Error(`unexpected mock request: ${options.method} ${url}`);
+  };
+
+  await assert.rejects(
+    () => ocrPdfToEvidenceStrict(FIXTURE_05_PDF, {
+      apiKey: "test-key",
+      sourcePages: [A4_SOURCE_PAGE],
+      fetchImpl,
+      sleepImpl: async () => {},
+      inlineMaxBytes: 1,
+    }),
+    expectCode("OCR_FILE_URL_FAILED"),
+  );
+  assert.equal(
+    calls.filter(([method, url]) => method === "DELETE" && url.endsWith("cleanup-after-url-failure")).length,
+    1,
+  );
+});
+
+test("signed URL and cleanup failure is surfaced instead of leaving an untracked temporary file", async () => {
+  const response = (payload, status = 200) => ({
+    status,
+    ok: status >= 200 && status < 300,
+    headers: { get() { return null; } },
+    async text() { return payload == null ? "" : JSON.stringify(payload); },
+    async arrayBuffer() { return new ArrayBuffer(0); },
+  });
+  const fetchImpl = async (url, options = {}) => {
+    if (url.endsWith("/files") && options.method === "POST") {
+      return response({ id: "untracked-cleanup-file" });
+    }
+    if (url.includes("/files/untracked-cleanup-file/url")) {
+      return response({ message: "temporary error" }, 503);
+    }
+    if (url.endsWith("/files/untracked-cleanup-file") && options.method === "DELETE") {
+      return response(null);
+    }
+    throw new Error(`unexpected mock request: ${options.method} ${url}`);
+  };
+
+  await assert.rejects(
+    () => ocrPdfToEvidenceStrict(FIXTURE_05_PDF, {
+      apiKey: "test-key",
+      sourcePages: [A4_SOURCE_PAGE],
+      fetchImpl,
+      sleepImpl: async () => {},
+      inlineMaxBytes: 1,
+    }),
+    (error) => (
+      expectCode("OCR_FILE_CLEANUP_FAILED")(error) &&
+      error.details.primary_code === "OCR_FILE_URL_FAILED"
+    ),
+  );
+});
+
+test("provider page batches fail closed on per-request coverage mismatch", async () => {
+  const response = (payload, { requestId = null } = {}) => ({
+    status: 200,
+    ok: true,
+    headers: {
+      get(name) {
+        return String(name).toLowerCase() === "x-request-id" ? requestId : null;
+      },
+    },
+    async text() { return payload == null ? "" : JSON.stringify(payload); },
+    async arrayBuffer() { return new ArrayBuffer(0); },
+  });
+  const fetchImpl = async (url, options = {}) => {
+    if (url.endsWith("/files") && options.method === "POST") {
+      return response({ id: "coverage-file" });
+    }
+    if (url.includes("/files/coverage-file/url")) {
+      return response({ url: "https://signed.example.test/coverage.pdf" });
+    }
+    if (url.endsWith("/ocr")) {
+      const body = JSON.parse(options.body);
+      const returned = [...body.pages].reverse().map((index) => {
+        const page = clone(fixture05Response().pages[0]);
+        page.index = index;
+        return page;
+      });
+      return response({
+        model: "mistral-ocr-4-0",
+        pages: returned,
+        usage_info: { pages_processed: returned.length },
+      }, { requestId: `coverage-${body.pages[0]}` });
+    }
+    if (url.endsWith("/files/coverage-file") && options.method === "DELETE") {
+      return response({ id: "coverage-file", deleted: true });
+    }
+    throw new Error(`unexpected mock request: ${options.method} ${url}`);
+  };
+  const sourcePages = Array.from({ length: 3 }, (_, index) => ({
+    ...A4_SOURCE_PAGE,
+    index,
+  }));
+
+  await assert.rejects(
+    () => ocrPdfToEvidenceStrict(FIXTURE_05_PDF, {
+      apiKey: "test-key",
+      sourcePages,
+      fetchImpl,
+      sleepImpl: async () => {},
+      providerBatchPages: 2,
+      providerConcurrency: 1,
+    }),
+    expectCode("OCR_BATCH_COVERAGE_INVALID"),
+  );
 });
 
 test("official punctuation, leading-space and newline confidence segments preserve lexical block coverage", () => {
@@ -693,7 +1071,9 @@ test("visual adjudicator must cover every low-confidence risk hash", async () =>
         provider: "mock-vision",
         model: "mock-vision-judge-v1",
         request_id: "visual-request-001",
-        ...visualInputBinding(summary, runtimeEvidence),
+        ...visualInputBinding(summary, runtimeEvidence, {
+          requestId: "visual-request-001",
+        }),
         token_hashes: summary.risk_tokens
           .filter((token) => token.needs_visual_adjudication)
           .map((token) => token.token_sha256),
@@ -714,7 +1094,9 @@ test("visual adjudicator must cover every low-confidence risk hash", async () =>
         provider: "mock-vision",
         model: "mock-vision-judge-v1",
         request_id: "visual-request-incomplete",
-        ...visualInputBinding(summary, runtimeEvidence),
+        ...visualInputBinding(summary, runtimeEvidence, {
+          requestId: "visual-request-incomplete",
+        }),
         token_hashes: [],
       }),
     }),

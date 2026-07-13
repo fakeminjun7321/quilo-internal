@@ -18,13 +18,15 @@ const os = require("os");
 const path = require("path");
 
 // ── 공유 엔진 (메인 사이트와 동일 코드) ──────────────────────────────────────
-const { translatePdf } = require("./lib/pipelines/pdf-translate/translate");
+const { translatePdf, makeGate } = require("./lib/pipelines/pdf-translate/translate");
 const { retypesetPdf } = require("./lib/pipelines/pdf-translate/latex-gen");
 const {
   assertCompleteRasterization,
+  assertCompleteChunkResults,
   qualityFailure,
 } = require("./lib/pipelines/pdf-translate/quality-gate");
 const {
+  assertCanonicalOcrChunkSubset,
   normalizeRequestedMode,
   resolvePdfTranslationLimits,
   resolvePdfTranslationMode,
@@ -33,6 +35,7 @@ const {
 } = require("./lib/pipelines/pdf-translate/orchestration-contract");
 const {
   analyzePdf,
+  mergePdf,
   splitPdf,
   rasterizePages,
   extractFigures,
@@ -40,16 +43,19 @@ const {
 } = require("./lib/pipelines/pdf-translate/pdf-tool");
 const {
   buildOcrRenderManifest,
+  mergeOcrRenderManifests,
+  mistralRiskVisualAdjudicator,
   prepareOcrModelInputs,
   prepareStrictScanOcr,
 } = require("./lib/pipelines/pdf-translate/ocr-routing");
+const { assertGeneratedOutputMagic } = require("./lib/output-validate");
 
 const app = express();
 app.disable("x-powered-by");
 const PORT = parseInt(process.env.TRANSLATE_PORT || process.env.PORT || "4100", 10);
 const IS_PROD = process.env.NODE_ENV === "production";
 const PDF_TRANSLATE_TIMEOUT_MS = parseInt(
-  process.env.PDF_TRANSLATE_TIMEOUT_MS || String(20 * 60 * 1000),
+  process.env.PDF_TRANSLATE_TIMEOUT_MS || String(90 * 60 * 1000),
   10,
 );
 const ALLOWED_MODELS = [
@@ -179,8 +185,8 @@ function buildTranslatedFilename(originalName, suffix = "_KO") {
 }
 
 // ── 오케스트레이션 헬퍼 (server.js 와 동일 로직, 공유 엔진 호출) ─────────────
-async function splitPdfToBuffers(pdfBuffer, { signal, onProgress }) {
-  const per = parseInt(process.env.PDF_RETYPESET_CHUNK_PAGES || "5", 10);
+async function splitPdfToBuffers(pdfBuffer, { signal, onProgress, pagesPerChunk } = {}) {
+  const per = pagesPerChunk || parseInt(process.env.PDF_RETYPESET_CHUNK_PAGES || "5", 10);
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdfsplit-"));
   const pdfPath = path.join(tmpDir, "in.pdf");
   try {
@@ -195,6 +201,56 @@ async function splitPdfToBuffers(pdfBuffer, { signal, onProgress }) {
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
   }
 }
+
+async function rasterizeBufferToBlocks(pdfBuffer, {
+  maxPages,
+  signal,
+  manifestSourcePdf = pdfBuffer,
+  pageOffset = 0,
+  totalPageCount = null,
+  visualAdjudicationInputSha256 = null,
+} = {}) {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdfras-"));
+  const pdfPath = path.join(tmpDir, "in.pdf");
+  try {
+    fs.writeFileSync(pdfPath, pdfBuffer);
+    const meta = await rasterizePages(pdfPath, tmpDir, { maxPages, signal });
+    assertCompleteRasterization(meta, { context: "OCR 페이지 렌더링" });
+    if (!meta.files || !meta.files.length) throw new Error("페이지 이미지를 생성하지 못했습니다.");
+    const tileBuffers = meta.files.map((file) => fs.readFileSync(file));
+    const prepared = await prepareOcrModelInputs({
+      rasterFiles: meta.files,
+      tileBuffers,
+      transformOptions: { forceCompress: true },
+    });
+    assertCompleteRasterization(meta, {
+      preparedCount: prepared.imageBlocks.length,
+      context: "OCR 모델 입력 준비",
+    });
+    const ocrRenderManifest = buildOcrRenderManifest({
+      sourcePdf: manifestSourcePdf,
+      pageCount: totalPageCount == null ? meta.page_count : totalPageCount,
+      rasterFiles: meta.files,
+      rasterPages: meta.pages,
+      tileBuffers,
+      modelInputBlocks: prepared.imageBlocks,
+      modelInputProofs: prepared.modelInputProofs,
+      pageOffset,
+      expectedLocalPages: meta.rendered_pages,
+      visualAdjudicationInputSha256,
+    });
+    return {
+      imageBlocks: prepared.imageBlocks,
+      tileBuffers,
+      tiles: meta.tiles,
+      pageCount: meta.page_count,
+      ocrRenderManifest,
+    };
+  } finally {
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+  }
+}
+
 async function extractFiguresForRetypeset(pdfBuffer, { signal, onProgress }) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdffig-"));
   const pdfPath = path.join(tmpDir, "in.pdf");
@@ -255,7 +311,7 @@ async function prepareScannedRouting(
     if (!scanned && !garbled) return { scanned: false, imageBlocks: null, mathDensity, twoColumn, pageCount };
     scanned = true;
     const { maxPages: overallMaxPages, ocrMaxPages } = resolvePdfTranslationLimits({
-      defaultMaxPages: 80,
+      defaultMaxPages: 700,
     });
     const ocrPageLimit = Math.min(overallMaxPages, ocrMaxPages);
     assertPdfTranslationInputCoverage({
@@ -273,12 +329,33 @@ async function prepareScannedRouting(
       pdfBuffer,
       hiddenOcrPageTexts,
       signal,
+      visualAdjudicator: mistralRiskVisualAdjudicator,
       ...ocrDependencies,
     });
     assertPdfTranslationInputCoverage({
       routing: { pageCount: strictOcr.evidence.page_count, truncated: false },
       maxPages: ocrPageLimit,
     });
+    onProgress(`✅ strict OCR evidence ${strictOcr.evidence.page_count}쪽 검증 완료`);
+    const chunkPages = Math.max(
+      1,
+      parseInt(process.env.PDF_OCR_CHUNK_PAGES || "10", 10),
+    );
+    if (pageCount > chunkPages) {
+      return {
+        scanned: true,
+        largeVision: true,
+        imageBlocks: null,
+        pageCount,
+        mathDensity,
+        twoColumn,
+        ocrLayer,
+        pageTexts: strictOcr.pageTexts,
+        ocrEvidence: strictOcr.evidence,
+        visualAdjudicationInputSha256:
+          strictOcr.visualAdjudicationInputSha256 || null,
+      };
+    }
     const meta = await rasterizePages(pdfPath, tmpDir, {
       maxPages: ocrPageLimit,
       signal,
@@ -324,6 +401,229 @@ async function prepareScannedRouting(
   }
 }
 
+function buildOcrHint(pageTexts, startPage, endPage) {
+  if (!Array.isArray(pageTexts) || !pageTexts.length) return null;
+  const parts = [];
+  let budget = Math.max(
+    4000,
+    parseInt(process.env.PDF_OCR_HINT_BUDGET_CHARS || "40000", 10),
+  );
+  for (const page of pageTexts) {
+    if (budget < 200) break;
+    const pageNumber = Number(page?.page);
+    if (!pageNumber || pageNumber < startPage || pageNumber > endPage) continue;
+    const text = String(page?.text || "").trim();
+    if (!text) continue;
+    const head = `[원본 ${pageNumber}쪽 OCR]\n`;
+    let chunk = head + text;
+    if (chunk.length > budget) {
+      chunk = head + text.slice(0, Math.max(0, budget - head.length - 12)) + " …(잘림)";
+    }
+    parts.push(chunk);
+    budget -= chunk.length;
+  }
+  return parts.length ? parts.join("\n\n") : null;
+}
+
+async function translateLargeVisionPdf({
+  pdfBuffer,
+  pageCount,
+  model,
+  signal,
+  onProgress,
+  pageTexts,
+  ocrEvidence,
+  visualAdjudicationInputSha256 = null,
+}) {
+  const chunkPages = Math.max(
+    1,
+    parseInt(process.env.PDF_OCR_CHUNK_PAGES || "10", 10),
+  );
+  const chunks = await splitPdfToBuffers(pdfBuffer, {
+    signal,
+    onProgress,
+    pagesPerChunk: chunkPages,
+  });
+  if (!chunks || chunks.length <= 1) {
+    throw qualityFailure(
+      "대용량 OCR 문서를 안전한 페이지 구간으로 나누지 못해 작업을 중단했습니다.",
+      { kind: "ocr_chunk_split_failed", pageCount, chunkPages },
+    );
+  }
+  onProgress(
+    `📚 ${pageCount}쪽을 ${chunkPages}쪽씩 ${chunks.length}개 구간으로 나눠 OCR 재조판 후 합칩니다.`,
+  );
+
+  const ctrl = new AbortController();
+  const onAbort = () => ctrl.abort(signal?.reason);
+  if (signal) {
+    if (signal.aborted) ctrl.abort(signal.reason);
+    else signal.addEventListener("abort", onAbort, { once: true });
+  }
+  const cpuGate = makeGate(
+    Math.max(1, parseInt(process.env.PDF_OCR_CPU_CONCURRENCY || "2", 10)),
+  );
+  const concurrency = Math.max(
+    1,
+    parseInt(process.env.PDF_OCR_CHUNK_CONCURRENCY || "6", 10),
+  );
+  const retries = Math.max(
+    0,
+    parseInt(process.env.PDF_OCR_CHUNK_RETRIES || "1", 10),
+  );
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pdfviz-"));
+  const results = new Array(chunks.length);
+  let next = 0;
+  let done = 0;
+  let fatalError = null;
+
+  const worker = async () => {
+    for (;;) {
+      if (ctrl.signal.aborted) throw new Error("작업이 중단되었습니다.");
+      const index = next++;
+      if (index >= chunks.length) return;
+      const chunk = chunks[index];
+      let blocks = null;
+      let output = null;
+      let lastError = null;
+      let attempts = 0;
+      try {
+        blocks = await cpuGate(() => rasterizeBufferToBlocks(chunk.buffer, {
+          maxPages: chunkPages + 4,
+          signal: ctrl.signal,
+          manifestSourcePdf: pdfBuffer,
+          pageOffset: chunk.start - 1,
+          totalPageCount: pageCount,
+          visualAdjudicationInputSha256,
+        }));
+      } catch (error) {
+        if (ctrl.signal.aborted) throw error;
+        lastError = error;
+      }
+      for (let attempt = 0; blocks && attempt <= retries && !output; attempt += 1) {
+        attempts += 1;
+        try {
+          output = await retypesetPdf({
+            pdfBuffer: chunk.buffer,
+            imageBlocks: blocks.imageBlocks,
+            tiles: blocks.tileBuffers,
+            ocrHint: buildOcrHint(pageTexts, chunk.start, chunk.end),
+            ocrEvidence,
+            ocrRenderManifest: blocks.ocrRenderManifest,
+            ocrSourcePdf: pdfBuffer,
+            ocrEvidencePageIndices: Array.from(
+              { length: chunk.end - chunk.start + 1 },
+              (_, offset) => chunk.start - 1 + offset,
+            ),
+            pageNumbers: false,
+            model,
+            cpuGate,
+            signal: ctrl.signal,
+            onProgress: () => {},
+          });
+        } catch (error) {
+          if (ctrl.signal.aborted) throw error;
+          lastError = error;
+        }
+      }
+      if (!output) {
+        const reason = String(lastError?.message || "알 수 없는 OCR/LaTeX 오류").slice(0, 240);
+        fatalError = qualityFailure(
+          `OCR 재조판 품질 검증 실패: ${chunk.start}–${chunk.end}쪽 구간을 완성하지 못했습니다 (${reason}).`,
+          {
+            kind: "ocr_chunk_failed",
+            chunk: index + 1,
+            startPage: chunk.start,
+            endPage: chunk.end,
+            attempts,
+          },
+        );
+        ctrl.abort(fatalError);
+        throw fatalError;
+      }
+      const partPath = path.join(dir, `part-${index}.pdf`);
+      fs.writeFileSync(partPath, output.buffer);
+      results[index] = {
+        partPath,
+        figures: output.figures || 0,
+        ocrRenderManifest: output.ocrRenderManifest || null,
+        ocrEvidenceSubset: output.ocrEvidenceSubset || null,
+        translationProvider: output.translationProvider || null,
+        translationRequestId: output.translationRequestId || null,
+      };
+      done += 1;
+      onProgress(`✅ 구간 ${done}/${chunks.length} 완료 (${chunk.start}–${chunk.end}쪽)`);
+    }
+  };
+
+  try {
+    const settled = await Promise.allSettled(
+      Array.from({ length: Math.min(concurrency, chunks.length) }, () => worker()),
+    );
+    if (fatalError) throw fatalError;
+    const rejected = settled.find((entry) => entry.status === "rejected");
+    if (rejected) throw rejected.reason;
+    if (ctrl.signal.aborted) throw new Error("작업이 중단되었습니다.");
+    assertCompleteChunkResults(results, {
+      expectedCount: chunks.length,
+      context: "OCR 재조판 구간 병합",
+    });
+    for (let index = 0; index < results.length; index += 1) {
+      const chunk = chunks[index];
+      assertCanonicalOcrChunkSubset({
+        reportedSubset: results[index].ocrEvidenceSubset,
+        ocrEvidence,
+        ocrRenderManifest: results[index].ocrRenderManifest,
+        sourcePdf: pdfBuffer,
+        expectedPageIndices: Array.from(
+          { length: chunk.end - chunk.start + 1 },
+          (_, offset) => chunk.start - 1 + offset,
+        ),
+        chunk: index + 1,
+      });
+    }
+    onProgress(`🧩 ${chunks.length}개 구간을 하나의 PDF로 합치는 중...`);
+    const outPath = path.join(dir, "merged.pdf");
+    await mergePdf(outPath, results.map((entry) => entry.partPath), { signal });
+    const buffer = assertGeneratedOutputMagic(
+      fs.readFileSync(outPath),
+      "pdf",
+      "vision merge output",
+    );
+    const ocrRenderManifest = mergeOcrRenderManifests({
+      sourcePdf: pdfBuffer,
+      pageCount,
+      manifests: results.map((entry) => entry.ocrRenderManifest),
+    });
+    const providers = [...new Set(
+      results.map((entry) => entry.translationProvider).filter(Boolean),
+    )];
+    const requestIds = results.map((entry) => entry.translationRequestId).filter(Boolean);
+    if (providers.length !== 1 || requestIds.length !== results.length) {
+      throw qualityFailure(
+        "OCR 재조판 구간의 번역 request provenance가 불완전합니다.",
+        { kind: "ocr_translation_request_provenance_missing" },
+      );
+    }
+    return {
+      buffer,
+      pageCount,
+      figures: results.reduce((sum, entry) => sum + entry.figures, 0),
+      model,
+      ocrEvidence,
+      ocrRenderManifest,
+      translationProvider: providers[0],
+      translationRequestId: `batch-${crypto
+        .createHash("sha256")
+        .update(JSON.stringify(requestIds), "utf8")
+        .digest("hex")}`,
+    };
+  } finally {
+    if (signal) signal.removeEventListener("abort", onAbort);
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch {}
+  }
+}
+
 // 단순 시간 예측(비용 표시 없음 — 독립 사이트는 크레딧 없음).
 function estimateTime(meta, mode, modelId) {
   const pages = Math.max(1, Number(meta.page_count) || 1);
@@ -336,11 +636,12 @@ function estimateTime(meta, mode, modelId) {
   }).resolvedMode;
   const isOpus = /opus/i.test(modelId || "");
   const { maxPages, ocrMaxPages: ocrMax } = resolvePdfTranslationLimits({
-    defaultMaxPages: 80,
+    defaultMaxPages: 700,
   });
+  const effectiveMaxPages = scanned ? Math.min(maxPages, ocrMax) : maxPages;
   let seconds = 0;
   if (scanned) {
-    const procPages = Math.min(pages, ocrMax);
+    const procPages = pages;
     const tiles = Math.min(100, Math.ceil(procPages * 1.3));
     seconds = 1.5 * procPages + tiles * (isOpus ? 4.0 : 2.6) + 18;
   } else if (resolvedMode === "retypeset") {
@@ -352,8 +653,11 @@ function estimateTime(meta, mode, modelId) {
   }
   return {
     mode: resolvedMode, scanned, pages, chars,
-    truncated: scanned && pages > ocrMax,
-    tooManyPages: pages > maxPages, maxPages,
+    truncated: false,
+    tooManyPages: pages > effectiveMaxPages,
+    maxPages: effectiveMaxPages,
+    overallMaxPages: maxPages,
+    ocrMaxPages: Math.min(maxPages, ocrMax),
     seconds: { lo: Math.round(seconds * 0.8), hi: Math.round(seconds * 1.55) },
   };
 }
@@ -381,7 +685,7 @@ async function runPdfTranslation(
       onProgress,
       ocrDependencies,
     });
-    const { maxPages } = resolvePdfTranslationLimits({ defaultMaxPages: 80 });
+    const { maxPages } = resolvePdfTranslationLimits({ defaultMaxPages: 700 });
     assertPdfTranslationInputCoverage({ routing, maxPages });
     const modeDecision = resolvePdfTranslationMode({
       requestedMode: mode,
@@ -397,10 +701,26 @@ async function runPdfTranslation(
 
     let effectiveMode = resolvedMode;
     let result;
-    if (routing.scanned && routing.imageBlocks) {
-      const ocrHint = routing.pageTexts
-        .map((page) => `[원본 ${page.page}쪽 OCR]\n${page.text}`)
-        .join("\n\n");
+    if (routing.scanned && routing.largeVision) {
+      result = await translateLargeVisionPdf({
+        pdfBuffer,
+        pageCount: routing.pageCount,
+        model,
+        pageTexts: routing.pageTexts || null,
+        ocrEvidence: routing.ocrEvidence,
+        visualAdjudicationInputSha256:
+          routing.visualAdjudicationInputSha256 || null,
+        signal: ac.signal,
+        onProgress,
+      });
+      effectiveMode = "retypeset";
+      if (result.figures) pushProgress(job, `🖼️ 원본 그림 ${result.figures}개를 본문에 복원했습니다.`);
+    } else if (routing.scanned && routing.imageBlocks) {
+      const ocrHint = buildOcrHint(
+        routing.pageTexts,
+        1,
+        Number.MAX_SAFE_INTEGER,
+      );
       result = await retypesetPdf({
         pdfBuffer,
         imageBlocks: routing.imageBlocks,

@@ -899,7 +899,7 @@ test("a visual response cannot be replayed against a different output artifact",
   );
 });
 
-test("visual batches enforce cumulative image-count budget before provider upload", async () => {
+test("visual batches split adaptively before provider upload when image budget is exceeded", async () => {
   const fixtureValue = visualFixture(2);
   const previousPages = process.env.PDF_OCR_VISUAL_BATCH_PAGES;
   const previousImages = process.env.PDF_OCR_VISUAL_MAX_IMAGES;
@@ -907,21 +907,22 @@ test("visual batches enforce cumulative image-count budget before provider uploa
   process.env.PDF_OCR_VISUAL_MAX_IMAGES = "2";
   let judgeCalls = 0;
   try {
-    await assert.rejects(
-      () => buildVisualReview({
-        sourcePdf: Buffer.from("visual-source-over-budget"),
-        outputPdf: Buffer.from("visual-output-over-budget"),
-        ocrEvidence: fixtureValue.evidence,
-        ocrRenderManifest: fixtureValue.manifest,
-        generationProvider: "anthropic",
-        visualPageInspector: fixtureValue.inspector,
-        visualPageRenderer: fixtureValue.renderer,
-        visualJudgeCaller: async () => { judgeCalls += 1; },
-        resourceLimits: { runApi: (task) => task() },
-      }),
-      (error) => error.code === "OCR_VISUAL_REVIEW_BATCH_LIMIT",
-    );
-    assert.equal(judgeCalls, 0);
+    const result = await buildVisualReview({
+      sourcePdf: Buffer.from("visual-source-over-budget"),
+      outputPdf: Buffer.from("visual-output-over-budget"),
+      ocrEvidence: fixtureValue.evidence,
+      ocrRenderManifest: fixtureValue.manifest,
+      generationProvider: "anthropic",
+      visualPageInspector: fixtureValue.inspector,
+      visualPageRenderer: fixtureValue.renderer,
+      visualJudgeCaller: async (args) => {
+        judgeCalls += 1;
+        return passingVisualJudge(args);
+      },
+      resourceLimits: { runApi: (task) => task() },
+    });
+    assert.equal(judgeCalls, 2);
+    assert.deepEqual(result.batches.map((batch) => batch.pages), [[1], [2]]);
   } finally {
     if (previousPages == null) delete process.env.PDF_OCR_VISUAL_BATCH_PAGES;
     else process.env.PDF_OCR_VISUAL_BATCH_PAGES = previousPages;

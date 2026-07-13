@@ -778,6 +778,7 @@ const { prewarmTectonic } = require("./lib/pipelines/pdf-translate/latex-pdf");
 const {
   buildOcrRenderManifest,
   mergeOcrRenderManifests,
+  mistralRiskVisualAdjudicator,
   prepareOcrModelInputs,
   prepareStrictScanOcr,
 } = require("./lib/pipelines/pdf-translate/ocr-routing");
@@ -858,11 +859,11 @@ function isFableModel(model) {
 // PDF 통번역은 페이지 수에 비례해 오래 걸릴 수 있어(다묶음 번역+레이아웃 삽입)
 // 별도의 넉넉한 타임아웃을 둔다. 비동기 job+SSE라 HTTP 요청 길이 제한과 무관.
 const PDF_TRANSLATE_TIMEOUT_MS = parseInt(
-  process.env.PDF_TRANSLATE_TIMEOUT_MS || String(45 * 60 * 1000),
+  process.env.PDF_TRANSLATE_TIMEOUT_MS || String(90 * 60 * 1000),
   10,
 );
 const PDF_TRANSLATE_FABLE_TIMEOUT_MS = parseInt(
-  process.env.PDF_TRANSLATE_FABLE_TIMEOUT_MS || String(60 * 60 * 1000),
+  process.env.PDF_TRANSLATE_FABLE_TIMEOUT_MS || String(120 * 60 * 1000),
   10,
 );
 
@@ -4281,7 +4282,7 @@ app.post(
 // PDF 통번역 비용·시간 예측. analyze(텍스트량·스캔·수식밀도) → 실제 글자 수 기반
 // 토큰 추정 → calcCost, + 파이프라인 단계별 시간 추정. 변환 방식(auto/inplace/
 // retypeset)이 실제로 어떻게 결정되는지까지 반영한다.
-function estimatePdfTranslation(meta, mode, modelId) {
+function estimatePdfTranslation(meta, mode, modelId, { unlimitedPages = false } = {}) {
   const pages = Math.max(1, Number(meta.page_count) || 1);
   const chars = Math.max(0, Number(meta.text_chars) || 0);
   const scanned = !!meta.scanned;
@@ -4300,13 +4301,18 @@ function estimatePdfTranslation(meta, mode, modelId) {
   const { maxPages, ocrMaxPages: ocrMax } = resolvePdfTranslationLimits({
     defaultMaxPages: 700,
   });
+  const effectiveMaxPages = unlimitedPages
+    ? Number.MAX_SAFE_INTEGER
+    : visionOcr
+      ? Math.min(maxPages, ocrMax)
+      : maxPages;
   // 텍스트 PDF 상한. 이 이내면 빠른 번역은 50쪽씩 구간 분할·병렬 처리한다(초과만 거부).
   const chunkPages = Math.max(
     1,
     parseInt(process.env.PDF_TRANSLATE_CHUNK_PAGES || "50", 10),
   );
   // 상한은 런타임에서 in-place·OCR 양쪽 모두에 적용되므로 추정도 동일하게(비전 포함).
-  const tooManyPages = pages > maxPages;
+  const tooManyPages = pages > effectiveMaxPages;
   // 빠른 번역(in-place) 경로에서 분할 처리되는지(미리 안내용).
   const chunked = !visionOcr && resolvedMode === "inplace" && pages > chunkPages;
   const chunks = chunked ? Math.ceil(pages / chunkPages) : 1;
@@ -4372,7 +4378,10 @@ function estimatePdfTranslation(meta, mode, modelId) {
     chars,
     truncated,
     tooManyPages,
-    maxPages,
+    maxPages: unlimitedPages ? null : effectiveMaxPages,
+    overallMaxPages: maxPages,
+    ocrMaxPages: Math.min(maxPages, ocrMax),
+    unlimitedPages,
     chunked,
     chunks,
     chunkPages,
@@ -4397,7 +4406,11 @@ app.post(
       const modelId = String(req.body.model || "claude-sonnet-5");
       // meta 도 함께 돌려준다 → 클라이언트가 방식·모델만 바꿀 때 PDF 재업로드 없이
       // 즉시 다시 계산한다(속도↑).
-      res.json({ ...estimatePdfTranslation(meta, mode, modelId), meta });
+      const unlimitedPages = !!getSessionUser(req).isAdmin;
+      res.json({
+        ...estimatePdfTranslation(meta, mode, modelId, { unlimitedPages }),
+        meta,
+      });
     } catch (e) {
       res.status(500).json({ error: e.message || "예측 실패" });
     } finally {
@@ -4519,7 +4532,7 @@ app.post(
       0,
       parseInt(process.env.TRANSLATE_MONTHLY_PAGES || "300", 10),
     );
-    if (TR_MONTHLY_PAGES > 0 && !userInfo.isAdmin && userInfo.id) {
+    if (TR_MONTHLY_PAGES > 0 && !effectiveIsAdmin && userInfo.id) {
       // 여러 파일이면 전체 페이지 합계로 캡을 검사한다.
       let trPages = 0;
       for (const file of files) {
@@ -4645,6 +4658,7 @@ app.post(
       mode,
       restoreOnly,
       chartRedraw,
+      adminPageLimitBypass: effectiveIsAdmin,
     }).catch((err) => {
       job.status = "error";
       job.error = err.message || String(err);
@@ -4807,7 +4821,12 @@ async function rasterizeBufferToBlocks(pdfBuffer, {
 // 큰 문서는 largeVision 플래그만 돌려보내 실행 단계가 구간별로 나눠 처리한다(메모리·대용량).
 async function prepareScannedRouting(
   pdfBuffer,
-  { signal, onProgress, ocrDependencies = {} } = {},
+  {
+    signal,
+    onProgress,
+    ocrDependencies = {},
+    adminPageLimitBypass = false,
+  } = {},
 ) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdftr-"));
   const pdfPath = path.join(tmpDir, "in.pdf");
@@ -4846,7 +4865,9 @@ async function prepareScannedRouting(
     const { maxPages: overallMaxPages, ocrMaxPages } = resolvePdfTranslationLimits({
       defaultMaxPages: 700,
     });
-    const ocrPageLimit = Math.min(overallMaxPages, ocrMaxPages);
+    const ocrPageLimit = adminPageLimitBypass
+      ? Number.MAX_SAFE_INTEGER
+      : Math.min(overallMaxPages, ocrMaxPages);
     assertPdfTranslationInputCoverage({
       routing: { pageCount, truncated: false },
       maxPages: ocrPageLimit,
@@ -4877,6 +4898,7 @@ async function prepareScannedRouting(
       pdfBuffer,
       hiddenOcrPageTexts,
       signal,
+      visualAdjudicator: mistralRiskVisualAdjudicator,
       ...ocrDependencies,
     });
     const pageTexts = strictOcr.pageTexts;
@@ -4884,9 +4906,8 @@ async function prepareScannedRouting(
     const visualAdjudicationInputSha256 =
       strictOcr.visualAdjudicationInputSha256 || null;
     onProgress(`✅ strict OCR evidence ${ocrEvidence.page_count}쪽 검증 완료`);
-    // Keep the main site and standalone site on the same fail-closed OCR page
-    // budget.  Previously the main site's largeVision branch returned before
-    // rasterization and silently bypassed PDF_OCR_MAX_PAGES.
+    // Keep the main site and standalone site on the same fail-closed overall
+    // page budget. The retired OCR-only cap is intentionally not consulted.
     assertPdfTranslationInputCoverage({
       routing: { pageCount: ocrEvidence.page_count, truncated: false },
       maxPages: ocrPageLimit,
@@ -5307,6 +5328,7 @@ async function translateOnePdfCore({
   onProgress,
   isTimedOut = () => false,
   ocrDependencies = {},
+  adminPageLimitBypass = false,
 }) {
   const sizeKB = Math.round(pdfBuffer.length / 1024);
   onProgress(`📥 PDF 수신 (${sizeKB}KB)`);
@@ -5317,12 +5339,16 @@ async function translateOnePdfCore({
     signal,
     onProgress,
     ocrDependencies,
+    adminPageLimitBypass,
   });
   // 상한 이내면 in-place 경로가 자동으로 50쪽씩 구간 분할·병렬 번역 후 합친다
   // (translate.js translatePdf). 상한을 넘는 초대형 문서만 거부한다.
   // 상한은 in-place(구간 분할·병합)·OCR 재조판(구간 분할·병합) 양쪽 모두에 적용한다.
   const { maxPages } = resolvePdfTranslationLimits({ defaultMaxPages: 700 });
-  assertPdfTranslationInputCoverage({ routing, maxPages });
+  const effectiveMaxPages = adminPageLimitBypass
+    ? Number.MAX_SAFE_INTEGER
+    : maxPages;
+  assertPdfTranslationInputCoverage({ routing, maxPages: effectiveMaxPages });
 
   // 변환 방식 결정.
   // - 명시적 '재조판' → 그대로.
@@ -5499,6 +5525,7 @@ async function translateOnePdfCore({
       pdfBuffer,
       model,
       pageCount: routing.pageCount, // 재분석 생략 — 큰 문서면 내부에서 구간 분할·병합
+      maxPages: effectiveMaxPages,
       signal,
       onProgress,
     });
@@ -5538,7 +5565,14 @@ async function translateOnePdfCore({
 
 async function runPdfTranslation(
   job,
-  { files, model, mode, restoreOnly = false, chartRedraw = false },
+  {
+    files,
+    model,
+    mode,
+    restoreOnly = false,
+    chartRedraw = false,
+    adminPageLimitBypass = false,
+  },
 ) {
   const t0 = Date.now();
   const multi = files.length > 1;
@@ -5598,6 +5632,7 @@ async function runPdfTranslation(
         signal: ac.signal,
         onProgress,
         isTimedOut: () => timedOut,
+        adminPageLimitBypass,
       });
       const entry = {
         filename: out.filename,

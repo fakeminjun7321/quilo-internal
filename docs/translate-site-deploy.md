@@ -31,24 +31,40 @@ PDF 통번역 전용 사이트다. 메인 사이트 코드는 건드리지 않�
    > `TRANSLATE_ACCESS_CODES` 미설정 + `NODE_ENV=production` 이면 **모든 접근이 차단**된다(안전 기본값). 로컬도 코드 없이 열려면 `TRANSLATE_ALLOW_OPEN_DEV=1`을 명시해야 한다.
 
    > strict OCR은 `MISTRAL_API_KEY`가 없을 때 기존 비전 OCR로 조용히 폴백하지 않는다.
-   > 저신뢰 숫자·단위·URL·수식은 OCR 원문 확정 전의 별도 visual adjudicator가
-   > 확인해야 하며, 현재 독립 배포 서버에는 이 adjudicator가 구성되어 있지
-   > 않으므로 해당 문서는 fail-closed로 중단된다. 최종 source/output 시각 검토는
-   > 별도로 내장되어 있다.
+   > 저신뢰 숫자·단위·URL·수식은 OCR 원문 확정 전 별도 visual adjudicator가
+   > 페이지·타일·실제 이미지 바이트 예산으로 나누어 확인한다. 각 배치의 exact
+   > token coverage와 입력 digest를 검증한 뒤 전체 commitment로 봉인한다. 최종
+   > source/output 시각 검토도 별도로 수행한다.
 
 4. 배포 후 사이트 접속 → 초대코드 입력 → PDF 업로드 → 번역.
 
 ## 튜닝 환경변수(선택, 메인과 공유)
 
-`PDF_TRANSLATE_TIMEOUT_MS`(기본 20분), `PDF_TRANSLATE_MAX_PAGES`(80),
-`PDF_OCR_MAX_PAGES`(30), `PDF_AUTO_MATH_THRESHOLD`(12),
+`PDF_TRANSLATE_TIMEOUT_MS`(기본 90분), `PDF_TRANSLATE_MAX_PAGES`(메인/독립 700, 관리자는 페이지 수 검사 면제),
+`PDF_OCR_MAX_PAGES`(폐기됨·값이 남아 있어도 무시),
+`PDF_OCR_PROVIDER_BATCH_PAGES`(기본 50), `PDF_OCR_PROVIDER_CONCURRENCY`(기본 2),
+`PDF_OCR_RISK_VISUAL_BATCH_PAGES`(기본 4, 최대 8),
+`PDF_OCR_RISK_VISUAL_BATCH_TILES`(기본 12, 최대 24),
+`PDF_OCR_RISK_VISUAL_BATCH_BYTES`(기본 8MiB, 최대 24MiB),
+`PDF_OCR_RISK_VISUAL_BATCH_TOKENS`(기본 20, 최대 40),
+`MISTRAL_OCR_INLINE_MAX_MB`(기본 45MB, 초과 시 임시 파일 URL 후 즉시 삭제),
+`MISTRAL_OCR_MAX_FILE_MB`(기본 512MB), `MISTRAL_OCR_CLEANUP_TIMEOUT_MS`(기본 20초), `PDF_AUTO_MATH_THRESHOLD`(12),
 `PDF_RETYPESET_CHUNK_PAGES`(5), `PDF_TRANSLATE_CONCURRENCY`,
 `PDF_RETYPESET_CONCURRENCY`, `PDF_TRANSLATE_MODEL`(기본 모델),
 `PDF_TRANSLATE_MIN_FONT_PT`(기본 6pt, `0`이면 최소 글꼴 검증 비활성화),
-`PDF_OCR_SEMANTIC_JUDGE_MODEL`, `PDF_OCR_SEMANTIC_BATCH_PAGES`(기본 8),
+`PDF_OCR_SEMANTIC_JUDGE_MODEL`, `PDF_OCR_SEMANTIC_BATCH_PAGES`(기본 20),
+`PDF_OCR_SEMANTIC_CONCURRENCY`(기본 2),
 `PDF_OCR_VISUAL_JUDGE_MODEL`(기본 `mistral-medium-3-5`),
-`PDF_OCR_VISUAL_BATCH_PAGES`(기본 1), `PDF_OCR_VISUAL_MAX_IMAGES`(최대 60),
-`PDF_OCR_VISUAL_MAX_RAW_IMAGE_BYTES`(하드 상한 32MiB).
+`PDF_OCR_RISK_VISUAL_MODEL`(기본 `mistral-medium-3-5`),
+`PDF_OCR_VISUAL_BATCH_PAGES`(기본 8), `PDF_OCR_VISUAL_MAX_IMAGES`(최대 60),
+`PDF_OCR_VISUAL_MAX_RAW_IMAGE_BYTES`(하드 상한 32MiB),
+`PDF_TRANSLATE_POSTFLIGHT_TIMEOUT_MS`(기본 20분).
+
+빠른 번역은 이미 한국어인 구간과 문서 안에서 텍스트가 완전히 같은 반복
+머리글·꼬리글·섹션명을 모델에 중복 전송하지 않는다. 한국어 구간은 기존 문자·숫자·URL·
+수식 검증을 그대로 통과한 경우에만 직접 재사용하고, 반복 구간은 대표 번역이 품질 검증을
+통과한 뒤에만 나머지 ID로 복제한다. 대표 번역이 실패하면 전체 누락 검증도 기존처럼
+fail-closed한다.
 
 ## 도메인
 

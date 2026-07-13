@@ -2732,6 +2732,65 @@ def _detect_two_column(doc, _frac=(0.2, 0.35, 0.5, 0.65, 0.8)):
     return counted >= 2 and votes >= max(1, counted // 2 + counted % 2)
 
 
+def _page_has_hidden_ocr_scan(page):
+    """Detect a page-sized scan image paired with invisible OCR text."""
+    page_area = abs(page.rect) or 1.0
+    best_coverage = 0.0
+    try:
+        for image in page.get_images(full=True):
+            for raw_rect in page.get_image_rects(image[0]):
+                rect = fitz.Rect(raw_rect)
+                rect.intersect(page.rect)
+                best_coverage = max(best_coverage, abs(rect) / page_area)
+            if best_coverage >= 0.85:
+                break
+    except Exception:
+        return False
+    if best_coverage < 0.85:
+        return False
+
+    invisible = 0
+    visible = 0
+    try:
+        for span in page.get_texttrace():
+            count = len(span.get("chars") or ())
+            if not count:
+                continue
+            if span.get("type") == 3 or span.get("opacity") == 0:
+                invisible += count
+            else:
+                visible += count
+    except Exception:
+        pass
+    seen = invisible + visible
+    if seen > 0:
+        return invisible / seen >= 0.5
+
+    try:
+        for font in page.get_fonts():
+            name = str(font[3] or "").upper()
+            if "OCR" in name or "GLYPHLESS" in name or "INVISIBLE" in name:
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def _page_has_dominant_raster(page, threshold=0.5):
+    """Return True only when a raster image occupies a meaningful page majority."""
+    page_area = abs(page.rect) or 1.0
+    try:
+        for image in page.get_images(full=True):
+            for raw_rect in page.get_image_rects(image[0]):
+                rect = fitz.Rect(raw_rect)
+                rect.intersect(page.rect)
+                if abs(rect) / page_area >= threshold:
+                    return True
+    except Exception:
+        return False
+    return False
+
+
 def cmd_analyze(pdf_path):
     """텍스트 레이어 유무 + 수식 밀도 + 2단 여부를 판정(자동 변환방식 선택용).
     scanned: 텍스트 레이어 없음(스캔/이미지). math_density: 1000자당 수식 지표 점수.
@@ -2741,13 +2800,25 @@ def cmd_analyze(pdf_path):
     doc = fitz.open(pdf_path)
     total = 0
     parts = []
-    for page in doc:
+    low_text_nonblank_pages = []
+    hidden_ocr_scan_pages = []
+    for page_index, page in enumerate(doc):
         t = page.get_text("text") or ""
-        total += len(t.strip())
+        text_chars = len(t.strip())
+        total += text_chars
         parts.append(t)
+        # 문서 전체 평균만 보면 텍스트가 긴 몇 페이지가 이미지-only 페이지를 가려
+        # 혼합 PDF가 빠른 번역으로 잘못 라우팅된다. 글자가 거의 없는 개별 페이지가
+        # 실제 빈 종이가 아니라면 그 페이지의 픽셀도 OCR해야 하므로 문서 전체를
+        # strict OCR 재조판으로 보낸다. 진짜 백지는 그대로 보존하되 스캔 신호로 세지 않는다.
+        if text_chars < 20 and _page_has_dominant_raster(page):
+            low_text_nonblank_pages.append(page_index + 1)
+        elif text_chars >= 20 and _page_has_hidden_ocr_scan(page):
+            hidden_ocr_scan_pages.append(page_index + 1)
     text = "\n".join(parts)
     n = len(doc)
-    scanned = n > 0 and total < 20 * n
+    scan_pages = sorted(set(low_text_nonblank_pages + hidden_ocr_scan_pages))
+    scanned = n > 0 and (total < 20 * n or bool(scan_pages))
     # 깨진 텍스트층 감지: Type0/Identity-H 같은 서브셋 폰트가 ToUnicode 없이 박힌 PDF 는
     # 추출하면 글리프 인덱스가 그대로 나와 C0 제어문자·사설영역(PUA) 글자로 가득 찬다.
     # 정상 텍스트(한글·CJK 포함)는 본문에 제어문자가 사실상 없으므로, 비-공백 글자 중
@@ -2824,9 +2895,9 @@ def cmd_analyze(pdf_path):
     # 전면 배경이미지 + '보이는' 실제 텍스트(포스터·슬라이드)는 (2)에서 걸러져
     # 오탐하지 않는다. texttrace 미지원 환경에서만 OCR 폰트명(V6X_OCR·GlyphLess
     # 등)을 폴백 증거로 쓴다(OCR-A/B 디자인 폰트 오탐 방지).
-    ocr_layer = False
-    photo_ratio = 0.0
-    invis_ratio = 0.0
+    ocr_layer = bool(hidden_ocr_scan_pages)
+    photo_ratio = round(len(hidden_ocr_scan_pages) / max(n, 1), 3)
+    invis_ratio = 1.0 if hidden_ocr_scan_pages else 0.0
     if (not scanned) and (not garbled) and n > 0 and total > 0:
         idxs = list(range(n)) if n <= 24 else sorted({round(i * (n - 1) / 23) for i in range(24)})
         photo_pages = 0
@@ -2893,6 +2964,8 @@ def cmd_analyze(pdf_path):
             "page_count": n,
             "text_chars": total,
             "scanned": scanned,
+            "scan_page_count": len(scan_pages),
+            "scan_pages": scan_pages,
             "garbled": garbled,
             "garbled_ratio": garbled_ratio,
             "math_garbled": math_garbled,

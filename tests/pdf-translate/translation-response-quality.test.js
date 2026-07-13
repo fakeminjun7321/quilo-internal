@@ -81,6 +81,69 @@ test("repeated fixture segments retain every output ID without correction-reason
   assert.doesNotMatch(calls[0].user, /^- ID \d+:/m);
 });
 
+test("already-Korean and exact duplicate segments avoid model tokens while preserving every ID", async () => {
+  const calls = [];
+  const caller = async ({ user }) => {
+    calls.push(user);
+    return {
+      text: JSON.stringify({
+        t: {
+          1: "반복되는 머리글",
+          5: "고유한 본문입니다.",
+        },
+      }),
+      usage: { input_tokens: 12, output_tokens: 7 },
+    };
+  };
+
+  const result = await translateBlocksWithRetries({
+    blocks: [
+      { id: 1, text: "Repeated header" },
+      { id: 2, text: "Repeated header" },
+      { id: 3, text: "이미 한국어인 문단입니다." },
+      { id: 4, text: "Repeated header" },
+      { id: 5, text: "Unique body text." },
+    ],
+    caller,
+    retrySizes: [],
+    verbose: false,
+  });
+
+  assert.equal(calls.length, 1);
+  assert.match(calls[0], /"id":1/);
+  assert.match(calls[0], /"id":5/);
+  assert.doesNotMatch(calls[0], /"id":2|"id":3|"id":4/);
+  assert.deepEqual(result.translations, {
+    1: "반복되는 머리글",
+    2: "반복되는 머리글",
+    3: "이미 한국어인 문단입니다.",
+    4: "반복되는 머리글",
+    5: "고유한 본문입니다.",
+  });
+  assert.deepEqual(result.reuse, { korean: 1, duplicates: 2, modelBlocks: 2 });
+  assert.equal(result.usage.input_tokens, 12);
+  assert.equal(result.usage.output_tokens, 7);
+});
+
+test("a failed canonical duplicate remains fail-closed for all repeated IDs", async () => {
+  await assert.rejects(
+    translateBlocksWithRetries({
+      blocks: [
+        { id: 11, text: "Repeated unsafe text." },
+        { id: 12, text: "Repeated unsafe text." },
+      ],
+      caller: async () => ({ text: JSON.stringify({ t: {} }), usage: {} }),
+      retrySizes: [],
+      verbose: false,
+    }),
+    (error) => {
+      assert.equal(error.code, "PDF_TRANSLATION_QUALITY_FAILURE");
+      assert.deepEqual(error.details.missingIds, ["11", "12"]);
+      return true;
+    },
+  );
+});
+
 test("rejects lowercase untranslated prose outside a Korean parenthetical gloss", () => {
   const source = "This born-digital page contains an ordinary paragraph.";
 

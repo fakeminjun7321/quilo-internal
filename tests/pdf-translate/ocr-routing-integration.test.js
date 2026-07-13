@@ -15,6 +15,7 @@ const {
 const {
   buildOcrRenderManifest,
   mergeOcrRenderManifests,
+  mistralRiskVisualAdjudicator,
   prepareOcrModelInputs,
   prepareStrictScanOcr,
   validateOcrRenderManifest,
@@ -115,6 +116,41 @@ function providerResponse({ low = false } = {}) {
         content: markdown,
       }],
     }],
+  };
+}
+
+function multiPageProviderResponse(pageCount, { low = false } = {}) {
+  return {
+    id: "ocr-integration-multi-request-1",
+    model: "mistral-ocr-4-0",
+    usage_info: { pages_processed: pageCount, doc_size_bytes: SOURCE_PDF.length },
+    pages: Array.from({ length: pageCount }, (_, index) => {
+      const value = String(10 + index);
+      const markdown = `Measurement ${value} kg`;
+      return {
+        index,
+        markdown,
+        images: [],
+        dimensions: { dpi: 200, width: 1000, height: 2000 },
+        confidence_scores: {
+          average_page_confidence_score: 0.99,
+          minimum_page_confidence_score: low ? 0.5 : 0.99,
+          word_confidence_scores: [
+            { text: "Measurement", confidence: 0.99, start_index: 0 },
+            { text: value, confidence: low ? 0.5 : 0.99, start_index: 12 },
+            { text: "kg", confidence: low ? 0.5 : 0.99, start_index: 12 + value.length + 1 },
+          ],
+        },
+        blocks: [{
+          type: "text",
+          top_left_x: 50,
+          top_left_y: 100,
+          bottom_right_x: 950,
+          bottom_right_y: 300,
+          content: markdown,
+        }],
+      };
+    }),
   };
 }
 
@@ -376,6 +412,20 @@ test("visual adjudicator injection receives source PDF and exact rendered risk p
     }),
     (error) => error.code === "OCR_VISUAL_ADJUDICATION_INPUT_MISMATCH",
   );
+  const tamperedAdjudicator = structuredClone(routed.evidence);
+  tamperedAdjudicator.visual_adjudication.model = "tampered-judge-model";
+  const { evidence_sha256: oldAdjudicatorSeal, ...tamperedAdjudicatorUnsigned } =
+    tamperedAdjudicator;
+  void oldAdjudicatorSeal;
+  tamperedAdjudicator.evidence_sha256 = sha256Canonical(tamperedAdjudicatorUnsigned);
+  assert.throws(
+    () => validateRetypesetOcrEvidence({
+      ocrEvidence: tamperedAdjudicator,
+      ocrRenderManifest: visualManifest,
+      sourcePdf: SOURCE_PDF,
+    }),
+    (error) => error.code === "OCR_VISUAL_RENDER_ATTESTATION_INVALID",
+  );
   const bothResealedEvidence = structuredClone(routed.evidence);
   bothResealedEvidence.visual_adjudication.input_digest = "f".repeat(64);
   const { evidence_sha256: previousSeal, ...unsignedEvidence } = bothResealedEvidence;
@@ -508,6 +558,165 @@ test("visual adjudicator injection receives source PDF and exact rendered risk p
       error.code === "OCR_VISUAL_ADJUDICATION_ERROR" &&
       error.details.cause_code === "OCR_VISUAL_ADJUDICATION_INPUT_MISMATCH"
     ),
+  );
+
+  await assert.rejects(
+    () => prepareStrictScanOcr({
+      pdfBuffer: SOURCE_PDF,
+      sourcePageInspector: async () => SOURCE_PAGES,
+      renderPageProvider,
+      ocrClient,
+      visualAdjudicator: async (context) => {
+        const tile = context.renderedPages[0].tiles[0];
+        tile.buffer[tile.buffer.length - 1] ^= 1;
+        return {
+          verdict: "pass",
+          provider: "mock-vision",
+          model: "mock-vision-v1",
+          request_id: "mock-visual-request-mutated-render",
+          input_digest: context.inputDigest,
+          token_hashes: context.summary.risk_tokens.map((token) => token.token_sha256),
+        };
+      },
+    }),
+    (error) => (
+      error.code === "OCR_VISUAL_ADJUDICATION_ERROR" &&
+      error.details.cause_code === "OCR_VISUAL_RENDER_INVALID"
+    ),
+  );
+});
+
+test("production OCR risk visual adjudicator binds exact low-confidence hashes", async () => {
+  const tokenHash = sha(Buffer.from("84.20 mL"));
+  const inputDigest = "a".repeat(64);
+  const result = await mistralRiskVisualAdjudicator({
+    summary: {
+      risk_tokens: [{
+        page_index: 0,
+        block_order: 0,
+        type: "number_unit",
+        token_sha256: tokenHash,
+        needs_visual_adjudication: true,
+      }],
+    },
+    evidence: {
+      pages: [{
+        blocks: [{ order: 0, content: "Measurement 84.20 mL", bbox: [0, 0, 100, 40] }],
+      }],
+    },
+    renderedPages: [{
+      index: 0,
+      tiles: [{ media_type: "image/png", buffer: PNG }],
+    }],
+    inputDigest,
+    apiKey: "test-key",
+    fetchImpl: async (_url, options) => {
+      const request = JSON.parse(options.body);
+      assert.equal(request.model, "mistral-medium-3-5");
+      assert.match(request.messages[0].content[0].text, /84\.20 mL/);
+      return {
+        status: 200,
+        ok: true,
+        headers: { get: (name) => name === "x-request-id" ? "risk-judge-1" : null },
+        async text() {
+          return JSON.stringify({
+            choices: [{
+              message: {
+                content: JSON.stringify({
+                  verdict: "pass",
+                  input_digest: inputDigest,
+                  token_hashes: [tokenHash],
+                }),
+              },
+            }],
+          });
+        },
+      };
+    },
+    sleepImpl: async () => {},
+  });
+  assert.deepEqual(result, {
+    verdict: "pass",
+    provider: "mistral",
+    model: "mistral-medium-3-5",
+    request_id: "risk-judge-1",
+    input_digest: inputDigest,
+    token_hashes: [tokenHash],
+  });
+});
+
+test("risk visual adjudication renders and judges long risky inputs in sealed byte-bounded batches", async () => {
+  const pageCount = 5;
+  const sourcePages = Array.from({ length: pageCount }, (_, index) => ({
+    index,
+    width: 100,
+    height: 200,
+    rotation: 0,
+  }));
+  const renderCalls = [];
+  const judgeCalls = [];
+  const routed = await prepareStrictScanOcr({
+    pdfBuffer: SOURCE_PDF,
+    sourcePageInspector: async () => sourcePages,
+    visualBatchLimits: { pages: 2, tiles: 2, bytes: PNG.length, tokens: 1 },
+    renderPageProvider: async (_buffer, indices) => {
+      renderCalls.push([...indices]);
+      return indices.map((index) => ({
+        index,
+        source_width: 100,
+        source_height: 200,
+        tiles: [{
+          index: 0,
+          bbox: [0, 0, 100, 200],
+          width: 100,
+          height: 200,
+          media_type: "image/png",
+          image_sha256: sha(PNG),
+          buffer: PNG,
+        }],
+      }));
+    },
+    ocrClient: (buffer, options) => ocrPdfToEvidenceStrict(buffer, {
+      ...options,
+      apiKey: "mock-key",
+      fetchImpl: fetchResponse(multiPageProviderResponse(pageCount, { low: true })),
+      sleepImpl: async () => {},
+    }),
+    visualAdjudicator: async (context) => {
+      const indices = context.renderedPages.map((page) => page.index);
+      assert.ok(context.summary.risk_tokens.length <= 1);
+      judgeCalls.push(indices);
+      context.adjudicationInput.rendered_pages[0].tiles[0].image_sha256 = "e".repeat(64);
+      return {
+        verdict: "pass",
+        provider: "mock-vision",
+        model: "mock-vision-v1",
+        request_id: `mock-visual-${judgeCalls.length}`,
+        input_digest: context.inputDigest,
+        token_hashes: [...new Set(context.summary.risk_tokens.map(
+          (token) => token.token_sha256,
+        ))],
+      };
+    },
+  });
+
+  assert.deepEqual(renderCalls, [[0, 1], [0], [1], [2, 3], [2], [3], [4]]);
+  assert.ok(judgeCalls.every((indices) => indices.length === 1));
+  assert.deepEqual(
+    [...new Set(judgeCalls.flat())].sort((left, right) => left - right),
+    [0, 1, 2, 3, 4],
+  );
+  assert.match(routed.evidence.visual_adjudication.request_id, /^batch-[a-f0-9]{64}$/);
+  assert.deepEqual(
+    routed.evidence.visual_adjudication.input_commitment.rendered_pages.map((page) => page.index),
+    [0, 1, 2, 3, 4],
+  );
+  assert.ok(routed.evidence.visual_adjudication.input_commitment.rendered_pages.every(
+    (page) => page.tiles.every((tile) => tile.image_sha256 === sha(PNG)),
+  ));
+  assert.equal(
+    routed.evidence.visual_adjudication.input_digest,
+    routed.visualAdjudicationInputSha256,
   );
 });
 

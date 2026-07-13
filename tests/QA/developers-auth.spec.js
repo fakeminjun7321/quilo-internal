@@ -90,7 +90,7 @@ function apiFixture(pathname) {
     "/api/me/beta": { admin: false, tier: "free", features: [], blockedReportTypes: [] },
     "/api/me/files": { storage: true, files: [] },
     "/api/subscriptions/me": { active: false, subscription: null },
-    "/api/version": { app: "quilo", version: "qa", shortCommit: "auth" },
+    "/api/version": { app: "quilo", version: "1.0.0", releaseVersion: "1.0.23", shortCommit: "auth" },
     "/api/write-assist/models": { enabled: false, models: [] },
   };
   return fixtures[pathname] || {};
@@ -270,6 +270,7 @@ test("developer portal presents a focused navigation and responsive documentatio
     /빠른 시작/, /API 문서/, /액세스 토큰/, /API 기록/,
   ]);
   await expect(page.locator(".dev-sidebar")).toBeVisible();
+  await expect(page.locator("#serviceStatus")).toHaveText("Quilo 1.0.23 운영 서버 정상");
   await expect(page.locator(".dev-endpoints > div")).toHaveCount(6);
   await expect(page.locator("#catalogBody .feature")).toHaveCount(1);
 

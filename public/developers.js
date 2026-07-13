@@ -29,8 +29,9 @@ async function api(path, options) {
 async function loadStatus() {
   try {
     const data = await api("/api/version");
+    const displayedVersion = data.releaseVersion || data.version || "";
     $("serviceDot").classList.add("ok");
-    $("serviceStatus").textContent = `Quilo ${data.version || ""} 운영 서버 정상`;
+    $("serviceStatus").textContent = `Quilo ${displayedVersion} 운영 서버 정상`;
   } catch (error) {
     $("serviceStatus").textContent = `서버 확인 실패 · ${error.message}`;
   }

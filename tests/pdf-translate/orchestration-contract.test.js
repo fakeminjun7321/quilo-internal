@@ -76,30 +76,47 @@ test("auto and restore mode resolution are fail-closed", () => {
   );
 });
 
-test("limit parsing preserves service defaults and rejects malformed overrides", () => {
+test("limit parsing preserves the overall cap and ignores the retired OCR-only cap", () => {
   assert.deepEqual(
     resolvePdfTranslationLimits({
       env: {},
       defaultMaxPages: 700,
-      defaultOcrMaxPages: 30,
     }),
-    { maxPages: 700, ocrMaxPages: 30 },
+    { maxPages: 700, ocrMaxPages: 700 },
   );
   assert.deepEqual(
     resolvePdfTranslationLimits({
       env: { PDF_TRANSLATE_MAX_PAGES: "80", PDF_OCR_MAX_PAGES: "20" },
       defaultMaxPages: 700,
-      defaultOcrMaxPages: 30,
     }),
-    { maxPages: 80, ocrMaxPages: 20 },
+    { maxPages: 80, ocrMaxPages: 80 },
   );
   assert.deepEqual(
     resolvePdfTranslationLimits({
       env: { PDF_TRANSLATE_MAX_PAGES: "80pages", PDF_OCR_MAX_PAGES: "0" },
       defaultMaxPages: 700,
-      defaultOcrMaxPages: 30,
     }),
-    { maxPages: 700, ocrMaxPages: 30 },
+    { maxPages: 700, ocrMaxPages: 700 },
+  );
+});
+
+test("scan limits accept long documents through the shared page budget", () => {
+  const limits = resolvePdfTranslationLimits({ env: {}, defaultMaxPages: 700 });
+  for (const pageCount of [31, 60, 100, 300, 700]) {
+    assert.deepEqual(
+      assertPdfTranslationInputCoverage({
+        routing: { pageCount, scanned: true, truncated: false },
+        maxPages: Math.min(limits.maxPages, limits.ocrMaxPages),
+      }),
+      { pageCount, maxPages: 700, truncated: false },
+    );
+  }
+  assert.throws(
+    () => assertPdfTranslationInputCoverage({
+      routing: { pageCount: 701, scanned: true },
+      maxPages: Math.min(limits.maxPages, limits.ocrMaxPages),
+    }),
+    (error) => error.details.kind === "pdf_page_limit_exceeded",
   );
 });
 
@@ -327,4 +344,31 @@ test("both HTTP entrypoints use the shared terminal contract", () => {
     assert.match(source, /finalizePdfTranslationOutput\s*\(/);
     assert.doesNotMatch(source, /verifyPdfTranslationPostflight\s*\(/);
   }
+});
+
+test("main admin translation path bypasses only the page-count gate", () => {
+  const root = path.resolve(__dirname, "../..");
+  const server = fs.readFileSync(path.join(root, "server.js"), "utf8");
+  const translator = fs.readFileSync(
+    path.join(root, "lib/pipelines/pdf-translate/translate.js"),
+    "utf8",
+  );
+  assert.match(server, /adminPageLimitBypass:\s*effectiveIsAdmin/);
+  assert.match(server, /adminPageLimitBypass\s*\?\s*Number\.MAX_SAFE_INTEGER/);
+  assert.match(translator, /maxPages\s*=\s*MAX_PAGES/);
+  assert.match(translator, /pages\s*>\s*pageLimit/);
+  assert.match(server, /assertCompleteRasterization/);
+});
+
+test("standalone scan path uses chunked large-document orchestration", () => {
+  const source = fs.readFileSync(
+    path.resolve(__dirname, "../../translate-server.js"),
+    "utf8",
+  );
+  assert.match(source, /defaultMaxPages:\s*700/);
+  assert.match(source, /largeVision:\s*true/);
+  assert.match(source, /async function translateLargeVisionPdf/);
+  assert.match(source, /mergeOcrRenderManifests/);
+  assert.match(source, /assertCanonicalOcrChunkSubset/);
+  assert.match(source, /Promise\.allSettled/);
 });

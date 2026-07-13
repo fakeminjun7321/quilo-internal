@@ -194,7 +194,18 @@ Render Web Service 설정 예시:
 | `ANTHROPIC_IMAGE_MAX_EDGE` | 이미지 리사이즈 최대 edge |
 | `PYTHON_BIN` | HWPX·PDF 생성기가 쓸 Python 경로(미설정 시 `.venv` 우선) |
 | `PDF_AUTO_MATH_THRESHOLD` | PDF 통번역 자동 모드의 수식 밀도 임계값, 기본 `12` |
-| `PDF_OCR_MAX_PAGES` | 스캔본 OCR 재조판 최대 페이지 |
+| `PDF_TRANSLATE_MAX_PAGES` | PDF 통번역 전체 최대 페이지, 기본 `700` |
+| `PDF_OCR_MAX_PAGES` | 폐기된 호환 변수. 값이 남아 있어도 무시되며 스캔본은 전체 PDF 상한을 따름 |
+| `PDF_OCR_PROVIDER_BATCH_PAGES` | strict OCR 공급자 호출당 페이지, 기본 `50` |
+| `PDF_OCR_PROVIDER_CONCURRENCY` | 문서 내 strict OCR 동시 호출, 기본 `2`(최대 `4`) |
+| `PDF_OCR_RISK_VISUAL_BATCH_PAGES` | 저신뢰 OCR 시각 판정 호출당 페이지, 기본 `4`(최대 `8`) |
+| `PDF_OCR_RISK_VISUAL_BATCH_TILES` | 저신뢰 OCR 시각 판정 호출당 타일, 기본 `12`(최대 `24`) |
+| `PDF_OCR_RISK_VISUAL_BATCH_BYTES` | 저신뢰 OCR 시각 판정 호출당 실제 이미지 바이트, 기본 `8MiB`(최대 `24MiB`) |
+| `PDF_OCR_RISK_VISUAL_BATCH_TOKENS` | 저신뢰 OCR 시각 판정 호출당 숫자·단위 등 위험 토큰, 기본 `20`(최대 `40`) |
+| `MISTRAL_OCR_INLINE_MAX_MB` | OCR data URL 직접 전송 기준, 기본 `45`. 초과 입력은 임시 파일 URL 사용 후 즉시 삭제 |
+| `MISTRAL_OCR_MAX_FILE_MB` | OCR 공급자 파일 절대 상한, 기본 `512` |
+| `MISTRAL_OCR_CLEANUP_TIMEOUT_MS` | 임시 OCR 파일 삭제 전용 timeout, 기본 `20000` ms |
+| `PDF_TRANSLATE_TIMEOUT_MS` | PDF 파일별 작업 timeout, 기본 `5400000` ms(90분) |
 | `PDF_RETYPESET_MODEL` | 재조판 기본 모델(미설정 시 Sonnet/요청값) |
 | `TECTONIC_BIN` | Tectonic 바이너리 경로(미설정 시 `bin/tectonic`→PATH) |
 | `BETA_DAILY_LIMIT` | 베타 기능 테스터 1인당 일일 사용 한도 기본값, 기본 `15` |
@@ -204,6 +215,8 @@ Render Web Service 설정 예시:
 | `FEEDBACK_EMAIL_FROM` 또는 `RESEND_FROM` | 발신자 |
 | `FEEDBACK_EMAIL_TO` | 건의사항 수신자 |
 | `PREMIUM_PRICE_KRW` / `PREMIUM_BANK` / `PREMIUM_ACCOUNT` / `PREMIUM_HOLDER` / `PREMIUM_PERIOD_DAYS` / `PREMIUM_NOTIFY_EMAIL` | 백그라운드 구독 입금 안내용 |
+
+PDF 통번역의 일반 사용자 기술 상한은 기본 700쪽이며, 관리자는 페이지 수 검사만 면제된다. 페이지·구간별 픽셀/타일/요청 크기 안전장치와 완전성 검증은 관리자에게도 동일하게 적용된다.
 
 환경변수 예시는 [`.env.example`](./.env.example)을 참고하세요. 실제 `.env`와 API 키는 절대 GitHub에 올리지 않습니다.
 

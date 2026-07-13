@@ -66,8 +66,7 @@ function translatedValue(item) {
   const id = String(item.id);
   const fixed = {
     "__pdf_outline__:000000": "주요 섹션",
-    "__pdf_outline__:000001": "첫 번째 반복 세부 항목",
-    "__pdf_outline__:000002": "두 번째 반복 세부 항목",
+    "__pdf_outline__:000001": "반복 세부 항목",
     "__pdf_outline__:000004": "마지막 섹션",
     "__pdf_metadata__:title": "대용량 구조 번역 픽스처",
     "__pdf_metadata__:subject": "리더에 표시되는 구간 병합 정보",
@@ -124,18 +123,22 @@ test("large orchestration translates whole-document virtual blocks once and rest
     });
     fs.writeFileSync(output, result.buffer);
 
-    const virtualIds = [
+    const modelVirtualIds = [
       "__pdf_outline__:000000",
       "__pdf_outline__:000001",
-      "__pdf_outline__:000002",
       "__pdf_outline__:000004",
       "__pdf_metadata__:title",
       "__pdf_metadata__:subject",
       "__pdf_metadata__:keywords",
     ];
-    for (const id of virtualIds) {
+    for (const id of modelVirtualIds) {
       assert.equal(seen.get(id), 1, `${id} should reach the caller exactly once`);
     }
+    assert.equal(
+      seen.get("__pdf_outline__:000002"),
+      undefined,
+      "an exact repeated outline should reuse its canonical translation without another model token",
+    );
     assert.ok(callerInvocations >= 3, "two page chunks and one structure batch must run");
     assert.equal(result.pageCount, 51);
     assert.equal(result.blockCount, 58);
@@ -163,8 +166,8 @@ with fitz.open(sys.argv[1]) as doc:
     assert.equal(inspection.pages, 51);
     assert.deepEqual(inspection.titles, [
       "주요 섹션",
-      "첫 번째 반복 세부 항목",
-      "두 번째 반복 세부 항목",
+      "반복 세부 항목",
+      "반복 세부 항목",
       "RFC",
       "마지막 섹션",
     ]);

@@ -362,7 +362,15 @@
             mode === "retypeset" ? "retypeset" : needs ? "retypeset" : "inplace";
           const isOpus = /opus/i.test(modelId || ""); // Opus 만 느린 티어(GPT·Sonnet 은 빠름)
           const charTok = chars / 3.5;
-          const maxPages = 700;
+          const configuredLimits = meta._translationLimits || {};
+          const unlimitedPages = !!configuredLimits.unlimitedPages;
+          const overallMaxPages = Math.max(1, +configuredLimits.overallMaxPages || 700);
+          const ocrMaxPages = Math.max(1, +configuredLimits.ocrMaxPages || overallMaxPages);
+          const maxPages = unlimitedPages
+            ? Number.POSITIVE_INFINITY
+            : visionOcr
+              ? Math.min(overallMaxPages, ocrMaxPages)
+              : overallMaxPages;
           const chunkPages = 50;
           const ocrChunk = 10, ocrConc = 6;
           const tooManyPages = pages > maxPages;
@@ -409,6 +417,7 @@
             truncated,
             tooManyPages,
             maxPages,
+            unlimitedPages,
             chunked,
             chunks: chunked ? Math.ceil(pages / chunkPages) : 1,
             chunkPages,
@@ -441,7 +450,7 @@
           estEl.innerHTML =
             `<b>${e.pages}쪽</b> · 변환 방식 <b>${modeLabel}</b>` +
             (e.truncated
-              ? ` <span class="app-runtime-warning">(앞 30쪽만 처리)</span>`
+              ? ` <span class="app-runtime-warning">(페이지 준비 불완전 - 작업 중단)</span>`
               : ``) +
             (e.chunked
               ? ` <span class="app-runtime-dim">· ${e.chunkPages}쪽씩 ${e.chunks}개 구간 병렬 번역 후 합침</span>`
@@ -521,7 +530,16 @@
                 if (seq !== estSeq) return false;
                 if (r.ok) {
                   const e = await r.json();
-                  if (e.meta) estMetas.set(fileKey(f), e.meta);
+                  if (e.meta) {
+                    estMetas.set(fileKey(f), {
+                      ...e.meta,
+                      _translationLimits: {
+                        overallMaxPages: e.overallMaxPages || e.maxPages,
+                        ocrMaxPages: e.ocrMaxPages || e.maxPages,
+                        unlimitedPages: !!e.unlimitedPages,
+                      },
+                    });
+                  }
                 }
               } catch (_) {
                 if (seq !== estSeq) return false;
@@ -761,6 +779,16 @@
             try {
               await updateEstimate();
             } catch (_) {}
+          }
+          const chosenModel = document.getElementById("trModel").value;
+          const overLimit = list.find((file) => {
+            const meta = estMetas.get(fileKey(file));
+            return meta && calcEstimate(meta, chosenMode, chosenModel).tooManyPages;
+          });
+          if (overLimit) {
+            errEl.textContent = `${overLimit.name}: 서버 페이지 한도를 초과했습니다.`;
+            errEl.hidden = false;
+            return;
           }
           // 파일별 변환 방식(서버 'modes' 배열) — 기본은 선택한 공통 방식.
           let modes = list.map(() => chosenMode);

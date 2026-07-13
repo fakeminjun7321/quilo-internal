@@ -35,10 +35,10 @@
 
   const STATIC_LINKS = Object.freeze({
     developer: [
-      { title: "개발자 플랫폼", summary: "API, Codex, ChatGPT 연결을 시작합니다.", path: "/developers.html" },
-      { title: "API 문서", summary: "인증, scope, 요청 형식을 확인합니다.", path: "/developers.html#api" },
-      { title: "기능 카탈로그", summary: "연결 가능한 전체 기능을 탐색합니다.", path: "/developers.html#catalog" },
-      { title: "API 토큰", summary: "범위를 제한한 액세스 토큰을 관리합니다.", path: "/developers.html#tokenCard", audience: "member" },
+      { title: "빠른 시작", summary: "계정 연결부터 첫 요청까지 확인합니다.", path: "/developers.html#quickstart" },
+      { title: "API 문서", summary: "인증과 실제 엔드포인트를 확인합니다.", path: "/developers.html#api" },
+      { title: "액세스 토큰", summary: "필요한 권한만 선택해 토큰을 발급합니다.", path: "/developers.html#tokenCard", audience: "member" },
+      { title: "기능 카탈로그", summary: "연결 가능한 전체 기능을 검색합니다.", path: "/developers.html#catalog" },
     ],
     resources: [
       { title: "이용 가이드", summary: "기능별 입력 방법과 사용 원칙", path: "/guide.html" },
@@ -120,8 +120,8 @@
       {
         label: "개발자",
         sections: [
-          { title: "플랫폼", items: STATIC_LINKS.developer },
-          { title: "계산 API", items: items(["word-count", "statistics", "regression", "unit-convert", "graph"]) },
+          { title: "시작하기", items: STATIC_LINKS.developer.slice(0, 2) },
+          { title: "관리", items: STATIC_LINKS.developer.slice(2) },
         ],
         all: { title: "개발자 플랫폼 열기", path: "/developers.html" },
       },

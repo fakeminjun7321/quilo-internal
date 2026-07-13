@@ -756,6 +756,7 @@ const {
   allowedEmailDomains,
   normalizeSchoolEmail,
 } = require("./lib/mailer");
+const { isQuiloStaffEmail } = require("./lib/account-domains");
 const { generateToken, hashToken } = require("./lib/auth");
 const { getVersionInfo } = require("./lib/version-info");
 const { translatePdf, makeGate } = require("./lib/pipelines/pdf-translate/translate");
@@ -934,6 +935,8 @@ if (
         id: "dev-admin",
         name: "개발관리자",
         isAdmin: true,
+        isDeveloper: true,
+        isStaff: true,
       };
     }
     next();
@@ -1121,6 +1124,10 @@ async function refreshSessionUser(req, { failClosed = false } = {}) {
       studentId: normalizeStudentId(fresh.student_id),
       // 외부 토큰은 관리자 권한으로 승격되지 않는다. 허용 작업은 scope가 전부 결정한다.
       isAdmin: req.apiUser ? false : !!fresh.is_admin,
+      isStaff: req.apiUser ? false : !!fresh.is_staff,
+      isDeveloper: req.apiUser ? false : !!fresh.is_developer,
+      avatarUrl: fresh.avatar_url || null,
+      profileBio: String(fresh.profile_bio || ""),
       unlimited: !!fresh.unlimited,
       restrictedModel: fresh.restricted_model || null,
       emailVerified: !!fresh.email_verified,
@@ -1603,6 +1610,10 @@ app.post("/api/login", async (req, res) => {
       username: user.username || user.name,
       studentId: normalizeStudentId(user.student_id),
       isAdmin: !!user.is_admin,
+      isStaff: !!user.is_staff,
+      isDeveloper: !!user.is_developer,
+      avatarUrl: user.avatar_url || null,
+      profileBio: String(user.profile_bio || ""),
       unlimited: !!user.unlimited,
       restrictedModel: user.restricted_model || null,
       emailVerified: !!user.email_verified,
@@ -1660,6 +1671,7 @@ app.post("/api/signup", async (req, res) => {
     password,
     studentId,
     email,
+    studentConfirmed,
     age14Confirmed,
     termsAccepted,
   } = req.body || {};
@@ -1681,10 +1693,20 @@ app.post("/api/signup", async (req, res) => {
   if (String(password).length < 8) {
     return res.status(400).json({ error: "비밀번호는 8자 이상이어야 합니다." });
   }
-  // 학교 이메일 검증(도메인 제한). 1단계 인증에 사용.
+  // 학교 이메일 검증(도메인 제한). Quilo 조직 계정은 학생 계정이 아니므로
+  // 학번·재학생 확인을 요구하지 않되, 실제 메일 링크 인증 전에는 역할을 주지 않는다.
   const emailCheck = normalizeSchoolEmail(email);
   if (!emailCheck.ok) {
     return res.status(400).json({ error: emailCheck.reason });
+  }
+  const organizationStaff = isQuiloStaffEmail(emailCheck.email);
+  if (!organizationStaff && !String(studentId || "").trim()) {
+    return res.status(400).json({ error: "학생 확인을 위해 학번을 입력하세요." });
+  }
+  if (!organizationStaff && !studentConfirmed) {
+    return res
+      .status(403)
+      .json({ error: "Quilo는 현재 학교에 재학 중인 학생만 가입할 수 있습니다." });
   }
   if (!age14Confirmed) {
     return res
@@ -1729,7 +1751,7 @@ app.post("/api/signup", async (req, res) => {
       isAdmin: false,
       approved: false,
       emailVerified: false,
-      studentId: String(studentId || "").trim().slice(0, 30),
+      studentId: organizationStaff ? "" : String(studentId || "").trim().slice(0, 30),
     });
     req.session.userInfo = {
       id: user.id,
@@ -1737,6 +1759,10 @@ app.post("/api/signup", async (req, res) => {
       username: user.username || user.name,
       studentId: normalizeStudentId(user.student_id),
       isAdmin: false,
+      isStaff: false,
+      isDeveloper: false,
+      avatarUrl: null,
+      profileBio: "",
       unlimited: false,
       restrictedModel: null,
       emailVerified: false,
@@ -1766,6 +1792,7 @@ app.post("/api/signup", async (req, res) => {
       pendingEmail: emailCheck.email,
       emailSent,
       emailReason: process.env.NODE_ENV === "production" ? "" : emailReason,
+      organizationStaffPending: organizationStaff,
     });
   } catch (e) {
     // 아이디 unique 위반(동시 가입 레이스) → 409
@@ -1847,8 +1874,9 @@ app.post("/api/verify-email/confirm", async (req, res) => {
     // 로그인 세션이 있으면 즉시 반영.
     if (req.session && req.session.userInfo && req.session.userInfo.id === out.user.id) {
       req.session.userInfo.emailVerified = true;
+      req.session.userInfo.isStaff = !!out.user.is_staff;
     }
-    return res.json({ ok: true });
+    return res.json({ ok: true, staffGranted: !!out.staffGranted });
   } catch (e) {
     console.error("[verify-email/confirm] error:", e);
     return res.status(500).json({ error: "이메일 인증 처리 중 오류가 발생했습니다." });
@@ -1875,6 +1903,10 @@ app.get("/api/me", async (req, res) => {
   let pendingEmail = "";
   let emailVerified = !!u.emailVerified;
   let approved = !!u.approved;
+  let isStaff = !!u.isStaff;
+  let isDeveloper = !!u.isDeveloper;
+  let avatarUrl = u.avatarUrl || null;
+  let profileBio = String(u.profileBio || "");
   if (supa.isEnabled() && u.id) {
     try {
       const freshUser = await supa.findUserById(u.id);
@@ -1892,9 +1924,17 @@ app.get("/api/me", async (req, res) => {
         pendingEmail = String(freshUser.email_verify_email || "");
         emailVerified = !!freshUser.email_verified;
         approved = !!freshUser.approved;
+        isStaff = !!freshUser.is_staff;
+        isDeveloper = !!freshUser.is_developer;
+        avatarUrl = freshUser.avatar_url || null;
+        profileBio = String(freshUser.profile_bio || "");
         // 세션에도 최신 인증 상태 반영(이후 게이트 판단의 stale 방지).
         req.session.userInfo.emailVerified = emailVerified;
         req.session.userInfo.approved = approved;
+        req.session.userInfo.isStaff = isStaff;
+        req.session.userInfo.isDeveloper = isDeveloper;
+        req.session.userInfo.avatarUrl = avatarUrl;
+        req.session.userInfo.profileBio = profileBio;
       }
     } catch (e) {
       console.warn("[me] profile lookup failed:", e.message);
@@ -1905,6 +1945,10 @@ app.get("/api/me", async (req, res) => {
     user: u.name,
     username,
     isAdmin: !!u.isAdmin,
+    isStaff,
+    isDeveloper,
+    avatarUrl,
+    profileBio,
     studentId,
     styleNote,
     blockedReportTypes,
@@ -6754,6 +6798,19 @@ app.use(
   }),
 );
 
+// 개발 노트·자료실·자료 요청·프로필. 공개 글은 누구나 읽고, 쓰기는 DB의
+// is_developer/is_staff 역할을 매 요청마다 다시 확인한다.
+app.use(
+  "/api/editorial",
+  require("./lib/editorial-routes")({
+    requireAuth,
+    requireAdmin,
+    getSessionUser,
+    refreshSessionUser,
+    upload,
+  }),
+);
+
 // 랩(기술 공개): 공개 읽기 — 제목 목록 / 상세(본문+코드) / 코드 파일 다운로드(화이트리스트).
 app.use("/api/lab", require("./lib/lab-routes")());
 
@@ -7769,6 +7826,105 @@ app.get("/api/admin/exchange-rate", requireAdmin, async (req, res) => {
     console.error("[admin]", req.method, req.path, "error:", e);
     res.status(500).json({ error: "처리 중 오류가 발생했습니다." });
   }
+});
+
+// ── Public service status ──────────────────────────────────────────────────
+// /healthz 는 외부 모니터용 최소 JSON으로 유지하고, 사람이 보는 상태 페이지는 이
+// API를 사용한다. 비밀값·내부 오류문은 내보내지 않고 연결 여부와 지연만 공개한다.
+async function timedStatusCheck(task, timeoutMs = 4500) {
+  const started = Date.now();
+  let timeoutId;
+  try {
+    const result = await Promise.race([
+      Promise.resolve().then(task),
+      new Promise((_, reject) =>
+        { timeoutId = setTimeout(() => reject(new Error("STATUS_TIMEOUT")), timeoutMs); },
+      ),
+    ]);
+    return { ok: !!(result && result.ok !== false), latencyMs: Date.now() - started, result };
+  } catch (error) {
+    return { ok: false, latencyMs: Date.now() - started, error };
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+app.get("/api/status", async (_req, res) => {
+  res.set("Cache-Control", "no-store, max-age=0");
+  const checkedAt = new Date().toISOString();
+  const [database, storage] = await Promise.all([
+    timedStatusCheck(() => supa.ping()),
+    timedStatusCheck(async () => {
+      const client = supa.getClient();
+      if (!client) return { ok: false };
+      const { bucket } = supa.reportStorageConfig();
+      const { data, error } = await client.storage.getBucket(bucket);
+      return { ok: !error && !!data };
+    }),
+  ]);
+  const reportConfigured = !!(
+    process.env.ANTHROPIC_API_KEY ||
+    process.env.OPENAI_API_KEY ||
+    process.env.GPT_API_KEY
+  );
+  const emailConfigured = !!(
+    process.env.RESEND_API_KEY &&
+    (process.env.RESEND_FROM || process.env.FEEDBACK_EMAIL_FROM)
+  );
+  const checks = [
+    {
+      key: "web",
+      label: "웹사이트 및 로그인",
+      status: "operational",
+      latencyMs: 0,
+      detail: "웹 서버가 요청을 정상적으로 처리하고 있습니다.",
+      checkedAt,
+    },
+    {
+      key: "reports",
+      label: "보고서 생성",
+      status: reportConfigured ? "operational" : "degraded",
+      latencyMs: null,
+      detail: reportConfigured
+        ? "보고서 생성 제공자 연결이 설정되어 있습니다."
+        : "보고서 생성 연결 설정을 확인하고 있습니다.",
+      checkedAt,
+    },
+    {
+      key: "storage",
+      label: "파일 저장",
+      status: storage.ok ? "operational" : "degraded",
+      latencyMs: storage.latencyMs,
+      detail: storage.ok
+        ? "생성 파일 저장소에 연결할 수 있습니다."
+        : "파일 저장소 연결 확인이 지연되고 있습니다.",
+      checkedAt,
+    },
+    {
+      key: "email",
+      label: "이메일 인증",
+      status: emailConfigured ? "operational" : "degraded",
+      latencyMs: null,
+      detail: emailConfigured
+        ? "인증 메일 발송 설정이 준비되어 있습니다."
+        : "인증 메일 발송 설정을 확인하고 있습니다.",
+      checkedAt,
+    },
+    {
+      key: "database",
+      label: "데이터베이스",
+      status: database.ok ? "operational" : "degraded",
+      latencyMs: database.latencyMs,
+      detail: database.ok
+        ? "계정 및 작업 데이터에 연결할 수 있습니다."
+        : "데이터 연결 확인이 지연되고 있습니다.",
+      checkedAt,
+    },
+  ];
+  const overall = checks.every((check) => check.status === "operational")
+    ? "operational"
+    : "degraded";
+  res.json({ ok: overall === "operational", status: overall, checkedAt, checks });
 });
 
 // ── Static + index ──────────────────────────────────────────────────────────

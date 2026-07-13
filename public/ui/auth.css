@@ -252,6 +252,11 @@ html[data-theme="dark"] .context-theme__icon--sun { display: inline; }
   min-width: 0;
 }
 
+.auth-field[hidden],
+.auth-check[hidden] {
+  display: none !important;
+}
+
 .auth-field label,
 .auth-field__label {
   display: block;

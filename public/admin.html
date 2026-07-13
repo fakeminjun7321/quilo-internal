@@ -125,6 +125,7 @@
         <div class="user-inspector-action-grid">
           <button type="button" data-inspector-action="topup">크레딧 조정</button>
           <button type="button" data-inspector-action="approve">승인 상태</button>
+          <button type="button" data-inspector-action="roles">스탭·개발자 권한</button>
           <button type="button" data-inspector-action="model">모델 권한</button>
           <button type="button" data-inspector-action="reports">보고서 권한</button>
           <button type="button" data-inspector-action="edit">비밀번호 변경</button>
@@ -627,12 +628,29 @@
         status.textContent = "사용자 목록을 불러오는 중입니다.";
         document.getElementById("adminUsersSection")?.setAttribute("aria-busy", "true");
         try {
-          const res = await fetch("/api/admin/users");
+          const [res, roleRes] = await Promise.all([
+            fetch("/api/admin/users"),
+            fetch("/api/editorial/admin/roles").catch(() => null),
+          ]);
           if (!res.ok) {
             const e = await res.json();
             throw new Error(e.error || "fetch failed");
           }
           const data = await res.json();
+          let roleMap = new Map();
+          if (roleRes && roleRes.ok) {
+            const roleData = await roleRes.json().catch(() => ({}));
+            roleMap = new Map((roleData.users || []).map((user) => [String(user.id), user]));
+          }
+          data.users = (data.users || []).map((user) => {
+            const roles = roleMap.get(String(user.id)) || {};
+            return {
+              ...user,
+              is_staff: !!roles.isStaff,
+              is_developer: !!roles.isDeveloper,
+              avatar_url: roles.avatarUrl || null,
+            };
+          });
           krwPerUsd = data.krwPerUsd || krwPerUsd;
           document.getElementById("rateInfo").textContent =
             `현재 환율: 1 USD = ${krwPerUsd.toFixed(2)} KRW`;
@@ -783,7 +801,7 @@
           tr.setAttribute("aria-selected", "false");
           tr.innerHTML = `
             <td><div class="user-primary"><strong>${escape(u.name)}</strong><span>${escape(identityMeta)}</span></div></td>
-            <td>${verifyCell}${isAdmin ? '<span class="status-pill status-pill--admin">관리자</span>' : ""}</td>
+            <td>${verifyCell}${isAdmin ? '<span class="status-pill status-pill--admin">관리자</span>' : ""}${u.is_developer ? '<span class="status-pill status-pill--accent">개발자</span>' : ""}${u.is_staff ? '<span class="status-pill status-pill--neutral">스탭</span>' : ""}</td>
             <td class="user-numeric">${creditCell(u)}</td>
             <td><div class="user-rate-usage">${rateText}<progress max="${limit}" value="${Math.min(limit, count)}" aria-label="${escape(u.name)} 이번 시간 사용량"></progress></div></td>
             <td class="table-meta">${new Date(u.created_at).toLocaleDateString("ko-KR")}</td>
@@ -792,6 +810,7 @@
                 <summary>관리</summary>
                 <div class="row-action-menu__items">
                   <button data-act="topup" data-id="${u.id}">크레딧 조정</button>
+                  <button data-act="roles" data-id="${u.id}">스탭·개발자 권한</button>
                   ${approveBtn}
                   ${unlockBtn}
                   <button data-act="edit" data-id="${u.id}">비밀번호</button>
@@ -847,6 +866,7 @@
           '<dl><div><dt>학번</dt><dd>' + escape(selected.student_id || "-") + '</dd></div>' +
           '<div><dt>이메일</dt><dd title="' + escape(email) + '">' + escape(email) + '</dd></div>' +
           '<div><dt>이메일 인증</dt><dd>' + (selected.email_verified ? "완료" : "미인증") + '</dd></div>' +
+          '<div><dt>운영 역할</dt><dd>' + escape([selected.is_developer ? "Quilo 개발자" : "", selected.is_staff ? "스탭" : ""].filter(Boolean).join(" · ") || "없음") + '</dd></div>' +
           '<div><dt>크레딧</dt><dd>' + escape(credit) + '</dd></div>' +
           '<div><dt>누적 사용</dt><dd>' + fmtBoth(selected.spent_usd) + '</dd></div>' +
           '<div><dt>이번 시간</dt><dd>' + (selected.is_admin ? "제한 없음" : `${count}/${limit}${userIsLocked(selected) ? " · 잠김" : ""}`) + '</dd></div>' +
@@ -949,6 +969,38 @@
             const e = await res.json();
             return alert("실패: " + (e.error || "알 수 없음"));
           }
+          loadUsers();
+          return;
+        }
+        if (act === "roles") {
+          const user = adminUsersCache.find((item) => String(item.id) === String(id));
+          if (!user) return;
+          const current = [user.is_staff ? "staff" : "", user.is_developer ? "developer" : ""]
+            .filter(Boolean)
+            .join(",");
+          const input = prompt(
+            "운영 역할을 쉼표로 입력하세요.\n\n" +
+              "staff = 자료실 작성·자료 요청 처리\n" +
+              "developer = 개발 노트 작성\n" +
+              "둘 다 부여: staff,developer\n" +
+              "모두 회수: 빈칸",
+            current,
+          );
+          if (input == null) return;
+          const requested = new Set(String(input).toLowerCase().split(",").map((value) => value.trim()).filter(Boolean));
+          if ([...requested].some((value) => !["staff", "developer"].includes(value))) {
+            return alert("staff, developer 중에서 입력하세요.");
+          }
+          const response = await fetch(`/api/editorial/admin/users/${id}/roles`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              isStaff: requested.has("staff"),
+              isDeveloper: requested.has("developer"),
+            }),
+          });
+          const result = await response.json().catch(() => ({}));
+          if (!response.ok) return alert("역할 변경 실패: " + (result.error || "알 수 없음"));
           loadUsers();
           return;
         }

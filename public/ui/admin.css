@@ -815,6 +815,7 @@ section[data-atab="users"]:has(#addForm) {
 .status-pill--success { border-color: #b8ddcf; background: #f2fbf7; color: var(--admin-success); }
 .status-pill--warning { border-color: #ead7aa; background: #fffaf0; color: var(--admin-warning); }
 .status-pill--admin { border-color: var(--accent-border); background: var(--accent-soft); color: var(--accent); }
+.status-pill--accent { border-color: var(--accent-border); background: var(--accent-soft); color: var(--accent); }
 .status-pill--neutral { background: var(--surface-2); }
 html[data-theme="dark"] .status-pill--success { background: #102a23; }
 html[data-theme="dark"] .status-pill--warning { background: #2c2516; }

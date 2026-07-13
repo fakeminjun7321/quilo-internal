@@ -53,9 +53,13 @@ test.beforeAll(async () => {
         url.pathname === "/api/login"
           ? { redirect: loginRedirect }
           : url.pathname === "/api/signup"
-            ? { emailSent: true, pendingEmail: body.email }
+            ? {
+                emailSent: true,
+                pendingEmail: body.email,
+                organizationStaffPending: String(body.email || "").toLowerCase().endsWith("@quilolab.com"),
+              }
             : url.pathname === "/api/verify-email/confirm"
-              ? { ok: true }
+              ? { ok: true, staffGranted: body.token === "staff-token" }
               : {};
       response.writeHead(200, { "Content-Type": "application/json" });
       response.end(JSON.stringify(payload));
@@ -169,6 +173,7 @@ test("signup preserves validation and exact API payload", async ({ page }) => {
   await page.locator("#email").fill("qa@ts.hs.kr");
   await page.locator("#password").fill("password-123");
   await page.locator("#password2").fill("password-123");
+  await page.locator("#studentConfirmed").check();
   await page.locator("#age14").check();
   await page.locator("#agree").check();
   await page.screenshot({ path: "/tmp/quilo-auth-signup.png", fullPage: true });
@@ -183,11 +188,60 @@ test("signup preserves validation and exact API payload", async ({ page }) => {
         studentId: "2402",
         email: "qa@ts.hs.kr",
         password: "password-123",
+        studentConfirmed: true,
         age14Confirmed: true,
         termsAccepted: true,
       },
     },
   ]);
+});
+
+test("Quilo organization signup hides student-only fields and sends an employee payload", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(`${baseUrl}/signup.html`);
+  await page.locator("#email").fill("employee@QuiloLab.com");
+  await expect(page.locator("#studentIdField")).toBeHidden();
+  await expect(page.locator("#studentId")).not.toHaveAttribute("required", "");
+  await expect(page.locator("#studentConfirmedRow")).toBeHidden();
+  await expect(page.locator("#studentConfirmed")).not.toHaveAttribute("required", "");
+  await expect(page.locator("#emailHelp")).toContainText("스탭 권한");
+
+  await page.locator("#username").fill("qa.employee");
+  await page.locator("#name").fill("퀼로직원");
+  await page.locator("#password").fill("password-123");
+  await page.locator("#password2").fill("password-123");
+  await page.locator("#age14").check();
+  await page.locator("#agree").check();
+  await page.screenshot({ path: "/tmp/quilo-auth-staff-signup.png", fullPage: true });
+  await page.locator("#form").evaluate((form) => form.requestSubmit());
+
+  await expect(page.locator("#signupCard")).toContainText("스탭 권한이 자동으로 활성화됩니다");
+  expect(apiRequests).toEqual([
+    {
+      pathname: "/api/signup",
+      body: {
+        username: "qa.employee",
+        name: "퀼로직원",
+        studentId: "",
+        email: "employee@QuiloLab.com",
+        password: "password-123",
+        studentConfirmed: false,
+        age14Confirmed: true,
+        termsAccepted: true,
+      },
+    },
+  ]);
+});
+
+test("Quilo organization signup remains usable on a mobile viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${baseUrl}/signup.html`);
+  await page.locator("#email").fill("mobile@quilolab.com");
+  await expect(page.locator("#studentIdField")).toBeHidden();
+  await expect(page.locator("#studentConfirmedRow")).toBeHidden();
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+  await page.screenshot({ path: "/tmp/quilo-auth-staff-signup-mobile.png", fullPage: true });
 });
 
 test("email verification never consumes the token before explicit click", async ({ page }) => {
@@ -200,6 +254,16 @@ test("email verification never consumes the token before explicit click", async 
   await expect(page.locator("#result")).toHaveClass(/is-success/);
   expect(apiRequests).toEqual([
     { pathname: "/api/verify-email/confirm", body: { token: "token-123" } },
+  ]);
+});
+
+test("Quilo organization verification explains the activated staff role", async ({ page }) => {
+  await page.goto(`${baseUrl}/verify-email.html?token=staff-token`);
+  await page.locator("#confirmBtn").click();
+  await expect(page.locator("#lead")).toContainText("스탭 권한 활성화");
+  await expect(page.locator("#result")).toContainText("스탭 기능");
+  expect(apiRequests).toEqual([
+    { pathname: "/api/verify-email/confirm", body: { token: "staff-token" } },
   ]);
 });
 

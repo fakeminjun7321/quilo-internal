@@ -97,6 +97,44 @@ body:has(#settingsPanel.active) .slim-disclaimer { display: none; }
   line-height: 1.65;
 }
 
+.account-profile-identity {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 18px;
+  align-items: center;
+  padding: 8px 0 20px;
+}
+.account-avatar {
+  position: relative;
+  display: grid;
+  width: 80px;
+  height: 80px;
+  overflow: hidden;
+  place-items: center;
+  border: 1px solid var(--q-line);
+  border-radius: 50%;
+  color: var(--q-blue);
+  background: color-mix(in srgb, var(--q-blue) 7%, var(--q-paper));
+}
+.account-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.account-avatar span { font-size: 24px; font-weight: 780; letter-spacing: -.04em; }
+.account-profile-identity__copy { display: grid; justify-items: start; gap: 4px; min-width: 0; }
+.account-profile-identity__copy > strong { color: var(--q-ink); font-size: 18px; font-weight: 760; }
+.account-profile-identity__copy > span { color: var(--q-muted); font-size: 12px; }
+.account-profile-identity__actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 5px; }
+.account-profile-identity__actions .account-button { display: inline-grid; min-height: 34px; padding-inline: 12px; place-items: center; }
+.account-profile-bio {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 8px 0;
+  align-items: start;
+  padding: 14px 4px 20px;
+  border-top: 1px solid var(--q-line);
+}
+.account-profile-bio > label { padding-top: 10px; color: var(--q-muted); font-size: 13px; }
+.account-profile-bio textarea { min-height: 82px; resize: vertical; }
+.account-profile-bio .account-actions { grid-column: 2; }
+
 .account-definition-list {
   display: grid;
   grid-template-columns: 180px minmax(0, 1fr);
@@ -296,6 +334,10 @@ body:has(#settingsPanel.active) .slim-disclaimer { display: none; }
   .account-center-head { padding: 28px 0; }
   .account-center-head h1 { font-size: 34px; }
   .account-definition-list { grid-template-columns: 105px minmax(0, 1fr); }
+  .account-profile-identity { grid-template-columns: 68px minmax(0, 1fr); }
+  .account-avatar { width: 64px; height: 64px; }
+  .account-profile-bio { grid-template-columns: 1fr; }
+  .account-profile-bio .account-actions { grid-column: 1; }
   .account-usage-summary { grid-template-columns: 1fr 1fr; gap: 12px; }
   .account-provider-controls { grid-template-columns: 1fr auto auto; }
   .account-provider-controls label { grid-column: 1 / -1; }

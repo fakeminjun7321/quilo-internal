@@ -24,6 +24,36 @@ function applyStyleNote(note) {
   });
 }
 
+function profileRoleLabel(user = {}) {
+  const labels = [];
+  if (user.isAdmin) labels.push("관리자");
+  if (user.isDeveloper) labels.push("Quilo 개발자");
+  if (user.isStaff) labels.push("스탭");
+  return labels.length ? labels.join(" · ") : "일반 사용자";
+}
+
+function applyProfilePresentation(user = {}) {
+  const name = String(user.user || user.name || "Quilo 사용자");
+  const role = profileRoleLabel(user);
+  if (byId("settingsUserRole")) byId("settingsUserRole").textContent = role;
+  if (byId("settingsProfileName")) byId("settingsProfileName").textContent = name;
+  if (byId("settingsProfileRole")) byId("settingsProfileRole").textContent = role;
+  if (byId("settingsProfileBio")) byId("settingsProfileBio").value = String(user.profileBio || "");
+  const avatar = byId("settingsAvatar");
+  const fallback = byId("settingsAvatarFallback");
+  const hasAvatar = !!user.avatarUrl;
+  if (avatar) {
+    avatar.hidden = !hasAvatar;
+    if (hasAvatar) avatar.src = user.avatarUrl;
+    else avatar.removeAttribute("src");
+  }
+  if (fallback) {
+    fallback.hidden = hasAvatar;
+    fallback.textContent = (name.trim()[0] || "Q").toUpperCase();
+  }
+  if (byId("settingsAvatarRemove")) byId("settingsAvatarRemove").hidden = !hasAvatar;
+}
+
 export function createAccountController({ state, router, hooks }) {
   const balanceState = { known: false, credits: 0, unlimited: false, isAdmin: false };
 
@@ -53,10 +83,8 @@ export function createAccountController({ state, router, hooks }) {
     if (!banner) return;
     banner.hidden = eligible;
     if (eligible) return;
-    const domains = Array.isArray(user.allowedEmailDomains) && user.allowedEmailDomains.length
-      ? user.allowedEmailDomains : ["ts.hs.kr"];
-    if (byId("verifyEmailLabel")) byId("verifyEmailLabel").textContent = `학교 이메일 (@${domains[0]})`;
-    if (byId("verifyEmailInput") && !byId("verifyEmailInput").value) byId("verifyEmailInput").placeholder = `ts250002@${domains[0]}`;
+    if (byId("verifyEmailLabel")) byId("verifyEmailLabel").textContent = "학교 이메일";
+    if (byId("verifyEmailInput") && !byId("verifyEmailInput").value) byId("verifyEmailInput").placeholder = "student@school.edu";
     const waitingApproval = !!user.emailVerified;
     if (byId("verifyTitle")) byId("verifyTitle").textContent = waitingApproval ? "2단계 · 관리자 승인 대기 중" : "1단계 · 학교 이메일 인증";
     if (byId("verifyEmailForm")) byId("verifyEmailForm").hidden = waitingApproval;
@@ -65,7 +93,7 @@ export function createAccountController({ state, router, hooks }) {
         ? "학교 이메일 인증이 완료되었습니다. 관리자 승인을 기다려 주세요."
         : user.pendingEmail
           ? `${user.pendingEmail}로 인증 메일을 보냈습니다. 메일의 인증 링크를 눌러 주세요.`
-          : `학교 이메일(@${domains[0]})을 입력하면 인증 링크를 보내드립니다.`;
+          : "학교·대학 등 교육기관 이메일을 입력하면 인증 링크를 보내드립니다. 개인 메일은 사용할 수 없습니다.";
     }
   }
 
@@ -222,7 +250,7 @@ export function createAccountController({ state, router, hooks }) {
     if (byId("user")) byId("user").textContent = `${user.user} 님`;
     if (byId("accountMenuName")) byId("accountMenuName").textContent = user.user;
     if (byId("settingsUserName")) byId("settingsUserName").textContent = user.user;
-    if (byId("settingsUserRole")) byId("settingsUserRole").textContent = user.isAdmin ? "관리자" : "일반 사용자";
+    applyProfilePresentation(user);
     setStudentId(user.studentId || getStoredStudentId());
     applyStyleNote(user.styleNote);
     ["piWhoPreview", "miWhoPreview", "frWhoPreview"].forEach((id) => {
@@ -249,6 +277,68 @@ export function createAccountController({ state, router, hooks }) {
   }
 
   function bindForms() {
+    byId("settingsAvatarInput")?.addEventListener("change", async (event) => {
+      const input = event.currentTarget;
+      const file = input.files?.[0];
+      if (!file) return;
+      if (!/^image\/(jpeg|png|webp|gif)$/.test(file.type) || file.size > 5 * 1024 * 1024) {
+        setStatus(byId("settingsAvatarStatus"), "JPG·PNG·WebP·GIF 파일을 5MB 이하로 선택하세요.", "danger");
+        input.value = "";
+        return;
+      }
+      const preview = URL.createObjectURL(file);
+      const avatar = byId("settingsAvatar");
+      if (avatar) { avatar.src = preview; avatar.hidden = false; }
+      if (byId("settingsAvatarFallback")) byId("settingsAvatarFallback").hidden = true;
+      setStatus(byId("settingsAvatarStatus"), "사진을 최적화해 저장하는 중입니다.");
+      const form = new FormData();
+      form.append("avatar", file, file.name);
+      try {
+        const response = await fetch("/api/editorial/me/avatar", { method: "POST", body: form });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "프로필 사진을 저장하지 못했습니다.");
+        const savedUrl = data.profile?.avatarUrl;
+        if (avatar && savedUrl) avatar.src = savedUrl;
+        if (savedUrl) state.set({ user: { ...(state.get().user || {}), avatarUrl: savedUrl } });
+        if (byId("settingsAvatarRemove")) byId("settingsAvatarRemove").hidden = !savedUrl;
+        setStatus(byId("settingsAvatarStatus"), "프로필 사진을 저장했습니다.", "success");
+      } catch (error) {
+        applyProfilePresentation(state.get().user || {});
+        setStatus(byId("settingsAvatarStatus"), error.message, "danger");
+      } finally {
+        URL.revokeObjectURL(preview);
+        input.value = "";
+      }
+    });
+    byId("settingsAvatarRemove")?.addEventListener("click", async () => {
+      try {
+        const data = await requestJson(
+          "/api/editorial/me/profile",
+          jsonOptions("PATCH", { avatarUrl: null }),
+        );
+        const current = { ...(state.get().user || {}), avatarUrl: data.profile?.avatarUrl || null };
+        state.set({ user: current });
+        applyProfilePresentation(current);
+        setStatus(byId("settingsAvatarStatus"), "프로필 사진을 삭제했습니다.", "success");
+      } catch (error) {
+        setStatus(byId("settingsAvatarStatus"), error.message, "danger");
+      }
+    });
+    byId("settingsProfileBioForm")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const profileBio = byId("settingsProfileBio")?.value.trim() || "";
+      try {
+        const data = await requestJson(
+          "/api/editorial/me/profile",
+          jsonOptions("PATCH", { profileBio }),
+        );
+        const current = { ...(state.get().user || {}), profileBio: data.profile?.profileBio ?? profileBio };
+        state.set({ user: current });
+        setStatus(byId("settingsProfileBioStatus"), "소개를 저장했습니다.", "success");
+      } catch (error) {
+        setStatus(byId("settingsProfileBioStatus"), error.message, "danger");
+      }
+    });
     byId("verifyEmailForm")?.addEventListener("submit", async (event) => {
       event.preventDefault();
       const email = byId("verifyEmailInput")?.value.trim();

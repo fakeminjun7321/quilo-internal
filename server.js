@@ -8176,7 +8176,12 @@ app.get("/api/version", (req, res) => {
   // "클라우드 저장소 카드가 안 떠요" 디버깅용 공개 플래그.
   res.json({
     ...getVersionInfo(),
-    cloud: { dropbox: dbx.isConfigured(), tokenSecret: dbx.canStoreTokens() },
+    cloud: {
+      dropbox: dbx.isConfigured(),
+      google: cloudProviders.configured("google"),
+      notion: cloudProviders.configured("notion"),
+      tokenSecret: dbx.canStoreTokens(),
+    },
   });
 });
 

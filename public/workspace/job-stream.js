@@ -81,7 +81,19 @@ export function createJobStreamController(deps) {
       runtime.retryCount = 0;
       if (genSpinner) genSpinner.hidden = true;
 
-      resultArea.appendChild(createResultActions({ jobId, filename: data.filename }));
+      const resultActions = createResultActions({ jobId, filename: data.filename });
+      try {
+        const driveUrl = new URL(data.googleDriveUrl || "");
+        if (driveUrl.protocol === "https:" && /(^|\.)google\.com$/.test(driveUrl.hostname)) {
+          const drive = document.createElement("a");
+          drive.href = driveUrl.href;
+          drive.target = "_blank";
+          drive.rel = "noopener";
+          drive.textContent = "Google Drive에서 열기";
+          resultActions.append(drive);
+        }
+      } catch (_) {}
+      resultArea.appendChild(resultActions);
 
       // 보관 안내 + (사전→결과) 이어서 만들기 CTA.
       try {

@@ -163,3 +163,58 @@ test("Google OAuth uses least-privilege Drive file access for Drive and Docs", (
     else process.env.CLOUD_TOKEN_SECRET = previous.tokenSecret;
   }
 });
+
+test("Google Drive helpers preserve folder, source, conversion, and list query metadata", async () => {
+  const calls = [];
+  const fetchImpl = async (url, options = {}) => {
+    calls.push({ url: String(url), options });
+    if (String(url).includes("upload/drive")) {
+      return new Response(JSON.stringify({ id: "file-1", name: "보고서", mimeType: cloudProviders.GOOGLE_DOC_MIME }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ files: [{ id: "folder-1", name: "Quilo", mimeType: cloudProviders.GOOGLE_FOLDER_MIME }] }), { status: 200 });
+  };
+  const files = await cloudProviders.listDriveFiles("access", {
+    folderId: "parent-1",
+    foldersOnly: true,
+    query: "Quilo",
+    fetchImpl,
+  });
+  assert.equal(files[0].id, "folder-1");
+  const listUrl = new URL(calls[0].url);
+  assert.equal(listUrl.searchParams.get("pageSize"), "50");
+  assert.match(listUrl.searchParams.get("q"), /'parent-1' in parents/);
+  assert.match(listUrl.searchParams.get("q"), /mimeType = 'application\/vnd\.google-apps\.folder'/);
+  assert.match(listUrl.searchParams.get("q"), /name contains 'Quilo'/);
+
+  await cloudProviders.uploadDriveFile("access", {
+    name: "보고서.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    targetMimeType: cloudProviders.GOOGLE_DOC_MIME,
+    folderId: "folder-1",
+    appProperties: { quiloSourceKey: "report:1:gdoc" },
+    buffer: Buffer.from("docx"),
+    fetchImpl,
+  });
+  const upload = calls[1];
+  assert.equal(upload.options.method, "POST");
+  assert.match(upload.options.headers["content-type"], /^multipart\/related; boundary=/);
+  const multipart = upload.options.body.toString("utf8");
+  assert.match(multipart, /"parents":\["folder-1"\]/);
+  assert.match(multipart, /"mimeType":"application\/vnd\.google-apps\.document"/);
+  assert.match(multipart, /"quiloSourceKey":"report:1:gdoc"/);
+});
+
+test("Google token revocation posts the token without exposing it in the URL", async () => {
+  let captured = null;
+  const ok = await cloudProviders.revokeGoogleToken("refresh-secret", {
+    fetchImpl: async (url, options) => {
+      captured = { url: String(url), options };
+      return new Response("", { status: 200 });
+    },
+  });
+  assert.equal(ok, true);
+  assert.equal(captured.url, "https://oauth2.googleapis.com/revoke");
+  assert.equal(captured.options.method, "POST");
+  assert.equal(String(captured.options.body), "token=refresh-secret");
+  assert.doesNotMatch(captured.url, /refresh-secret/);
+});

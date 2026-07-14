@@ -1,5 +1,6 @@
 import { requestJson } from "./api.js";
 import { byId } from "./dom-contract.js";
+import { createGoogleWorkspaceController } from "./google-workspace-controller.js";
 
 function formatBytes(bytes) {
   const n = Number(bytes) || 0;
@@ -14,6 +15,8 @@ function formatDateTime(value) {
 }
 
 export function createFilesController({ hooks }) {
+  const googleWorkspace = createGoogleWorkspaceController({ hooks });
+
   function applyFileFilter() {
     const input = byId("filesFilter");
     const list = byId("filesList");
@@ -36,6 +39,8 @@ export function createFilesController({ hooks }) {
     if (!card || !status || !actions) return;
     try {
       const { integrations = {} } = await requestJson("/api/cloud/providers/status");
+      try { await googleWorkspace.setIntegration(integrations.google || null); }
+      catch (_) { /* 연결 카드는 유지하고 Google 작업 영역에 오류를 표시한다. */ }
       const entries = [
         ["dropbox", "Dropbox", "보고서 영구 보관"],
         ["google", "Google Drive·Docs", "파일 업로드·문서 생성"],
@@ -59,18 +64,37 @@ export function createFilesController({ hooks }) {
           ? `${info.accountEmail || info.accountName || "연결됨"} · ${purpose}`
           : purpose;
         copy.append(title, detail);
-        const action = document.createElement(info.connected ? "button" : "a");
-        action.className = info.connected ? "secondary compact" : "btn btn-primary";
-        action.textContent = info.connected ? "연결 해제" : "연결";
+        let action;
         if (info.connected) {
-          action.type = "button";
-          action.addEventListener("click", async () => {
+          action = document.createElement("div");
+          action.className = "cloud-provider-actions";
+          const reconnect = document.createElement("a");
+          reconnect.className = "secondary compact";
+          reconnect.href = info.reconnectUrl || `${info.connectUrl}?reconnect=1`;
+          reconnect.textContent = "재연결";
+          const disconnect = document.createElement("button");
+          disconnect.className = "secondary compact danger-outline";
+          disconnect.type = "button";
+          disconnect.textContent = "연결 해제";
+          disconnect.addEventListener("click", async () => {
             if (!confirm(`${label} 연결을 해제할까요?`)) return;
-            await fetch(`/api/cloud/${key}/disconnect`, { method: "POST" });
-            await loadCloudStatus();
-            if (key === "dropbox") await loadFiles();
+            disconnect.disabled = true;
+            try {
+              await requestJson(info.disconnectUrl || `/api/cloud/${key}/disconnect`, { method: "POST" });
+              await loadCloudStatus();
+              if (key === "dropbox") await loadFiles();
+            } catch (error) {
+              status.textContent = error.message || "연결 해제에 실패했습니다.";
+              status.dataset.tone = "danger";
+            } finally {
+              disconnect.disabled = false;
+            }
           });
+          action.append(reconnect, disconnect);
         } else {
+          action = document.createElement("a");
+          action.className = "btn btn-primary";
+          action.textContent = "연결";
           action.href = /electron|quilo/i.test(navigator.userAgent || "")
             ? `https://quilolab.com${info.connectUrl}`
             : info.connectUrl;
@@ -101,6 +125,12 @@ export function createFilesController({ hooks }) {
     list.replaceChildren();
     try {
       const data = await requestJson("/api/me/files");
+      if (!googleWorkspace.connected()) {
+        try {
+          const { integrations = {} } = await requestJson("/api/cloud/providers/status");
+          await googleWorkspace.setIntegration(integrations.google || null);
+        } catch (_) {}
+      }
       if (!data.storage) {
         status.textContent = "파일 저장소가 아직 설정되지 않았습니다.";
         if (summary) summary.textContent = status.textContent;
@@ -160,6 +190,7 @@ export function createFilesController({ hooks }) {
           });
           actions.append(remove);
         }
+        googleWorkspace.decorateReportActions(file, actions);
         item.append(meta, actions);
         list.append(item);
       });
@@ -172,6 +203,7 @@ export function createFilesController({ hooks }) {
 
   function init() {
     byId("filesFilter")?.addEventListener("input", applyFileFilter);
+    googleWorkspace.init();
   }
 
   return { init, loadFiles, loadCloudStatus, applyFileFilter };

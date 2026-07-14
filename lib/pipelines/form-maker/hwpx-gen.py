@@ -315,7 +315,14 @@ def render_table(doc, blk, ctx, target=None, width=TABLE_WIDTH):
 
     norm_rows = [r if isinstance(r, list) else ([] if r is None else [r]) for r in rows]
     has_header = bool(headers)
-    n_cols = max([len(headers)] + [len(r) for r in norm_rows] + [1])
+    def _logical_width(row):
+        return sum(
+            _clamp_int(cell.get("colspan"), 1, 100, 1)
+            if isinstance(cell, dict) else 1
+            for cell in row
+        )
+
+    n_cols = max([len(headers)] + [_logical_width(r) for r in norm_rows] + [1])
     n_rows = len(norm_rows) + (1 if has_header else 0)
     if n_rows == 0 or n_cols == 0:
         return
@@ -491,7 +498,9 @@ def render_figure(doc, blk, ctx, target=None, width=TABLE_WIDTH):
         # 사진을 본문/단 폭에 맞춰 한 장씩 임베드한다. 2단이면 단 폭(~21000),
         # 아니면 본문 전체폭(width)을 쓴다. (공유 add_photo_blocks 는 폭 30300 고정 +
         # 캡션 '[그림 N]' 무조건 접두 버그가 있어 form-maker 에선 직접 add_picture 로 처리.)
-        fig_w = min(width, 21000) if ctx.get("two_col") else width
+        full_page = blk.get("full_page") is True
+        fig_w = width if full_page else (min(width, 21000) if ctx.get("two_col") else width)
+        fig_h = 62000 if full_page else 12000
         placed = False
         for i in as_list(idxs):
             try:
@@ -506,7 +515,7 @@ def render_figure(doc, blk, ctx, target=None, width=TABLE_WIDTH):
             phys.add_picture(
                 doc, blob,
                 fmt=phys.image_format(photo.get("name"), photo.get("mimetype"), blob),
-                caption=cap, max_width=fig_w, max_height=12000, target=target,
+                caption=cap, max_width=fig_w, max_height=fig_h, target=target,
             )
             placed = True
         if placed:
@@ -750,7 +759,7 @@ def _preview_blocks(blocks, lines):
 
 
 def collect_preview_text(content):
-    lines = [str(content.get("title") or "문서"), ""]
+    lines = [] if content.get("__hideTitle") is True else [str(content.get("title") or "문서"), ""]
     meta = content.get("meta")
     if isinstance(meta, dict):
         if meta.get("field"):

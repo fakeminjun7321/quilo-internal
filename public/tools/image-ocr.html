@@ -5,7 +5,7 @@
     <link rel="canonical" href="https://quilolab.com/tools/image-ocr.html" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>이미지 OCR — Quilo</title>
-    <meta name="description" content="사진과 스크린샷의 한글·영문·표·수식을 3중 비교 OCR로 읽고 원본 이미지를 포함한 Word·한글·HTML·TXT로 내보냅니다." />
+    <meta name="description" content="사진과 스크린샷의 한글·영문·표·수식을 고품질 4중 교차 검증 OCR로 읽고 수능형 보기와 병합 표를 복원해 Word·한글·HTML·TXT로 내보냅니다." />
     <script>
       (function () {
         try {
@@ -29,7 +29,7 @@
       <section class="section">
         <div class="tool-page-head">
           <h1>이미지 OCR</h1>
-          <p>원본·고대비·컬러 필기 보존본을 비교해 가장 신뢰도 높은 결과를 고르고, 원본 스캔과 감지된 그림을 보존한 Word·한글·HTML 또는 TXT로 내보냅니다.</p>
+          <p>원본·고대비·컬러 필기·이진화본을 교차 검증해 일치하는 결과를 고르고, 수능형 &lt;보기&gt;·병합 표·수식·그림을 복원한 Word·한글·HTML 또는 TXT로 내보냅니다.</p>
         </div>
 
         <section class="tool-card ocr-input-card" aria-labelledby="ocrUploadTitle">
@@ -51,22 +51,9 @@
           <input id="ocrFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/tiff,image/bmp,image/avif,.tif,.tiff,.bmp,.avif" hidden />
 
           <div class="ocr-file-meta" id="ocrFileMeta" hidden></div>
-          <div class="ocr-options">
-            <label>
-              판독 모드
-              <select id="ocrMode">
-                <option value="ultra" selected>최고 정밀 — 3중 비교 판독</option>
-                <option value="accurate">정밀 — 저신뢰 이미지 자동 재판독</option>
-                <option value="fast">빠름 — 1회 판독</option>
-              </select>
-            </label>
-            <label>
-              표 출력
-              <select id="ocrTableFormat">
-                <option value="markdown" selected>Markdown 표</option>
-                <option value="html">HTML 표</option>
-              </select>
-            </label>
+          <div class="ocr-quality-default" aria-label="기본 판독 품질">
+            <strong>고품질 판독이 기본입니다.</strong>
+            <span>4중 교차 검증 · HTML 병합 표 · 수능형 &lt;보기&gt; · 수식·그림 구조 복원</span>
           </div>
 
           <p class="ocr-privacy">선택한 이미지는 OCR 처리를 위해 Quilo 서버와 설정된 Mistral Document AI로 암호화 전송됩니다. 본인이 권한을 가진 이미지만 사용하세요.</p>
@@ -207,8 +194,6 @@
             var form = new FormData();
             form.append("image", selected);
             form.append("includeBlocks", "true");
-            form.append("mode", document.getElementById("ocrMode").value);
-            form.append("tableFormat", document.getElementById("ocrTableFormat").value);
             var response = await fetch("/api/tools/images/ocr", { method: "POST", body: form });
             var data = await response.json().catch(function () { return {}; });
             if (!response.ok) {
@@ -221,10 +206,11 @@
             text.value = data.text || "";
             var passes = data.source && data.source.passes || 1;
             var selectedVariant = data.quality && data.quality.selectedVariant || "standard";
-            var variantLabel = selectedVariant === "contrast" ? "고대비 보정본" : selectedVariant === "handwriting" ? "컬러 필기 보존본" : "원본 선명화본";
+            var variantLabel = selectedVariant === "contrast" ? "고대비 보정본" : selectedVariant === "handwriting" ? "컬러 필기 보존본" : selectedVariant === "binary" ? "흑백 이진화본" : "원본 선명화본";
             resultMeta.textContent = (data.model || "OCR") + " · " + passes + "회 비교 · " + variantLabel + " 선택";
             var avg = data.confidence && data.confidence.average;
-            confidence.textContent = Number.isFinite(avg) ? "신뢰도 " + Math.round(avg * 100) + "%" : "판독 완료";
+            var verified = data.quality && data.quality.verifiedConfidence;
+            confidence.textContent = Number.isFinite(verified) ? "검증 신뢰도 " + Math.round(verified * 100) + "%" : Number.isFinite(avg) ? "신뢰도 " + Math.round(avg * 100) + "%" : "판독 완료";
             confidence.dataset.tone = data.quality && data.quality.reviewRequired ? "warn" : "good";
             var minimum = data.confidence && data.confidence.minimum;
             var agreement = data.quality && data.quality.agreement;
@@ -232,6 +218,7 @@
             var imageCount = (data.pages || []).reduce(function (sum, page) { return sum + (page.images || []).length; }, 0);
             quality.replaceChildren();
             [
+              ["검증 신뢰도", Number.isFinite(verified) ? Math.round(verified * 100) + "%" : "—"],
               ["평균 신뢰도", Number.isFinite(avg) ? Math.round(avg * 100) + "%" : "—"],
               ["최저 신뢰도", Number.isFinite(minimum) ? Math.round(minimum * 100) + "%" : "—"],
               ["판독 일치도", Number.isFinite(agreement) ? Math.round(agreement * 100) + "%" : "—"],
@@ -249,7 +236,7 @@
               ? "완료 — 보정본 재판독은 건너뛰었지만 첫 판독 결과를 보존했습니다."
               : data.quality && data.quality.reviewRequired
                 ? "완료 — 낮은 신뢰도 또는 판독 차이가 있는 부분을 확인한 뒤 내보내세요."
-                : "완료 — 3중 비교 결과가 안정적입니다. 원하는 문서 형식으로 내보낼 수 있습니다.";
+                : "완료 — 4중 교차 검증 결과가 안정적입니다. 원하는 문서 형식으로 내보낼 수 있습니다.";
             result.scrollIntoView({ behavior: "smooth", block: "nearest" });
           } catch (error) {
             status.textContent = "오류: " + (error.message || error);
@@ -261,7 +248,7 @@
 
         document.getElementById("ocrCopy").addEventListener("click", async function () {
           if (!lastResult) return;
-          try { await navigator.clipboard.writeText(lastResult.text || ""); this.textContent = "복사됨 ✓"; }
+          try { await navigator.clipboard.writeText(text.value || ""); this.textContent = "복사됨 ✓"; }
           catch (_) { text.select(); document.execCommand("copy"); this.textContent = "복사됨 ✓"; }
           var button = this;
           setTimeout(function () { button.textContent = "Markdown 복사"; }, 1400);
@@ -275,7 +262,7 @@
         }
         document.getElementById("ocrDownloadMd").addEventListener("click", function () {
           if (!lastResult) return;
-          download((selected.name.replace(/\.[^.]+$/, "") || "ocr") + ".md", "text/markdown;charset=utf-8", lastResult.text || "");
+          download((selected.name.replace(/\.[^.]+$/, "") || "ocr") + ".md", "text/markdown;charset=utf-8", text.value || "");
         });
         document.getElementById("ocrDownloadJson").addEventListener("click", function () {
           if (!lastResult) return;
@@ -289,10 +276,18 @@
         function minimalExportResult() {
           return {
             text: text.value || "",
+            sourceText: lastResult && lastResult.text || "",
             confidence: lastResult && lastResult.confidence || {},
             quality: lastResult && lastResult.quality || {},
             pages: (lastResult && lastResult.pages || []).map(function (page) {
-              return { page: page.page, dimensions: page.dimensions || null, images: page.images || [] };
+              return {
+                page: page.page,
+                markdown: page.markdown || "",
+                dimensions: page.dimensions || null,
+                images: page.images || [],
+                tables: page.tables || [],
+                blocks: page.blocks || [],
+              };
             }),
           };
         }
@@ -313,6 +308,9 @@
               var errorData = await response.json().catch(function () { return {}; });
               throw new Error(errorData.error || "문서 내보내기에 실패했습니다.");
             }
+            if (response.headers.get("X-Quilo-Postflight") !== "passed") {
+              throw new Error("생성 파일의 내부 무결성 검증이 완료되지 않았습니다. 다운로드하지 않았습니다.");
+            }
             var blob = await response.blob();
             var url = URL.createObjectURL(blob);
             var link = document.createElement("a");
@@ -320,9 +318,10 @@
             setTimeout(function () { URL.revokeObjectURL(url); }, 4000);
             var copied = response.headers.get("X-Quilo-Source-Image") === "embedded";
             var detected = Number(response.headers.get("X-Quilo-Detected-Images") || 0);
+            var layoutBlocks = Number(response.headers.get("X-Quilo-Layout-Blocks") || 0);
             exportStatus.textContent = copied
-              ? "완료 — 원본 스캔" + (detected ? "과 감지 그림 " + detected + "개" : "") + "를 실제 이미지로 포함했습니다."
-              : "완료 — TXT 파일은 이미지 없이 편집 가능한 텍스트만 저장했습니다.";
+              ? "완료 — 파일 내부 검증 통과 · 구조 " + layoutBlocks + "개 복원 · 원본 스캔" + (detected ? "과 감지 그림 " + detected + "개" : "") + "를 실제 이미지로 포함했습니다."
+              : "완료 — 파일 내부 검증 통과 · TXT는 이미지 없이 편집 가능한 텍스트만 저장했습니다.";
           } catch (error) {
             exportStatus.textContent = "오류: " + (error.message || error);
           } finally {

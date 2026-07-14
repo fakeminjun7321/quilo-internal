@@ -6,6 +6,7 @@ const TYPE_LABELS = {
   "math-inquiry": "수학 수행평가",
   free: "자유 보고서",
   "problem-set": "문제집 메이커",
+  "vocabulary-book": "단어장 메이커",
   "form-maker": "양식 메이커",
   "pdf-translate": "PDF 통번역",
 };

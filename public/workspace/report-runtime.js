@@ -49,6 +49,7 @@ const reportChecklistItems = {
   "phys-inquiry": { title: "물리 수행평가", items: ["탐구 주제", "필기노트/참고자료", "학번 저장", "생성 버튼"] },
   "math-inquiry": { title: "수학 수행평가", items: ["탐구 주제", "분석 방향", "학번 저장", "생성 버튼"] },
   "problem-set": { title: "문제집 메이커", items: ["문제 PDF/사진", "페이지당 문제 수", "교차검증 선택", "만들기 버튼"] },
+  "vocabulary-book": { title: "단어장 메이커", items: ["영어 교재 PDF", "페이지 범위", "묶음·어휘 수", "단어장 만들기 버튼"] },
   "form-maker": { title: "양식 메이커", items: ["양식 설명 또는 문서 사진", "출력 형식·글꼴", "만들기 버튼"] },
   "reading-log": { title: "독서록", items: ["도서명", "영역·기록 구분 선택", "감상 메모(선택)", "생성 버튼"] },
 };
@@ -96,6 +97,8 @@ const elements = {
   frBtn: document.getElementById("frBtn"),
   psForm: document.getElementById("problemSetForm"),
   psBtn: document.getElementById("psBtn"),
+  vbForm: document.getElementById("vocabularyBookForm"),
+  vbBtn: document.getElementById("vbBtn"),
   fmForm: document.getElementById("formMakerForm"),
   fmBtn: document.getElementById("fmBtn"),
   rlForm: document.getElementById("readingLogForm"),
@@ -174,6 +177,7 @@ function resetForm() {
     [elements.piBtn, "물리 수행평가 초안 생성"],
     [elements.miBtn, "수학 수행평가 초안 생성"],
     [elements.psBtn, "문제지·해설지 만들기"],
+    [elements.vbBtn, "단어장 만들기"],
     [elements.frBtn, "자유 보고서 생성"],
     [elements.fmBtn, "양식 만들기"],
   ]);

@@ -150,6 +150,24 @@ export const REPORT_WORKFLOWS = Object.freeze({
       value("생성 버튼", "#psBtn", "generate"),
     ],
   },
+  "vocabulary-book": {
+    title: "단어장 메이커",
+    description: "교재에 실제로 나온 표현으로 영한 단어장과 단원 평가를 만듭니다.",
+    time: "약 1–5분",
+    cost: "무료 (Pro)",
+    steps: {
+      upload: step("#vbSource", "1. 자료", "영어 교재 PDF 업로드"),
+      info: step("#vbPageRange", "2. 정보", "범위와 묶음 설정"),
+      settings: step('input[name="vbModel"]', "3. 선택 설정", "포함 항목·모델 선택"),
+      generate: step("#vbBtn", "4. 생성", "단어장 생성"),
+    },
+    requirements: [
+      file("영어 교재 PDF", "#vbSource"),
+      value("묶음당 페이지 수", "#vbPagesPerUnit"),
+      value("묶음당 어휘 수", "#vbTermCount"),
+      checked("AI 모델", 'input[name="vbModel"]'),
+    ],
+  },
   "form-maker": {
     title: "양식 메이커",
     description: "설명이나 문서 사진을 편집 가능한 양식으로 복원합니다.",

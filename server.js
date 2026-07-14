@@ -547,6 +547,55 @@ const PIPELINES = {
     generateBundle: require("./lib/pipelines/problem-set/bundle").generateBundle,
   },
 
+  // 단어장 메이커 (Pro) - 영어 교재 PDF의 선택 범위에서 실제로 등장한 표현만
+  // 선별해 영한 단어장 PDF + 재사용 가능한 JSON을 ZIP으로 묶는다.
+  "vocabulary-book": {
+    label: "단어장 메이커",
+    filenamePrefix: "단어장",
+    filenameSourceField: "source",
+    creditField: "result",
+    outputKind: "zip",
+    bundleProgress: "📚 인터랙티브 단어장 PDF + 학습 JSON 빌드 중...",
+    prepareInput(filesByField, body) {
+      const source = filesByField.source || [];
+      if (source.length !== 1) {
+        throw new Error("영어 교재 PDF를 정확히 한 개 올리세요.");
+      }
+      const file = source[0];
+      const ext = (file.originalname.split(".").pop() || "").toLowerCase();
+      if (ext !== "pdf" || file.buffer.subarray(0, 5).toString("ascii") !== "%PDF-") {
+        throw new Error("단어장 원본은 PDF 파일만 가능합니다.");
+      }
+      const pagesPerUnit = Math.max(3, Math.min(20, parseInt(body.pagesPerUnit, 10) || 10));
+      const termCount = Math.max(10, Math.min(30, parseInt(body.termCount, 10) || 20));
+      const flag = (name, fallback = false) =>
+        body[name] == null ? fallback : ["1", "true", "yes", "on"].includes(String(body[name]).toLowerCase());
+      const includeCore = flag("includeCore", true);
+      const includeAcademic = flag("includeAcademic", true);
+      const includePhrases = flag("includePhrases", true);
+      if (!includeCore && !includeAcademic && !includePhrases) {
+        throw new Error("핵심 용어, 학술 어휘, 문제 풀이 표현 중 하나 이상을 선택하세요.");
+      }
+      return {
+        sourcePdf: { buffer: file.buffer, name: file.originalname, mimetype: file.mimetype },
+        title: String(body.title || "").trim().slice(0, 160),
+        pageRange: String(body.pageRange || "").trim().slice(0, 200),
+        pagesPerUnit,
+        termCount,
+        includeCore,
+        includeAcademic,
+        includePhrases,
+        includePronunciation: flag("includePronunciation", true),
+        includeReview: flag("includeReview", true),
+        includeMemo: flag("includeMemo", true),
+        studentId: String(body.studentId || "").trim().slice(0, 20),
+        style: "default",
+      };
+    },
+    generateContent: require("./lib/pipelines/vocabulary-book/generate").generateReportContent,
+    generateBundle: require("./lib/pipelines/vocabulary-book/bundle").generateBundle,
+  },
+
   // 양식 메이커 (베타) — 두 모드: (A) "○○ 양식 만들어줘" 텍스트 지시 → 한글(HWPX) 빈 양식,
   // (B) 종이를 찍은 사진 업로드 → 그 문서를 보이는 그대로 구조·내용 복원. 출력은 .hwpx/.docx.
   "form-maker": {
@@ -667,6 +716,7 @@ const FREE_BETA_TYPES = new Set([
   "phys-inquiry",
   "math-inquiry",
   "problem-set",
+  "vocabulary-book",
   "form-maker",
   "eng-exam-prep",
   "korean-lit-exam",
@@ -6328,7 +6378,7 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
     let buffer;
     if (typeof pipeline.generateBundle === "function") {
       // 다중 PDF → ZIP 출력 파이프라인(문제집 메이커 등). generateDocx/Hwpx 대신 사용.
-      pushProgress(job, "📦 PDF 3종(영어·한글 문제지 + 해설지) 빌드 + ZIP 중...");
+      pushProgress(job, pipeline.bundleProgress || "📦 결과 파일 빌드 + ZIP 중...");
       const bundle = await pipeline.generateBundle(content, {
         studentId,
         userName: renderedStudentName,
@@ -8225,6 +8275,12 @@ app.listen(PORT, async () => {
       if (seeded) console.log("  ✓ 베타 기능 등록: 문제집 메이커(problem-set)");
     } catch (e) {
       console.warn(`  ⚠ 베타 기능 등록 실패(problem-set): ${e.message}`);
+    }
+    try {
+      const seeded = await supa.ensureBetaFeature("vocabulary-book", "단어장 메이커");
+      if (seeded) console.log("  ✓ 베타 기능 등록: 단어장 메이커(vocabulary-book)");
+    } catch (e) {
+      console.warn(`  ⚠ 베타 기능 등록 실패(vocabulary-book): ${e.message}`);
     }
     try {
       const seeded = await supa.ensureBetaFeature("relativity-study", "상대론 공부");

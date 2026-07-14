@@ -88,6 +88,7 @@ export function createShellController({ state, router, hooks }) {
         if (has("physics-studio")) reveal("navBetaPhysStudio");
         if (has("file-chat") || has("create")) reveal("navBetaFilechat");
         if (has("problem-set")) reveal("navBetaProblemSet");
+        if (has("vocabulary-book")) reveal("rtVocabularyBook");
         if (has("form-maker")) { reveal("navBetaFormMaker"); reveal("rtFormMaker"); }
         if (["coding-test", "phys-inquiry", "math-inquiry", "reading-log"].some(has)) reveal("navExamPrep");
         const requested = router.requestedReport();
@@ -95,6 +96,7 @@ export function createShellController({ state, router, hooks }) {
           "phys-inquiry": ["phys-inquiry", "rtPhysInquiry"],
           "math-inquiry": ["math-inquiry", "rtMathInquiry"],
           "problem-set": ["problem-set", "rtProblemSet"],
+          "vocabulary-book": ["vocabulary-book", "rtVocabularyBook"],
           "form-maker": ["form-maker", "rtFormMaker"],
           "reading-log": ["reading-log", "rtReadingLog"],
         }[requested];

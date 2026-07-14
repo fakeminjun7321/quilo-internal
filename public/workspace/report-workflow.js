@@ -152,18 +152,18 @@ export const REPORT_WORKFLOWS = Object.freeze({
   },
   "vocabulary-book": {
     title: "단어장 메이커",
-    description: "교재에 실제로 나온 표현으로 영한 단어장과 단원 평가를 만듭니다.",
+    description: "영어교재·기존 단어장·엑셀표에 실제로 나온 표현으로 새 영한 단어장을 만듭니다.",
     time: "약 1–5분",
     cost: "무료 (Pro)",
     steps: {
-      upload: step("#vbSource", "1. 자료", "영어 교재 PDF 업로드"),
+      upload: step("#vbSource", "1. 자료", "영어교재·단어장·표 업로드"),
       info: step("#vbPageRange", "2. 정보", "범위와 묶음 설정"),
       settings: step('input[name="vbModel"]', "3. 선택 설정", "포함 항목·모델 선택"),
       generate: step("#vbBtn", "4. 생성", "단어장 생성"),
     },
     requirements: [
-      file("영어 교재 PDF", "#vbSource"),
-      value("묶음당 페이지 수", "#vbPagesPerUnit"),
+      file("영어 자료 파일", "#vbSource"),
+      value("묶음당 출처 수", "#vbPagesPerUnit"),
       value("묶음당 어휘 수", "#vbTermCount"),
       checked("AI 모델", 'input[name="vbModel"]'),
     ],

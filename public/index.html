@@ -1282,26 +1282,26 @@
     <!-- ── 단어장 메이커 폼 (Pro) ─────────────────────────────────────── -->
     <form id="vocabularyBookForm" class="report-form" data-report-form="vocabulary-book" hidden>
       <div class="notice">
-        <strong>교재에 나온 표현만 골라 단어장을 만듭니다.</strong>
-        업로드한 영어 교재의 선택 페이지에서 핵심 용어, 학술 어휘, 문제 풀이 표현을 선별하고,
-        출처 페이지를 서버에서 다시 확인합니다. 결과는 목차·발음 링크·단원 평가·색인이 포함된 PDF와 학습용 JSON입니다.
+        <strong>영어교재·기존 단어장·엑셀표에서 나온 표현만 골라 새 단어장을 만듭니다.</strong>
+        PDF 페이지, Excel/CSV 시트와 행, 텍스트 구간에서 핵심 용어와 학술 어휘를 선별하고
+        출처를 서버에서 다시 확인합니다. 결과는 목차·발음 링크·단원 평가·색인이 포함된 PDF와 학습용 JSON입니다.
       </div>
 
       <div class="form-section">
         <div class="form-section-head">
-          <span class="form-section-title">영어 교재 PDF</span>
-          <span class="form-section-note">텍스트가 선택되는 PDF를 권장합니다.</span>
+          <span class="form-section-title">영어교재 또는 영어 단어장</span>
+          <span class="form-section-note">PDF · Excel · CSV · TXT · Markdown</span>
         </div>
         <div class="vocab-source-grid">
           <div class="field">
-            <span class="field-label">교재 파일 <span class="req">*</span></span>
+            <span class="field-label">영어 자료 파일 <span class="req">*</span></span>
             <div class="dropzone vocab-dropzone">
-              <input id="vbSource" name="source" type="file" accept=".pdf,application/pdf" aria-label="영어 교재 PDF" required />
-              <span class="dropzone-title">교재 PDF를 끌어다 놓거나 클릭</span>
-              <span class="dropzone-sub">.pdf · 한 번에 최대 80쪽 선택 · 파일당 최대 64MB</span>
+              <input id="vbSource" name="source" type="file" accept=".pdf,.xlsx,.xls,.csv,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,text/plain,text/markdown" aria-label="영어교재 또는 영어 단어장 파일" required />
+              <span class="dropzone-title">영어교재·단어장·엑셀표를 끌어다 놓거나 클릭</span>
+              <span class="dropzone-sub">.pdf · .xlsx · .xls · .csv · .txt · .md · 파일당 최대 64MB</span>
               <span class="dropzone-file" data-dz-file></span>
             </div>
-            <small>스캔본은 먼저 OCR하면 어휘와 출처 페이지를 더 정확히 확인할 수 있습니다.</small>
+            <small>엑셀은 첫 행을 열 제목으로 읽습니다. 스캔 PDF는 먼저 OCR하면 출처를 더 정확히 확인할 수 있습니다.</small>
           </div>
           <aside class="vocab-preview" aria-label="생성 단어장 페이지 예시">
             <span class="vocab-preview-label">단어장 페이지 미리보기</span>
@@ -1310,7 +1310,7 @@
               <strong>전기장</strong>
               <p>공간의 한 점에서 단위 양전하가 받는 전기력으로 정의되는 물리량.</p>
               <dl><dt>예문</dt><dd>The electric field points away from a positive charge.</dd><dt>해석</dt><dd>전기장은 양전하에서 바깥쪽을 향한다.</dd></dl>
-              <small>PDF 12쪽 · 관련어 electric force</small>
+              <small>PDF 12쪽 또는 Sheet1 · 2-20행 · 관련어 electric force</small>
             </div>
           </aside>
         </div>
@@ -1329,9 +1329,9 @@
           </div>
           <div class="field">
             <label><span class="field-label">페이지 범위 (선택)</span>
-              <input id="vbPageRange" name="pageRange" type="text" maxlength="200" inputmode="text" placeholder="예: 22-44 또는 12-20, 27, 31-35" />
+              <input id="vbPageRange" name="pageRange" type="text" maxlength="200" inputmode="text" placeholder="PDF만 해당 · 예: 22-44 또는 12-20, 27" />
             </label>
-            <small>비우면 전체를 사용합니다. 전체가 80쪽을 넘으면 범위를 입력해야 합니다.</small>
+            <small>PDF에만 적용됩니다. 비우면 전체를 사용하고, 80쪽을 넘으면 범위를 입력해야 합니다.</small>
           </div>
           <div class="field">
             <label><span class="field-label">묶음당 페이지 수</span>
@@ -1344,7 +1344,7 @@
                 <option value="20">20쪽</option>
               </select>
             </label>
-            <small>각 묶음이 PDF의 한 단원처럼 구성됩니다.</small>
+            <small>PDF 페이지 또는 표·텍스트 출처 단위를 한 단원으로 묶습니다.</small>
           </div>
           <div class="field">
             <label><span class="field-label">묶음당 어휘 수</span>

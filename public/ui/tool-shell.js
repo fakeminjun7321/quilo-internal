@@ -8,6 +8,7 @@
     { group: "시작", href: "/tools/index.html", label: "도구 홈", icon: "home" },
     { group: "시작", href: "/tools/convert.html", label: "파일 변환", icon: "swap" },
     { group: "이미지", href: "/tools/image.html", label: "이미지 변환·압축", icon: "image" },
+    { group: "이미지", href: "/tools/image-ocr.html", label: "이미지 OCR", icon: "scan" },
     { group: "PDF", href: "/tools/pdf-merge.html", label: "PDF 병합", icon: "merge" },
     { group: "PDF", href: "/tools/pdf-split.html", label: "PDF 분할", icon: "split" },
     { group: "PDF", href: "/tools/pdf-extract.html", label: "페이지 추출", icon: "page" },
@@ -25,6 +26,7 @@
     home: '<path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v10h13V10"/><path d="M9.5 20v-6h5v6"/>',
     swap: '<path d="M7 7h12l-3-3"/><path d="m19 7-3 3"/><path d="M17 17H5l3 3"/><path d="m5 17 3-3"/>',
     image: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 15-5-4-8 8"/>',
+    scan: '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"/><path d="M7 12h10M8 9h8M8 15h6"/>',
     merge: '<path d="M7 4v5c0 2 2 3 5 3s5 1 5 3v5"/><path d="M17 4v5c0 1.4-1 2.3-2.6 2.7"/><path d="m14 18 3 3 3-3"/>',
     split: '<path d="M12 4v5c0 2-1 3-4 3H4"/><path d="M12 4v5c0 2 1 3 4 3h4"/><path d="M4 12v8"/><path d="M20 12v8"/>',
     page: '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h6"/>',
@@ -151,6 +153,7 @@
   }
 
   function buildResultRail() {
+    var remote = normalizedPath() === "/tools/image-ocr.html";
     var rail = document.createElement("aside");
     rail.className = "q-tool-result-rail";
     rail.setAttribute("aria-label", "작업 결과");
@@ -159,7 +162,7 @@
       '<div class="q-tool-result-rail__empty" data-tool-result-empty>' +
         '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>' +
         '<span>왼쪽에서 파일을 선택하고 작업을 실행하세요.</span>' +
-        '<span class="q-tool-result-rail__privacy">브라우저 안에서 안전하게 처리</span>' +
+        '<span class="q-tool-result-rail__privacy">' + (remote ? "암호화 전송 후 OCR 처리" : "브라우저 안에서 안전하게 처리") + '</span>' +
       '</div>' +
       '<div class="q-tool-result-rail__host" data-tool-result-host></div>' +
       '<div class="q-tool-asset-status" aria-hidden="true" data-tool-asset-status>작업 엔진을 불러오는 중…</div>';

@@ -3,6 +3,64 @@ export function createJobStreamController(deps) {
     resetForm, showGenErrorCard, commitLastGenPrefs, loadBalance, loadFiles } = deps;
   const statusTitle = document.getElementById("statusTitle");
   const resultArea = document.getElementById("resultArea");
+
+  function openPreview(url, filename) {
+    if (typeof HTMLDialogElement === "undefined" || typeof HTMLDialogElement.prototype.showModal !== "function") {
+      window.open(url, "_blank", "noopener");
+      return;
+    }
+    let dialog = document.getElementById("generationPreviewDialog");
+    if (!dialog) {
+      dialog = document.createElement("dialog");
+      dialog.id = "generationPreviewDialog";
+      dialog.className = "generation-preview-dialog";
+      const head = document.createElement("div");
+      head.className = "generation-preview-dialog__head";
+      const title = document.createElement("strong");
+      title.dataset.previewTitle = "";
+      const external = document.createElement("a");
+      external.dataset.previewExternal = "";
+      external.target = "_blank";
+      external.rel = "noopener";
+      external.textContent = "새 창에서 열기";
+      const close = document.createElement("button");
+      close.type = "button";
+      close.textContent = "닫기";
+      close.addEventListener("click", () => dialog.close());
+      head.append(title, external, close);
+      const frame = document.createElement("iframe");
+      frame.dataset.previewFrame = "";
+      frame.title = "생성 파일 미리보기";
+      dialog.append(head, frame);
+      dialog.addEventListener("close", () => frame.removeAttribute("src"));
+      dialog.addEventListener("click", (event) => {
+        if (event.target === dialog) dialog.close();
+      });
+      document.body.appendChild(dialog);
+    }
+    dialog.querySelector("[data-preview-title]").textContent = filename || "파일 미리보기";
+    dialog.querySelector("[data-preview-external]").href = url;
+    dialog.querySelector("[data-preview-frame]").src = url;
+    dialog.showModal();
+  }
+
+  function createResultActions({ jobId, filename, fileIndex = null }) {
+    const suffix = fileIndex == null ? "" : `?file=${encodeURIComponent(fileIndex)}`;
+    const actions = document.createElement("div");
+    actions.className = "generation-result-actions";
+    const preview = document.createElement("button");
+    preview.type = "button";
+    preview.className = "generation-preview-button";
+    preview.textContent = "미리보기";
+    preview.addEventListener("click", () => openPreview(`/api/jobs/${jobId}/preview${suffix}`, filename));
+    const download = document.createElement("a");
+    download.href = `/api/jobs/${jobId}/download${suffix}`;
+    download.textContent = `${filename || "파일"} 다운로드`;
+    download.download = filename || "";
+    actions.append(preview, download);
+    return actions;
+  }
+
   function streamJob(jobId) {
     const es = new EventSource(`/api/jobs/${jobId}/stream`);
     runtime.currentEs = es;
@@ -23,11 +81,7 @@ export function createJobStreamController(deps) {
       runtime.retryCount = 0;
       if (genSpinner) genSpinner.hidden = true;
 
-      const link = document.createElement("a");
-      link.href = `/api/jobs/${jobId}/download`;
-      link.textContent = `${data.filename} 다운로드`;
-      link.download = data.filename;
-      resultArea.appendChild(link);
+      resultArea.appendChild(createResultActions({ jobId, filename: data.filename }));
 
       // 보관 안내 + (사전→결과) 이어서 만들기 CTA.
       try {
@@ -246,7 +300,15 @@ export function createJobStreamController(deps) {
             link.textContent = filename ? `${filename} 다운로드` : "보고서 다운로드";
             if (filename) link.download = filename;
             link.className = "generation-recovered-download";
-            box.appendChild(link);
+            const preview = document.createElement("button");
+            preview.type = "button";
+            preview.className = "generation-recovered-preview";
+            preview.textContent = "미리보기";
+            preview.addEventListener("click", () => openPreview(`/api/jobs/${_jobId}/preview`, filename));
+            const actions = document.createElement("div");
+            actions.className = "generation-recovered-actions";
+            actions.append(preview, link);
+            box.appendChild(actions);
             resultArea.appendChild(box);
             resetForm();
             if (typeof loadBalance === "function") loadBalance();

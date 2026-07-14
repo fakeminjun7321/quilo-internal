@@ -29,7 +29,7 @@
     ["cap-translate", "Capstone 번역", "측정 구조를 보존해 Capstone 파일을 번역합니다.", "/?report=cap-translate", "pro", "pro"],
     ["file-convert", "파일 및 PDF 도구", "파일, 이미지, PDF를 브라우저에서 처리합니다.", "/tools/index.html", "public", "active"],
     ["equation", "LaTeX 한글 수식", "수식을 한글 수식 객체로 변환합니다.", "/equation/index.html", "public", "active"],
-    ["image-ocr", "이미지 OCR", "사진과 표, 수식을 구조화해 추출합니다.", "/tools/convert.html", "pro", "pro"],
+    ["image-ocr", "이미지 OCR", "사진과 표, 수식을 구조화해 추출합니다.", "/tools/image-ocr.html", "pro", "pro"],
     ["pdf-analysis", "PDF 분석", "페이지와 텍스트층, 수식 밀도를 분석합니다.", "/developers.html#catalog", "member", "active"],
   ].map(([id, title, summary, path, audience, status]) => ({ id, title, summary, path, audience, status })));
 

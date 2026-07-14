@@ -136,6 +136,14 @@ export function createFilesController({ hooks }) {
         download.textContent = cloud && !file.download_url ? "링크 없음" : "다운로드";
         if (cloud) { download.target = "_blank"; download.rel = "noopener"; }
         else download.download = file.filename || "";
+        if (!cloud) {
+          const preview = document.createElement("a");
+          preview.href = `/api/me/files/${file.id}/preview`;
+          preview.textContent = "미리보기";
+          preview.target = "_blank";
+          preview.rel = "noopener";
+          actions.append(preview);
+        }
         actions.append(download);
         if (!cloud) {
           const remove = document.createElement("button");
@@ -168,4 +176,3 @@ export function createFilesController({ hooks }) {
 
   return { init, loadFiles, loadCloudStatus, applyFileFilter };
 }
-

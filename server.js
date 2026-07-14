@@ -21,6 +21,7 @@ const {
   ENFORCEABLE_RULES: OUTPUT_VALIDATE_ENFORCEABLE_RULES,
 } = require("./lib/output-validate");
 const { registerAppDownloadRoutes } = require("./lib/app-downloads");
+const { createFilePreview } = require("./lib/file-preview");
 
 // 프로세스 전역 안전망: 처리되지 않은 예외/거부가 서버 프로세스 전체를 죽여
 // 진행 중인 다른 사용자 작업까지 같이 날리지 않도록, 최후 백스톱으로 로깅만 한다.
@@ -6764,6 +6765,46 @@ app.get("/api/jobs/:id/download", requireAuth, (req, res) => {
   res.send(job.result);
 });
 
+// Generated-file preview.  This intentionally reuses the exact same job
+// ownership checks as /download and renders active content (HTML/SVG/code) as
+// escaped, read-only HTML.  PDF/images/audio/video stay inline so the browser's
+// native viewer can be used without making a public URL.
+app.get("/api/jobs/:id/preview", requireAuth, async (req, res) => {
+  const job = jobs.get(req.params.id);
+  if (!job) return res.status(404).send("작업을 찾을 수 없습니다.");
+  const u = getSessionUser(req);
+  if (!u.id || job.userInfo?.id !== u.id) return res.status(403).send("권한 없음");
+
+  let entry = null;
+  if (req.query.file !== undefined) {
+    entry = (job.files || [])[parseInt(String(req.query.file), 10)] || null;
+  } else if (job.status === "done" && job.result) {
+    entry = { buffer: job.result, filename: job.filename, mimeType: job.mimeType };
+  }
+  if (!entry?.buffer) return res.status(409).send("아직 미리볼 파일이 준비되지 않았습니다.");
+
+  try {
+    const preview = await createFilePreview(entry.buffer, {
+      filename: entry.filename || job.filename || "파일",
+      mimeType: entry.mimeType || job.mimeType || "",
+    });
+    res.set({
+      "Content-Type": preview.contentType,
+      "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(entry.filename || job.filename || "preview")}`,
+      "Content-Length": preview.body.length,
+      "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff",
+      "Content-Security-Policy": preview.kind === "html"
+        ? "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'self'"
+        : "default-src 'none'; frame-ancestors 'self'",
+    });
+    return res.send(preview.body);
+  } catch (error) {
+    console.error("[preview] job error:", error);
+    return res.status(422).send("파일 미리보기를 만들지 못했습니다.");
+  }
+});
+
 // Stored files (24h)
 // ── 클라우드 저장소(Dropbox) 연동 ─────────────────────────────────────────────
 function appBaseUrl(req) {
@@ -7427,6 +7468,36 @@ app.get("/api/me/files/:id/download", requireAuth, async (req, res) => {
   } catch (e) {
     console.error("[files] download error:", e);
     res.status(500).send("파일 다운로드 중 오류가 발생했습니다.");
+  }
+});
+
+app.get("/api/me/files/:id/preview", requireAuth, async (req, res) => {
+  if (!supa.isEnabled()) {
+    return res.status(503).send("파일 저장소가 설정되지 않았습니다.");
+  }
+  const u = getSessionUser(req);
+  if (!u.id) return res.status(403).send("권한 없음");
+  try {
+    const saved = await supa.downloadReportFile(u.id, req.params.id);
+    if (!saved) return res.status(404).send("파일이 없거나 만료되었습니다.");
+    const preview = await createFilePreview(saved.buffer, {
+      filename: saved.row.filename || "파일",
+      mimeType: saved.row.mime_type || "",
+    });
+    res.set({
+      "Content-Type": preview.contentType,
+      "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(saved.row.filename || "preview")}`,
+      "Content-Length": preview.body.length,
+      "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff",
+      "Content-Security-Policy": preview.kind === "html"
+        ? "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'self'"
+        : "default-src 'none'; frame-ancestors 'self'",
+    });
+    return res.send(preview.body);
+  } catch (e) {
+    console.error("[files] preview error:", e);
+    return res.status(422).send("파일 미리보기를 만들지 못했습니다.");
   }
 });
 

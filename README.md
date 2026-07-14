@@ -192,6 +192,11 @@ Render Web Service 설정 예시:
 | `JOB_TIMEOUT_MS` | 작업 timeout, 기본 `480000` ms |
 | `ANTHROPIC_IMAGE_MAX_BASE64_CHARS` | 이미지 1장 base64 제한 |
 | `ANTHROPIC_IMAGE_MAX_EDGE` | 이미지 리사이즈 최대 edge |
+| `MISTRAL_API_KEY` | 이미지 OCR 및 PDF strict OCR 공급자 키 |
+| `MISTRAL_OCR_MODEL` | 이미지·PDF OCR 모델, 기본 `mistral-ocr-4-0` |
+| `IMAGE_OCR_MAX_EDGE` | 이미지 OCR 전처리 최대 edge, 기본 `6000` |
+| `IMAGE_OCR_MAX_PIXELS` | 이미지 OCR 입력의 해상도 안전 상한, 기본 `80000000` |
+| `IMAGE_OCR_RETRY_CONFIDENCE` | 보정본 자동 재판독 평균 신뢰도 임계값, 기본 `0.90` |
 | `PYTHON_BIN` | HWPX·PDF 생성기가 쓸 Python 경로(미설정 시 `.venv` 우선) |
 | `PDF_AUTO_MATH_THRESHOLD` | PDF 통번역 자동 모드의 수식 밀도 임계값, 기본 `12` |
 | `PDF_TRANSLATE_MAX_PAGES` | PDF 통번역 전체 최대 페이지, 기본 `700` |

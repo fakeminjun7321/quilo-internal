@@ -935,6 +935,13 @@
           function addFileLink(d) {
             if (d == null || d.index == null || addedFileLinks.has(d.index)) return;
             addedFileLinks.add(d.index);
+            const preview = document.createElement("a");
+            preview.href = `/api/jobs/${jobId}/preview?file=${d.index}`;
+            preview.textContent = `${d.filename} 미리보기`;
+            preview.target = "_blank";
+            preview.rel = "noopener";
+            preview.className = "pdf-download-link pdf-preview-link";
+            resultArea.appendChild(preview);
             const link = document.createElement("a");
             link.href = `/api/jobs/${jobId}/download?file=${d.index}`;
             link.textContent = `${d.filename} 다운로드`;
@@ -958,6 +965,13 @@
             if (data.files && data.files.length > 1) {
               data.files.forEach(addFileLink);
             } else {
+              const preview = document.createElement("a");
+              preview.href = `/api/jobs/${jobId}/preview`;
+              preview.textContent = `${data.filename} 미리보기`;
+              preview.target = "_blank";
+              preview.rel = "noopener";
+              preview.className = "pdf-download-link pdf-preview-link";
+              resultArea.appendChild(preview);
               const link = document.createElement("a");
               link.href = `/api/jobs/${jobId}/download`;
               link.textContent = `${data.filename} 다운로드`;

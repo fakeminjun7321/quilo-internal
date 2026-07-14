@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="canonical" href="https://quilolab.com/tools/image-ocr.html" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>이미지 OCR — Quilo</title>
+    <meta name="description" content="사진과 스크린샷의 한글·영문·표·수식을 고해상도 OCR로 읽어 Markdown과 구조 블록으로 추출합니다." />
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("theme");
+          if (!t) t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+          document.documentElement.setAttribute("data-theme", t);
+        } catch (e) {}
+      })();
+    </script>
+    <link rel="stylesheet" href="/ui/foundation.css" />
+    <link rel="stylesheet" href="/ui/shell.css" />
+    <link rel="stylesheet" href="/ui/pages.css" />
+    <link rel="stylesheet" href="/ui/tool-shell.css" />
+    <link rel="stylesheet" href="/ui/image-ocr.css" />
+  </head>
+  <body class="landing q-shell-page ui-page">
+    <a class="ui-skip-link" href="#main-content">본문으로 건너뛰기</a>
+    <header class="ui-site-header" data-ui-shell></header>
+
+    <main class="landing-shell" id="main-content">
+      <section class="section">
+        <div class="tool-page-head">
+          <h1>이미지 OCR</h1>
+          <p>사진·스크린샷의 글, 표와 수식을 읽어 Markdown으로 추출합니다. 낮은 신뢰도는 고대비 보정본으로 한 번 더 판독해 더 정확한 결과를 선택합니다.</p>
+        </div>
+
+        <section class="tool-card ocr-input-card" aria-labelledby="ocrUploadTitle">
+          <div class="ocr-card-head">
+            <div>
+              <h2 id="ocrUploadTitle">이미지 선택</h2>
+              <p>PNG · JPG · WEBP · GIF · TIFF · BMP · AVIF, 최대 20MB</p>
+            </div>
+            <span class="ocr-pro-badge">Pro</span>
+          </div>
+
+          <div class="ocr-drop" id="ocrDrop" role="button" tabindex="0" aria-label="OCR 이미지 선택">
+            <div class="ocr-drop-copy">
+              <strong>이미지를 끌어놓거나 눌러서 선택</strong>
+              <span>문서가 화면을 가득 채우고 글자가 선명할수록 정확합니다.</span>
+            </div>
+            <img id="ocrImagePreview" alt="선택한 OCR 이미지" hidden />
+          </div>
+          <input id="ocrFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/tiff,image/bmp,image/avif,.tif,.tiff,.bmp,.avif" hidden />
+
+          <div class="ocr-file-meta" id="ocrFileMeta" hidden></div>
+          <div class="ocr-options">
+            <label>
+              판독 모드
+              <select id="ocrMode">
+                <option value="accurate" selected>정밀 — 저신뢰 이미지 자동 재판독</option>
+                <option value="fast">빠름 — 1회 판독</option>
+              </select>
+            </label>
+            <label>
+              표 출력
+              <select id="ocrTableFormat">
+                <option value="markdown" selected>Markdown 표</option>
+                <option value="html">HTML 표</option>
+              </select>
+            </label>
+          </div>
+
+          <p class="ocr-privacy">선택한 이미지는 OCR 처리를 위해 Quilo 서버와 설정된 Mistral Document AI로 암호화 전송됩니다. 본인이 권한을 가진 이미지만 사용하세요.</p>
+          <button class="ocr-submit" id="ocrRun" type="button" disabled>이미지 읽기</button>
+          <p class="ocr-status" id="ocrStatus" aria-live="polite"></p>
+        </section>
+
+        <section class="tool-result ocr-result" id="ocrResult" hidden aria-labelledby="ocrResultTitle">
+          <div class="ocr-result-head">
+            <div>
+              <h2 id="ocrResultTitle">OCR 결과</h2>
+              <p id="ocrResultMeta"></p>
+            </div>
+            <span id="ocrConfidence" class="ocr-confidence"></span>
+          </div>
+          <textarea id="ocrText" readonly aria-label="추출된 Markdown"></textarea>
+          <div class="ocr-result-actions">
+            <button id="ocrCopy" type="button">Markdown 복사</button>
+            <button id="ocrDownloadMd" type="button">.md 저장</button>
+            <button id="ocrDownloadJson" type="button">구조 JSON 저장</button>
+          </div>
+          <details class="ocr-blocks">
+            <summary>구조 블록 확인</summary>
+            <div id="ocrBlocks"></div>
+          </details>
+        </section>
+      </section>
+    </main>
+
+    <footer class="ui-site-footer">
+      <div class="ui-site-footer__inner">
+        <nav class="ui-site-footer__links" aria-label="푸터 메뉴"><a href="/terms.html">이용약관</a><a href="/privacy.html">개인정보처리방침</a><a href="/guide.html">이용 가이드</a><a href="/support.html">고객센터</a></nav>
+        <div class="ui-site-footer__copy">© 2026 Quilo · <span data-site-version>버전 확인 중...</span></div>
+      </div>
+    </footer>
+    <script src="/ui/shell.js"></script>
+    <script src="/ui/tool-shell.js"></script>
+    <script>
+      (function () {
+        var input = document.getElementById("ocrFile");
+        var drop = document.getElementById("ocrDrop");
+        var preview = document.getElementById("ocrImagePreview");
+        var meta = document.getElementById("ocrFileMeta");
+        var run = document.getElementById("ocrRun");
+        var status = document.getElementById("ocrStatus");
+        var result = document.getElementById("ocrResult");
+        var text = document.getElementById("ocrText");
+        var resultMeta = document.getElementById("ocrResultMeta");
+        var confidence = document.getElementById("ocrConfidence");
+        var blocks = document.getElementById("ocrBlocks");
+        var selected = null;
+        var lastResult = null;
+        var previewUrl = "";
+
+        function formatBytes(bytes) {
+          if (bytes >= 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + "MB";
+          return Math.max(1, Math.round(bytes / 1024)) + "KB";
+        }
+
+        function choose(file) {
+          if (!file) return;
+          if (!file.type.startsWith("image/") && !/\.(png|jpe?g|webp|gif|tiff?|bmp|avif)$/i.test(file.name)) {
+            status.textContent = "지원하는 이미지 파일을 선택하세요.";
+            return;
+          }
+          if (file.size > 20 * 1024 * 1024) {
+            status.textContent = "이미지는 20MB 이하만 지원합니다.";
+            return;
+          }
+          selected = file;
+          run.disabled = false;
+          status.textContent = "";
+          result.hidden = true;
+          meta.hidden = false;
+          meta.textContent = file.name + " · " + formatBytes(file.size);
+          if (previewUrl) URL.revokeObjectURL(previewUrl);
+          previewUrl = URL.createObjectURL(file);
+          preview.src = previewUrl;
+          preview.hidden = false;
+          drop.classList.add("has-image");
+        }
+
+        drop.addEventListener("click", function () { input.click(); });
+        drop.addEventListener("keydown", function (event) {
+          if (event.key === "Enter" || event.key === " ") { event.preventDefault(); input.click(); }
+        });
+        input.addEventListener("change", function () { choose(input.files && input.files[0]); });
+        ["dragenter", "dragover"].forEach(function (name) {
+          drop.addEventListener(name, function (event) { event.preventDefault(); drop.classList.add("is-dragging"); });
+        });
+        ["dragleave", "drop"].forEach(function (name) {
+          drop.addEventListener(name, function (event) { event.preventDefault(); drop.classList.remove("is-dragging"); });
+        });
+        drop.addEventListener("drop", function (event) { choose(event.dataTransfer && event.dataTransfer.files[0]); });
+
+        function renderBlocks(data) {
+          var counts = {};
+          (data.pages || []).forEach(function (page) {
+            (page.blocks || []).forEach(function (block) {
+              var type = String(block.type || "text");
+              counts[type] = (counts[type] || 0) + 1;
+            });
+          });
+          blocks.replaceChildren();
+          var keys = Object.keys(counts).sort();
+          if (!keys.length) {
+            blocks.textContent = "추출된 구조 블록이 없습니다.";
+            return;
+          }
+          var list = document.createElement("ul");
+          keys.forEach(function (key) {
+            var item = document.createElement("li");
+            item.textContent = key + " · " + counts[key] + "개";
+            list.appendChild(item);
+          });
+          blocks.appendChild(list);
+        }
+
+        run.addEventListener("click", async function () {
+          if (!selected || run.disabled) return;
+          run.disabled = true;
+          run.textContent = "읽는 중…";
+          status.textContent = "고해상도 전처리와 구조 분석을 진행하고 있습니다.";
+          try {
+            var form = new FormData();
+            form.append("image", selected);
+            form.append("includeBlocks", "true");
+            form.append("mode", document.getElementById("ocrMode").value);
+            form.append("tableFormat", document.getElementById("ocrTableFormat").value);
+            var response = await fetch("/api/tools/images/ocr", { method: "POST", body: form });
+            var data = await response.json().catch(function () { return {}; });
+            if (!response.ok) {
+              if (response.status === 401) throw new Error("로그인이 필요합니다.");
+              if (response.status === 403) throw new Error("이미지 OCR은 Pro 회원 기능입니다.");
+              throw new Error(data.error || "이미지 OCR에 실패했습니다.");
+            }
+            lastResult = data;
+            text.value = data.text || "";
+            var passes = data.source && data.source.passes || 1;
+            var enhanced = data.source && data.source.enhanced;
+            resultMeta.textContent = (data.model || "OCR") + " · " + passes + "회 판독" + (enhanced ? " · 고대비 보정본 선택" : "");
+            var avg = data.confidence && data.confidence.average;
+            confidence.textContent = Number.isFinite(avg) ? "신뢰도 " + Math.round(avg * 100) + "%" : "판독 완료";
+            confidence.dataset.tone = Number.isFinite(avg) && avg < 0.85 ? "warn" : "good";
+            renderBlocks(data);
+            result.hidden = false;
+            status.textContent = data.source && data.source.enhancedRetryWarning
+              ? "완료 — 보정본 재판독은 건너뛰었지만 첫 판독 결과를 보존했습니다."
+              : "완료 — 결과를 복사하거나 파일로 저장할 수 있습니다.";
+            result.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          } catch (error) {
+            status.textContent = "오류: " + (error.message || error);
+          } finally {
+            run.disabled = false;
+            run.textContent = "이미지 읽기";
+          }
+        });
+
+        document.getElementById("ocrCopy").addEventListener("click", async function () {
+          if (!lastResult) return;
+          try { await navigator.clipboard.writeText(lastResult.text || ""); this.textContent = "복사됨 ✓"; }
+          catch (_) { text.select(); document.execCommand("copy"); this.textContent = "복사됨 ✓"; }
+          var button = this;
+          setTimeout(function () { button.textContent = "Markdown 복사"; }, 1400);
+        });
+
+        function download(name, type, content) {
+          var url = URL.createObjectURL(new Blob([content], { type: type }));
+          var link = document.createElement("a");
+          link.href = url; link.download = name; document.body.appendChild(link); link.click(); link.remove();
+          setTimeout(function () { URL.revokeObjectURL(url); }, 2000);
+        }
+        document.getElementById("ocrDownloadMd").addEventListener("click", function () {
+          if (!lastResult) return;
+          download((selected.name.replace(/\.[^.]+$/, "") || "ocr") + ".md", "text/markdown;charset=utf-8", lastResult.text || "");
+        });
+        document.getElementById("ocrDownloadJson").addEventListener("click", function () {
+          if (!lastResult) return;
+          download((selected.name.replace(/\.[^.]+$/, "") || "ocr") + ".ocr.json", "application/json;charset=utf-8", JSON.stringify(lastResult, null, 2));
+        });
+        window.addEventListener("beforeunload", function () { if (previewUrl) URL.revokeObjectURL(previewUrl); });
+      })();
+    </script>
+  </body>
+</html>

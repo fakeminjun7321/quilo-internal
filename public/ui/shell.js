@@ -415,7 +415,6 @@
       .map((item) => ({ item, score: searchScore(item, query) }))
       .filter(({ score }) => score >= 38)
       .sort((a, b) => b.score - a.score || a.item.title.localeCompare(b.item.title, "ko"))
-      .slice(0, 10)
       .map(({ item }) => item);
   }
 

@@ -12,6 +12,7 @@
     ["reading-log", "독서활동 기록지", "도서 정보를 학교 독서록 양식으로 작성합니다.", "/?report=reading-log", "member", "active"],
     ["reading-log-bulk", "독서록 대량 생성", "여러 독서록을 만들고 ZIP으로 묶습니다.", "/?report=reading-log-bulk", "member", "active"],
     ["problem-set", "문제집 메이커", "교재에서 문제지와 해설지 세트를 만듭니다.", "/?report=problem-set", "pro", "pro"],
+    ["vocabulary-book", "단어장 메이커", "교재에서 영한 단어장과 단원 평가를 만듭니다.", "/?report=vocabulary-book", "pro", "pro"],
     ["form-maker", "양식 메이커", "설명이나 사진에서 편집 가능한 양식을 만듭니다.", "/?report=form-maker", "pro", "pro"],
     ["phys-inquiry", "물리 수행평가", "탐구와 사고 과정을 보고서로 구조화합니다.", "/exam-prep.html", "pro", "paused"],
     ["math-inquiry", "수학 수행평가", "필기와 탐구 주제로 수학 보고서를 작성합니다.", "/exam-prep.html", "pro", "paused"],
@@ -99,7 +100,7 @@
         label: "학습",
         sections: [
           { title: "수행평가", items: items(["phys-inquiry", "math-inquiry", "coding-test"]) },
-          { title: "시험 대비", items: items(["problem-set", "eng-exam-prep", "korean-lit-exam", "phys-mock-exam"]) },
+          { title: "시험 대비", items: items(["problem-set", "vocabulary-book", "eng-exam-prep", "korean-lit-exam", "phys-mock-exam"]) },
           { title: "심화 학습", items: items(["physics-studio", "relativity-study", "file-chat"]) },
         ],
         all: { title: "학습 기능 전체 보기", path: "/developers.html#catalog" },

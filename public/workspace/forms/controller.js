@@ -18,7 +18,7 @@ export function installReportFormControllers(deps) {
   } = deps;
   const USE_POLICY_NOTE = usePolicyNote;
   const { form, btn, crForm, crBtn, prForm, prBtn, piForm, piBtn, miForm, miBtn,
-    frForm, frBtn, psForm, psBtn, fmForm, fmBtn, rlForm, rlBtn } = elements;
+    frForm, frBtn, psForm, psBtn, vbForm, vbBtn, fmForm, fmBtn, rlForm, rlBtn } = elements;
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     if (runtime.currentJobId) return; // 안전장치: 진행 중이면 무시
@@ -525,6 +525,84 @@ export function installReportFormControllers(deps) {
       appendPolicyAcknowledgements(fd);
 
       await submitReport({ formEl: psForm, buttonEl: psBtn, formData: fd });
+    });
+  }
+
+  // ── 단어장 메이커(Pro) submit - 교재 PDF → 인터랙티브 PDF + JSON ZIP ──
+  if (vbForm) {
+    const sourceInput = document.getElementById("vbSource");
+    const syncButton = () => {
+      if (!runtime.currentJobId) vbBtn.disabled = !sourceInput.files?.length;
+    };
+    sourceInput.addEventListener("change", syncButton);
+    syncButton();
+
+    vbForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (runtime.currentJobId) return;
+      const source = sourceInput.files?.[0];
+      if (!source) {
+        alert("영어 교재 PDF를 올리세요.");
+        sourceInput.focus();
+        return;
+      }
+      const includeCore = document.getElementById("vbIncludeCore").checked;
+      const includeAcademic = document.getElementById("vbIncludeAcademic").checked;
+      const includePhrases = document.getElementById("vbIncludePhrases").checked;
+      if (!includeCore && !includeAcademic && !includePhrases) {
+        alert("핵심 용어, 학술 어휘, 문제 풀이 표현 중 하나 이상을 선택하세요.");
+        return;
+      }
+      const model = document.querySelector('input[name="vbModel"]:checked')?.value || "claude-opus-4-8";
+      const pagesPerUnit = document.getElementById("vbPagesPerUnit").value || "10";
+      const termCount = document.getElementById("vbTermCount").value || "20";
+      const pageRange = document.getElementById("vbPageRange").value.trim();
+      const title = document.getElementById("vbTitle").value.trim();
+      const includePronunciation = document.getElementById("vbIncludePronunciation").checked;
+      const includeReview = document.getElementById("vbIncludeReview").checked;
+      const includeMemo = document.getElementById("vbIncludeMemo").checked;
+      const typeLabels = [
+        includeCore && "핵심 용어",
+        includeAcademic && "학술 어휘",
+        includePhrases && "문제 풀이 표현",
+      ].filter(Boolean);
+
+      const ok = await showConfirmDialog({
+        title: "단어장 메이커 (Pro)",
+        background: vbForm,
+        rows: [
+          ["모델", getModelLabel(model)],
+          ["교재 PDF", source.name],
+          ["페이지 범위", pageRange || "전체 (최대 80쪽)"],
+          ["구성", `${pagesPerUnit}쪽마다 ${termCount}개`],
+          ["어휘 종류", typeLabels.join(", ")],
+          ["학습 요소", [includePronunciation && "발음", includeReview && "단원 평가", includeMemo && "메모"].filter(Boolean).join(", ") || "기본"],
+          ["출력", "ZIP · 인터랙티브 PDF + 학습용 JSON"],
+          ["예상 비용", "무료 (Pro)"],
+          ["예상 시간", "선택 범위에 따라 1~5분"],
+        ],
+        note: `교재 원문에 실제로 등장한 표현만 서버 검증을 통과해 수록합니다. ${USE_POLICY_NOTE}`,
+      });
+      if (!ok) return;
+
+      const fd = new FormData();
+      fd.append("type", "vocabulary-book");
+      fd.append("source", source);
+      if (title) fd.append("title", title);
+      if (pageRange) fd.append("pageRange", pageRange);
+      fd.append("pagesPerUnit", pagesPerUnit);
+      fd.append("termCount", termCount);
+      fd.append("includeCore", includeCore ? "true" : "false");
+      fd.append("includeAcademic", includeAcademic ? "true" : "false");
+      fd.append("includePhrases", includePhrases ? "true" : "false");
+      fd.append("includePronunciation", includePronunciation ? "true" : "false");
+      fd.append("includeReview", includeReview ? "true" : "false");
+      fd.append("includeMemo", includeMemo ? "true" : "false");
+      if (runtime.studentId) fd.append("studentId", runtime.studentId);
+      fd.append("model", model);
+      appendPolicyAcknowledgements(fd);
+
+      await submitReport({ formEl: vbForm, buttonEl: vbBtn, formData: fd });
     });
   }
 

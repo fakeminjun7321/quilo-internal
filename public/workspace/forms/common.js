@@ -174,7 +174,9 @@ export function createCommonFormsController({
     });
     updateRecentInput(form, workflow);
     if ($("workspaceEstimateTime")) $("workspaceEstimateTime").textContent = workflow.time || "약 2–4분";
-    if ($("workspaceEstimateCost")) $("workspaceEstimateCost").textContent = modelCostLabel(selectedModelValue(form));
+    if ($("workspaceEstimateCost")) {
+      $("workspaceEstimateCost").textContent = workflow.cost || modelCostLabel(selectedModelValue(form));
+    }
     updateSubmitReadiness(form, workflow);
   }
 

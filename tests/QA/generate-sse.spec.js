@@ -56,6 +56,7 @@ test.afterAll(async () => {
 
 async function mockFrontendApis(page) {
   let jobCounter = 0;
+  const generationRequests = [];
 
   await page.addInitScript(() => {
     class MockEventSource {
@@ -98,6 +99,13 @@ async function mockFrontendApis(page) {
       body: JSON.stringify({ features: [], blockedReportTypes: [] }),
     });
   });
+  await page.route("**/api/subscriptions/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ active: true, admin: false }),
+    });
+  });
   await page.route("**/api/me/balance", async (route) => {
     await route.fulfill({
       status: 200,
@@ -132,12 +140,15 @@ async function mockFrontendApis(page) {
     });
   });
   await page.route("**/api/generate", async (route) => {
+    generationRequests.push((await route.request().postDataBuffer())?.toString("utf8") || "");
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ jobId: `qa-${++jobCounter}` }),
     });
   });
+
+  return { generationRequests };
 }
 
 async function chooseReport(page, type) {
@@ -156,7 +167,24 @@ async function acceptPolicy(page, type) {
   await page.locator(`[data-report-form="${type}"] .policy-check input[type="checkbox"]`).check({ force: true });
 }
 
-async function confirmGeneration(page) {
+async function setBackgroundMode(page, type, { enabled, notifyEmail = true }) {
+  const form = page.locator(`[data-report-form="${type}"]`);
+  const mode = form.locator("[data-background-mode]");
+  await expect(mode).toBeVisible();
+  await mode.setChecked(enabled);
+  const notify = form.locator("[data-background-notify]");
+  if (enabled) {
+    await expect(notify).toBeVisible();
+    await notify.setChecked(notifyEmail);
+  } else {
+    await expect(notify).toBeHidden();
+  }
+}
+
+async function confirmGeneration(page, summaryText) {
+  await expect(page.locator(".confirm-card .background-choice")).toHaveCount(0);
+  await expect(page.locator(".confirm-card")).toContainText("실행 방식");
+  await expect(page.locator(".confirm-card")).toContainText(summaryText);
   await page.locator(".confirm-card button.primary").click();
   await expect(page.locator("#statusTitle")).toHaveText("완료", { timeout: 7000 });
   await expect(page.locator('#progressSteps [data-progress-step="ready"]')).toHaveClass(/is-active/);
@@ -164,13 +192,15 @@ async function confirmGeneration(page) {
 }
 
 test("mocked SSE report generation smoke: chem-pre, chem-result, phys-result", async ({ page }) => {
-  await mockFrontendApis(page);
+  const { generationRequests } = await mockFrontendApis(page);
   await page.goto(BASE_URL);
 
   await expect(page.locator("body")).toHaveAttribute("data-auth", "in");
   await expect(page.locator('#annTrack a[href^="javascript:"]')).toHaveCount(0);
 
   await chooseReport(page, "chem-pre");
+  const reportFormCount = await page.locator("form[data-report-form]").count();
+  await expect(page.locator("[data-background-options]")).toHaveCount(reportFormCount);
   await page.setInputFiles("#manual", {
     name: "manual.pdf",
     mimeType: "application/pdf",
@@ -179,9 +209,12 @@ test("mocked SSE report generation smoke: chem-pre, chem-result, phys-result", a
   await goFlowStep(page, "chem-pre", "info");
   await page.fill("#date", "2026-06-14");
   await goFlowStep(page, "chem-pre", "generate");
+  await setBackgroundMode(page, "chem-pre", { enabled: true, notifyEmail: true });
   await acceptPolicy(page, "chem-pre");
   await page.locator('#form button[type="submit"]').click();
-  await confirmGeneration(page);
+  await confirmGeneration(page, "백그라운드 실행 · 이메일 알림 사용");
+  expect(generationRequests[0]).toContain('name="backgroundMode"');
+  expect(generationRequests[0]).toContain('name="notifyEmail"');
 
   await chooseReport(page, "chem-result");
   await page.setInputFiles("#crPreReport", {
@@ -192,9 +225,12 @@ test("mocked SSE report generation smoke: chem-pre, chem-result, phys-result", a
   await goFlowStep(page, "chem-result", "info");
   await page.fill("#crDate", "2026-06-14");
   await goFlowStep(page, "chem-result", "generate");
+  await setBackgroundMode(page, "chem-result", { enabled: false });
   await acceptPolicy(page, "chem-result");
   await page.locator('#chemResultForm button[type="submit"]').click();
-  await confirmGeneration(page);
+  await confirmGeneration(page, "현재 창에서 실행");
+  expect(generationRequests[1]).not.toContain('name="backgroundMode"');
+  expect(generationRequests[1]).not.toContain('name="notifyEmail"');
 
   await chooseReport(page, "phys-result");
   await page.setInputFiles("#prData", {
@@ -205,7 +241,10 @@ test("mocked SSE report generation smoke: chem-pre, chem-result, phys-result", a
   await goFlowStep(page, "phys-result", "info");
   await page.fill("#prDate", "2026-06-14");
   await goFlowStep(page, "phys-result", "generate");
+  await setBackgroundMode(page, "phys-result", { enabled: true, notifyEmail: false });
   await acceptPolicy(page, "phys-result");
   await page.locator('#physResultForm button[type="submit"]').click();
-  await confirmGeneration(page);
+  await confirmGeneration(page, "백그라운드 실행 · 이메일 알림 사용 안 함");
+  expect(generationRequests[2]).toContain('name="backgroundMode"');
+  expect(generationRequests[2]).not.toContain('name="notifyEmail"');
 });

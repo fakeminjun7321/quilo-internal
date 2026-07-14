@@ -96,3 +96,41 @@ test("an optional enhanced retry failure preserves the first OCR result", async 
   assert.equal(result.source.passes, 1);
   assert.match(result.source.enhancedRetryWarning, /temporary rate limit/);
 });
+
+test("OCR retries a transient provider abort instead of leaking the raw abort message", async () => {
+  const image = await sampleImage();
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    if (calls === 1) throw new DOMException("This operation was aborted", "AbortError");
+    return new Response(JSON.stringify(payload(0.96, "중단 후 재시도 성공")), { status: 200 });
+  };
+  const result = await extractImageText(
+    { buffer: image, originalname: "abort.png", mimetype: "image/png" },
+    { apiKey: "test-key", fetchImpl, mode: "fast" },
+  );
+  assert.equal(calls, 2);
+  assert.equal(result.text, "중단 후 재시도 성공");
+});
+
+test("OCR returns a stable diagnostic when provider aborts twice", async () => {
+  const image = await sampleImage();
+  let calls = 0;
+  const fetchImpl = async () => {
+    calls += 1;
+    throw new DOMException("This operation was aborted", "AbortError");
+  };
+  await assert.rejects(
+    extractImageText(
+      { buffer: image, originalname: "abort.png", mimetype: "image/png" },
+      { apiKey: "test-key", fetchImpl, mode: "fast" },
+    ),
+    (error) => {
+      assert.equal(calls, 2);
+      assert.equal(error.code, "OCR_PROVIDER_ABORTED");
+      assert.equal(error.status, 502);
+      assert.doesNotMatch(error.message, /This operation was aborted/i);
+      return true;
+    },
+  );
+});

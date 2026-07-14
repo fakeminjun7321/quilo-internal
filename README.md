@@ -255,7 +255,7 @@ Quilo/
 │   └── equation/             # LaTeX→한글 수식 변환기
 ├── lib/
 │   ├── anthropic-media.js / anthropic-files.js / excel-parser.js
-│   ├── pricing.js / version-info.js / rate-limit.js / supabase.js
+│   ├── pricing.js / version-info.js / rate-limit.js / supabase.js / product-telemetry.js
 │   ├── *-routes.js           # community / lab / artifacts / coding / study /
 │   │                         #   vibe / physics-studio / announcement / grant / subscription
 │   ├── equation/hwpx_equation_tool.py
@@ -274,6 +274,10 @@ Quilo/
 ```
 
 ## 배포 전 점검
+
+서비스 품질 관측과 선택형 제품 분석을 사용하려면 Supabase SQL Editor에서
+`db/migrations/20260715_add_product_telemetry.sql`을 먼저 적용합니다. 수집 항목,
+금지 필드, 보존기간과 확인 절차는 `docs/product-telemetry.md`를 따릅니다.
 
 ```bash
 node -c server.js

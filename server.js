@@ -817,6 +817,7 @@ const {
 const { isQuiloStaffEmail } = require("./lib/account-domains");
 const { generateToken, hashToken } = require("./lib/auth");
 const { getVersionInfo } = require("./lib/version-info");
+const productTelemetry = require("./lib/product-telemetry");
 const { translatePdf, makeGate } = require("./lib/pipelines/pdf-translate/translate");
 const { retypesetPdf } = require("./lib/pipelines/pdf-translate/latex-gen");
 const {
@@ -1001,6 +1002,35 @@ if (
     next();
   });
 }
+
+// 브라우저 세션 요청 식별자. 외부 API는 자체 apiRequestId/토큰 scope 경계를 그대로
+// 사용하며, 이 값은 브라우저 운영 로그와 관리자 감사 로그에만 쓰인다.
+app.use((req, res, next) => {
+  req.requestId = crypto.randomUUID();
+  res.setHeader("X-Request-Id", req.requestId);
+  next();
+});
+
+// 관리자 API 조회·변경 감사. URL 쿼리와 요청/응답 본문은 기록하지 않는다.
+app.use((req, res, next) => {
+  if (!req.path.startsWith("/api/admin")) return next();
+  const startedAt = Date.now();
+  res.once("finish", () => {
+    const user = getSessionUser(req);
+    if (!user?.id || !user.isAdmin || req.apiUser) return;
+    void supa.recordAdminAudit({
+      actor_user_id: user.id,
+      actor_role: user.isDeveloper ? "developer" : "admin",
+      request_id: req.requestId,
+      action: `${req.method.toLowerCase()}:${productTelemetry.normalizeAdminPath(req.path)}`,
+      method: req.method,
+      path: productTelemetry.normalizeAdminPath(req.path),
+      status: res.statusCode,
+      duration_ms: Math.max(0, Date.now() - startedAt),
+    });
+  });
+  next();
+});
 
 app.use((req, res, next) => {
   if (!SITE_CLOSED) return next();
@@ -1191,6 +1221,8 @@ async function refreshSessionUser(req, { failClosed = false } = {}) {
       restrictedModel: fresh.restricted_model || null,
       emailVerified: !!fresh.email_verified,
       approved: !!fresh.approved,
+      analyticsConsent: !!fresh.analytics_consent,
+      analyticsConsentVersion: String(fresh.analytics_consent_version || ""),
     };
     if (req.apiUser) req.apiUser = refreshed;
     else req.session.userInfo = refreshed;
@@ -1514,6 +1546,18 @@ function cleanupOldJobs() {
 
 const jobCleanupTimer = setInterval(cleanupOldJobs, 60 * 60 * 1000);
 if (typeof jobCleanupTimer.unref === "function") jobCleanupTimer.unref();
+
+// 운영/분석 로그 보존기간 자동 적용. SQL 함수가 아직 배포되지 않은 환경에서는
+// 조용히 건너뛰어 기존 생성 기능을 방해하지 않는다.
+if (process.env.PRODUCT_TELEMETRY_ENABLED !== "0") {
+  const runTelemetryCleanup = () => {
+    if (supa.isEnabled()) void supa.cleanupProductTelemetry();
+  };
+  const telemetryCleanupDelay = setTimeout(runTelemetryCleanup, 30 * 1000);
+  const telemetryCleanupTimer = setInterval(runTelemetryCleanup, 24 * 60 * 60 * 1000);
+  if (typeof telemetryCleanupDelay.unref === "function") telemetryCleanupDelay.unref();
+  if (typeof telemetryCleanupTimer.unref === "function") telemetryCleanupTimer.unref();
+}
 
 // 메시지 1개의 최대 길이 (예외 메시지가 매우 긴 경우 SSE 버퍼·로그 폭증 방지)
 const MAX_PROGRESS_LINE = 500;
@@ -1966,6 +2010,8 @@ app.get("/api/me", async (req, res) => {
   let isDeveloper = !!u.isDeveloper;
   let avatarUrl = u.avatarUrl || null;
   let profileBio = String(u.profileBio || "");
+  let analyticsConsent = !!u.analyticsConsent;
+  let analyticsConsentVersion = String(u.analyticsConsentVersion || "");
   if (supa.isEnabled() && u.id) {
     try {
       const freshUser = await supa.findUserById(u.id);
@@ -1987,6 +2033,8 @@ app.get("/api/me", async (req, res) => {
         isDeveloper = !!freshUser.is_developer;
         avatarUrl = freshUser.avatar_url || null;
         profileBio = String(freshUser.profile_bio || "");
+        analyticsConsent = !!freshUser.analytics_consent;
+        analyticsConsentVersion = String(freshUser.analytics_consent_version || "");
         // 세션에도 최신 인증 상태 반영(이후 게이트 판단의 stale 방지).
         req.session.userInfo.emailVerified = emailVerified;
         req.session.userInfo.approved = approved;
@@ -1994,6 +2042,8 @@ app.get("/api/me", async (req, res) => {
         req.session.userInfo.isDeveloper = isDeveloper;
         req.session.userInfo.avatarUrl = avatarUrl;
         req.session.userInfo.profileBio = profileBio;
+        req.session.userInfo.analyticsConsent = analyticsConsent;
+        req.session.userInfo.analyticsConsentVersion = analyticsConsentVersion;
       }
     } catch (e) {
       console.warn("[me] profile lookup failed:", e.message);
@@ -2018,6 +2068,11 @@ app.get("/api/me", async (req, res) => {
     emailVerified,
     approved,
     reportEligible,
+    analyticsConsent,
+    analyticsConsentVersion,
+    analyticsConsentCurrent:
+      analyticsConsent && analyticsConsentVersion === productTelemetry.CONSENT_VERSION,
+    analyticsPolicyVersion: productTelemetry.CONSENT_VERSION,
     allowedEmailDomains: allowedEmailDomains(),
   });
 });
@@ -3337,6 +3392,87 @@ app.patch("/api/me/profile", requireAuth, async (req, res) => {
   }
 });
 
+app.patch("/api/me/analytics-consent", requireAuth, async (req, res) => {
+  if (!supa.isEnabled()) return res.status(503).json({ error: "DB 미설정" });
+  const user = getSessionUser(req);
+  if (!user?.id) return res.status(403).json({ error: "사용자 정보 없음" });
+  if (typeof req.body?.granted !== "boolean") {
+    return res.status(400).json({ error: "동의 여부를 확인해 주세요." });
+  }
+  const granted = req.body.granted;
+  const decidedAt = new Date().toISOString();
+  try {
+    await supa.updateUser(user.id, {
+      analyticsConsent: granted,
+      analyticsConsentAt: decidedAt,
+      analyticsConsentVersion: productTelemetry.CONSENT_VERSION,
+    });
+    await supa.recordPrivacyConsent({
+      userId: user.id,
+      granted,
+      policyVersion: productTelemetry.CONSENT_VERSION,
+    });
+    req.session.userInfo.analyticsConsent = granted;
+    req.session.userInfo.analyticsConsentVersion = productTelemetry.CONSENT_VERSION;
+    return res.json({
+      ok: true,
+      granted,
+      version: productTelemetry.CONSENT_VERSION,
+      decidedAt,
+    });
+  } catch (error) {
+    console.error("[privacy] analytics consent:", error.message);
+    return res.status(503).json({
+      error: "개인정보 설정을 저장하지 못했습니다. 데이터베이스 마이그레이션을 확인해 주세요.",
+    });
+  }
+});
+
+const productEventRate = new Map();
+app.post("/api/telemetry/events", requireAuth, async (req, res) => {
+  if (process.env.PRODUCT_TELEMETRY_ENABLED === "0" || !supa.isEnabled()) {
+    return res.status(204).end();
+  }
+  const user = getSessionUser(req);
+  if (!user?.id) return res.status(401).json({ error: "로그인이 필요합니다." });
+  try {
+    const fresh = await supa.findUserById(user.id);
+    const consentCurrent =
+      !!fresh?.analytics_consent &&
+      fresh.analytics_consent_version === productTelemetry.CONSENT_VERSION;
+    if (!consentCurrent) return res.status(403).json({ error: "제품 분석 동의가 필요합니다." });
+
+    const now = Date.now();
+    const previous = productEventRate.get(user.id);
+    const bucket = !previous || now - previous.startedAt >= 60_000
+      ? { startedAt: now, count: 0 }
+      : previous;
+    const events = productTelemetry.normalizeProductEvents(req.body?.events, {
+      sessionId: req.body?.sessionId,
+    });
+    if (!events.length) return res.status(400).json({ error: "기록할 이벤트가 없습니다." });
+    if (bucket.count + events.length > 120) {
+      return res.status(429).json({ error: "이벤트 요청이 너무 많습니다." });
+    }
+    bucket.count += events.length;
+    productEventRate.set(user.id, bucket);
+    if (productEventRate.size > 10000) {
+      for (const [key, value] of productEventRate) {
+        if (now - value.startedAt >= 60_000) productEventRate.delete(key);
+      }
+    }
+    const accepted = await supa.recordProductEvents(
+      user.id,
+      events,
+      productTelemetry.CONSENT_VERSION,
+    );
+    return res.status(202).json({ ok: true, accepted });
+  } catch (error) {
+    console.warn("[telemetry] ingest:", error.message);
+    return res.status(202).json({ ok: true, accepted: 0 });
+  }
+});
+
 // 본인 비밀번호 변경 (현재 비번 재확인 필수, rate limit 적용)
 app.post("/api/me/password", requireAuth, async (req, res) => {
   if (!supa.isEnabled()) {
@@ -3501,9 +3637,76 @@ app.post("/api/feedback", requireAuth, async (req, res) => {
 
 // ── Generate route ───────────────────────────────────────────────────────────
 
+let telemetryReleaseInfo = null;
+function getTelemetryReleaseInfo() {
+  if (!telemetryReleaseInfo) {
+    const info = getVersionInfo();
+    telemetryReleaseInfo = {
+      release_version: String(info.releaseVersion || info.version || "").slice(0, 40),
+      release_commit: String(info.shortCommit || "").slice(0, 16),
+    };
+  }
+  return telemetryReleaseInfo;
+}
+
+function generationRunFromRequest(req, extra = {}) {
+  const user = getSessionUser(req);
+  const upload = productTelemetry.summarizeUploads(req.files || []);
+  const model = productTelemetry.safeModel(req.body?.model);
+  return {
+    request_id: req.requestId || crypto.randomUUID(),
+    user_id: user?.id || null,
+    report_type: productTelemetry.safeReportType(req.body?.type || "chem-pre"),
+    model,
+    provider: productTelemetry.providerForModel(model),
+    output_format: productTelemetry.safeFormat(req.body?.format || "docx"),
+    background: String(req.body?.backgroundMode) === "true",
+    save_to_google_drive: isTruthyPolicyFlag(req.body?.saveToGoogleDrive),
+    file_count: upload.fileCount,
+    file_extensions: upload.fileExtensions,
+    file_size_buckets: upload.fileSizeBuckets,
+    total_bytes_bucket: upload.totalBytesBucket,
+    ...getTelemetryReleaseInfo(),
+    ...extra,
+  };
+}
+
+function beginGenerationTelemetry(req, res, next) {
+  const startedAt = Date.now();
+  res.once("finish", () => {
+    if (
+      process.env.PRODUCT_TELEMETRY_ENABLED === "0" ||
+      req.generationTelemetryAccepted ||
+      res.statusCode < 400
+    ) {
+      return;
+    }
+    void supa.recordGenerationRun(generationRunFromRequest(req, {
+      accepted: false,
+      status: "rejected",
+      error_phase: "request_validation",
+      error_code: `http_${res.statusCode}`,
+      total_ms: Math.max(0, Date.now() - startedAt),
+      completed_at: new Date().toISOString(),
+    }));
+  });
+  next();
+}
+
+function generationFailureCode(job, error) {
+  if (job?.userAborted) return "user_aborted";
+  if (job?.autoAborted) return "superseded";
+  if (/timeout|시간 초과|강제 종료/i.test(String(error?.message || error || ""))) {
+    return "timeout";
+  }
+  const phase = productTelemetry.safeCode(job?.telemetryPhase, "unknown");
+  return `${phase}_failed`;
+}
+
 app.post(
   "/api/generate",
   requireAuth,
+  beginGenerationTelemetry,
   limitTotalUpload,
   upload.any(),
   async (req, res) => {
@@ -4025,6 +4228,23 @@ app.post(
     job.reportType = reportType;
     job.model = model;
     job.creditCost = creditCost;
+    req.generationTelemetryAccepted = true;
+    job.requestId = req.requestId || crypto.randomUUID();
+    job.telemetryPhase = "queue";
+    job.telemetryTimings = {};
+    job.generationRunBase = generationRunFromRequest(req, {
+      request_id: job.requestId,
+      job_id: job.id,
+      accepted: true,
+      status: genSemaphore.active >= genSemaphore.max ? "queued" : "running",
+      report_type: productTelemetry.safeReportType(reportType),
+      model: productTelemetry.safeModel(model),
+      provider: productTelemetry.providerForModel(model),
+      output_format: productTelemetry.safeFormat(format),
+    });
+    if (process.env.PRODUCT_TELEMETRY_ENABLED !== "0") {
+      void supa.recordGenerationRun(job.generationRunBase);
+    }
     // P1: 선예약분(있으면). 완료 시 실제비용만 남기고 환불, 실패/중단 시 전액 환불.
     job.creditReservation = creditReservation;
     // 활성 위임·BYOK 사용자는 과금 면제(아래 이미지 추가과금·크레딧 차감 단계에서 건너뜀).
@@ -4068,6 +4288,21 @@ app.post(
       async (err) => {
         job.status = "error";
         job.error = err.message || String(err);
+        if (process.env.PRODUCT_TELEMETRY_ENABLED !== "0") {
+          const aborted = !!(job.userAborted || job.autoAborted);
+          await supa.updateGenerationRun(job.id, {
+            status: aborted ? "aborted" : "error",
+            ...job.telemetryTimings,
+            total_ms: Math.max(0, Date.now() - (job.telemetryStartedAt || job.createdAt)),
+            warning_count: Array.isArray(job.warnings) ? job.warnings.length : 0,
+            artifact_ok: job.artifactCheck ? !!job.artifactCheck.ok : null,
+            artifact_rule_codes: productTelemetry.artifactRuleCodes(job.artifactCheck),
+            generated_image_count: Math.max(0, Number(job.generatedImageCount) || 0),
+            error_phase: productTelemetry.safeCode(job.telemetryPhase, "unknown"),
+            error_code: generationFailureCode(job, err),
+            completed_at: new Date().toISOString(),
+          });
+        }
         emitJobWebhook(job, "job.failed");
         pushProgress(job, `❌ 오류: ${job.error}`);
         // P1: 실패/중단(자동중단·타임아웃·에러) 시 선예약 크레딧 전액 환불(아직 정산 안 됐으면).
@@ -6198,6 +6433,7 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
     googleDriveFolderId = "",
   } = meta;
   const t0 = Date.now();
+  job.telemetryStartedAt = t0;
   const jobTimeoutMs = jobTimeoutForModel(model, job.reportType);
   const timeoutMin = Math.round(jobTimeoutMs / 60000);
 
@@ -6249,6 +6485,15 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
     }
     await genSemaphore.acquire();
     gotSlot = true;
+    job.telemetryTimings.queue_ms = Math.max(0, Date.now() - t0);
+    job.telemetryPhase = "generation";
+    if (process.env.PRODUCT_TELEMETRY_ENABLED !== "0") {
+      void supa.updateGenerationRun(job.id, {
+        status: "running",
+        queue_ms: job.telemetryTimings.queue_ms,
+        started_at: new Date().toISOString(),
+      });
+    }
     // 대기 중에 자동 중단(새 작업)·사용자 중지가 걸렸으면 슬롯만 반납하고 종료.
     if (ac.signal.aborted) {
       throw new Error(
@@ -6265,6 +6510,7 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
     }, jobTimeoutMs);
 
     // BYOK: 본인 키가 있으면 그 키의 컨텍스트에서 파이프라인 실행(없으면 서버 env 키).
+    const tGenerationStart = Date.now();
     const content = await byok.run(job.byokKeys || {}, () =>
       pipeline.generateContent({
         ...pipelineInput,
@@ -6277,6 +6523,7 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
         onProgress: (msg) => pushProgress(job, msg),
       }),
     );
+    job.telemetryTimings.generation_ms = Math.max(0, Date.now() - tGenerationStart);
     stripAiDashes(content); // 긴 하이픈 최종 제거(전 보고서 종류·docx/hwpx/zip 공통)
     content.__allowHighlights = !!pipelineInput.allowHighlights;
 
@@ -6289,6 +6536,7 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
       Math.trunc(Number(content.__imageEdits) || 0),
     );
     const billableGeneratedImages = generatedFigureCount + generatedImageEditCount;
+    job.generatedImageCount = billableGeneratedImages;
     if (
       billableGeneratedImages > 0 &&
       typeof job.creditCost === "number" &&
@@ -6393,6 +6641,7 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
       pushProgress(job, `⚠ 스타일 글꼴 감지 건너뜀: ${e.message}`);
     }
 
+    job.telemetryPhase = "build";
     const tBuildStart = Date.now();
     let buffer;
     if (typeof pipeline.generateBundle === "function") {
@@ -6450,6 +6699,7 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
         job.filename = `${prefix}${pipeline.filenamePrefix}_${studentPart}${namePart}.${ext}`;
       }
     }
+    job.telemetryTimings.build_ms = Math.max(0, Date.now() - tBuildStart);
 
     // 산출물 자동검사(W2-C/DEF-011): 저장·전달 직전에 최종 버퍼를 스캔한다.
     // (수식 raw 마커 잔존, 긴 대시, U+FFFD, HWPX BinData 누락. zip 번들·pdf는 검사 밖)
@@ -6457,6 +6707,8 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
     // 한해 생성 실패로 처리한다("HWPX 수식 postprocess 실패는 fatal" 원칙과 동일 선상).
     // 긴 대시·U+FFFD는 상류 스크럽(stripAiDashes 등)이 1차 방어라 enforce에서도 경고 유지.
     {
+      job.telemetryPhase = "validation";
+      const tValidationStart = Date.now();
       const artifactFormat =
         typeof pipeline.generateBundle === "function"
           ? "zip"
@@ -6467,6 +6719,8 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
         format: artifactFormat,
         type: job.reportType,
       });
+      job.artifactCheck = artifactCheck;
+      job.telemetryTimings.validation_ms = Math.max(0, Date.now() - tValidationStart);
       if (!artifactCheck.ok) {
         console.warn(
           "[output-validate]",
@@ -6487,6 +6741,9 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
         }
       }
     }
+
+    job.telemetryPhase = "storage";
+    const tStorageStart = Date.now();
 
     if (saveToGoogleDrive && job.userInfo?.id) {
       if (!cloudProviders.configured("google") || !supa.isEnabled()) {
@@ -6576,6 +6833,8 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
         }
       }
     }
+    job.telemetryTimings.storage_ms = Math.max(0, Date.now() - tStorageStart);
+    job.telemetryPhase = "billing";
     job.status = "done";
     emitJobWebhook(job, "job.completed");
 
@@ -6623,7 +6882,6 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
           meta: {
             reportType: job.reportType,
             reportLabel: pipeline.label,
-            title: content.title_kr || content.title,
             model: content.__cost?.model,
             inputTokens: content.__cost?.inputTokens,
             outputTokens: content.__cost?.outputTokens,
@@ -6703,6 +6961,20 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
         `📊 서버 누적 (메모리): ${totalUsage.jobs}건 / 총 ${fmtUSD(totalUsage.totalUSD)} ${fmtKRW(totalUsage.totalUSD)}`,
       );
     }
+    job.telemetryPhase = "complete";
+    job.telemetryTimings.total_ms = Math.max(0, Date.now() - t0);
+    if (process.env.PRODUCT_TELEMETRY_ENABLED !== "0") {
+      await supa.updateGenerationRun(job.id, {
+        status: "done",
+        ...job.telemetryTimings,
+        warning_count: Array.isArray(job.warnings) ? job.warnings.length : 0,
+        artifact_ok: job.artifactCheck ? !!job.artifactCheck.ok : null,
+        artifact_rule_codes: productTelemetry.artifactRuleCodes(job.artifactCheck),
+        generated_image_count: Math.max(0, Number(job.generatedImageCount) || 0),
+        output_size_bucket: productTelemetry.sizeBucket(job.result?.length || 0),
+        completed_at: new Date().toISOString(),
+      });
+    }
   } catch (e) {
     if (job.autoAborted) {
       throw new Error("새 작업 시작으로 자동 중단되었습니다.");
@@ -6755,6 +7027,52 @@ app.post("/api/jobs/:id/abort", requireAuth, (req, res) => {
     job.abortController.abort();
   }
   res.json({ ok: true });
+});
+
+app.post("/api/jobs/:id/quality-feedback", requireAuth, async (req, res) => {
+  const user = getSessionUser(req);
+  if (!user?.id) return res.status(401).json({ error: "로그인이 필요합니다." });
+  let feedback;
+  try {
+    feedback = productTelemetry.validateQualityFeedback(req.body || {});
+  } catch (error) {
+    return res.status(400).json({ error: error.message, code: error.code });
+  }
+
+  const runtimeJob = jobs.get(req.params.id) || null;
+  let reportType = runtimeJob?.reportType || "unknown";
+  if (runtimeJob && runtimeJob.userInfo?.id !== user.id) {
+    return res.status(404).json({ error: "작업을 찾을 수 없습니다." });
+  }
+  if (runtimeJob && runtimeJob.status !== "done") {
+    return res.status(409).json({ error: "완료된 작업만 평가할 수 있습니다." });
+  }
+  if (!runtimeJob) {
+    try {
+      const stored = await supa.getGenerationRunForUser(req.params.id, user.id);
+      if (!stored) return res.status(404).json({ error: "작업을 찾을 수 없습니다." });
+      if (stored.status !== "done") {
+        return res.status(409).json({ error: "완료된 작업만 평가할 수 있습니다." });
+      }
+      reportType = stored.report_type;
+    } catch (error) {
+      return res.status(503).json({ error: "품질 평가를 저장할 수 없습니다." });
+    }
+  }
+
+  try {
+    const stored = await supa.upsertQualityFeedback({
+      userId: user.id,
+      jobId: req.params.id,
+      reportType: productTelemetry.safeReportType(reportType),
+      ...feedback,
+    });
+    if (!stored) return res.status(503).json({ error: "품질 평가 저장소가 준비되지 않았습니다." });
+    return res.json({ ok: true });
+  } catch (error) {
+    console.warn("[quality-feedback]", error.message);
+    return res.status(500).json({ error: "품질 평가를 저장하지 못했습니다." });
+  }
 });
 
 app.post("/api/jobs/:id/email", requireAuth, async (req, res) => {
@@ -6850,6 +7168,7 @@ app.get("/api/jobs/:id/download", requireAuth, (req, res) => {
       "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(entry.filename)}`,
       "Content-Length": entry.buffer.length,
     });
+    if (req.method === "GET") void supa.recordGenerationDelivery(job.id, "download");
     return res.send(entry.buffer);
   }
   if (job.status !== "done" || !job.result) {
@@ -6862,6 +7181,7 @@ app.get("/api/jobs/:id/download", requireAuth, (req, res) => {
     "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(job.filename)}`,
     "Content-Length": job.result.length,
   });
+  if (req.method === "GET") void supa.recordGenerationDelivery(job.id, "download");
   res.send(job.result);
 });
 
@@ -6898,6 +7218,7 @@ app.get("/api/jobs/:id/preview", requireAuth, async (req, res) => {
         ? "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'self'"
         : "default-src 'none'; frame-ancestors 'self'",
     });
+    void supa.recordGenerationDelivery(job.id, "preview");
     return res.send(preview.body);
   } catch (error) {
     console.error("[preview] job error:", error);
@@ -7574,6 +7895,7 @@ app.get("/api/me/files/:id/download", requireAuth, async (req, res) => {
       "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(saved.row.filename)}`,
       "Content-Length": saved.buffer.length,
     });
+    if (saved.row.job_id) void supa.recordGenerationDelivery(saved.row.job_id, "download");
     res.send(saved.buffer);
   } catch (e) {
     console.error("[files] download error:", e);
@@ -7604,6 +7926,7 @@ app.get("/api/me/files/:id/preview", requireAuth, async (req, res) => {
         ? "default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'self'"
         : "default-src 'none'; frame-ancestors 'self'",
     });
+    if (saved.row.job_id) void supa.recordGenerationDelivery(saved.row.job_id, "preview");
     return res.send(preview.body);
   } catch (e) {
     console.error("[files] preview error:", e);
@@ -7998,7 +8321,6 @@ app.get("/api/me/usage", requireAuth, async (req, res) => {
         model,
         // 실제 보고서 3종만 크레딧 차감 — 베타(예: pdf-translate)는 무료(null)
         credits: model && REAL.has(rt) ? pricing.getModelCredits(model) : null,
-        title: l.meta?.title || null,
       };
     });
     res.json({
@@ -8037,6 +8359,18 @@ app.get("/api/admin/usage-logs", requireAdmin, async (req, res) => {
   } catch (e) {
     console.error("[admin]", req.method, req.path, "error:", e);
     res.status(500).json({ error: "처리 중 오류가 발생했습니다." });
+  }
+});
+
+app.get("/api/admin/analytics-summary", requireAdmin, async (req, res) => {
+  if (!supa.isEnabled()) return res.status(503).json({ error: "Supabase 미설정" });
+  const days = Math.min(90, Math.max(1, parseInt(req.query.days, 10) || 30));
+  try {
+    const summary = await supa.getAnalyticsSummary(days);
+    return res.json(summary);
+  } catch (error) {
+    console.error("[admin] analytics summary:", error.message);
+    return res.status(500).json({ error: "서비스 개선 지표를 불러오지 못했습니다." });
   }
 });
 

@@ -1,3 +1,5 @@
+import { trackEvent } from "./telemetry.js";
+
 export function createJobStreamController(deps) {
   const { runtime, appendLine, setProgressStep, stopGenTimer, clearRetryCard,
     resetForm, showGenErrorCard, commitLastGenPrefs, loadBalance, loadFiles } = deps;
@@ -52,16 +54,107 @@ export function createJobStreamController(deps) {
     preview.type = "button";
     preview.className = "generation-preview-button";
     preview.textContent = "미리보기";
-    preview.addEventListener("click", () => openPreview(`/api/jobs/${jobId}/preview${suffix}`, filename));
+    preview.addEventListener("click", () => {
+      trackEvent("preview_clicked", { fileIndex: fileIndex == null ? 0 : fileIndex, source: "generation_result" });
+      openPreview(`/api/jobs/${jobId}/preview${suffix}`, filename);
+    });
     const download = document.createElement("a");
     download.href = `/api/jobs/${jobId}/download${suffix}`;
     download.textContent = `${filename || "파일"} 다운로드`;
     download.download = filename || "";
+    download.addEventListener("click", () => {
+      trackEvent("download_clicked", { fileIndex: fileIndex == null ? 0 : fileIndex, source: "generation_result" });
+    });
     actions.append(preview, download);
     return actions;
   }
 
+  function createQualityFeedback(jobId) {
+    const panel = document.createElement("form");
+    panel.className = "generation-quality-feedback";
+    const title = document.createElement("strong");
+    title.textContent = "이 결과가 얼마나 도움이 됐나요?";
+    const controls = document.createElement("div");
+    controls.className = "generation-quality-feedback__controls";
+
+    const score = document.createElement("select");
+    score.required = true;
+    score.setAttribute("aria-label", "결과 평점");
+    score.innerHTML = '<option value="">평점 선택</option><option value="5">5 · 매우 좋음</option><option value="4">4 · 좋음</option><option value="3">3 · 보통</option><option value="2">2 · 아쉬움</option><option value="1">1 · 매우 아쉬움</option>';
+    const disposition = document.createElement("select");
+    disposition.required = true;
+    disposition.setAttribute("aria-label", "결과 사용 방식");
+    disposition.innerHTML = '<option value="">사용 결과</option><option value="as_is">거의 그대로 사용</option><option value="minor_edits">조금 수정</option><option value="major_edits">많이 수정</option><option value="not_used">사용하지 않음</option>';
+    const submit = document.createElement("button");
+    submit.type = "submit";
+    submit.textContent = "평가 보내기";
+    controls.append(score, disposition, submit);
+
+    const details = document.createElement("details");
+    const summary = document.createElement("summary");
+    summary.textContent = "아쉬운 점 선택 (선택)";
+    const tagBox = document.createElement("div");
+    tagBox.className = "generation-quality-feedback__tags";
+    const tags = [
+      ["data_error", "데이터 오류"],
+      ["missing_content", "내용 누락"],
+      ["format_broken", "문서 형식"],
+      ["equation_error", "수식 오류"],
+      ["chart_error", "차트 오류"],
+      ["too_verbose", "너무 김"],
+      ["too_short", "너무 짧음"],
+      ["style_mismatch", "문체 불일치"],
+      ["other", "기타"],
+    ];
+    tags.forEach(([value, label]) => {
+      const item = document.createElement("label");
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.value = value;
+      item.append(input, document.createTextNode(label));
+      tagBox.appendChild(item);
+    });
+    details.append(summary, tagBox);
+    const status = document.createElement("span");
+    status.className = "generation-quality-feedback__status";
+    status.setAttribute("aria-live", "polite");
+    panel.append(title, controls, details, status);
+    panel.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      submit.disabled = true;
+      status.textContent = "저장 중...";
+      const selectedTags = [...tagBox.querySelectorAll('input[type="checkbox"]:checked')]
+        .map((input) => input.value);
+      const payload = {
+        score: Number(score.value),
+        disposition: disposition.value,
+        tags: selectedTags,
+      };
+      try {
+        const response = await fetch(`/api/jobs/${jobId}/quality-feedback`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "평가를 저장하지 못했습니다.");
+        status.textContent = "감사합니다. 다음 개선에 반영할게요.";
+        trackEvent("quality_feedback_submitted", {
+          ...payload,
+          reportType: runtime.pendingPrefs?.type || "unknown",
+          source: "generation_result",
+        });
+        panel.querySelectorAll("input, select, button").forEach((node) => { node.disabled = true; });
+      } catch (error) {
+        status.textContent = error.message;
+        submit.disabled = false;
+      }
+    });
+    return panel;
+  }
+
   function streamJob(jobId) {
+    trackEvent("job_stream_opened", { reportType: runtime.pendingPrefs?.type || "unknown" });
     const es = new EventSource(`/api/jobs/${jobId}/stream`);
     runtime.currentEs = es;
     const genSpinner = document.getElementById("genSpinner");
@@ -94,6 +187,11 @@ export function createJobStreamController(deps) {
         }
       } catch (_) {}
       resultArea.appendChild(resultActions);
+      resultArea.appendChild(createQualityFeedback(jobId));
+      trackEvent("generation_completed", {
+        reportType: runtime.pendingPrefs?.type || "unknown",
+        source: "sse",
+      });
 
       // 보관 안내 + (사전→결과) 이어서 만들기 CTA.
       try {
@@ -258,6 +356,11 @@ export function createJobStreamController(deps) {
       es.close();
 
       if (serverReportedError) {
+        trackEvent("generation_failed", {
+          reportType: runtime.pendingPrefs?.type || "unknown",
+          failureCode: "server_error",
+          source: "sse",
+        });
         // 진짜 실패(서버 error 이벤트). 미차감 + 같은 입력 원클릭 재시도 안전.
         const detail = msg ||
           "보고서 생성 중 오류가 발생했습니다. 크레딧은 차감되지 않았습니다. 잠시 후 다시 시도하세요.";
@@ -278,10 +381,15 @@ export function createJobStreamController(deps) {
       // 연결만 끊긴 경우: 서버 작업은 계속 진행/완료됐을 수 있다. 단정하지 말고
       // 실제 작업 상태를 조회한 뒤 안내한다.
       appendLine("서버 연결이 끊겼습니다. 작업 상태를 확인하는 중…");
+      trackEvent("generation_failed", {
+        reportType: runtime.pendingPrefs?.type || "unknown",
+        failureCode: "stream_disconnected",
+        source: "sse",
+      });
       statusTitle.textContent = "연결 끊김 — 상태 확인 중";
       const _jobId = jobId;
       // 완료 여부는 다운로드 엔드포인트로 확인: 200=완료, 409=아직/미완, 404=없음.
-      fetch(`/api/jobs/${_jobId}/download`, { method: "GET" })
+      fetch(`/api/jobs/${_jobId}/download`, { method: "HEAD" })
         .then((r) => {
           if (r.status === 200) {
             // 서버에서 완료됨 → 크레딧이 이미 차감됐을 수 있으므로 재생성 권하지 않는다.

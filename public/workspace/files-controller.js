@@ -1,6 +1,7 @@
 import { requestJson } from "./api.js";
 import { byId } from "./dom-contract.js";
 import { createGoogleWorkspaceController } from "./google-workspace-controller.js";
+import { trackEvent } from "./telemetry.js";
 
 function formatBytes(bytes) {
   const n = Number(bytes) || 0;
@@ -166,12 +167,18 @@ export function createFilesController({ hooks }) {
         download.textContent = cloud && !file.download_url ? "링크 없음" : "다운로드";
         if (cloud) { download.target = "_blank"; download.rel = "noopener"; }
         else download.download = file.filename || "";
+        download.addEventListener("click", () => {
+          trackEvent("download_clicked", { source: cloud ? "dropbox_files" : "saved_files" });
+        });
         if (!cloud) {
           const preview = document.createElement("a");
           preview.href = `/api/me/files/${file.id}/preview`;
           preview.textContent = "미리보기";
           preview.target = "_blank";
           preview.rel = "noopener";
+          preview.addEventListener("click", () => {
+            trackEvent("preview_clicked", { source: "saved_files" });
+          });
           actions.append(preview);
         }
         actions.append(download);

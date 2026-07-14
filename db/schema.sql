@@ -19,6 +19,10 @@ create table if not exists users (
   email_verify_sent_at timestamptz,
   approved_at timestamptz,
   approved_by uuid references users(id) on delete set null,
+  -- 선택형 서비스 개선 분석 동의. 미동의여도 보고서 생성 등 핵심 기능은 동일하다.
+  analytics_consent boolean not null default false,
+  analytics_consent_at timestamptz,
+  analytics_consent_version text,
   budget_usd numeric(10, 4) not null default 0,
   spent_usd numeric(10, 4) not null default 0,
   pre_credits_usd numeric(10, 4) not null default 0,
@@ -149,8 +153,118 @@ create trigger trg_users_updated_at
 -- RLS는 켜두고 공개 정책을 만들지 않음.
 alter table users enable row level security;
 alter table usage_logs enable row level security;
+alter table login_logs enable row level security;
 alter table report_files enable row level security;
 alter table feedback_reports enable row level security;
+
+-- ── 서비스 품질 관측 + 선택형 제품 분석 ────────────────────────────────────
+-- 이 테이블에는 입력 원문·파일명·사용자 메모·생성 보고서 본문을 넣지 않는다.
+create table if not exists generation_runs (
+  id uuid primary key default gen_random_uuid(),
+  request_id text not null unique,
+  job_id text unique,
+  user_id uuid references users(id) on delete set null,
+  accepted boolean not null default true,
+  status text not null default 'running'
+    check (status in ('rejected', 'queued', 'running', 'done', 'error', 'aborted')),
+  report_type text not null default 'unknown',
+  model text not null default 'unknown',
+  provider text not null default 'unknown',
+  output_format text not null default 'unknown',
+  background boolean not null default false,
+  save_to_google_drive boolean not null default false,
+  file_count integer not null default 0,
+  file_extensions text[] not null default '{}',
+  file_size_buckets jsonb not null default '{}'::jsonb,
+  total_bytes_bucket text not null default 'lt_100kb',
+  release_version text,
+  release_commit text,
+  queue_ms integer,
+  generation_ms integer,
+  build_ms integer,
+  validation_ms integer,
+  storage_ms integer,
+  total_ms integer,
+  warning_count integer not null default 0,
+  artifact_ok boolean,
+  artifact_rule_codes text[] not null default '{}',
+  generated_image_count integer not null default 0,
+  output_size_bucket text,
+  error_phase text,
+  error_code text,
+  preview_count integer not null default 0,
+  download_count integer not null default 0,
+  first_preview_at timestamptz,
+  last_preview_at timestamptz,
+  first_download_at timestamptz,
+  last_download_at timestamptz,
+  started_at timestamptz,
+  completed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists product_events (
+  id uuid primary key default gen_random_uuid(),
+  event_id uuid not null unique,
+  user_id uuid not null references users(id) on delete cascade,
+  session_id uuid not null,
+  event_name text not null,
+  page_path text not null default '/',
+  properties jsonb not null default '{}'::jsonb,
+  consent_version text not null,
+  occurred_at timestamptz not null,
+  received_at timestamptz not null default now()
+);
+
+create table if not exists report_quality_feedback (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  job_id text not null,
+  report_type text not null default 'unknown',
+  score smallint not null check (score between 1 and 5),
+  disposition text not null
+    check (disposition in ('as_is', 'minor_edits', 'major_edits', 'not_used')),
+  tags text[] not null default '{}',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (user_id, job_id)
+);
+
+create table if not exists privacy_consent_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  consent_type text not null default 'product_analytics',
+  granted boolean not null,
+  policy_version text not null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists admin_audit_logs (
+  id uuid primary key default gen_random_uuid(),
+  actor_user_id uuid references users(id) on delete set null,
+  actor_role text not null default 'admin',
+  request_id text not null,
+  action text not null,
+  method text not null,
+  path text not null,
+  status integer not null,
+  duration_ms integer not null default 0,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists generation_runs_created_idx on generation_runs (created_at desc);
+create index if not exists generation_runs_user_created_idx on generation_runs (user_id, created_at desc);
+create index if not exists product_events_name_received_idx on product_events (event_name, received_at desc);
+create index if not exists report_quality_feedback_created_idx on report_quality_feedback (created_at desc);
+create index if not exists privacy_consent_logs_user_created_idx on privacy_consent_logs (user_id, created_at desc);
+create index if not exists admin_audit_logs_actor_created_idx on admin_audit_logs (actor_user_id, created_at desc);
+
+alter table generation_runs enable row level security;
+alter table product_events enable row level security;
+alter table report_quality_feedback enable row level security;
+alter table privacy_consent_logs enable row level security;
+alter table admin_audit_logs enable row level security;
 
 -- ── 베타 기능 플래그 + 테스터 지정 ──────────────────────────────────────────
 create table if not exists beta_features (

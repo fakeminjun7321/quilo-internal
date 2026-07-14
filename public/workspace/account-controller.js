@@ -8,6 +8,7 @@ import {
   storeStyleNote,
 } from "./state.js";
 import { initDefaultReportPreferences } from "./report-preferences.js";
+import { CONSENT_VERSION, setTelemetryConsent } from "./telemetry.js";
 
 function setStatus(node, text, tone = "muted") {
   if (!node) return;
@@ -56,6 +57,50 @@ function applyProfilePresentation(user = {}) {
 
 export function createAccountController({ state, router, hooks }) {
   const balanceState = { known: false, credits: 0, unlimited: false, isAdmin: false };
+
+  function applyAnalyticsState(user = {}) {
+    const version = String(user.analyticsConsentVersion || "");
+    const policyVersion = String(user.analyticsPolicyVersion || CONSENT_VERSION);
+    const granted = !!user.analyticsConsent && version === policyVersion;
+    const decided = version === policyVersion;
+    const toggle = byId("analyticsConsentToggle");
+    if (toggle) toggle.checked = granted;
+    const notice = byId("analyticsConsentNotice");
+    if (notice) notice.hidden = decided;
+    setTelemetryConsent(granted, version, policyVersion);
+  }
+
+  async function saveAnalyticsConsent(granted) {
+    const toggle = byId("analyticsConsentToggle");
+    const accept = byId("analyticsConsentAccept");
+    const decline = byId("analyticsConsentDecline");
+    [toggle, accept, decline].forEach((node) => { if (node) node.disabled = true; });
+    setStatus(byId("analyticsConsentStatus"), "저장 중...");
+    try {
+      const data = await requestJson(
+        "/api/me/analytics-consent",
+        jsonOptions("PATCH", { granted: !!granted }),
+      );
+      const current = {
+        ...(state.get().user || {}),
+        analyticsConsent: !!data.granted,
+        analyticsConsentVersion: data.version,
+        analyticsPolicyVersion: data.version,
+      };
+      state.set({ user: current });
+      applyAnalyticsState(current);
+      setStatus(
+        byId("analyticsConsentStatus"),
+        data.granted ? "선택형 이용 분석에 동의했습니다." : "선택형 이용 분석을 사용하지 않습니다.",
+        "success",
+      );
+    } catch (error) {
+      if (toggle) toggle.checked = !granted;
+      setStatus(byId("analyticsConsentStatus"), error.message, "danger");
+    } finally {
+      [toggle, accept, decline].forEach((node) => { if (node) node.disabled = false; });
+    }
+  }
 
   function setStudentId(value) {
     const studentId = normalizeStudentId(value);
@@ -240,6 +285,8 @@ export function createAccountController({ state, router, hooks }) {
     if (byId("loginDd")) byId("loginDd").hidden = loggedIn;
     if (byId("acctDd")) byId("acctDd").hidden = !loggedIn;
     if (!loggedIn) {
+      setTelemetryConsent(false, "");
+      if (byId("analyticsConsentNotice")) byId("analyticsConsentNotice").hidden = true;
       applyReportAccess([]);
       applyVerification(null);
       const requested = router.requestedReport();
@@ -251,6 +298,7 @@ export function createAccountController({ state, router, hooks }) {
     if (byId("accountMenuName")) byId("accountMenuName").textContent = user.user;
     if (byId("settingsUserName")) byId("settingsUserName").textContent = user.user;
     applyProfilePresentation(user);
+    applyAnalyticsState(user);
     setStudentId(user.studentId || getStoredStudentId());
     applyStyleNote(user.styleNote);
     ["piWhoPreview", "miWhoPreview", "frWhoPreview"].forEach((id) => {
@@ -277,6 +325,15 @@ export function createAccountController({ state, router, hooks }) {
   }
 
   function bindForms() {
+    byId("analyticsConsentToggle")?.addEventListener("change", (event) => {
+      void saveAnalyticsConsent(!!event.currentTarget.checked);
+    });
+    byId("analyticsConsentAccept")?.addEventListener("click", () => {
+      void saveAnalyticsConsent(true);
+    });
+    byId("analyticsConsentDecline")?.addEventListener("click", () => {
+      void saveAnalyticsConsent(false);
+    });
     byId("settingsAvatarInput")?.addEventListener("change", async (event) => {
       const input = event.currentTarget;
       const file = input.files?.[0];

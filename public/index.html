@@ -2303,6 +2303,7 @@
           <a href="#usageCard" data-account-nav="usage">사용량</a>
           <a href="#byokCard" data-account-nav="connections">연결</a>
           <a href="#settingsDefaultsCard" data-account-nav="defaults">기본 설정</a>
+          <a href="#settingsPrivacyCard" data-account-nav="privacy">개인정보</a>
           <a href="#settingsPasswordCard" data-account-nav="security">보안</a>
         </nav>
 
@@ -2463,6 +2464,29 @@
             </div>
           </section>
 
+          <section class="account-section" id="settingsPrivacyCard" data-account-section="privacy" aria-labelledby="privacySettingsTitle">
+            <div class="account-section-head">
+              <h2 id="privacySettingsTitle">개인정보와 서비스 개선</h2>
+              <p>필수 운영 기록과 선택형 이용 분석을 분리해 관리합니다.</p>
+            </div>
+            <div class="account-privacy-summary">
+              <h3>서비스 운영 기록</h3>
+              <p>생성 성공·실패, 처리 단계별 시간, 보고서 종류·모델·형식, 업로드 개수·확장자·용량 구간, 다운로드 여부를 장애 대응과 보안 목적으로 기록합니다.</p>
+              <p><strong>파일명, 업로드 내용, 사용자 메모, 생성된 보고서 본문은 서비스 개선 분석에 저장하지 않습니다.</strong></p>
+            </div>
+            <label class="account-consent-toggle" for="analyticsConsentToggle">
+              <input id="analyticsConsentToggle" type="checkbox" role="switch" />
+              <span>
+                <strong>서비스 개선을 위한 선택형 이용 분석</strong>
+                <small>어떤 기능을 선택하고 생성·미리보기·다운로드까지 이어졌는지 수집합니다. 동의하지 않아도 핵심 기능은 동일하게 이용할 수 있습니다.</small>
+              </span>
+            </label>
+            <div class="account-actions">
+              <a class="account-help-link" href="/privacy.html">개인정보처리방침 자세히 보기</a>
+              <span class="account-form-status" id="analyticsConsentStatus" aria-live="polite"></span>
+            </div>
+          </section>
+
           <section class="account-section" id="settingsPasswordCard" data-account-section="security" aria-labelledby="securityTitle">
             <div class="account-section-head">
               <h2 id="securityTitle">보안</h2>
@@ -2490,6 +2514,18 @@
     </section>
     </div>
     </main>
+
+    <aside class="analytics-consent-notice" id="analyticsConsentNotice" aria-labelledby="analyticsConsentNoticeTitle" hidden>
+      <div>
+        <strong id="analyticsConsentNoticeTitle">Quilo 개선을 도와주시겠어요?</strong>
+        <p>기능 선택과 생성 흐름만 수집하며 파일명·파일 내용·메모·보고서 본문은 수집하지 않습니다. 선택은 언제든 계정 센터에서 바꿀 수 있습니다.</p>
+      </div>
+      <div class="analytics-consent-notice__actions">
+        <button type="button" class="account-button" id="analyticsConsentAccept">동의</button>
+        <button type="button" class="account-button account-button--quiet" id="analyticsConsentDecline">동의하지 않음</button>
+        <a href="/privacy.html">자세히</a>
+      </div>
+    </aside>
 
     <footer class="ui-site-footer">
       <div class="ui-site-footer__inner">

@@ -43,7 +43,7 @@ async function mockAccountApis(page, options = {}) {
     if (request.method() !== "GET") {
       calls.push({ pathname, method: request.method(), body: request.postDataJSON?.() || null });
     }
-    if (pathname === "/api/me") return route.fulfill({ json: { user: "구민준", studentId: "2402", isAdmin, styleNote: "", blockedReportTypes: [] } });
+    if (pathname === "/api/me") return route.fulfill({ json: { user: "구민준", studentId: "2402", isAdmin, styleNote: "", blockedReportTypes: [], analyticsConsent: false, analyticsConsentVersion: "2026-07-15" } });
     if (pathname === "/api/me/balance") return route.fulfill({ json: { credits: isAdmin ? 100000 : 24, unlimited: isAdmin, isAdmin } });
     if (pathname === "/api/me/beta") return route.fulfill({
       json: options.tierError ? null : {
@@ -74,6 +74,9 @@ async function mockAccountApis(page, options = {}) {
       } });
     }
     if (pathname === "/api/me/profile" && request.method() === "PATCH") return route.fulfill({ json: { studentId: request.postDataJSON().studentId } });
+    if (pathname === "/api/me/analytics-consent" && request.method() === "PATCH") {
+      return route.fulfill({ json: { ok: true, granted: !!request.postDataJSON().granted, version: "2026-07-15" } });
+    }
     if (pathname === "/api/me/password" && request.method() === "POST") return route.fulfill({ json: { ok: true } });
     if (pathname === "/api/me/api-keys" && request.method() === "POST") return route.fulfill({ json: { ok: true } });
     if (pathname.startsWith("/api/me/api-keys/") && request.method() === "DELETE") return route.fulfill({ json: { ok: true } });
@@ -105,7 +108,7 @@ test("account center uses continuous sections and preserves account contracts", 
   await expect(page.locator("#settingsPanel")).toBeVisible();
   await expect(page.locator("#settingsPanel .settings-card")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Account Center" })).toBeVisible();
-  await expect(page.locator(".account-local-nav a")).toHaveCount(5);
+  await expect(page.locator(".account-local-nav a")).toHaveCount(6);
   await expect(page.locator("#settingsUserName")).toHaveText("구민준");
   await expect(page.locator("#settingsStudentId")).toHaveText("2402");
   await expect(page.locator("#settingsUserRole")).toHaveText("관리자");
@@ -169,9 +172,13 @@ test("account center keeps profile, preferences, BYOK and password actions worki
   await page.locator("#pwBtn").click();
   await expect(page.locator("#pwStatus")).toHaveText("변경 완료");
 
+  await page.locator("#analyticsConsentToggle").check();
+  await expect(page.locator("#analyticsConsentStatus")).toContainText("동의했습니다");
+
   expect(calls.some((call) => call.pathname === "/api/me/profile" && call.body.studentId === "2501")).toBeTruthy();
   expect(calls.some((call) => call.pathname === "/api/me/api-keys" && call.body.provider === "anthropic")).toBeTruthy();
   expect(calls.some((call) => call.pathname === "/api/me/password" && call.body.newPassword === "new-password")).toBeTruthy();
+  expect(calls.some((call) => call.pathname === "/api/me/analytics-consent" && call.body.granted === true)).toBeTruthy();
 });
 
 test("account center exposes empty and error states without blank cards", async ({ page }) => {

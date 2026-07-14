@@ -287,6 +287,48 @@ body:has(#settingsPanel.active) .slim-disclaimer { display: none; }
 .account-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
 .account-help-link { color: var(--q-blue); font-size: 12px; font-weight: 650; }
 
+.account-privacy-summary {
+  margin-bottom: 18px;
+  padding: 16px 18px;
+  border: 1px solid var(--q-line);
+  background: color-mix(in srgb, var(--q-blue) 4%, var(--q-paper));
+}
+.account-privacy-summary h3 { margin: 0 0 8px; color: var(--q-ink); font-size: 14px; }
+.account-privacy-summary p { margin: 5px 0; color: var(--q-muted); font-size: 12px; line-height: 1.65; }
+.account-privacy-summary strong { color: var(--q-ink); }
+.account-consent-toggle {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  margin-bottom: 16px;
+  cursor: pointer;
+}
+.account-consent-toggle input { width: 20px; height: 20px; margin-top: 2px; accent-color: var(--q-blue); }
+.account-consent-toggle span { display: grid; gap: 5px; }
+.account-consent-toggle strong { color: var(--q-ink); font-size: 14px; }
+.account-consent-toggle small { color: var(--q-muted); font-size: 12px; line-height: 1.6; }
+
+.analytics-consent-notice {
+  position: fixed;
+  z-index: 90;
+  right: 22px;
+  bottom: 22px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 20px;
+  width: min(680px, calc(100vw - 44px));
+  padding: 18px 20px;
+  border: 1px solid var(--q-line);
+  background: var(--q-paper);
+  box-shadow: 0 18px 48px rgba(15, 23, 42, .16);
+}
+.analytics-consent-notice[hidden] { display: none; }
+.analytics-consent-notice strong { color: var(--q-ink); font-size: 14px; }
+.analytics-consent-notice p { margin: 5px 0 0; color: var(--q-muted); font-size: 12px; line-height: 1.55; }
+.analytics-consent-notice__actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; }
+.analytics-consent-notice__actions a { color: var(--q-blue); font-size: 12px; }
+
 .account-security-form {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -343,4 +385,6 @@ body:has(#settingsPanel.active) .slim-disclaimer { display: none; }
   .account-provider-controls label { grid-column: 1 / -1; }
   .account-preference-grid { grid-template-columns: 1fr; gap: 14px; }
   .account-upgrade { align-items: flex-start; flex-direction: column; }
+  .analytics-consent-notice { right: 12px; bottom: 12px; grid-template-columns: 1fr; width: calc(100vw - 24px); }
+  .analytics-consent-notice__actions { justify-content: flex-start; }
 }

@@ -1,5 +1,9 @@
+import { summarizeGenerationForm, trackEvent } from "./telemetry.js";
+
 export function createGenerationController(deps) {
   async function submitReport({ formEl, buttonEl, formData, busyText = "생성 중...", estimate = null }) {
+    const telemetry = summarizeGenerationForm(formData);
+    trackEvent("generation_submitted", telemetry);
     deps.lockForm(formEl);
     if (buttonEl) buttonEl.textContent = busyText;
     try {
@@ -41,6 +45,7 @@ export function createGenerationController(deps) {
         throw error;
       }
       const background = formData.get("backgroundMode") === "true";
+      trackEvent("generation_accepted", telemetry);
       deps.setCurrentJob(data.jobId, background);
       deps.streamJob(data.jobId);
       if (background) deps.showBackgroundToast(formData.get("notifyEmail") === "true");
@@ -52,6 +57,11 @@ export function createGenerationController(deps) {
         return;
       }
       const status = error?.httpStatus || 0;
+      trackEvent("generation_rejected", {
+        ...telemetry,
+        httpStatus: status || 500,
+        failureCode: status ? `http_${status}` : "network_error",
+      });
       const inputError = status === 400;
       const creditError = status === 402 || /크레딧|credit|잔액|충전/i.test(error?.message || "");
       deps.showError({

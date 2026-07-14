@@ -2127,6 +2127,76 @@
         <p class="hint"><b>Dropbox</b>는 보고서를 영구 보관하고, <b>Google Drive·Docs</b>와 <b>Notion</b>은 개발자 API와 ChatGPT/Codex에서 파일·문서를 저장할 때 사용합니다.</p>
         <div class="status-block-copy" id="cloudStatus">상태 확인 중…</div>
         <div id="cloudActions"></div>
+        <section class="google-workspace" id="googleWorkspace" hidden aria-labelledby="googleWorkspaceTitle">
+          <div class="google-workspace-head">
+            <div>
+              <span class="account-panel-empty__label">Google Workspace</span>
+              <h3 id="googleWorkspaceTitle">Drive 파일과 Docs 작업</h3>
+              <p class="hint">Quilo가 만들거나 사용자가 여기서 선택한 파일만 다루는 <code>drive.file</code> 최소 권한을 사용합니다.</p>
+            </div>
+            <button type="button" class="secondary compact" id="googleDriveReload">새로고침</button>
+          </div>
+
+          <div class="google-workspace-toolbar">
+            <form id="googleDriveSearchForm" class="google-inline-form">
+              <label for="googleDriveSearch">Drive 파일 검색</label>
+              <input id="googleDriveSearch" type="search" maxlength="120" placeholder="파일명" />
+              <button type="submit" class="secondary compact">검색</button>
+            </form>
+            <label class="google-folder-select" for="googleDriveFolder">저장 폴더
+              <select id="googleDriveFolder"><option value="">Quilo 기본 폴더 (자동 생성)</option></select>
+            </label>
+          </div>
+          <label class="check-row google-auto-save"><input id="googleAutoSaveReports" type="checkbox" /> 앞으로 생성하는 보고서를 선택한 Drive 폴더에 자동 저장</label>
+
+          <div id="googleWorkspaceStatus" class="hint" aria-live="polite">Google Drive를 불러오는 중…</div>
+          <div id="googleDriveFiles" class="google-drive-files" aria-live="polite"></div>
+
+          <div class="google-workspace-tools">
+            <details>
+              <summary>파일 업로드</summary>
+              <form id="googleDriveUploadForm" class="google-tool-form">
+                <label>파일 <input id="googleDriveUploadFile" type="file" required /></label>
+                <label class="check-row"><input id="googleDriveConvertDoc" type="checkbox" /> DOCX면 Google Docs로 변환</label>
+                <button type="submit">Drive에 업로드</button>
+              </form>
+            </details>
+            <details>
+              <summary>Google Docs 만들기</summary>
+              <form id="googleDocCreateForm" class="google-tool-form">
+                <label>제목 <input id="googleDocTitle" type="text" maxlength="200" required /></label>
+                <label>본문 <textarea id="googleDocText" rows="7" maxlength="500000" required></textarea></label>
+                <button type="submit">문서 만들기</button>
+              </form>
+            </details>
+            <details>
+              <summary>기존 Docs에 본문 추가</summary>
+              <form id="googleDocAppendForm" class="google-tool-form">
+                <label>문서 ID <input id="googleAppendDocumentId" type="text" maxlength="300" required placeholder="파일 목록의 ‘본문 추가’를 누르면 자동 입력" /></label>
+                <label>추가할 본문 <textarea id="googleAppendText" rows="5" maxlength="500000" required></textarea></label>
+                <button type="submit">문서 끝에 추가</button>
+              </form>
+            </details>
+            <details>
+              <summary>Drive 폴더 만들기</summary>
+              <form id="googleDriveFolderForm" class="google-tool-form google-tool-form--inline">
+                <label>폴더 이름 <input id="googleDriveFolderName" type="text" maxlength="255" required /></label>
+                <button type="submit">폴더 만들기</button>
+              </form>
+            </details>
+          </div>
+
+          <section class="google-comments-panel" id="googleCommentsPanel" hidden>
+            <h4 id="googleCommentTarget">파일 댓글</h4>
+            <div id="googleCommentsList" class="google-comments-list"></div>
+            <form id="googleCommentForm" class="google-tool-form">
+              <input id="googleCommentFileId" type="hidden" />
+              <label>인용할 문구 (선택) <input id="googleCommentQuote" type="text" maxlength="500" /></label>
+              <label>댓글 <textarea id="googleCommentText" rows="3" maxlength="5000" required></textarea></label>
+              <button type="submit">Google Drive에 댓글 작성</button>
+            </form>
+          </section>
+        </section>
         <p class="hint space-top-12"><a href="/developers.html">API·ChatGPT·Codex 연동 설정 열기 →</a></p>
       </div>
       <div class="settings-card account-panel-empty" id="cloudEmptyState">
@@ -2146,6 +2216,7 @@
           <input id="filesFilter" type="search" autocomplete="off" placeholder="파일명으로 찾기" />
         </label>
         <div id="filesStatus" class="hint">불러오는 중...</div>
+        <div id="googleReportStatus" class="hint" aria-live="polite"></div>
         <div id="filesList" class="file-list" aria-live="polite"></div>
         <p id="filesFilterEmpty" class="hint" hidden>검색 결과가 없습니다.</p>
       </div>

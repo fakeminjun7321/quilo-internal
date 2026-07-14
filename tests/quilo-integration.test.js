@@ -163,7 +163,11 @@ test("OpenAPI document is public and generated from the v1 route registry", asyn
   assert.equal(body.paths["/api/v1/api-requests"].get["x-quilo-scope"], "account:read");
   assert.equal(body.paths["/api/v1/jobs/{id}/email"].post["x-quilo-scope"], "jobs:write");
   assert.equal(body.paths["/api/v1/integrations/google-drive/files"].post["x-quilo-scope"], "integrations:write");
+  assert.equal(body.paths["/api/v1/integrations/google-drive/reports/{id}"].post["x-quilo-scope"], "integrations:write");
+  assert.equal(body.paths["/api/v1/integrations/google-drive/files/{id}/comments"].get["x-quilo-scope"], "integrations:read");
+  assert.equal(body.paths["/api/v1/integrations/google-drive/files/{id}/comments"].post["x-quilo-scope"], "integrations:write");
   assert.equal(body.paths["/api/v1/integrations/google-docs"].post["x-quilo-scope"], "integrations:write");
+  assert.equal(body.paths["/api/v1/integrations/google-docs/{id}/append"].post["x-quilo-scope"], "integrations:write");
   assert.equal(body.paths["/api/v1/integrations/notion/pages"].post["x-quilo-scope"], "integrations:write");
   assert.equal(body.paths["/api/v1/webhooks"].post["x-quilo-scope"], "webhooks:write");
   assert.ok(body.components.securitySchemes.bearerAuth["x-scopes"]["account:read"]);

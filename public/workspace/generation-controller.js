@@ -3,6 +3,19 @@ export function createGenerationController(deps) {
     deps.lockForm(formEl);
     if (buttonEl) buttonEl.textContent = busyText;
     try {
+      if (formData) {
+        try {
+          if (localStorage.getItem("quilo.googleDrive.autoSaveReports") === "1") {
+            formData.set("saveToGoogleDrive", "true");
+            const folderId = localStorage.getItem("quilo.googleDrive.folderId") || "";
+            if (folderId) formData.set("googleDriveFolderId", folderId);
+            else formData.delete("googleDriveFolderId");
+          } else {
+            formData.delete("saveToGoogleDrive");
+            formData.delete("googleDriveFolderId");
+          }
+        } catch (_) {}
+      }
       const background = deps.backgroundChoice();
       if (formData && !formData.has("backgroundMode") && background.enabled) {
         formData.set("backgroundMode", "true");
@@ -52,4 +65,3 @@ export function createGenerationController(deps) {
 
   return { submitReport };
 }
-

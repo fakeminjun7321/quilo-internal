@@ -3,6 +3,7 @@ export function createGenerationController(deps) {
     deps.lockForm(formEl);
     if (buttonEl) buttonEl.textContent = busyText;
     try {
+      const background = deps.backgroundChoice(formEl);
       if (formData) {
         try {
           if (localStorage.getItem("quilo.googleDrive.autoSaveReports") === "1") {
@@ -15,11 +16,14 @@ export function createGenerationController(deps) {
             formData.delete("googleDriveFolderId");
           }
         } catch (_) {}
-      }
-      const background = deps.backgroundChoice();
-      if (formData && !formData.has("backgroundMode") && background.enabled) {
-        formData.set("backgroundMode", "true");
-        if (background.notifyEmail) formData.set("notifyEmail", "true");
+        if (background.enabled) {
+          formData.set("backgroundMode", "true");
+          if (background.notifyEmail) formData.set("notifyEmail", "true");
+          else formData.delete("notifyEmail");
+        } else {
+          formData.delete("backgroundMode");
+          formData.delete("notifyEmail");
+        }
       }
     } catch (_) {}
     deps.capturePreferences(formData);
@@ -39,7 +43,7 @@ export function createGenerationController(deps) {
       const background = formData.get("backgroundMode") === "true";
       deps.setCurrentJob(data.jobId, background);
       deps.streamJob(data.jobId);
-      if (background) deps.showBackgroundToast();
+      if (background) deps.showBackgroundToast(formData.get("notifyEmail") === "true");
     } catch (error) {
       if (error?.suspended) {
         deps.stopTimer();

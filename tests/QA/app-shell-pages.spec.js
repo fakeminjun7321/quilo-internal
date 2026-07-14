@@ -316,6 +316,25 @@ async function exerciseCoreInteraction(page, pageName) {
     await expect(page.locator("#topic")).toHaveValue("특수상대론 운동량");
   } else if (pageName === "studio.html") {
     await expect(page.locator("#app")).toBeVisible();
+    const layout = await page.evaluate(() => {
+      const app = document.querySelector("#app");
+      const body = document.querySelector("#app > .body");
+      const top = document.querySelector("#app > .top");
+      const chat = document.querySelector("#app .chat");
+      const stage = document.querySelector("#app .stage");
+      return {
+        appDirection: getComputedStyle(app).flexDirection,
+        bodyDisplay: getComputedStyle(body).display,
+        topAboveBody: top.getBoundingClientRect().bottom <= body.getBoundingClientRect().top + 1,
+        chatLeftOfStage: chat.getBoundingClientRect().right <= stage.getBoundingClientRect().left + 1,
+      };
+    });
+    expect(layout).toEqual({
+      appDirection: "column",
+      bodyDisplay: "flex",
+      topAboveBody: true,
+      chatLeftOfStage: true,
+    });
     await page.locator('[data-mode="image"]').click();
     await expect(page.locator('[data-mode="image"]')).toHaveClass(/on/);
   } else if (pageName === "study.html") {

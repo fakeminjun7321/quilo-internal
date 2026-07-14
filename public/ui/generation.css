@@ -279,6 +279,10 @@ dd.confirm-list__secondary { font-size: .85em; }
 .background-choice__row { display: flex; align-items: center; gap: 8px; font-weight: 700; cursor: pointer; }
 .background-choice__help { margin: 6px 0 0 24px; color: var(--q-muted); font-size: 12px; }
 .background-choice__mail { display: flex; align-items: center; gap: 6px; margin: 8px 0 0 24px; font-size: 13px; cursor: pointer; }
+.background-choice__mail[hidden] { display: none; }
+.background-choice--form { margin: 0; padding: 14px 16px; }
+.background-choice--form input { flex: 0 0 auto; }
+.background-options { scroll-margin-top: calc(var(--q-shell-height) + 24px); }
 .background-jobs { margin: 0 0 14px; }
 .background-jobs__title { margin: 0 0 8px; font-size: 13px; font-weight: 700; }
 .background-job { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; padding: 10px 12px; border: 1px solid var(--q-line); border-radius: 8px; }

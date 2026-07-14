@@ -18,12 +18,10 @@ export function createConfirmationController({ balanceState, formatDateTime, fin
   }
 
   // ── 백그라운드 실행(구독자 전용) ─────────────────────────────────────────
-  // _bgEligible: 토글을 확인 다이얼로그에 노출할지(관리자 또는 활성 구독).
-  // _bgChoice/_bgNotifyChoice: 이번 생성에서 선택한 값(submitReport 가 FormData 에 baking).
+  // _bgEligible: 실행 방식 사전 선택을 노출할지(관리자 또는 활성 구독).
+  // 선택값은 확인 다이얼로그가 아니라 각 보고서 폼 안에서 직접 읽는다.
   let _bgEligible = false;
   let _bgInfo = null; // { active, admin, expiresAt }
-  let _bgChoice = false;
-  let _bgNotifyChoice = false;
   (async () => {
     try {
       const { subscription: d } = await loadEntitlementsSnapshot();
@@ -31,11 +29,83 @@ export function createConfirmationController({ balanceState, formatDateTime, fin
         _bgInfo = d;
         _bgEligible = !!d.active;
         renderPremiumBadge();
+        renderBackgroundOptions();
       }
     } catch (_) {
       /* 권한 조회 실패 시 토글 미노출(서버가 어차피 강제) */
     }
   })();
+
+  function backgroundChoice(formEl) {
+    if (!_bgEligible || !formEl?.querySelector) {
+      return { enabled: false, notifyEmail: false };
+    }
+    const enabled = !!formEl.querySelector("[data-background-mode]")?.checked;
+    const notifyEmail =
+      enabled && !!formEl.querySelector("[data-background-notify]")?.checked;
+    return { enabled, notifyEmail };
+  }
+
+  // 백그라운드 실행 여부는 생성 버튼을 누른 뒤가 아니라 보고서의 다른 옵션과
+  // 함께 미리 정한다. /api/generate 를 쓰는 모든 보고서 폼에 같은 UI를 삽입한다.
+  function renderBackgroundOptions() {
+    if (!_bgEligible) return;
+    document.querySelectorAll("form[data-report-form]").forEach((formEl) => {
+      if (formEl.querySelector("[data-background-options]")) return;
+
+      const section = document.createElement("section");
+      section.className = "form-section background-options";
+      section.dataset.backgroundOptions = "";
+
+      const head = document.createElement("div");
+      head.className = "form-section-head";
+      const title = document.createElement("span");
+      title.className = "form-section-title";
+      title.textContent = "실행 방식";
+      head.appendChild(title);
+
+      const box = document.createElement("div");
+      box.className = "background-choice background-choice--form";
+      const row = document.createElement("label");
+      row.className = "background-choice__row";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.dataset.backgroundMode = "";
+      checkbox.setAttribute("aria-describedby", `${formEl.id || "report"}BackgroundHelp`);
+      const copy = document.createElement("span");
+      copy.textContent = "🌙 백그라운드로 실행 (탭/창을 닫아도 됨)";
+      row.append(checkbox, copy);
+
+      const help = document.createElement("p");
+      help.id = `${formEl.id || "report"}BackgroundHelp`;
+      help.className = "background-choice__help";
+      help.textContent =
+        "생성 요청 후 서버가 끝까지 만들며, 완료 파일은 24시간 동안 '내 파일'에서 받을 수 있어요.";
+
+      const mailRow = document.createElement("label");
+      mailRow.className = "background-choice__mail";
+      mailRow.hidden = true;
+      const mailCheckbox = document.createElement("input");
+      mailCheckbox.type = "checkbox";
+      mailCheckbox.checked = true;
+      mailCheckbox.dataset.backgroundNotify = "";
+      const mailCopy = document.createElement("span");
+      mailCopy.textContent = "완료되면 이메일로 알림";
+      mailRow.append(mailCheckbox, mailCopy);
+
+      checkbox.addEventListener("change", () => {
+        mailRow.hidden = !checkbox.checked;
+        checkbox.setAttribute("aria-expanded", checkbox.checked ? "true" : "false");
+      });
+      checkbox.setAttribute("aria-expanded", "false");
+      box.append(row, help, mailRow);
+      section.append(head, box);
+
+      const anchor = formEl.querySelector(".policy-check, .form-actions");
+      if (anchor) formEl.insertBefore(section, anchor);
+      else formEl.appendChild(section);
+    });
+  }
 
   // Max(백그라운드 실행 가능) 배지 — '내 파일' 패널 상단에 표시.
   function renderPremiumBadge() {
@@ -191,7 +261,7 @@ export function createConfirmationController({ balanceState, formatDateTime, fin
     input.focus();
   }
 
-  function showBackgroundToast() {
+  function showBackgroundToast(notifyEmail = false) {
     try {
       let t = document.getElementById("bgToast");
       if (!t) {
@@ -200,8 +270,9 @@ export function createConfirmationController({ balanceState, formatDateTime, fin
         t.className = "background-toast";
         document.body.appendChild(t);
       }
-      t.textContent =
-        "🌙 백그라운드로 실행 중 — 이 창을 닫아도 됩니다. 완료되면 '내 파일'과 이메일로 받을 수 있어요.";
+      t.textContent = notifyEmail
+        ? "🌙 백그라운드로 실행 중 — 이 창을 닫아도 됩니다. 완료되면 '내 파일'과 이메일로 받을 수 있어요."
+        : "🌙 백그라운드로 실행 중 — 이 창을 닫아도 됩니다. 완료되면 '내 파일'에서 받을 수 있어요.";
       t.hidden = false;
       clearTimeout(window.__bgToastTimer);
       window.__bgToastTimer = setTimeout(() => {
@@ -305,11 +376,7 @@ export function createConfirmationController({ balanceState, formatDateTime, fin
     ta.focus();
   }
 
-  function showConfirmDialog({ title, rows, note, okLabel = "생성", credits, recovery = null, background = false }) {
-    // 매 다이얼로그마다 백그라운드 선택 초기화(토글 안 켜면 기본 일반 실행).
-    // background:true 인 '생성' 다이얼로그에서만 토글을 노출한다(삭제·중지 등엔 미노출).
-    _bgChoice = false;
-    _bgNotifyChoice = false;
+  function showConfirmDialog({ title, rows, note, okLabel = "생성", credits, recovery = null, background = null }) {
     return new Promise((resolve) => {
       const overlay = document.createElement("div");
       overlay.className = "confirm-overlay";
@@ -341,7 +408,17 @@ export function createConfirmationController({ balanceState, formatDateTime, fin
         list.append(dt, dd);
         creditDd = dd;
       }
-      for (const [label, value] of rows) {
+      const summaryRows = Array.isArray(rows) ? [...rows] : [];
+      if (_bgEligible && background?.querySelector) {
+        const selected = backgroundChoice(background);
+        summaryRows.push([
+          "실행 방식",
+          selected.enabled
+            ? `백그라운드 실행 · 이메일 알림 ${selected.notifyEmail ? "사용" : "사용 안 함"}`
+            : "현재 창에서 실행",
+        ]);
+      }
+      for (const [label, value] of summaryRows) {
         const dt = document.createElement("dt");
         dt.textContent = label;
         const dd = document.createElement("dd");
@@ -451,43 +528,7 @@ export function createConfirmationController({ balanceState, formatDateTime, fin
       }
       evaluateCreditGate();
 
-      // ── 백그라운드 실행 토글(구독자/관리자 + 생성 다이얼로그에서만 노출) ──────
-      const bgBox = document.createElement("div");
-      if (_bgEligible && background) {
-        bgBox.className = "background-choice";
-        const row = document.createElement("label");
-        row.className = "background-choice__row";
-        const cb = document.createElement("input");
-        cb.type = "checkbox";
-        cb.checked = _bgChoice;
-        const t = document.createElement("span");
-        t.textContent = "🌙 백그라운드로 실행 (탭/창 닫아도 됨)";
-        row.append(cb, t);
-        const sub = document.createElement("div");
-        sub.className = "background-choice__help";
-        sub.textContent =
-          "제출 후 창을 닫아도 서버가 끝까지 만들고, '내 파일'에서 받을 수 있어요.";
-        const mailRow = document.createElement("label");
-        mailRow.className = "background-choice__mail";
-        mailRow.hidden = true;
-        const mcb = document.createElement("input");
-        mcb.type = "checkbox";
-        mcb.checked = true;
-        const mt = document.createElement("span");
-        mt.textContent = "완료되면 이메일로 알림";
-        mailRow.append(mcb, mt);
-        cb.addEventListener("change", () => {
-          _bgChoice = cb.checked;
-          mailRow.hidden = !cb.checked;
-          _bgNotifyChoice = cb.checked && mcb.checked;
-        });
-        mcb.addEventListener("change", () => {
-          _bgNotifyChoice = cb.checked && mcb.checked;
-        });
-        bgBox.append(row, sub, mailRow);
-      }
-
-      dialog.append(heading, list, noteEl, bgBox, warnBox, actions);
+      dialog.append(heading, list, noteEl, warnBox, actions);
       overlay.appendChild(dialog);
       // 다이얼로그를 열기 직전 포커스를 기억해 닫을 때 복원한다(접근성).
       const prevFocus = document.activeElement;
@@ -545,6 +586,6 @@ export function createConfirmationController({ balanceState, formatDateTime, fin
     renderPremiumBadge,
     showBackgroundToast,
     showSuspendedAppealModal,
-    backgroundChoice: () => ({ enabled: _bgChoice, notifyEmail: _bgNotifyChoice }),
+    backgroundChoice,
   };
 }

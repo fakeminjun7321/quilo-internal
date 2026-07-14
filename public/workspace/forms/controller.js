@@ -39,7 +39,7 @@ export function installReportFormControllers(deps) {
     const genEst = estimateGenSeconds("chem-pre", model);
     const ok = await showConfirmDialog({
       title: "사전보고서 생성",
-      background: true,
+      background: form,
       credits: getModelCredits(model),
       recovery: { formEl: form, radioName: "model" },
       rows: [
@@ -99,7 +99,7 @@ export function installReportFormControllers(deps) {
     const crPhotoTokens = photos.length * 1500;
     const ok = await showConfirmDialog({
       title: "화학 결과보고서 생성",
-      background: true,
+      background: crForm,
       credits: getModelCredits(crModel),
       recovery: { formEl: crForm, radioName: "crModel" },
       rows: [
@@ -174,7 +174,7 @@ export function installReportFormControllers(deps) {
     const prPhotoTokens = photos.length * 1500;
     const ok = await showConfirmDialog({
       title: "물리 결과보고서 생성",
-      background: true,
+      background: prForm,
       credits: getModelCredits(prModel),
       recovery: { formEl: prForm, radioName: "prModel" },
       rows: [
@@ -241,7 +241,7 @@ export function installReportFormControllers(deps) {
 
       const ok = await showConfirmDialog({
         title: "물리 수행평가 초안 생성 (Pro)",
-        background: true,
+        background: piForm,
         rows: [
           ["모델", modelLabel],
           ["형식", piFormat === "hwpx" ? ".hwpx (한글)" : ".docx (MS Word)"],
@@ -311,7 +311,7 @@ export function installReportFormControllers(deps) {
 
       const ok = await showConfirmDialog({
         title: "수학 수행평가 초안 생성 (Pro)",
-        background: true,
+        background: miForm,
         rows: [
           ["모델", modelLabel],
           ["형식", miFormat === "hwpx" ? ".hwpx (한글)" : ".docx (MS Word)"],
@@ -407,7 +407,7 @@ export function installReportFormControllers(deps) {
         const rlMaxCredits = getModelCredits(rlModel);
         const ok = await showConfirmDialog({
           title: "독서록 대량 생성",
-          background: true,
+          background: rlForm,
           rows: [
             ["모델", modelLabel],
             ["책 목록", excelFile.name],
@@ -444,7 +444,7 @@ export function installReportFormControllers(deps) {
       const rlMaxCredits = getModelCredits(rlModel);
       const ok = await showConfirmDialog({
         title: "독서록 초안 생성",
-        background: true,
+        background: rlForm,
         rows: [
           ["모델", modelLabel],
           ["형식", ".hwpx (한글 — 학교 양식)"],
@@ -493,7 +493,7 @@ export function installReportFormControllers(deps) {
 
       const ok = await showConfirmDialog({
         title: "문제집 메이커 (Pro)",
-        background: true,
+        background: psForm,
         rows: [
           ["모델", modelLabel],
           ["문제 파일", `${source.length}개`],
@@ -642,7 +642,7 @@ export function installReportFormControllers(deps) {
       const frPhotoTokens = photos.length * 1500;
       const ok = await showConfirmDialog({
         title: "자유 보고서 생성",
-        background: true,
+        background: frForm,
         credits: getModelCredits(frModel),
         recovery: { formEl: frForm, radioName: "frModel" },
         rows: [
@@ -741,7 +741,7 @@ export function installReportFormControllers(deps) {
 
       const ok = await showConfirmDialog({
         title: "양식 메이커",
-        background: true,
+        background: fmForm,
         rows: [
           ["작업", modeLabel],
           ["모델", getModelLabel(fmModel)],

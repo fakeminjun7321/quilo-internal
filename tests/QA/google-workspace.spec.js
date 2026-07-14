@@ -73,6 +73,33 @@ test("Google Workspace UI exposes real Drive, Docs, comments, save, disconnect, 
   await expect(page.locator("#googleDriveFiles .google-drive-file")).toHaveCount(1);
   await expect(page.locator("#googleDriveFiles")).toContainText("실험 보고서");
 
+  await page.locator("#googleDriveFolder").selectOption("folder-1");
+  await page.locator("#googleAutoSaveReports").check();
+  const autoSaveFields = await page.evaluate(async () => {
+    const { createGenerationController } = await import("/workspace/generation-controller.js");
+    const formData = new FormData();
+    const noop = () => {};
+    const controller = createGenerationController({
+      lockForm: noop,
+      backgroundChoice: () => ({ enabled: false, notifyEmail: false }),
+      capturePreferences: noop,
+      rememberSubmission: noop,
+      clearRetryCard: noop,
+      beginProgress: noop,
+      setCurrentJob: noop,
+      streamJob: noop,
+      showBackgroundToast: noop,
+      stopTimer: noop,
+      resetForm: noop,
+      showSuspendedAppeal: noop,
+      showError: noop,
+    });
+    await controller.submitReport({ formEl: document.createElement("form"), formData });
+    return Object.fromEntries(formData.entries());
+  });
+  expect(autoSaveFields.saveToGoogleDrive).toBe("true");
+  expect(autoSaveFields.googleDriveFolderId).toBe("folder-1");
+
   await page.getByRole("button", { name: "본문 추가" }).click();
   await expect(page.locator("#googleAppendDocumentId")).toHaveValue("doc-1");
   await page.getByRole("button", { name: "댓글", exact: true }).click();

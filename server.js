@@ -797,6 +797,7 @@ const externalApi = require("./lib/external-api");
 const apiWebhooks = require("./lib/api-v1/webhooks");
 const byok = require("./lib/byok");
 const dbx = require("./lib/cloud/dropbox");
+const cloudProviders = require("./lib/cloud/oauth-providers");
 const { krwToUsd, usdToKrw, getKrwPerUsd } = require("./lib/exchange-rate");
 const rateLimit = require("./lib/rate-limit");
 const comm = require("./lib/community"); // 생성 정지(banGeneration)·소명 재사용
@@ -3534,6 +3535,14 @@ app.post(
       acceptedAt: new Date().toISOString(),
       clientAcceptedAt: String(req.body.policyAcceptedAt || "").slice(0, 80),
     };
+    const saveToGoogleDrive = isTruthyPolicyFlag(req.body.saveToGoogleDrive);
+    const requestedGoogleFolderId = String(req.body.googleDriveFolderId || "").trim();
+    const googleDriveFolderId =
+      requestedGoogleFolderId &&
+      requestedGoogleFolderId.length <= 300 &&
+      !/[\s/\\]/.test(requestedGoogleFolderId)
+        ? requestedGoogleFolderId
+        : "";
 
     // fieldname별 파일 그룹핑 (chem-result는 photos 같이 multi 파일이 들어옴)
     const filesByField = {};
@@ -4050,6 +4059,8 @@ app.post(
       model,
       format,
       policyAcknowledgement,
+      saveToGoogleDrive,
+      googleDriveFolderId,
     }).catch(
       async (err) => {
         job.status = "error";
@@ -6180,6 +6191,8 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
     model,
     format = "docx",
     policyAcknowledgement,
+    saveToGoogleDrive = false,
+    googleDriveFolderId = "",
   } = meta;
   const t0 = Date.now();
   const jobTimeoutMs = jobTimeoutForModel(model, job.reportType);
@@ -6472,6 +6485,36 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
       }
     }
 
+    if (saveToGoogleDrive && job.userInfo?.id) {
+      if (!cloudProviders.configured("google") || !supa.isEnabled()) {
+        pushProgress(job, "⚠ Google Drive 자동 저장 설정이 서버에서 준비되지 않아 기본 파일함에 저장합니다.");
+      } else {
+        try {
+          const connection = await supa.getCloudConnection(job.userInfo.id, "google");
+          if (!connection?.refresh_token) throw new Error("Google 계정이 연결되어 있지 않습니다.");
+          const refreshToken = cloudProviders.decryptToken(connection.refresh_token);
+          const accessToken = await cloudProviders.googleAccessToken(refreshToken);
+          const folderId = googleDriveFolderId || (await cloudProviders.ensureDriveFolder(accessToken, { name: "Quilo" })).id;
+          const driveFile = await cloudProviders.uploadDriveFile(accessToken, {
+            name: job.filename,
+            mimeType: job.mimeType,
+            buffer,
+            folderId,
+            appProperties: {
+              quiloSourceKey: `job:${job.id}`,
+              quiloOrigin: "report-auto-save",
+              quiloReportType: job.reportType,
+            },
+          });
+          job.googleDriveFileId = driveFile.id || "";
+          job.googleDriveUrl = driveFile.webViewLink || "";
+          pushProgress(job, `☁ Google Drive에 자동 저장됨: ${driveFile.name || job.filename}`);
+        } catch (e) {
+          pushProgress(job, `⚠ Google Drive 자동 저장 실패(${String(e.message || e).slice(0, 160)}) → 기본 파일함에도 계속 저장합니다.`);
+        }
+      }
+    }
+
     if (job.userInfo?.id) {
       // 1) Dropbox 연결 사용자 → 본인 클라우드에 영구 저장(24시간 박스 대체).
       let cloudSaved = false;
@@ -6685,7 +6728,7 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
   }
 
   job.listeners.forEach((r) => {
-    sendSse(r, "done", { filename: job.filename, fileId: job.fileId, warnings: job.warnings || [], styleFont: job.styleFont || null, handoff: job.handoff || "" });
+    sendSse(r, "done", { filename: job.filename, fileId: job.fileId, googleDriveUrl: job.googleDriveUrl || "", warnings: job.warnings || [], styleFont: job.styleFont || null, handoff: job.handoff || "" });
     r.end();
   });
   job.listeners = [];
@@ -6752,6 +6795,7 @@ app.get("/api/jobs/:id/stream", requireAuth, (req, res) => {
     sendSse(res, "done", {
       filename: job.filename,
       fileId: job.fileId,
+      googleDriveUrl: job.googleDriveUrl || "",
       effectiveMode: job.effectiveMode || null,
       warnings: job.warnings || [],
       styleFont: job.styleFont || null,

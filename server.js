@@ -576,6 +576,8 @@ const PIPELINES = {
       const includeCore = flag("includeCore", true);
       const includeAcademic = flag("includeAcademic", true);
       const includePhrases = flag("includePhrases", true);
+      const designStyle = require("./lib/pipelines/vocabulary-book/designs")
+        .normalizeVocabularyDesign(body.designStyle);
       if (!includeCore && !includeAcademic && !includePhrases) {
         throw new Error("핵심 용어, 학술 어휘, 문제 풀이 표현 중 하나 이상을 선택하세요.");
       }
@@ -591,6 +593,7 @@ const PIPELINES = {
         includePronunciation: flag("includePronunciation", true),
         includeReview: flag("includeReview", true),
         includeMemo: flag("includeMemo", true),
+        designStyle,
         studentId: String(body.studentId || "").trim().slice(0, 20),
         style: "default",
       };
@@ -6987,6 +6990,16 @@ app.use(
     getSessionUser,
     refreshSessionUser,
     upload,
+  }),
+);
+
+app.use(
+  require("./lib/secure-vocabulary-example").createSecureVocabularyExampleRouter({
+    requireAuth,
+    getSessionUser,
+    supa,
+    sessionSecret: SESSION_SECRET,
+    rootDir: __dirname,
   }),
 );
 

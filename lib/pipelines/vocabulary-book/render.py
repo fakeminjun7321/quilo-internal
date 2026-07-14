@@ -18,13 +18,45 @@ from reportlab.pdfgen import canvas
 
 
 PAGE_W, PAGE_H = A4
-PURPLE = HexColor("#3F2357")
-PURPLE_SOFT = HexColor("#F5F2F7")
-GOLD = HexColor("#9D7500")
-INK = HexColor("#211F27")
-MUTED = HexColor("#77727E")
-LINE = HexColor("#D8D2DC")
+PURPLE = HexColor("#2563EB")
+PURPLE_SOFT = HexColor("#EEF4FF")
+GOLD = HexColor("#0F6A8A")
+INK = HexColor("#172033")
+MUTED = HexColor("#667085")
+LINE = HexColor("#D8E0EC")
 PAPER = HexColor("#FFFFFF")
+
+DESIGNS = {
+    "science": {
+        "primary": "#2563EB", "soft": "#EEF4FF", "accent": "#0F6A8A",
+        "ink": "#172033", "muted": "#667085", "line": "#D8E0EC", "paper": "#FFFFFF",
+    },
+    "classic": {
+        "primary": "#10213F", "soft": "#F7F2E8", "accent": "#9A6B17",
+        "ink": "#171B24", "muted": "#69645C", "line": "#D8CFBD", "paper": "#FFFDF7",
+    },
+    "minimal": {
+        "primary": "#111827", "soft": "#FAFAFA", "accent": "#6B7280",
+        "ink": "#111827", "muted": "#6B7280", "line": "#D1D5DB", "paper": "#FFFFFF",
+    },
+}
+
+
+def apply_design(value: object) -> str:
+    """Select a deterministic, server-whitelisted visual design for this render process."""
+    global PURPLE, PURPLE_SOFT, GOLD, INK, MUTED, LINE, PAPER
+    key = clean(value, 20).lower()
+    if key not in DESIGNS:
+        key = "science"
+    theme = DESIGNS[key]
+    PURPLE = HexColor(theme["primary"])
+    PURPLE_SOFT = HexColor(theme["soft"])
+    GOLD = HexColor(theme["accent"])
+    INK = HexColor(theme["ink"])
+    MUTED = HexColor(theme["muted"])
+    LINE = HexColor(theme["line"])
+    PAPER = HexColor(theme["paper"])
+    return key
 
 
 def clean(value: object, limit: int = 1000) -> str:
@@ -90,8 +122,8 @@ def wrap_text(text: str, font: str, size: float, width: float, max_lines: int | 
     return lines
 
 
-def draw_lines(c: canvas.Canvas, lines: list[str], x: float, y: float, font: str, size: float, leading: float, color=INK) -> float:
-    c.setFillColor(color)
+def draw_lines(c: canvas.Canvas, lines: list[str], x: float, y: float, font: str, size: float, leading: float, color=None) -> float:
+    c.setFillColor(INK if color is None else color)
     c.setFont(font, size)
     for line in lines:
         c.drawString(x, y, line)
@@ -110,6 +142,7 @@ class Workbook:
         self.output = output
         self.units = list(data.get("chapters") or [])
         self.options = data.get("options") or {}
+        self.design_style = apply_design(self.options.get("design_style"))
         self.entries = [entry for unit in self.units for entry in (unit.get("entries") or [])]
         self.c = canvas.Canvas(str(output), pagesize=A4, pageCompression=1)
         self.c.setTitle(clean((data.get("book") or {}).get("title") or data.get("title") or "Vocabulary Book"))
@@ -163,7 +196,7 @@ class Workbook:
         self.link_dest("index", (PAGE_W - 82, 18, PAGE_W - 42, 37))
 
     def draw_tabs(self, current: int | None = None) -> None:
-        if not self.units or len(self.units) > 18:
+        if not self.units or len(self.units) > 18 or self.design_style == "minimal":
             return
         x = PAGE_W - 20
         top = PAGE_H - 76
@@ -173,7 +206,10 @@ class Workbook:
             y = top - index * h
             active = current == number
             self.c.setFillColor(PURPLE if active else PURPLE_SOFT)
-            self.c.roundRect(x, y - h + 1, 20, h - 2, 4, fill=1, stroke=0)
+            if self.design_style == "classic":
+                self.c.rect(x, y - h + 1, 20, h - 2, fill=1, stroke=0)
+            else:
+                self.c.roundRect(x, y - h + 1, 20, h - 2, 4, fill=1, stroke=0)
             self.c.saveState()
             self.c.translate(x + 10, y - h / 2)
             self.c.rotate(90)
@@ -192,8 +228,24 @@ class Workbook:
         book = self.data.get("book") or {}
         title = clean(book.get("title") or self.data.get("title") or "TEXTBOOK")
         subtitle = clean(book.get("subtitle") or "VOCABULARY")
+        self.c.setFillColor(PAPER)
+        self.c.rect(0, 0, PAGE_W, PAGE_H, stroke=0, fill=1)
         self.c.setStrokeColor(INK)
-        self.c.rect(54, 54, PAGE_W - 108, PAGE_H - 108, stroke=1, fill=0)
+        if self.design_style == "science":
+            self.c.setFillColor(PURPLE)
+            self.c.rect(0, 0, 24, PAGE_H, stroke=0, fill=1)
+            self.c.setLineWidth(1.4)
+            self.c.rect(62, 62, PAGE_W - 124, PAGE_H - 124, stroke=1, fill=0)
+        elif self.design_style == "classic":
+            self.c.setLineWidth(1.2)
+            self.c.rect(44, 44, PAGE_W - 88, PAGE_H - 88, stroke=1, fill=0)
+            self.c.setStrokeColor(GOLD)
+            self.c.rect(52, 52, PAGE_W - 104, PAGE_H - 104, stroke=1, fill=0)
+        else:
+            self.c.setLineWidth(2.2)
+            self.c.line(54, PAGE_H - 76, PAGE_W - 54, PAGE_H - 76)
+            self.c.setStrokeColor(LINE)
+            self.c.line(54, 76, PAGE_W - 54, 76)
         self.c.setFillColor(INK)
         size = fit_size(title.upper(), "Pretendard-Bold", 30, PAGE_W - 150, 18)
         self.c.setFont("Pretendard-Bold", size)
@@ -207,7 +259,7 @@ class Workbook:
         self.c.setFillColor(MUTED)
         self.c.setFont("Pretendard", 6.5)
         self.c.drawCentredString(PAGE_W / 2, 76, clean(book.get("publisher_line"), 180))
-        self.link_dest("contents", (54, 54, PAGE_W - 54, PAGE_H - 54))
+        self.link_dest("contents", (40, 40, PAGE_W - 40, PAGE_H - 40))
         self.c.showPage()
 
     def contents(self) -> None:
@@ -309,8 +361,22 @@ class Workbook:
         self.c.setFillColor(PURPLE_SOFT)
         self.c.setStrokeColor(PURPLE)
         self.c.setLineWidth(0.45)
-        self.c.roundRect(x, box_y, width, 82, 6, fill=1, stroke=1)
-        divider = x + 207
+        if self.design_style == "science":
+            self.c.roundRect(x, box_y, width, 82, 6, fill=1, stroke=1)
+        elif self.design_style == "classic":
+            self.c.rect(x, box_y, width, 82, fill=1, stroke=1)
+            self.c.setFillColor(PURPLE)
+            self.c.rect(x, box_y + 77, width, 5, fill=1, stroke=0)
+        else:
+            self.c.setFillColor(PAPER)
+            self.c.rect(x, box_y, width, 82, fill=1, stroke=0)
+            self.c.setStrokeColor(INK)
+            self.c.setLineWidth(1.2)
+            self.c.line(x, box_y + 82, x + width, box_y + 82)
+            self.c.setStrokeColor(LINE)
+            self.c.setLineWidth(0.45)
+            self.c.line(x, box_y, x + width, box_y)
+        divider = x + (190 if self.design_style == "classic" else 207)
         self.c.setStrokeColor(LINE)
         self.c.line(divider, box_y, divider, box_y + 82)
         term_size = fit_size(term, "Pretendard-Bold", 15.5, 188, 8.5)
@@ -349,7 +415,13 @@ class Workbook:
         related = list(entry.get("related") or [])[:2]
         band_y = top - 295
         self.c.setFillColor(PURPLE_SOFT)
-        self.c.roundRect(x, band_y, width, 25, 4, fill=1, stroke=0)
+        if self.design_style == "science":
+            self.c.roundRect(x, band_y, width, 25, 4, fill=1, stroke=0)
+        elif self.design_style == "classic":
+            self.c.rect(x, band_y, width, 25, fill=1, stroke=0)
+        else:
+            self.c.setStrokeColor(LINE)
+            self.c.line(x, band_y + 24, x + width, band_y + 24)
         self.c.setFillColor(GOLD)
         self.c.setFont("Pretendard-Bold", 6.5)
         self.c.drawString(x + 8, band_y + 9, "파생 · 관련어")
@@ -514,9 +586,12 @@ def main() -> None:
     parser.add_argument("input", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--repo-root", type=Path, required=True)
+    parser.add_argument("--design", choices=sorted(DESIGNS))
     args = parser.parse_args()
     register_fonts(args.repo_root)
     data = json.loads(args.input.read_text(encoding="utf-8"))
+    if args.design:
+        data.setdefault("options", {})["design_style"] = args.design
     if not data.get("chapters"):
         raise ValueError("단어장 묶음 데이터가 없습니다.")
     args.output.parent.mkdir(parents=True, exist_ok=True)

@@ -547,7 +547,7 @@ const PIPELINES = {
     generateBundle: require("./lib/pipelines/problem-set/bundle").generateBundle,
   },
 
-  // 단어장 메이커 (Pro) - 영어 교재 PDF의 선택 범위에서 실제로 등장한 표현만
+  // 단어장 메이커 (Pro) - 영어 교재·기존 단어장·표 자료에서 실제로 등장한 표현만
   // 선별해 영한 단어장 PDF + 재사용 가능한 JSON을 ZIP으로 묶는다.
   "vocabulary-book": {
     label: "단어장 메이커",
@@ -559,12 +559,15 @@ const PIPELINES = {
     prepareInput(filesByField, body) {
       const source = filesByField.source || [];
       if (source.length !== 1) {
-        throw new Error("영어 교재 PDF를 정확히 한 개 올리세요.");
+        throw new Error("영어 교재 또는 단어장 자료를 정확히 한 개 올리세요.");
       }
       const file = source[0];
       const ext = (file.originalname.split(".").pop() || "").toLowerCase();
-      if (ext !== "pdf" || file.buffer.subarray(0, 5).toString("ascii") !== "%PDF-") {
-        throw new Error("단어장 원본은 PDF 파일만 가능합니다.");
+      if (!["pdf", "xlsx", "xls", "csv", "txt", "md"].includes(ext)) {
+        throw new Error("영어 자료는 PDF, Excel(.xlsx/.xls), CSV, TXT, Markdown 파일만 가능합니다.");
+      }
+      if (ext === "pdf" && file.buffer.subarray(0, 5).toString("ascii") !== "%PDF-") {
+        throw new Error("올바른 PDF 파일이 아닙니다.");
       }
       const pagesPerUnit = Math.max(3, Math.min(20, parseInt(body.pagesPerUnit, 10) || 10));
       const termCount = Math.max(10, Math.min(30, parseInt(body.termCount, 10) || 20));
@@ -577,7 +580,7 @@ const PIPELINES = {
         throw new Error("핵심 용어, 학술 어휘, 문제 풀이 표현 중 하나 이상을 선택하세요.");
       }
       return {
-        sourcePdf: { buffer: file.buffer, name: file.originalname, mimetype: file.mimetype },
+        sourceFile: { buffer: file.buffer, name: file.originalname, mimetype: file.mimetype },
         title: String(body.title || "").trim().slice(0, 160),
         pageRange: String(body.pageRange || "").trim().slice(0, 200),
         pagesPerUnit,

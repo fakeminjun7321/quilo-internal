@@ -12,7 +12,7 @@
     ["reading-log", "독서활동 기록지", "도서 정보를 학교 독서록 양식으로 작성합니다.", "/?report=reading-log", "member", "active"],
     ["reading-log-bulk", "독서록 대량 생성", "여러 독서록을 만들고 ZIP으로 묶습니다.", "/?report=reading-log-bulk", "member", "active"],
     ["problem-set", "문제집 메이커", "교재에서 문제지와 해설지 세트를 만듭니다.", "/?report=problem-set", "pro", "pro"],
-    ["vocabulary-book", "단어장 메이커", "교재에서 영한 단어장과 단원 평가를 만듭니다.", "/?report=vocabulary-book", "pro", "pro"],
+    ["vocabulary-book", "단어장 메이커", "영어교재·기존 단어장·엑셀표에서 영한 단어장을 만듭니다.", "/?report=vocabulary-book", "pro", "pro"],
     ["form-maker", "양식 메이커", "설명이나 사진에서 편집 가능한 양식을 만듭니다.", "/?report=form-maker", "pro", "pro"],
     ["phys-inquiry", "물리 수행평가", "탐구와 사고 과정을 보고서로 구조화합니다.", "/exam-prep.html", "pro", "paused"],
     ["math-inquiry", "수학 수행평가", "필기와 탐구 주제로 수학 보고서를 작성합니다.", "/exam-prep.html", "pro", "paused"],
@@ -56,6 +56,34 @@
       { title: "Live Translator", summary: "로컬 실시간 음성 번역 앱", path: "/apps/live-translator.html" },
     ],
   });
+
+  const SEARCH_ALIASES = Object.freeze({
+    "chem-pre": ["화학 예비보고서", "화학 레포트", "사전 레포트", "pre lab"],
+    "chem-result": ["화학 실험보고서", "화학 레포트", "결과 레포트", "post lab"],
+    "phys-result": ["물리 실험보고서", "물리 레포트", "캡스톤", "capstone", "엑셀 보고서"],
+    free: ["범용 보고서", "리포트", "레포트", "문서 작성"],
+    "reading-log": ["독후감", "독서록", "독서 보고서"],
+    "reading-log-bulk": ["독서록 여러개", "독후감 대량", "책 목록"],
+    "problem-set": ["문제지", "시험지", "문제 생성", "워크북", "학습지"],
+    "vocabulary-book": ["단어장", "단어짱", "영단어", "영어 단어", "어휘", "보카", "vocabulary", "vocab", "영어교재", "엑셀 단어장"],
+    "form-maker": ["서식", "템플릿", "양식 복원", "문서 사진"],
+    "pdf-translate": ["번역", "통역", "translate", "영문 번역", "pdf 번역"],
+    "cap-translate": ["cap 번역", "캡스톤 번역", "pasco 번역"],
+    "file-convert": ["변환", "pdf 합치기", "이미지 변환", "엑셀 csv"],
+    equation: ["수식 변환", "한글 수식", "latex", "hwpx 수식"],
+    "image-ocr": ["사진 글자", "문자인식", "이미지 텍스트", "ocr"],
+    "word-count": ["글자수", "문자수", "단어수", "word count"],
+    statistics: ["통계", "평균", "표준편차", "중앙값"],
+    regression: ["회귀", "추세선", "r2", "선형 회귀"],
+    "unit-convert": ["단위", "환산", "단위 계산기"],
+    "table-analysis": ["엑셀", "excel", "xlsx", "csv", "표 분석", "데이터 분석"],
+    graph: ["차트", "그래프", "산점도", "막대그래프"],
+    "file-chat": ["문서 질문", "파일 대화", "pdf 챗"],
+    "my-jobs": ["작업 내역", "생성 현황", "진행 상태"],
+    "my-files": ["파일함", "생성 파일", "다운로드"],
+  });
+
+  const SEARCH_PINNED = ["vocabulary-book", "problem-set", "phys-result", "chem-pre", "pdf-translate", "file-convert"];
 
   const escapeHtml = (value) => String(value == null ? "" : value)
     .replaceAll("&", "&amp;")
@@ -173,6 +201,20 @@
     }).join("")}</section>`).join("");
   }
 
+  function searchMarkup(id, mobile = false) {
+    return `<div class="ui-feature-search${mobile ? " ui-feature-search--mobile" : ""}" data-ui-feature-search>
+      <label class="ui-feature-search__field" for="${id}">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 4 4"></path></svg>
+        <input id="${id}" type="search" inputmode="search" autocomplete="off" placeholder="기능 검색" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${id}Results" />
+        <kbd aria-hidden="true">/</kbd>
+      </label>
+      <div class="ui-feature-search__panel" id="${id}Results" role="listbox" hidden>
+        <div class="ui-feature-search__status" data-search-status></div>
+        <div data-search-results></div>
+      </div>
+    </div>`;
+  }
+
   function themeIcon(dark) {
     return dark
       ? '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>'
@@ -189,6 +231,7 @@
         <a class="ui-site-link" href="/pricing.html">요금</a>
         <a class="ui-site-link ui-site-link--social" href="https://www.instagram.com/quilo._.official/" target="_blank" rel="noopener">Instagram<span class="ui-external-mark" aria-hidden="true">↗</span></a>
       </nav>
+      ${searchMarkup("uiFeatureSearch")}
       <div class="ui-site-actions">
         <div class="ui-session-slot" id="accountSlot">
           <a class="ui-site-action ui-session-trigger" id="sessionAction" data-ui-auth-action href="/?login=1" hidden><span id="user" data-ui-auth-label>로그인</span></a>
@@ -220,7 +263,7 @@
     </div>
     <div class="ui-site-scrim" data-ui-scrim aria-hidden="true"></div>
     <div class="ui-site-mega" id="uiSiteMega" aria-hidden="true"><div class="ui-site-mega__clip"><div class="ui-site-mega__inner" data-ui-mega-content></div></div></div>
-    <div class="ui-mobile-panel" id="uiMobilePanel" aria-hidden="true"><div class="ui-mobile-panel__inner" data-ui-mobile-content>${mobileMarkup(groups)}</div><div class="ui-mobile-actions"><a href="/pricing.html">요금</a><a href="https://www.instagram.com/quilo._.official/" target="_blank" rel="noopener">Instagram ↗</a><button type="button" data-ui-theme></button><a data-ui-auth-action href="/?login=1" hidden><span data-ui-auth-label>로그인</span></a><a class="ui-site-cta" data-ui-start-action href="/signup.html" hidden>무료로 시작하기</a></div></div>`;
+    <div class="ui-mobile-panel" id="uiMobilePanel" aria-hidden="true"><div class="ui-mobile-search-wrap">${searchMarkup("uiMobileFeatureSearch", true)}</div><div class="ui-mobile-panel__inner" data-ui-mobile-content>${mobileMarkup(groups)}</div><div class="ui-mobile-actions"><a href="/pricing.html">요금</a><a href="https://www.instagram.com/quilo._.official/" target="_blank" rel="noopener">Instagram ↗</a><button type="button" data-ui-theme></button><a data-ui-auth-action href="/?login=1" hidden><span data-ui-auth-label>로그인</span></a><a class="ui-site-cta" data-ui-start-action href="/signup.html" hidden>무료로 시작하기</a></div></div>`;
   }
 
   header.className = "ui-site-header";
@@ -238,6 +281,7 @@
   const scrim = header.querySelector("[data-ui-scrim]");
   const mobilePanel = header.querySelector("#uiMobilePanel");
   const mobileTrigger = header.querySelector("[data-ui-mobile-trigger]");
+  const searchRoots = [...header.querySelectorAll("[data-ui-feature-search]")];
   const currentUrl = new URL(window.location.href);
   let currentAuthState = { state: "pending", user: null, status: null };
   let openMenuIndex = -1;
@@ -276,17 +320,183 @@
     if (restoreFocus) mobileTrigger?.focus();
   }
 
+  function closeSearchRoot(root) {
+    const input = root?.querySelector("input[role='combobox']");
+    const panel = root?.querySelector("[role='listbox']");
+    root?.classList.remove("is-open");
+    if (panel) panel.hidden = true;
+    input?.setAttribute("aria-expanded", "false");
+    input?.removeAttribute("aria-activedescendant");
+  }
+
+  function closeSearches(except = null) {
+    searchRoots.forEach((root) => { if (root !== except) closeSearchRoot(root); });
+  }
+
   function closeDropdowns(options = {}) {
     closeMega(options);
     closeMobile(options);
     closeSessionPanel(options);
+    closeSearches();
   }
+
+  function normalizeSearch(value) {
+    return String(value || "").normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  }
+
+  function compactSearch(value) { return normalizeSearch(value).replace(/\s+/g, ""); }
+
+  function editSimilarity(left, right) {
+    const a = [...compactSearch(left)];
+    const b = [...compactSearch(right)];
+    if (!a.length || !b.length) return 0;
+    const row = Array.from({ length: b.length + 1 }, (_, index) => index);
+    for (let i = 1; i <= a.length; i += 1) {
+      let previous = row[0];
+      row[0] = i;
+      for (let j = 1; j <= b.length; j += 1) {
+        const saved = row[j];
+        row[j] = Math.min(row[j] + 1, row[j - 1] + 1, previous + (a[i - 1] === b[j - 1] ? 0 : 1));
+        previous = saved;
+      }
+    }
+    return 1 - row[b.length] / Math.max(a.length, b.length);
+  }
+
+  function bigramSimilarity(left, right) {
+    const grams = (value) => {
+      const text = compactSearch(value);
+      if (text.length < 2) return [text];
+      return Array.from({ length: text.length - 1 }, (_, index) => text.slice(index, index + 2));
+    };
+    const a = grams(left);
+    const b = grams(right);
+    if (!a[0] || !b[0]) return 0;
+    const remaining = [...b];
+    let overlap = 0;
+    for (const gram of a) {
+      const index = remaining.indexOf(gram);
+      if (index >= 0) { overlap += 1; remaining.splice(index, 1); }
+    }
+    return (2 * overlap) / (a.length + b.length);
+  }
+
+  function searchTerms(item) {
+    return [item.title, item.id, ...(item.keywords || []), ...(SEARCH_ALIASES[item.id] || [])].filter(Boolean);
+  }
+
+  function searchScore(item, query) {
+    const q = normalizeSearch(query);
+    const compact = compactSearch(q);
+    if (!compact) return 0;
+    const title = compactSearch(item.title);
+    const id = compactSearch(item.id);
+    const terms = searchTerms(item);
+    const keywords = terms.slice(2).map(compactSearch);
+    const corpus = compactSearch([item.title, item.id, item.summary, item.category, ...terms.slice(2)].join(" "));
+    let score = 0;
+    if (title === compact || id === compact) score = 130;
+    else if (keywords.includes(compact)) score = 120;
+    else if (title.startsWith(compact)) score = 108;
+    else if (keywords.some((term) => term.startsWith(compact))) score = 102;
+    else if (title.includes(compact)) score = 94;
+    else if (keywords.some((term) => term.includes(compact))) score = 88;
+    else if (corpus.includes(compact)) score = 78;
+    const queryTokens = q.split(/\s+/).filter(Boolean);
+    const hits = queryTokens.filter((token) => corpus.includes(compactSearch(token))).length;
+    if (queryTokens.length > 1) score = Math.max(score, 52 + Math.round((hits / queryTokens.length) * 38));
+    const fuzzy = Math.max(...terms.map((term) => Math.max(editSimilarity(compact, term), bigramSimilarity(compact, term))), 0);
+    return Math.max(score, Math.round(fuzzy * 86));
+  }
+
+  function searchFeatures(query) {
+    if (!normalizeSearch(query)) return SEARCH_PINNED.map(feature).filter(Boolean);
+    return [...featureMap.values()]
+      .map((item) => ({ item, score: searchScore(item, query) }))
+      .filter(({ score }) => score >= 38)
+      .sort((a, b) => b.score - a.score || a.item.title.localeCompare(b.item.title, "ko"))
+      .slice(0, 10)
+      .map(({ item }) => item);
+  }
+
+  function searchResultMarkup(item, inputId, index) {
+    const tier = tierLabel(item);
+    const report = reportTypeForPath(item.path);
+    return `<a id="${inputId}Option${index}" class="ui-feature-search__result" href="${escapeHtml(item.path || "/")}" role="option" aria-selected="false" data-search-index="${index}"${report ? ` data-report="${escapeHtml(report)}"` : ""}>
+      <span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.summary || "")}</small></span>
+      ${tier ? `<em>${escapeHtml(tier)}</em>` : ""}
+    </a>`;
+  }
+
+  function setupFeatureSearch(root) {
+    const input = root.querySelector("input[role='combobox']");
+    const panel = root.querySelector("[role='listbox']");
+    const status = root.querySelector("[data-search-status]");
+    const resultsNode = root.querySelector("[data-search-results]");
+    if (!input || !panel || !resultsNode) return;
+    let results = [];
+    let activeIndex = -1;
+
+    const setActive = (index) => {
+      const links = [...resultsNode.querySelectorAll("[data-search-index]")];
+      if (!links.length) { activeIndex = -1; return; }
+      activeIndex = (index + links.length) % links.length;
+      links.forEach((link, linkIndex) => link.setAttribute("aria-selected", String(linkIndex === activeIndex)));
+      input.setAttribute("aria-activedescendant", links[activeIndex].id);
+      links[activeIndex].scrollIntoView({ block: "nearest" });
+    };
+
+    const render = () => {
+      const query = input.value.trim();
+      results = searchFeatures(query);
+      activeIndex = -1;
+      if (status) status.textContent = query ? `비슷한 기능 ${results.length}개` : "추천 기능";
+      resultsNode.innerHTML = results.length
+        ? results.map((item, index) => searchResultMarkup(item, input.id, index)).join("")
+        : `<p class="ui-feature-search__empty">비슷한 기능을 찾지 못했습니다. 다른 단어로 검색해 보세요.</p>`;
+      panel.hidden = false;
+      root.classList.add("is-open");
+      input.setAttribute("aria-expanded", "true");
+      input.removeAttribute("aria-activedescendant");
+    };
+    root._refreshFeatureSearch = () => { if (root.classList.contains("is-open")) render(); };
+
+    input.addEventListener("focus", () => {
+      closeMega();
+      closeSessionPanel();
+      closeSearches(root);
+      render();
+    });
+    input.addEventListener("input", render);
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        if (!root.classList.contains("is-open")) render();
+        setActive(activeIndex + (event.key === "ArrowDown" ? 1 : -1));
+      } else if (event.key === "Enter" && activeIndex >= 0 && results[activeIndex]) {
+        event.preventDefault();
+        location.assign(results[activeIndex].path || "/");
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        closeSearchRoot(root);
+      }
+    });
+    resultsNode.addEventListener("mousemove", (event) => {
+      const option = event.target.closest?.("[data-search-index]");
+      if (option) setActive(Number(option.dataset.searchIndex));
+    });
+    resultsNode.addEventListener("click", () => closeSearchRoot(root));
+  }
+
+  searchRoots.forEach(setupFeatureSearch);
 
   function openMega(index) {
     const group = groups[index];
     if (!group || !megaPanel || !megaContent) return;
     closeSessionPanel();
     closeMobile();
+    closeSearches();
     openMenuIndex = index;
     megaContent.innerHTML = panelMarkup(group);
     header.querySelectorAll("[data-ui-menu-trigger]").forEach((button) => {
@@ -302,6 +512,7 @@
     if (!accountSlot || ["unknown", "pending"].includes(currentAuthState.state)) return false;
     closeMega();
     closeMobile();
+    closeSearches();
     const expected = kind || (currentAuthState.state === "authenticated" ? "account" : "login");
     if (loginPanel) loginPanel.hidden = expected !== "login";
     if (accountPanel) accountPanel.hidden = expected !== "account";
@@ -345,9 +556,17 @@
 
   document.addEventListener("pointerdown", (event) => {
     if (!header.contains(event.target)) closeDropdowns();
+    else if (!event.target.closest?.("[data-ui-feature-search]")) closeSearches();
   });
   document.addEventListener("keydown", (event) => {
     if (event.key === "Escape") closeDropdowns({ restoreFocus: true });
+    if (event.key === "/" && !event.metaKey && !event.ctrlKey && !event.altKey && !/^(INPUT|TEXTAREA|SELECT)$/.test(event.target?.tagName || "") && !event.target?.isContentEditable) {
+      const desktopInput = header.querySelector(".ui-feature-search:not(.ui-feature-search--mobile) input");
+      if (desktopInput && desktopInput.offsetParent !== null) {
+        event.preventDefault();
+        desktopInput.focus();
+      }
+    }
   });
 
   function syncCurrentLinks() {
@@ -462,6 +681,7 @@
       const mobile = header.querySelector("[data-ui-mobile-content]");
       if (nav) nav.innerHTML = navTriggersMarkup(groups);
       if (mobile) mobile.innerHTML = mobileMarkup(groups);
+      searchRoots.forEach((root) => root._refreshFeatureSearch?.());
       syncCurrentLinks();
     })
     .catch(() => {});

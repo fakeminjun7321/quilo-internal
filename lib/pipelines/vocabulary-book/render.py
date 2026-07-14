@@ -359,7 +359,8 @@ class Workbook:
         self.c.drawString(x + 79, band_y + 9, related_text)
         self.c.setFillColor(MUTED)
         self.c.setFont("Pretendard", 5.8)
-        self.c.drawRightString(x + width - 8, band_y + 9, f"PDF {int(entry.get('source_page') or unit.get('page_start') or 0)}쪽")
+        source_label = clean(entry.get("source_label"), 64) or f"출처 {int(entry.get('source_page') or unit.get('page_start') or 0)}"
+        self.c.drawRightString(x + width - 8, band_y + 9, source_label)
 
     def entry_pages(self, unit: dict) -> None:
         number = int(unit.get("number") or 0)

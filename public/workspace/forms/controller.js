@@ -528,7 +528,7 @@ export function installReportFormControllers(deps) {
     });
   }
 
-  // ── 단어장 메이커(Pro) submit - 교재 PDF → 인터랙티브 PDF + JSON ZIP ──
+  // ── 단어장 메이커(Pro) submit - 교재·기존 단어장·표 → PDF + JSON ZIP ──
   if (vbForm) {
     const sourceInput = document.getElementById("vbSource");
     const syncButton = () => {
@@ -542,7 +542,7 @@ export function installReportFormControllers(deps) {
       if (runtime.currentJobId) return;
       const source = sourceInput.files?.[0];
       if (!source) {
-        alert("영어 교재 PDF를 올리세요.");
+        alert("영어교재 또는 영어 단어장 파일을 올리세요.");
         sourceInput.focus();
         return;
       }
@@ -572,16 +572,16 @@ export function installReportFormControllers(deps) {
         background: vbForm,
         rows: [
           ["모델", getModelLabel(model)],
-          ["교재 PDF", source.name],
-          ["페이지 범위", pageRange || "전체 (최대 80쪽)"],
-          ["구성", `${pagesPerUnit}쪽마다 ${termCount}개`],
+          ["영어 자료", source.name],
+          ["PDF 페이지 범위", pageRange || "전체 (PDF는 최대 80쪽)"],
+          ["구성", `출처 ${pagesPerUnit}개 단위마다 ${termCount}개`],
           ["어휘 종류", typeLabels.join(", ")],
           ["학습 요소", [includePronunciation && "발음", includeReview && "단원 평가", includeMemo && "메모"].filter(Boolean).join(", ") || "기본"],
           ["출력", "ZIP · 인터랙티브 PDF + 학습용 JSON"],
           ["예상 비용", "무료 (Pro)"],
           ["예상 시간", "선택 범위에 따라 1~5분"],
         ],
-        note: `교재 원문에 실제로 등장한 표현만 서버 검증을 통과해 수록합니다. ${USE_POLICY_NOTE}`,
+        note: `교재·단어장·표 원문에 실제로 등장한 표현만 서버 검증을 통과해 수록합니다. ${USE_POLICY_NOTE}`,
       });
       if (!ok) return;
 

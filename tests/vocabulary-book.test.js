@@ -3,11 +3,13 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const JSZip = require("jszip");
+const XLSX = require("xlsx");
 const {
   termExistsInSource,
   normalizeEntry,
 } = require("../lib/pipelines/vocabulary-book/generate");
 const { generateBundle } = require("../lib/pipelines/vocabulary-book/bundle");
+const { spreadsheetPages, extractVocabularySource } = require("../lib/pipelines/vocabulary-book/source");
 
 const sampleEntry = {
   kind: "core",
@@ -47,9 +49,36 @@ test("normalizeEntry rejects terms that do not occur in the selected source", ()
   const accepted = normalizeEntry(sampleEntry, base);
   assert.equal(accepted.term, "electric field");
   assert.equal(accepted.source_page, 12);
+  assert.equal(accepted.source_label, "PDF 12쪽");
   assert.deepEqual(accepted.related, [{ en: "electric force", ko: "전기력" }]);
   assert.equal(normalizeEntry({ ...sampleEntry, source_page: 11 }, base).source_page, 12);
   assert.equal(normalizeEntry({ ...sampleEntry, term: "magnetic monopole" }, base), null);
+});
+
+test("CSV and text word lists become traceable source units", async () => {
+  const csv = Buffer.from("word,meaning\nelectric field,전기장\nmagnetic force,자기력\n", "utf8");
+  const parsed = spreadsheetPages(csv, "csv");
+  assert.equal(parsed.kind, "spreadsheet");
+  assert.equal(parsed.pages.length, 1);
+  assert.match(parsed.pages[0].label, /Sheet1 · 2-3행/);
+  assert.match(parsed.pages[0].text, /electric field/);
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([
+    ["word", "meaning"],
+    ["potential energy", "위치 에너지"],
+  ]), "Words");
+  const xlsx = XLSX.write(workbook, { type: "buffer", bookType: "xlsx" });
+  const excelParsed = spreadsheetPages(xlsx, "xlsx");
+  assert.match(excelParsed.pages[0].label, /Words · 2-2행/);
+  assert.match(excelParsed.pages[0].text, /potential energy/);
+
+  const text = await extractVocabularySource(
+    { name: "my-vocab.txt", buffer: Buffer.from("electric field - 전기장\nmagnetic force - 자기력", "utf8") },
+  );
+  assert.equal(text.kind, "text");
+  assert.equal(text.pages[0].label, "텍스트 1구간");
+  assert.match(text.source_line, /my-vocab\.txt · 텍스트 1구간/);
 });
 
 test("vocabulary bundle contains a navigable PDF and public JSON", async () => {

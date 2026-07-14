@@ -79,6 +79,44 @@ test("fast OCR performs a single provider request", async () => {
   assert.equal(result.source.passes, 1);
 });
 
+test("ultra OCR compares three visual variants and keeps image layout metadata", async () => {
+  const image = await sampleImage();
+  const responses = [
+    payload(0.86, "Quilo OCR 12?"),
+    payload(0.94, "Quilo OCR 123"),
+    payload(0.98, "Quilo OCR 123 정확"),
+  ];
+  responses[2].pages[0].images = [{
+    id: "img-0.jpeg",
+    top_left_x: 12,
+    top_left_y: 34,
+    bottom_right_x: 212,
+    bottom_right_y: 164,
+    image_annotation: "원본 그림",
+  }];
+  let calls = 0;
+  const result = await extractImageText(
+    { buffer: image, originalname: "ultra.png", mimetype: "image/png" },
+    {
+      apiKey: "test-key",
+      mode: "ultra",
+      fetchImpl: async () => {
+        calls += 1;
+        return new Response(JSON.stringify(responses.shift()), { status: 200 });
+      },
+    },
+  );
+  assert.equal(calls, 3);
+  assert.equal(result.text, "Quilo OCR 123 정확");
+  assert.equal(result.source.passes, 3);
+  assert.equal(result.source.attemptedPasses, 3);
+  assert.equal(result.quality.selectedVariant, "handwriting");
+  assert.equal(result.quality.candidateScores.length, 3);
+  assert.equal(result.pages[0].images[0].id, "img-0.jpeg");
+  assert.equal(result.pages[0].images[0].topLeftX, 12);
+  assert.equal(result.pages[0].images[0].annotation, "원본 그림");
+});
+
 test("an optional enhanced retry failure preserves the first OCR result", async () => {
   const image = await sampleImage();
   let calls = 0;

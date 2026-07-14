@@ -278,6 +278,7 @@ test("document analysis and processing routes use separate read and write scopes
   app.post("/api/tools/pdf/analyze", (_req, res) => res.json({ route: "pdf-analysis" }));
   app.post("/api/tools/hwpx/equations", (_req, res) => res.json({ route: "equations" }));
   app.post("/api/tools/images/ocr", (_req, res) => res.json({ route: "ocr" }));
+  app.post("/api/tools/images/ocr/export", (_req, res) => res.json({ route: "ocr-export" }));
   const server = http.createServer(app);
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.after(() => server.close());
@@ -286,6 +287,7 @@ test("document analysis and processing routes use separate read and write scopes
     ["/api/v1/documents/pdf/analyze", "pdf-analysis"],
     ["/api/v1/documents/hwpx/equations", "equations"],
     ["/api/v1/documents/images/ocr", "ocr"],
+    ["/api/v1/documents/images/ocr/export", "ocr-export"],
   ]) {
     const response = await fetch(`http://127.0.0.1:${server.address().port}${path}`, { method: "POST", headers });
     assert.equal(response.status, 200, path);

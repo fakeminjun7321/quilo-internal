@@ -34,10 +34,20 @@
 .ocr-confidence { flex: 0 0 auto; padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: 800; }
 .ocr-confidence[data-tone="good"] { color: #087a55; background: #edf8f3; }
 .ocr-confidence[data-tone="warn"] { color: #9a6700; background: #fff6d8; }
+.ocr-quality { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-top: 15px; }
+.ocr-quality > div { display: grid; gap: 4px; min-width: 0; padding: 10px; border: 1px solid var(--tool-line); border-radius: 7px; background: var(--tool-surface-muted); }
+.ocr-quality span { overflow: hidden; color: var(--tool-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.ocr-quality strong { color: var(--tool-text); font-size: 13px; }
+.ocr-edit-label { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-top: 18px; color: var(--tool-text); font-size: 12px; font-weight: 800; }
+.ocr-edit-label span { color: var(--tool-muted); font-size: 10px; font-weight: 500; }
 .ocr-result textarea { box-sizing: border-box; width: 100%; min-height: 360px; margin-top: 15px; padding: 12px; resize: vertical; border: 1px solid var(--tool-line); border-radius: 6px; color: var(--tool-text); background: var(--tool-surface-muted); font: 12px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace; }
-.ocr-result-actions { display: grid; gap: 7px; margin-top: 10px; }
+.ocr-edit-label + textarea { margin-top: 7px; }
+.ocr-export-note { margin: 10px 0 0; padding: 10px 12px; border-left: 3px solid var(--tool-accent); color: var(--tool-muted); background: var(--tool-accent-soft); font-size: 11px; line-height: 1.55; }
+.ocr-result-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin-top: 10px; }
 .ocr-result-actions button { min-height: 38px; padding: 0 10px; border: 1px solid var(--tool-line-strong); border-radius: 6px; color: var(--tool-text); background: var(--tool-surface); font: inherit; font-size: 12px; font-weight: 700; }
 .ocr-result-actions button:first-child { border-color: var(--tool-accent); color: #fff; background: var(--tool-accent); }
+.ocr-result-actions .ocr-export-primary { border-color: color-mix(in srgb, var(--tool-accent) 55%, var(--tool-line-strong)); color: var(--tool-accent); background: var(--tool-accent-soft); }
+.ocr-result-actions button:disabled { cursor: wait; opacity: .65; }
 .ocr-blocks { margin-top: 14px; border-top: 1px solid var(--tool-line); padding-top: 12px; color: var(--tool-muted); font-size: 12px; }
 .ocr-blocks summary { cursor: pointer; font-weight: 700; }
 .ocr-blocks ul { margin: 9px 0 0; padding-left: 18px; }
@@ -45,6 +55,9 @@
   .ocr-drop.has-image { grid-template-columns: 1fr; }
   .ocr-drop img { height: 220px; }
   .ocr-options { grid-template-columns: 1fr; }
+  .ocr-quality { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ocr-edit-label { align-items: flex-start; flex-direction: column; gap: 3px; }
+  .ocr-result-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 1180px) {
   .q-tool-result-rail:has(#ocrResult) {

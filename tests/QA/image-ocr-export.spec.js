@@ -43,12 +43,12 @@ test("highest-accuracy OCR renders quality evidence and downloads image-preservi
     const pathname = new URL(request.url()).pathname;
     if (pathname === "/api/tools/images/ocr") {
       return route.fulfill({ json: {
-        model: "mistral-ocr-4-0",
+        model: "mistral-ocr-latest",
         text: "# 스캔 제목\n\n본문 123",
         confidence: { average: 0.98, minimum: 0.91, lowConfidenceWords: 1 },
-        quality: { agreement: 0.96, reviewRequired: false, selectedVariant: "handwriting" },
-        source: { passes: 3, attemptedPasses: 3, mode: "ultra" },
-        pages: [{ page: 1, markdown: "# 스캔 제목\n\n본문 123", dimensions: { width: 800, height: 1000 }, images: [{ id: "figure-1", topLeftX: 100, topLeftY: 500, bottomRightX: 400, bottomRightY: 750 }], blocks: [{ type: "text" }], tables: [] }],
+        quality: { agreement: 0.96, verifiedConfidence: 0.97, reviewRequired: false, selectedVariant: "handwriting" },
+        source: { passes: 4, attemptedPasses: 4, mode: "quality" },
+        pages: [{ page: 1, markdown: "# 스캔 제목\n\n본문 123", dimensions: { width: 800, height: 1000 }, images: [{ id: "figure-1", topLeftX: 100, topLeftY: 500, bottomRightX: 400, bottomRightY: 750 }], blocks: [{ type: "table", tableId: "table-1", content: "" }], tables: [{ id: "table-1", format: "html", content: "<table><tr><td>본문 123</td></tr></table>" }] }],
       } });
     }
     if (pathname === "/api/tools/images/ocr/export") {
@@ -60,6 +60,8 @@ test("highest-accuracy OCR renders quality evidence and downloads image-preservi
           "content-disposition": "attachment; filename=scan_OCR.docx",
           "x-quilo-source-image": "embedded",
           "x-quilo-detected-images": "1",
+          "x-quilo-postflight": "passed",
+          "x-quilo-layout-blocks": "3",
         },
         body: Buffer.from("PK\u0003\u0004mock-docx"),
       });
@@ -72,7 +74,9 @@ test("highest-accuracy OCR renders quality evidence and downloads image-preservi
 
   await page.goto(`${BASE_URL}/tools/image-ocr.html`, { waitUntil: "domcontentloaded" });
   await expect(page).toHaveTitle(/이미지 OCR/);
-  await expect(page.locator("#ocrMode")).toHaveValue("ultra");
+  await expect(page.locator("#ocrMode")).toHaveCount(0);
+  await expect(page.locator(".ocr-quality-default")).toContainText("고품질 판독이 기본");
+  await expect(page.locator(".ocr-quality-default")).toContainText("4중 교차 검증");
   await page.locator("#ocrFile").setInputFiles({
     name: "scan.png",
     mimeType: "image/png",
@@ -80,7 +84,8 @@ test("highest-accuracy OCR renders quality evidence and downloads image-preservi
   });
   await page.locator("#ocrRun").click();
   await expect(page.locator("#ocrResult")).toBeVisible();
-  await expect(page.locator("#ocrResultMeta")).toContainText("3회 비교");
+  await expect(page.locator("#ocrResultMeta")).toContainText("4회 비교");
+  await expect(page.locator("#ocrQuality")).toContainText("검증 신뢰도");
   await expect(page.locator("#ocrQuality")).toContainText("판독 일치도");
   await expect(page.locator("#ocrQuality")).toContainText("96%");
   await expect(page.getByRole("button", { name: "Word (.docx)" })).toBeVisible();
@@ -92,9 +97,12 @@ test("highest-accuracy OCR renders quality evidence and downloads image-preservi
   const download = page.waitForEvent("download");
   await page.getByRole("button", { name: "Word (.docx)" }).click();
   await download;
-  await expect(page.locator("#ocrExportStatus")).toContainText("감지 그림 1개");
+  await expect(page.locator("#ocrExportStatus")).toContainText("파일 내부 검증 통과");
+  await expect(page.locator("#ocrExportStatus")).toContainText("구조 3개 복원");
   expect(exportBodies).toHaveLength(1);
   expect(exportBodies[0]).toContain("docx");
   expect(exportBodies[0]).toContain("사용자가 교정한 OCR 텍스트 456");
+  expect(exportBodies[0]).toContain("table-1");
+  expect(exportBodies[0]).toContain("sourceText");
   expect(consoleErrors).toEqual([]);
 });

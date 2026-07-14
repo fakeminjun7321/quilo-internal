@@ -13,7 +13,7 @@ async function sampleImage() {
   }]).png().toBuffer();
 }
 
-function payload(confidence, markdown, model = "mistral-ocr-4-0") {
+function payload(confidence, markdown, model = "mistral-ocr-latest") {
   return {
     model,
     pages: [{
@@ -41,50 +41,65 @@ test("OCR preprocessing keeps document images well above the old 2200px cap when
   assert.ok(prepared.finalBytes <= 19 * 1024 * 1024);
 });
 
-test("accurate OCR retries a low-confidence image and selects the better pass", async () => {
+test("OCR always performs four high-quality passes with HTML tables and semantic blocks", async () => {
   const image = await sampleImage();
   const calls = [];
-  const responses = [payload(0.62, "Quilo OCR 12?"), payload(0.97, "Quilo OCR 123")];
+  const responses = [
+    payload(0.91, "Quilo OCR 123"),
+    payload(0.92, "Quilo OCR 123"),
+    payload(0.93, "Quilo OCR 123"),
+    payload(0.94, "Quilo OCR 123"),
+  ];
+  responses[3].pages[0].tables = [{ id: "table-1", content: '<table><tr><th colspan="2">항목</th></tr></table>' }];
+  responses[3].pages[0].blocks = [{ type: "table", table_id: "table-1", content: "", top_left_x: 1, top_left_y: 2, bottom_right_x: 3, bottom_right_y: 4 }];
   const fetchImpl = async (_url, options) => {
     calls.push(JSON.parse(options.body));
     return new Response(JSON.stringify(responses.shift()), { status: 200, headers: { "content-type": "application/json" } });
   };
   const result = await extractImageText(
     { buffer: image, originalname: "scan.png", mimetype: "image/png" },
-    { apiKey: "test-key", fetchImpl, mode: "accurate", includeBlocks: true },
+    { apiKey: "test-key", fetchImpl, mode: "fast", includeBlocks: true },
   );
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 4);
   assert.equal(calls[0].include_blocks, true);
   assert.equal(calls[0].confidence_scores_granularity, "word");
-  assert.equal(calls[0].table_format, "markdown");
+  assert.equal(calls[0].table_format, "html");
   assert.equal(result.text, "Quilo OCR 123");
-  assert.equal(result.source.passes, 2);
-  assert.equal(result.source.enhanced, true);
+  assert.equal(result.source.passes, 4);
+  assert.equal(result.source.attemptedPasses, 4);
+  assert.equal(result.source.mode, "quality");
   assert.ok(result.confidence.average > 0.9);
-  assert.equal(result.pages[0].blocks[0].type, "title");
+  assert.ok(result.quality.verifiedConfidence > 0.9);
+  assert.equal(result.quality.successfulPasses, 4);
+  assert.equal(result.pages[0].blocks[0].type, "table");
+  assert.equal(result.pages[0].blocks[0].tableId, "table-1");
+  assert.match(result.pages[0].tables[0].content, /colspan="2"/);
 });
 
-test("fast OCR performs a single provider request", async () => {
+test("four-pass consensus rejects a confident divergent outlier", async () => {
   const image = await sampleImage();
-  let calls = 0;
-  const fetchImpl = async () => {
-    calls += 1;
-    return new Response(JSON.stringify(payload(0.5, "빠른 판독")), { status: 200 });
-  };
+  const responses = [
+    payload(0.995, "완전히 잘못 읽은 외톨이 판독 999"),
+    payload(0.92, "정답 문장 123"),
+    payload(0.93, "정답 문장 123"),
+    payload(0.91, "정답 문장 123"),
+  ];
   const result = await extractImageText(
-    { buffer: image, originalname: "fast.png", mimetype: "image/png" },
-    { apiKey: "test-key", fetchImpl, mode: "fast" },
+    { buffer: image, originalname: "consensus.png", mimetype: "image/png" },
+    { apiKey: "test-key", fetchImpl: async () => new Response(JSON.stringify(responses.shift()), { status: 200 }) },
   );
-  assert.equal(calls, 1);
-  assert.equal(result.source.passes, 1);
+  assert.equal(result.text, "정답 문장 123");
+  assert.ok(result.quality.agreement > 0.6);
+  assert.notEqual(result.quality.selectedVariant, "standard");
 });
 
-test("ultra OCR compares three visual variants and keeps image layout metadata", async () => {
+test("quality OCR keeps image layout metadata across four variants", async () => {
   const image = await sampleImage();
   const responses = [
     payload(0.86, "Quilo OCR 12?"),
     payload(0.94, "Quilo OCR 123"),
     payload(0.98, "Quilo OCR 123 정확"),
+    payload(0.96, "Quilo OCR 123 정확"),
   ];
   responses[2].pages[0].images = [{
     id: "img-0.jpeg",
@@ -106,33 +121,34 @@ test("ultra OCR compares three visual variants and keeps image layout metadata",
       },
     },
   );
-  assert.equal(calls, 3);
+  assert.equal(calls, 4);
   assert.equal(result.text, "Quilo OCR 123 정확");
-  assert.equal(result.source.passes, 3);
-  assert.equal(result.source.attemptedPasses, 3);
-  assert.equal(result.quality.selectedVariant, "handwriting");
-  assert.equal(result.quality.candidateScores.length, 3);
+  assert.equal(result.source.passes, 4);
+  assert.equal(result.source.attemptedPasses, 4);
+  assert.ok(["handwriting", "binary"].includes(result.quality.selectedVariant));
+  assert.equal(result.quality.candidateScores.length, 4);
   assert.equal(result.pages[0].images[0].id, "img-0.jpeg");
   assert.equal(result.pages[0].images[0].topLeftX, 12);
   assert.equal(result.pages[0].images[0].annotation, "원본 그림");
 });
 
-test("an optional enhanced retry failure preserves the first OCR result", async () => {
+test("comparison-pass failures preserve the first OCR result and expose review evidence", async () => {
   const image = await sampleImage();
   let calls = 0;
   const fetchImpl = async () => {
     calls += 1;
-    if (calls === 2) throw new Error("temporary rate limit");
+    if (calls > 1) throw new Error("temporary rate limit");
     return new Response(JSON.stringify(payload(0.6, "첫 판독 보존")), { status: 200 });
   };
   const result = await extractImageText(
     { buffer: image, originalname: "retry.png", mimetype: "image/png" },
     { apiKey: "test-key", fetchImpl, mode: "accurate" },
   );
-  assert.equal(calls, 2);
+  assert.equal(calls, 4);
   assert.equal(result.text, "첫 판독 보존");
   assert.equal(result.source.passes, 1);
   assert.match(result.source.enhancedRetryWarning, /temporary rate limit/);
+  assert.equal(result.quality.reviewRequired, true);
 });
 
 test("OCR retries a transient provider abort instead of leaking the raw abort message", async () => {
@@ -147,8 +163,9 @@ test("OCR retries a transient provider abort instead of leaking the raw abort me
     { buffer: image, originalname: "abort.png", mimetype: "image/png" },
     { apiKey: "test-key", fetchImpl, mode: "fast" },
   );
-  assert.equal(calls, 2);
+  assert.equal(calls, 5);
   assert.equal(result.text, "중단 후 재시도 성공");
+  assert.equal(result.source.passes, 4);
 });
 
 test("OCR returns a stable diagnostic when provider aborts twice", async () => {

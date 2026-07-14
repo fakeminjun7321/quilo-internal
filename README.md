@@ -1,5 +1,7 @@
 # Quilo | 학습과 연구의 전 과정을 연결하는 AI Workspace
 
+> **Private production repository** — 이 저장소는 Quilo 운영 소스의 기준본입니다. 공개 저장소는 제품 소개와 고수준 구조만 담으며, 서버·프롬프트·데이터베이스·문서 엔진 구현은 이 저장소에서만 관리합니다. 경계와 공개 절차는 [`docs/repository-boundaries.md`](./docs/repository-boundaries.md)를 따릅니다.
+
 **Quilo**는 보고서, 리서치, 데이터 분석, 문서, 번역과 코딩을 하나의 흐름으로 연결하는 AI Workspace입니다. 고등학생부터 대학생까지 자신이 실제로 수행한 실험과 학습 자료를 바탕으로 결과물을 완성할 수 있게 돕습니다. 업로드한 실제 자료를 우선하고, 없는 사실을 임의로 만들지 않는 것을 핵심 원칙으로 삼습니다.
 
 대표 기능은 화학·물리 실험/수행평가 보고서 생성이며, 보고서 종류별로 업로드 파일과 입력 폼을 다르게 받아 Claude / GPT API로 초안을 만들고 `.docx` 또는 `.hwpx`로 출력합니다. 여기서 시작해 지금은 여러 과목의 시험대비·문서 생성 도구, **PDF 통번역**, **창작·코딩 스튜디오**, **커뮤니티/랩**, **브라우저 전용 도구 모음**까지 포함하는 학습 플랫폼으로 확장되었습니다.
@@ -114,9 +116,10 @@ GET /api/apps/live-translator/download?platform=windows
 
 ## 문서
 
-유지보수와 배포 전 점검은 아래 문서를 먼저 확인하세요. 공개 저장소 기준서(`CLAUDE.md`/`AGENTS.md`)와 파이프라인 문서는 웹/Render 서버의 화학·물리 핵심 보고서 흐름을 다룹니다.
+유지보수와 배포 전 점검은 아래 문서를 먼저 확인하세요. 운영 기준서(`CLAUDE.md`/`AGENTS.md`)와 파이프라인 문서는 웹/Render 서버의 화학·물리 핵심 보고서 흐름을 다룹니다.
 
 - 전체 운영 기준: [`CLAUDE.md`](./CLAUDE.md) · [`AGENTS.md`](./AGENTS.md)
+- 비공개 운영본과 공개 개요 저장소의 경계: [`docs/repository-boundaries.md`](./docs/repository-boundaries.md)
 - 다른 AI에게 Quilo를 설명하는 컨텍스트 문서: [`QUILO.md`](./QUILO.md)
 - Codex 플러그인·외부 API: [`docs/codex-plugin-api.md`](./docs/codex-plugin-api.md)
 - 화학 사전보고서 파이프라인: [`docs/chem-pre-pipeline.md`](./docs/chem-pre-pipeline.md)
@@ -304,11 +307,11 @@ rg -n "sk-ant-|SUPABASE_SERVICE_KEY|RESEND_API_KEY|SESSION_SECRET|eyJ|password|�
 - API 키, Supabase service role key, session secret은 Render 환경변수로만 관리합니다.
 - 실제 사용자 업로드 파일, 예시 보고서 PDF/HWP, 개인 계정 정보는 GitHub에 올리지 않습니다.
 - `.gitignore`에서 `.env`, `.claude/`, `.pdf`, `.hwp`, `.hwpx`, 예시 보고서 폴더, 테스트 산출물(`test-results/`)을 제외합니다.
-- 공개 저장소에는 학교/기관 전용 양식 PDF/HWPX와 실제 사용자 예시 보고서를 포함하지 않습니다.
+- 공개 개요 저장소에는 운영 코드, 학교/기관 전용 양식 PDF/HWPX, 실제 사용자 예시 보고서를 포함하지 않습니다.
 - 생성물은 학습 보조 초안이며 제출 전 반드시 직접 검토해야 합니다.
 
 ## 라이선스
 
-이 저장소의 자체 코드는 MIT License로 공개합니다. 자세한 내용은 [`LICENSE`](./LICENSE)를 확인하세요.
+이 저장소는 비공개 운영 저장소입니다. 저장소에 접근 권한이 있다는 사실만으로 재배포 권한이 부여되지는 않으며, 파일별 라이선스와 [`LICENSE`](./LICENSE)를 함께 확인해야 합니다.
 
 포함된 제3자 폰트와 의존성은 각각의 라이선스를 따릅니다. 공개 배포 전 확인 사항은 [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md)에 정리했습니다.

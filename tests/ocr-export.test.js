@@ -52,11 +52,11 @@ function csatResult() {
         content: '<table><tr><th colspan="3">자료</th></tr><tr><td rowspan="2">구분</td><td>A</td><td>B</td></tr><tr><td>1</td><td>2</td></tr></table>',
       }],
       blocks: [
-        { type: "title", content: "8. 다음 함수의 연속인 점을 고르시오.", order: 0 },
-        { type: "aside_text", content: "<보기>\nㄱ. x=0에서 연속이다.\nㄴ. 모든 유리수에서 연속이다.\nㄷ. 모든 실수에서 연속이다.", order: 1 },
-        { type: "equation", content: "\\frac{x^2}{2}", order: 2 },
-        { type: "table", tableId: "table-1", content: "", order: 3 },
-        { type: "image", imageId: "figure-1", content: "함수 그래프", order: 4 },
+        { type: "title", content: "8. 다음 함수의 연속인 점을 고르시오.", topLeftX: 50, topLeftY: 80, bottomRightX: 430, bottomRightY: 145, order: 0 },
+        { type: "aside_text", content: "<보기>\nㄱ. x=0에서 연속이다.\nㄴ. 모든 유리수에서 연속이다.\nㄷ. 모든 실수에서 연속이다.", topLeftX: 50, topLeftY: 165, bottomRightX: 430, bottomRightY: 395, order: 1 },
+        { type: "equation", content: "\\frac{x^2}{2}", topLeftX: 50, topLeftY: 420, bottomRightX: 430, bottomRightY: 480, order: 2 },
+        { type: "table", tableId: "table-1", content: "", topLeftX: 500, topLeftY: 80, bottomRightX: 850, bottomRightY: 350, order: 3 },
+        { type: "image", imageId: "figure-1", content: "함수 그래프", topLeftX: 500, topLeftY: 380, bottomRightX: 850, bottomRightY: 650, order: 4 },
       ],
     }],
   };
@@ -79,7 +79,7 @@ test("OCR markdown is converted into editable paragraphs, lists, tables, and cle
   assert.equal(merged.rows[1][0].rowspan, 2);
 });
 
-test("TXT and self-contained HTML exports preserve text safely and embed the scan", async () => {
+test("TXT and self-contained HTML exports preserve text safely without embedding the full-page scan", async () => {
   const image = await scanImage();
   const file = { buffer: image, originalname: "수학 스캔.png", mimetype: "image/png" };
   const txt = await createOcrExport(file, ocrResult(), "txt");
@@ -89,19 +89,23 @@ test("TXT and self-contained HTML exports preserve text safely and embed the sca
 
   const html = await createOcrExport(file, ocrResult(), "html");
   const source = html.buffer.toString("utf8");
-  assert.equal(html.sourceImageEmbedded, true);
+  assert.equal(html.sourceImageEmbedded, false);
   assert.equal(html.detectedImagesEmbedded, 1);
   assert.match(source, /data:image\/png;base64,/);
-  assert.match(source, /감지된 원본 그림/);
+  assert.match(source, /contenteditable="true"/);
+  assert.match(source, /class="ocr-page"/);
+  assert.doesNotMatch(source, /class="scan"|원본 스캔/);
   assert.match(source, /alert\(&#39;unsafe&#39;\)/);
   assert.doesNotMatch(source, /<script>alert/);
   assert.equal(html.verification.passed, true);
 
   const csatHtml = await createOcrExport(file, csatResult(), "html");
   const csatSource = csatHtml.buffer.toString("utf8");
-  assert.match(csatSource, /class="exam-view"/);
+  assert.match(csatSource, /exam-view/);
   assert.match(csatSource, /rowspan="2"/);
   assert.match(csatSource, /colspan="3"/);
+  assert.match(csatSource, /data-columns="2"/);
+  assert.match(csatSource, /<mfrac>/);
 });
 
 test("DOCX export contains editable CSAT view, merged table, and actual image media", async () => {
@@ -114,11 +118,28 @@ test("DOCX export contains editable CSAT view, merged table, and actual image me
   assert.match(documentXml, /보기/);
   assert.match(documentXml, /w:gridSpan/);
   assert.match(documentXml, /w:vMerge/);
-  assert.ok(media.length >= 2, `expected source scan and detected crop, got ${media.length}`);
-  assert.equal(exported.sourceImageEmbedded, true);
+  assert.match(documentXml, /m:oMath/);
+  assert.match(documentXml, /m:f>/);
+  assert.ok(media.length >= 1, `expected the detected figure crop, got ${media.length}`);
+  assert.equal(exported.sourceImageEmbedded, false);
   assert.equal(exported.detectedImagesEmbedded, 1);
   assert.equal(exported.verification.passed, true);
   assert.ok(exported.layoutBlocks >= 4);
+});
+
+test("manual text corrections keep detected figure crops without restoring the full-page scan", async () => {
+  const image = await scanImage();
+  const result = ocrResult();
+  result.sourceText = result.text;
+  result.text = "# 사용자가 교정한 제목\n\n교정한 본문 456";
+  const exported = await createOcrExport({ buffer: image, originalname: "edited.png", mimetype: "image/png" }, result, "docx");
+  const zip = await JSZip.loadAsync(exported.buffer);
+  const documentXml = await zip.file("word/document.xml").async("string");
+  const media = Object.keys(zip.files).filter((name) => /^word\/media\//.test(name));
+  assert.match(documentXml, /사용자가 교정한 제목/);
+  assert.ok(media.length >= 1);
+  assert.equal(exported.sourceImageEmbedded, false);
+  assert.equal(exported.detectedImagesEmbedded, 1);
 });
 
 test("HWPX export contains CSAT view, merged table, preview text, and embedded image binaries", { timeout: 30_000 }, async () => {
@@ -135,8 +156,9 @@ test("HWPX export contains CSAT view, merged table, preview text, and embedded i
   assert.match(sections, /rowSpan="2"/);
   assert.match(sections, />구분</);
   assert.doesNotMatch(sections, /\{\{EQ/);
-  assert.ok(binaries.length >= 2, `expected source scan and detected crop, got ${binaries.length}`);
-  assert.equal(exported.sourceImageEmbedded, true);
+  assert.match(sections, /<hp:equation\b/);
+  assert.equal(binaries.length, 1, `expected only the detected figure crop, got ${binaries.length}`);
+  assert.equal(exported.sourceImageEmbedded, false);
   assert.equal(exported.verification.passed, true);
 });
 

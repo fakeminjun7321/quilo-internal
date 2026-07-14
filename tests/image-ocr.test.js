@@ -70,6 +70,7 @@ test("OCR always performs four high-quality passes with HTML tables and semantic
   assert.equal(result.source.mode, "quality");
   assert.ok(result.confidence.average > 0.9);
   assert.ok(result.quality.verifiedConfidence > 0.9);
+  assert.ok(result.quality.layoutConfidence > 0.7);
   assert.equal(result.quality.successfulPasses, 4);
   assert.equal(result.pages[0].blocks[0].type, "table");
   assert.equal(result.pages[0].blocks[0].tableId, "table-1");
@@ -127,6 +128,7 @@ test("quality OCR keeps image layout metadata across four variants", async () =>
   assert.equal(result.source.attemptedPasses, 4);
   assert.ok(["handwriting", "binary"].includes(result.quality.selectedVariant));
   assert.equal(result.quality.candidateScores.length, 4);
+  assert.ok(result.quality.candidateScores.every((candidate) => Number.isFinite(candidate.layoutConfidence)));
   assert.equal(result.pages[0].images[0].id, "img-0.jpeg");
   assert.equal(result.pages[0].images[0].topLeftX, 12);
   assert.equal(result.pages[0].images[0].annotation, "원본 그림");

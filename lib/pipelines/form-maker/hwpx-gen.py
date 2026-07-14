@@ -67,6 +67,20 @@ def _clamp_int(value, lo, hi, default):
         return default
 
 
+def _font_size(blk, default):
+    try:
+        return _clamp_int(round(float(blk.get("font_size_pt")) * 100), 800, 3200, default)
+    except (TypeError, ValueError):
+        return default
+
+
+def _space_value(blk, key, default):
+    try:
+        return _clamp_int(round(float(blk.get(key)) * 100), 0, 4800, default)
+    except (TypeError, ValueError):
+        return default
+
+
 def _blank(target):
     """빈 문단 한 줄 — doc 본문 또는 셀(target) 어디에든."""
     try:
@@ -111,9 +125,23 @@ def render_heading(doc, blk, target, keep_with_next=True):
     st = HEADING_STYLE[level]
     phys.add_para_to(
         doc, target, text,
-        base_size=st["size"], bold=st["bold"], align="LEFT",
+        base_size=_font_size(blk, st["size"]), bold=bool(blk.get("bold", st["bold"])), align="LEFT",
         indent_left=st["indent"], keep_with_next=keep_with_next,
-        space_before=st["sb"], space_after=st["sa"],
+        space_before=_space_value(blk, "space_before_pt", st["sb"]),
+        space_after=_space_value(blk, "space_after_pt", st["sa"]),
+    )
+
+
+def render_equation(doc, blk, target):
+    text = str(blk.get("text") or blk.get("latex") or "").strip()
+    if not text:
+        return
+    phys.add_para_to(
+        doc, target, text,
+        base_size=_font_size(blk, pre.SIZE_BODY),
+        align=_align(blk.get("align"), "CENTER"),
+        space_before=_space_value(blk, "space_before_pt", 80),
+        space_after=_space_value(blk, "space_after_pt", 80),
     )
 
 
@@ -499,7 +527,12 @@ def render_figure(doc, blk, ctx, target=None, width=TABLE_WIDTH):
         # 아니면 본문 전체폭(width)을 쓴다. (공유 add_photo_blocks 는 폭 30300 고정 +
         # 캡션 '[그림 N]' 무조건 접두 버그가 있어 form-maker 에선 직접 add_picture 로 처리.)
         full_page = blk.get("full_page") is True
-        fig_w = width if full_page else (min(width, 21000) if ctx.get("two_col") else width)
+        try:
+            width_ratio = max(0.12, min(1.0, float(blk.get("width_ratio", 1))))
+        except (TypeError, ValueError):
+            width_ratio = 1.0
+        available = min(width, 21000) if ctx.get("two_col") else width
+        fig_w = width if full_page else max(5500, int(available * width_ratio))
         fig_h = 62000 if full_page else 12000
         placed = False
         for i in as_list(idxs):
@@ -640,16 +673,23 @@ def render_blocks(doc, blocks, ctx, target=None, width=TABLE_WIDTH):
         elif bt == "paragraph":
             text = str(blk.get("text") or "")
             if text.strip():
+                if blk.get("italic"):
+                    text = f"*{text}*"
                 phys.add_para_to(
                     doc, target, text,
+                    base_size=_font_size(blk, pre.SIZE_BODY),
+                    bold=bool(blk.get("bold", False)),
                     align=_align(blk.get("align"), "LEFT"),
                     indent_left=pre.INDENT_5MM if blk.get("hanging") else 0,
-                    space_after=pre.SPACE_BODY,
+                    space_before=_space_value(blk, "space_before_pt", 0),
+                    space_after=_space_value(blk, "space_after_pt", pre.SPACE_BODY),
                 )
         elif bt == "table":
             render_table(doc, blk, ctx, target, width=width)
         elif bt == "figure":
             render_figure(doc, blk, ctx, target, width=width)
+        elif bt == "equation":
+            render_equation(doc, blk, target)
         elif bt == "summary_box":
             render_summary_box(doc, blk, ctx, target, width=width)
         elif bt == "columns":
@@ -741,7 +781,7 @@ def _preview_blocks(blocks, lines):
                 lines.append(_clean_preview(blk))
         elif isinstance(blk, dict):
             bt = re.sub(r"[{}*]", "", str(blk.get("type") or "")).lower()
-            if bt in ("heading", "paragraph"):
+            if bt in ("heading", "paragraph", "equation"):
                 if blk.get("text"):
                     lines.append(_clean_preview(blk["text"]))
             elif bt == "summary_box":

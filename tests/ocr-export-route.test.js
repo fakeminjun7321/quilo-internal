@@ -71,6 +71,8 @@ test("real OCR export route returns verified DOCX, HWPX, HTML, and TXT files", {
     const buffer = Buffer.from(await response.arrayBuffer());
     assert.equal(response.status, 200, `${format}: ${buffer.toString("utf8", 0, 300)}`);
     assert.equal(response.headers.get("x-quilo-postflight"), "passed", format);
+    assert.equal(response.headers.get("x-quilo-source-image"), "not-embedded", format);
+    assert.equal(response.headers.get("x-quilo-reconstruction"), "editable-elements", format);
     assert.equal(response.headers.get("x-quilo-layout-blocks"), "4", format);
     assert.equal(response.headers.get("x-quilo-detected-images"), format === "txt" ? "0" : "1", format);
     assert.equal(signatures[format](buffer), true, `${format} signature`);

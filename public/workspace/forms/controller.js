@@ -561,6 +561,12 @@ export function installReportFormControllers(deps) {
       const includePronunciation = document.getElementById("vbIncludePronunciation").checked;
       const includeReview = document.getElementById("vbIncludeReview").checked;
       const includeMemo = document.getElementById("vbIncludeMemo").checked;
+      const designStyle = document.querySelector('input[name="vbDesignStyle"]:checked')?.value || "science";
+      const designLabel = {
+        science: "사이언스 블루",
+        classic: "클래식 교재형",
+        minimal: "미니멀 암기형",
+      }[designStyle] || "사이언스 블루";
       const typeLabels = [
         includeCore && "핵심 용어",
         includeAcademic && "학술 어휘",
@@ -575,6 +581,7 @@ export function installReportFormControllers(deps) {
           ["영어 자료", source.name],
           ["PDF 페이지 범위", pageRange || "전체 (PDF는 최대 80쪽)"],
           ["구성", `출처 ${pagesPerUnit}개 단위마다 ${termCount}개`],
+          ["디자인", designLabel],
           ["어휘 종류", typeLabels.join(", ")],
           ["학습 요소", [includePronunciation && "발음", includeReview && "단원 평가", includeMemo && "메모"].filter(Boolean).join(", ") || "기본"],
           ["출력", "ZIP · 인터랙티브 PDF + 학습용 JSON"],
@@ -598,6 +605,7 @@ export function installReportFormControllers(deps) {
       fd.append("includePronunciation", includePronunciation ? "true" : "false");
       fd.append("includeReview", includeReview ? "true" : "false");
       fd.append("includeMemo", includeMemo ? "true" : "false");
+      fd.append("designStyle", designStyle);
       if (runtime.studentId) fd.append("studentId", runtime.studentId);
       fd.append("model", model);
       appendPolicyAcknowledgements(fd);

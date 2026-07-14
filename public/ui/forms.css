@@ -216,6 +216,77 @@ textarea:focus { border-color: var(--q-blue); box-shadow: 0 0 0 3px color-mix(in
 .vocab-option-grid .check-row input { margin-top: 2px; }
 .vocab-option-grid .check-row span { display: grid; gap: 2px; }
 .vocab-option-grid .check-row small { color: var(--q-muted); font-size: 10px; font-weight: 500; line-height: 1.4; }
+.vocab-design-section {
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--q-line);
+}
+.vocab-design-section > legend { padding: 0; }
+.vocab-design-section > .form-section-note { margin-top: -14px; }
+.vocab-design-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.vocab-design-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 116px;
+  gap: 14px;
+  min-height: 174px;
+  padding: 16px;
+  overflow: hidden;
+  border: 1px solid var(--q-line);
+  border-radius: 10px;
+  color: var(--q-ink);
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
+}
+.vocab-design-card:hover { border-color: #aeb8c7; }
+.vocab-design-card:has(input:focus-visible) { box-shadow: 0 0 0 3px color-mix(in srgb, var(--q-blue) 14%, transparent); }
+.vocab-design-card:has(input:checked) { border-color: var(--q-blue); background: var(--q-blue-soft); box-shadow: 0 0 0 1px var(--q-blue); }
+.vocab-design-card > input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.vocab-design-check {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  width: 16px;
+  height: 16px;
+  border: 1px solid #aeb7c5;
+  border-radius: 50%;
+  background: #fff;
+}
+.vocab-design-card:has(input:checked) .vocab-design-check { border: 5px solid var(--q-blue); }
+.vocab-design-copy { display: grid; align-content: start; gap: 7px; padding: 31px 0 0; }
+.vocab-design-copy strong { font-size: 14px; letter-spacing: -.02em; }
+.vocab-design-copy small { color: var(--q-muted); font-size: 10px; line-height: 1.55; }
+.vocab-design-sheet {
+  align-self: center;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-rows: 20px 20px 15px repeat(3, 1fr);
+  gap: 5px;
+  width: 108px;
+  height: 142px;
+  padding: 10px;
+  border: 1px solid #cfd5df;
+  color: #1f2937;
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(31, 41, 55, .09);
+}
+.vocab-design-sheet i { padding: 3px 5px; font: normal 700 6px/1 sans-serif; letter-spacing: .06em; }
+.vocab-design-sheet b { overflow: hidden; font: 700 8px/1.2 sans-serif; white-space: nowrap; }
+.vocab-design-sheet em { font: normal 7px/1.2 sans-serif; }
+.vocab-design-sheet span { border-top: 1px solid #d7dce4; }
+.vocab-design-sheet--science i { color: #fff; background: #2563eb; }
+.vocab-design-sheet--science b { color: #2563eb; }
+.vocab-design-sheet--classic { border-color: #c9c0ac; background: #fffdf7; }
+.vocab-design-sheet--classic i { color: #fffdf7; background: #10213f; font-family: Georgia, serif; }
+.vocab-design-sheet--classic b { color: #10213f; font-family: Georgia, serif; }
+.vocab-design-sheet--minimal { padding-top: 14px; border-color: #d6d6d6; box-shadow: none; }
+.vocab-design-sheet--minimal i { padding-inline: 0; border-bottom: 1px solid #111827; color: #6b7280; background: transparent; }
+.vocab-design-sheet--minimal b { color: #111827; font-size: 9px; }
 
 .policy-check { padding: 20px 0; border-bottom: 1px solid var(--q-line); }
 .policy-check label { display: flex; gap: 10px; align-items: flex-start; color: var(--q-muted); font-size: 11px; line-height: 1.6; }
@@ -263,8 +334,10 @@ textarea:focus { border-color: var(--q-blue); box-shadow: 0 0 0 3px color-mix(in
 @media (max-width: 760px) {
   .field-grid, .field-grid.cols-3 { grid-template-columns: 1fr; }
   .vocab-source-grid,
-  .vocab-option-grid { grid-template-columns: 1fr; }
+  .vocab-option-grid,
+  .vocab-design-grid { grid-template-columns: 1fr; }
   .vocab-preview { order: 2; }
+  .vocab-design-card { grid-template-columns: minmax(0, 1fr) 104px; min-height: 158px; }
   .report-form { padding-inline: 18px; }
   .form-actions { align-items: stretch; flex-direction: column; margin-inline: -18px; padding-inline: 18px; }
   .form-actions button[type="submit"] { width: 100%; }

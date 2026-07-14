@@ -10,6 +10,10 @@ const {
 } = require("../lib/pipelines/vocabulary-book/generate");
 const { generateBundle } = require("../lib/pipelines/vocabulary-book/bundle");
 const { spreadsheetPages, extractVocabularySource } = require("../lib/pipelines/vocabulary-book/source");
+const {
+  normalizeVocabularyDesign,
+  vocabularyDesignLabel,
+} = require("../lib/pipelines/vocabulary-book/designs");
 
 const sampleEntry = {
   kind: "core",
@@ -33,6 +37,14 @@ test("term source matching normalizes case, whitespace, and dash variants", () =
   assert.equal(termExistsInSource("field", "The fields are uniform."), false);
   assert.equal(termExistsInSource("ion", "The particle is in motion."), false);
   assert.equal(termExistsInSource("invented quantity", "measured electric field"), false);
+});
+
+test("vocabulary design choices are whitelisted with a stable default", () => {
+  assert.equal(normalizeVocabularyDesign("science"), "science");
+  assert.equal(normalizeVocabularyDesign("CLASSIC"), "classic");
+  assert.equal(normalizeVocabularyDesign("minimal"), "minimal");
+  assert.equal(normalizeVocabularyDesign("../../unknown"), "science");
+  assert.equal(vocabularyDesignLabel("classic"), "클래식 교재형");
 });
 
 test("normalizeEntry rejects terms that do not occur in the selected source", () => {
@@ -101,7 +113,7 @@ test("vocabulary bundle contains a navigable PDF and public JSON", async () => {
         entries: [sampleEntry],
       },
     ],
-    options: { include_pronunciation: true, include_review: true, include_memo: true },
+    options: { include_pronunciation: true, include_review: true, include_memo: true, design_style: "science" },
     __usage: { input_tokens: 100, output_tokens: 100 },
   };
   const bundle = await generateBundle(content, { sourceFilename: "physics.pdf" });
@@ -117,5 +129,6 @@ test("vocabulary bundle contains a navigable PDF and public JSON", async () => {
   assert.equal(pdf.subarray(0, 5).toString("ascii"), "%PDF-");
   const json = JSON.parse(await zip.file(jsonName).async("string"));
   assert.equal(json.chapters[0].entries[0].term, "electric field");
+  assert.equal(json.options.design_style, "science");
   assert.equal(Object.hasOwn(json, "__usage"), false);
 });

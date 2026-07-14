@@ -89,7 +89,7 @@ async function mockFrontendApis(page) {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ user: "QA", studentId: "20260001", isAdmin: false, styleNote: "" }),
+      body: JSON.stringify({ user: "QA", studentId: "20260001", isAdmin: false, styleNote: "", analyticsConsent: false, analyticsConsentVersion: "2026-07-15" }),
     });
   });
   await page.route("**/api/me/beta", async (route) => {

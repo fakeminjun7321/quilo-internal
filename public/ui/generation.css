@@ -292,3 +292,17 @@ dd.confirm-list__secondary { font-size: .85em; }
 .background-job__error { margin-left: auto; white-space: nowrap; }
 .background-job__action { font-size: 13px; }
 .background-job__error { max-width: 55%; overflow: hidden; color: var(--q-muted); font-size: 12px; text-overflow: ellipsis; }
+.generation-quality-feedback {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--q-line);
+  background: var(--q-paper);
+}
+.generation-quality-feedback > strong { color: var(--q-ink); font-size: 14px; }
+.generation-quality-feedback__controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.generation-quality-feedback__controls select { min-height: 38px; }
+.generation-quality-feedback__tags { display: flex; flex-wrap: wrap; gap: 8px 14px; padding-top: 10px; }
+.generation-quality-feedback__tags label { display: inline-flex; gap: 5px; align-items: center; color: var(--q-muted); font-size: 12px; }
+.generation-quality-feedback__status { min-height: 18px; color: var(--q-muted); font-size: 12px; }

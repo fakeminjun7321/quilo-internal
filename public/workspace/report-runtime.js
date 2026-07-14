@@ -10,6 +10,7 @@ import { createJobStreamController } from "./job-stream.js";
 import { createReportPreferences, initDefaultReportPreferences } from "./report-preferences.js";
 import { createStudentIdBannerController } from "./student-id-banner.js";
 import { createBackgroundJobsController } from "./background-jobs.js";
+import { trackEvent } from "./telemetry.js";
 import {
   USE_POLICY_NOTE, appendPolicyAcknowledgements, findAffordableModelOption, formatBytes,
   getFontLabel, getModelCredits, getModelLabel, getSelectedModel, getUserNotesFile,
@@ -105,6 +106,29 @@ const elements = {
   rlBtn: document.getElementById("rlBtn"),
 };
 
+const formTelemetryTypes = new Map([
+  [elements.form, "chem-pre"],
+  [elements.crForm, "chem-result"],
+  [elements.prForm, "phys-result"],
+  [elements.piForm, "phys-inquiry"],
+  [elements.miForm, "math-inquiry"],
+  [elements.frForm, "free"],
+  [elements.psForm, "problem-set"],
+  [elements.vbForm, "vocabulary-book"],
+  [elements.fmForm, "form-maker"],
+  [elements.rlForm, "reading-log"],
+].filter(([form]) => !!form));
+const startedTelemetryForms = new WeakSet();
+for (const [form, reportType] of formTelemetryTypes) {
+  const markStarted = () => {
+    if (startedTelemetryForms.has(form)) return;
+    startedTelemetryForms.add(form);
+    trackEvent("form_started", { reportType, source: "report_form" });
+  };
+  form.addEventListener("input", markStarted, { passive: true });
+  form.addEventListener("change", markStarted, { passive: true });
+}
+
 function initializeDefaults() {
   const today = new Date().toISOString().slice(0, 10);
   document.querySelectorAll('input[type="date"]').forEach((input) => {
@@ -144,6 +168,7 @@ function rememberSubmission(args) {
 function retryLastSubmission() {
   if (!lastSubmission?.formData || currentJobId) return;
   retryCount += 1;
+  trackEvent("retry_clicked", { source: "generation_error" });
   submitReport({
     formEl: lastSubmission.formEl,
     buttonEl: lastSubmission.buttonEl,
@@ -289,6 +314,7 @@ elements.stopBtn.addEventListener("click", async () => {
     okLabel: "중지",
   });
   if (!confirmed) return;
+  trackEvent("abort_clicked", { source: "generation_progress" });
   elements.stopBtn.disabled = true;
   elements.stopBtn.textContent = "중지 중...";
   try { await fetch(`/api/jobs/${currentJobId}/abort`, { method: "POST" }); } catch (_) {}

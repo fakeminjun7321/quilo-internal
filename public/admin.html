@@ -462,7 +462,16 @@
         <h2>보고서 생성 로그</h2>
         <button id="refreshLogs" class="secondary compact">새로고침</button>
       </div>
-      <p class="hint">누가 언제 어떤 보고서를 만들었는지 기록. 최근 100건 표시.</p>
+      <p class="hint">최근 30일 서비스 품질 집계와 비용 로그입니다. 분석 화면에는 보고서 제목·본문·업로드 파일명이 포함되지 않습니다.</p>
+      <div class="analytics-summary-grid" id="analyticsSummary" aria-live="polite">
+        <div><span>생성 접수</span><strong id="analyticsAccepted">-</strong></div>
+        <div><span>완료율</span><strong id="analyticsSuccessRate">-</strong></div>
+        <div><span>실패·중단</span><strong id="analyticsFailed">-</strong></div>
+        <div><span>중앙 처리시간</span><strong id="analyticsP50">-</strong></div>
+        <div><span>다운로드</span><strong id="analyticsDownloads">-</strong></div>
+        <div><span>평균 품질평가</span><strong id="analyticsQuality">-</strong></div>
+      </div>
+      <div class="analytics-breakdown" id="analyticsBreakdown"></div>
       <div class="table-wrapper">
         <table id="logTable">
           <thead>
@@ -471,7 +480,7 @@
               <th>사용자</th>
               <th>종류</th>
               <th>모델</th>
-              <th>보고서 제목</th>
+              <th>작업 ID</th>
               <th>비용</th>
               <th>토큰</th>
               <th>웹검색</th>
@@ -1207,17 +1216,63 @@
         const status = document.getElementById("logStatus");
         status.textContent = "로딩 중...";
         try {
-          const res = await fetch("/api/admin/usage-logs?limit=100");
-          if (!res.ok) {
-            const e = await res.json();
+          const [logsRes, analyticsRes] = await Promise.all([
+            fetch("/api/admin/usage-logs?limit=100"),
+            fetch("/api/admin/analytics-summary?days=30"),
+          ]);
+          if (!logsRes.ok) {
+            const e = await logsRes.json();
             throw new Error(e.error || "fetch failed");
           }
-          const data = await res.json();
+          const data = await logsRes.json();
           renderLogs(data.logs);
-          status.textContent = `${data.logs.length}건 로드됨`;
+          if (analyticsRes.ok) renderAnalyticsSummary(await analyticsRes.json());
+          status.textContent = `최근 비용 로그 ${data.logs.length}건 로드됨`;
         } catch (e) {
           status.textContent = "오류: " + e.message;
         }
+      }
+
+      function formatMs(value) {
+        const ms = Math.max(0, Number(value) || 0);
+        if (ms < 1000) return `${Math.round(ms)}ms`;
+        if (ms < 60000) return `${(ms / 1000).toFixed(1)}초`;
+        return `${(ms / 60000).toFixed(1)}분`;
+      }
+
+      function renderAnalyticsSummary(summary) {
+        const runs = summary?.runs || {};
+        const quality = summary?.quality || {};
+        const values = {
+          analyticsAccepted: Number(runs.accepted || 0).toLocaleString("ko-KR"),
+          analyticsSuccessRate: `${(Number(runs.successRate || 0) * 100).toFixed(1)}%`,
+          analyticsFailed: Number(runs.failed || 0).toLocaleString("ko-KR"),
+          analyticsP50: formatMs(runs.p50TotalMs),
+          analyticsDownloads: Number(runs.downloads || 0).toLocaleString("ko-KR"),
+          analyticsQuality: quality.count ? `${Number(quality.averageScore || 0).toFixed(2)} / 5` : "평가 없음",
+        };
+        Object.entries(values).forEach(([id, value]) => {
+          const node = document.getElementById(id);
+          if (node) node.textContent = value;
+        });
+        const breakdown = document.getElementById("analyticsBreakdown");
+        const topEntries = (record) => Object.entries(record || {})
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([key, count]) => `${escape(key)} ${Number(count).toLocaleString("ko-KR")}`)
+          .join(" · ") || "데이터 없음";
+        const stageLabels = { queue_ms: "대기", generation_ms: "AI", build_ms: "빌드", validation_ms: "검사", storage_ms: "저장" };
+        const stages = Object.entries(runs.stageTimings || {})
+          .map(([key, value]) => `${stageLabels[key] || escape(key)} ${formatMs(value?.p50)} / p95 ${formatMs(value?.p95)}`)
+          .join(" · ") || "데이터 없음";
+        breakdown.innerHTML = `
+          <p><strong>보고서 종류</strong> ${topEntries(runs.byReportType)}</p>
+          <p><strong>모델</strong> ${topEntries(runs.byModel)}</p>
+          <p><strong>실패 단계</strong> ${topEntries(runs.byErrorPhase)}</p>
+          <p><strong>이용 흐름</strong> ${topEntries(summary?.funnel)}</p>
+          <p><strong>품질 태그</strong> ${topEntries(quality.tags)}</p>
+          <p><strong>단계 p50 / p95</strong> ${stages}</p>
+        `;
       }
 
       function renderLogs(logs) {
@@ -1244,7 +1299,7 @@
             <td>${escape(log.user_name)}</td>
             <td class="table-meta">${typeStr}</td>
             <td class="table-meta tone-muted">${modelStr}</td>
-            <td>${escape(meta.title || "(제목 없음)")}</td>
+            <td class="table-meta tone-muted">${escape((log.job_id || "-").slice(0, 12))}</td>
             <td>${fmtBoth(log.total_usd)}</td>
             <td class="table-meta tone-muted">${tokenStr}</td>
             <td class="table-centered">${webStr}</td>

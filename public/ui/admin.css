@@ -1887,3 +1887,31 @@ li.CodeMirror-hint-active { background: #094771; color: #fff; }
   #adminEditorSection .ide-statusbar { overflow-x: auto; }
   #adminEditorSection .ide-panel { flex-basis: 150px; height: 150px; }
 }
+.analytics-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 1px;
+  margin: 18px 0;
+  border: 1px solid var(--border);
+  background: var(--border);
+}
+.analytics-summary-grid > div {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 14px;
+  background: var(--surface);
+}
+.analytics-summary-grid span { color: var(--text-muted); font-size: 11px; }
+.analytics-summary-grid strong { overflow: hidden; color: var(--text); font-size: 20px; text-overflow: ellipsis; white-space: nowrap; }
+.analytics-breakdown { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 20px; margin-bottom: 18px; }
+.analytics-breakdown p { margin: 0; color: var(--text-muted); font-size: 12px; }
+.analytics-breakdown strong { color: var(--text); }
+
+@media (max-width: 1000px) {
+  .analytics-summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 620px) {
+  .analytics-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .analytics-breakdown { grid-template-columns: 1fr; }
+}

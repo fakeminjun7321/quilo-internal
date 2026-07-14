@@ -5,6 +5,7 @@ import { createShellController } from "./shell-controller.js";
 import { createFilesController } from "./files-controller.js";
 import { createAccountController } from "./account-controller.js";
 import { loadAnnouncements } from "./announcements.js";
+import { installTelemetryListeners } from "./telemetry.js";
 
 assertWorkspaceDom();
 
@@ -58,6 +59,7 @@ window.QuiloSetView = shell.setView;
 // never block a menu, theme, or account interaction on first paint.
 shell.init();
 files.init();
+installTelemetryListeners();
 const accountReady = account.init();
 loadAnnouncements();
 await accountReady;

@@ -10,8 +10,12 @@ if (baseUrl.protocol !== "https:" && !["localhost", "127.0.0.1"].includes(baseUr
   process.exit(2);
 }
 
+const currentPath = baseUrl.pathname.replace(/\/$/, "");
+const schedulePath = currentPath.endsWith("/schedule") ? currentPath : `${currentPath}/schedule`;
+
 async function request(path, options = {}) {
-  const response = await fetch(new URL(path, baseUrl), {
+  const suffix = path === "/" ? "/" : path;
+  const response = await fetch(new URL(`${schedulePath}${suffix}`, baseUrl.origin), {
     redirect: "manual",
     signal: AbortSignal.timeout(10_000),
     ...options,
@@ -60,7 +64,7 @@ try {
 
   console.log(JSON.stringify({
     ok: true,
-    target: baseUrl.origin,
+    target: `${baseUrl.origin}${schedulePath}`,
     storage: healthBody.storage,
     kakaoEnabled: healthBody.kakaoEnabled,
     checks: 6,

@@ -58,3 +58,18 @@ test("Render에서는 production 검증을 강제하고 placeholder와 미지원
     /only Asia\/Seoul/,
   );
 });
+
+test("기존 Quilo 서버의 Supabase·세션·관리자 환경변수를 그대로 재사용한다", () => {
+  const config = loadConfig({
+    ...validProduction,
+    CLASSBOT_SESSION_SECRET: "",
+    CLASSBOT_ADMIN_PASSWORD: "",
+    SUPABASE_SERVICE_ROLE_KEY: "",
+    SESSION_SECRET: "q".repeat(32),
+    ADMIN_PASSWORD: "existing-quilo-admin-password",
+    SUPABASE_SERVICE_KEY: "existing-service-key",
+  });
+  assert.equal(config.sessionSecret, "q".repeat(32));
+  assert.equal(config.adminPassword, "existing-quilo-admin-password");
+  assert.equal(config.supabaseServiceRoleKey, "existing-service-key");
+});

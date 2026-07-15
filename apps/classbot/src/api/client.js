@@ -2,7 +2,14 @@ import { createSeedOverview } from "../data/seed.js";
 
 const STORAGE_KEY = "quilo-schedule-demo-state-v1";
 const DEMO_FALLBACK_ENABLED = import.meta.env.DEV || import.meta.env.VITE_CLASSBOT_DEMO_FALLBACK === "true";
+const API_PREFIX = String(import.meta.env.VITE_CLASSBOT_API_BASE || `${import.meta.env.BASE_URL}api`).replace(/\/$/, "");
+const EMBEDDED_IN_QUILO = !import.meta.env.DEV && import.meta.env.BASE_URL.startsWith("/schedule/");
 let transport = "remote";
+
+function resolveApiPath(path) {
+  if (!path.startsWith("/api")) return path;
+  return `${API_PREFIX}${path.slice(4)}`;
+}
 
 export function createIdempotencyKey(scope = "request") {
   const id = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -29,8 +36,8 @@ function nextId(prefix) {
 }
 
 async function request(path, options = {}) {
-  const { body, headers, ...rest } = options;
-  const response = await fetch(path, {
+  const { body, headers, root = false, ...rest } = options;
+  const response = await fetch(root ? path : resolveApiPath(path), {
     credentials: "same-origin",
     ...rest,
     headers: body ? { "Content-Type": "application/json", ...headers } : headers,
@@ -83,7 +90,14 @@ export const api = {
     return remoteOrLocal(() => request("/api/admin/session"), () => ({ authenticated: true, actor: "demo-admin", demo: true }));
   },
   login(password) { return request("/api/admin/login", { method: "POST", body: { password } }); },
-  logout() { return remoteOrLocal(() => request("/api/admin/logout", { method: "POST" }), () => ({ ok: true })); },
+  logout() {
+    return remoteOrLocal(
+      () => EMBEDDED_IN_QUILO
+        ? request("/api/logout", { method: "POST", root: true })
+        : request("/api/admin/logout", { method: "POST" }),
+      () => ({ ok: true }),
+    );
+  },
   overview() { return remoteOrLocal(() => request("/api/admin/overview"), () => structuredClone(localState)); },
   settings() { return remoteOrLocal(() => request("/api/admin/settings"), () => ({ item: structuredClone(localState.classroom) })); },
   updateSettings(patch) {

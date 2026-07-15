@@ -8487,6 +8487,57 @@ app.get("/api/status", async (_req, res) => {
 
 registerAppDownloadRoutes(app);
 
+// 2학년 4반 일정 관리와 카카오 스킬은 별도 Render 서비스 없이 기존 Quilo
+// 프로세스에 격리된 /schedule namespace로 올린다. 동적 import를 써서 CommonJS인
+// 본 서버와 ESM인 classbot을 연결하며, 첫 일정 요청 전에는 보고서 서버 부팅이나
+// 기존 경로에 어떤 의존성도 추가하지 않는다.
+let classbotAppPromise = null;
+function getClassbotApp() {
+  if (!classbotAppPromise) {
+    classbotAppPromise = Promise.all([
+      import("./apps/classbot/server/app.js"),
+      import("./apps/classbot/server/config.js"),
+    ])
+      .then(([{ createApp }, { loadConfig }]) => createApp({
+        embedded: true,
+        config: loadConfig({
+          // SESSION_SECRET can be derived above from the existing production
+          // Supabase key even when Render has no explicit SESSION_SECRET.
+          CLASSBOT_SESSION_SECRET: process.env.CLASSBOT_SESSION_SECRET || SESSION_SECRET,
+          SUPABASE_SERVICE_ROLE_KEY:
+            process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || "",
+        }),
+      }))
+      .catch((error) => {
+        classbotAppPromise = null;
+        throw error;
+      });
+  }
+  return classbotAppPromise;
+}
+
+app.use("/schedule/api/admin/session", (req, _res, next) => {
+  // 화면이 로그인 여부를 확인하는 읽기 전용 endpoint는 익명에게도 false를 돌려준다.
+  // 실제 데이터 API는 바로 아래 requireAdmin에서 권한을 매 요청 다시 검증한다.
+  req.classbotExternalAdmin = Boolean(getSessionUser(req)?.isAdmin);
+  next();
+});
+
+app.use("/schedule/api/admin", (req, res, next) => {
+  // 관리자 API는 기존 Quilo의 fail-closed 권한 재검증을 그대로 통과시킨다.
+  // 서버 내부 플래그는 브라우저에서 위조할 수 없고 카카오/health/자산은 영향 없다.
+  requireAdmin(req, res, () => {
+    req.classbotExternalAdmin = true;
+    next();
+  });
+});
+
+app.use("/schedule", (req, res, next) => {
+  getClassbotApp()
+    .then((classbotApp) => classbotApp(req, res, next))
+    .catch(next);
+});
+
 // express.static 의 extensions:["html"] 가 /admin -> public/admin.html 로 먼저
 // 해석하지 않도록, 관리자 페이지는 정적 파일 서빙보다 앞에서 인증한다.
 app.get(["/admin", "/admin.html"], async (req, res) => {

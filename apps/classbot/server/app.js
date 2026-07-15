@@ -205,6 +205,7 @@ export async function createApp(options = {}) {
   const kakaoClient = options.kakaoClient || new KakaoEventClient(config.kakao);
   const notifications = options.notificationService || new NotificationService({ store, kakaoClient });
   const now = typeof options.now === "function" ? options.now : () => new Date();
+  const embedded = options.embedded === true;
   const app = express();
   const origins = allowedOrigins(config.allowedOrigin);
 
@@ -249,16 +250,21 @@ export async function createApp(options = {}) {
     return next();
   });
   app.use(express.json({ limit: "256kb" }));
-  app.use(
-    cookieSession({
-      name: "classbot_admin",
-      keys: [config.sessionSecret],
-      maxAge: 8 * 60 * 60_000,
-      httpOnly: true,
-      secure: config.production,
-      sameSite: "strict",
-    }),
-  );
+  // Standalone development keeps its own cookie. In production the app is
+  // mounted inside Quilo and reuses the already verified Quilo admin session;
+  // installing a second cookie-session there would overwrite req.session.
+  if (!embedded) {
+    app.use(
+      cookieSession({
+        name: "classbot_admin",
+        keys: [config.sessionSecret],
+        maxAge: 8 * 60 * 60_000,
+        httpOnly: true,
+        secure: config.production,
+        sameSite: "strict",
+      }),
+    );
+  }
 
   app.get("/api/health", asyncRoute(async (_req, res) => {
     try {
@@ -269,8 +275,13 @@ export async function createApp(options = {}) {
     }
   }));
 
-  app.get("/api/admin/session", (req, res) => res.json({ authenticated: req.session?.isAdmin === true }));
+  const isAdminRequest = (req) => embedded
+    ? req.classbotExternalAdmin === true
+    : req.session?.isAdmin === true;
+
+  app.get("/api/admin/session", (req, res) => res.json({ authenticated: isAdminRequest(req) }));
   app.post("/api/admin/login", createLoginLimiter(), asyncRoute(async (req, res) => {
+    if (embedded) throw new HttpError(401, "Quilo 관리자 계정으로 먼저 로그인해 주세요.");
     const password = requireString(req.body?.password, "관리자 비밀번호", 512);
     if (!safeEqual(password, config.adminPassword)) throw new HttpError(401, "관리자 비밀번호가 올바르지 않습니다.");
     req.session = { isAdmin: true, signedInAt: new Date().toISOString() };
@@ -278,11 +289,15 @@ export async function createApp(options = {}) {
     res.json({ authenticated: true, classroom: await store.getClassroom() });
   }));
   app.post("/api/admin/logout", (req, res) => {
+    if (embedded) return res.json({ authenticated: false, login_url: "/login.html" });
     req.session = null;
     res.json({ authenticated: false });
   });
 
-  app.use("/api/admin", requireAdmin);
+  app.use("/api/admin", (req, res, next) => {
+    if (isAdminRequest(req)) return next();
+    return requireAdmin(req, res, next);
+  });
 
   app.get("/api/admin/overview", asyncRoute(async (_req, res) => {
     const [classroom, members, timetable, events, notices, notificationItems] = await Promise.all([

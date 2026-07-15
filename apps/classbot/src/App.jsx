@@ -12,9 +12,13 @@ import NotificationsPage from "./pages/NotificationsPage.jsx";
 import SettingsPage from "./pages/SettingsPage.jsx";
 
 const actions = { today: "일정 추가", events: "일정 추가", notices: "공지 추가" };
+const embeddedInQuilo = !import.meta.env.DEV && import.meta.env.BASE_URL.startsWith("/schedule/");
 
 function Login({ onLogin, busy, error }) {
   const [password, setPassword] = useState("");
+  if (embeddedInQuilo) {
+    return <main className="login-page"><div className="login-card"><Brand /><div className="login-icon"><LockKeyhole size={25} /></div><h1>관리자 로그인</h1><p>Quilo 관리자 계정으로 로그인한 뒤 일정 관리 화면을 이용해 주세요.</p><a className="primary-button wide" href="/login.html">Quilo에서 로그인</a></div></main>;
+  }
   return <main className="login-page"><div className="login-card"><Brand /><div className="login-icon"><LockKeyhole size={25} /></div><h1>관리자 로그인</h1><p>학급 일정과 카카오톡 알림을 관리하려면 로그인해 주세요.</p><form onSubmit={(e) => { e.preventDefault(); onLogin(password); }}><label>관리자 비밀번호<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoFocus required /></label>{error && <p className="form-error"><AlertTriangle size={16} />{error}</p>}<button className="primary-button wide" disabled={busy}>{busy ? "확인 중" : "로그인"}</button></form></div></main>;
 }
 

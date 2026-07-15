@@ -2,7 +2,7 @@
 
 기준일: 2026-07-16
 
-Quilo 일정 관리 서비스는 기존 Quilo 보고서 서버와 같은 저장소에서 관리하지만 별도의 Render Web Service와 Cron Job으로 배포한다. 실제 비밀값은 Git, 문서, 채팅, 스크린샷에 넣지 않는다.
+Quilo 일정 관리 서비스는 별도 Render 서비스를 만들지 않고 기존 `quilolab.com` 서버의 `/schedule` namespace에 함께 배포한다. 실제 비밀값은 Git, 문서, 채팅, 스크린샷에 넣지 않는다.
 
 ## 1. 배포 전 확인
 
@@ -13,8 +13,8 @@ npm run release:check
 ```
 
 - `apps/classbot`이 Git에 커밋되어 원격 저장소에 올라가 있어야 한다.
-- 기존 Quilo 보고서 Render 서비스의 Build Filter에서 `apps/classbot/**`를 제외한다. 일정 관리 변경 때문에 보고서 서버가 불필요하게 재배포되지 않게 하기 위함이다.
-- [`render.yaml`](../render.yaml)은 조회용 무료 Web Service 하나만 만든다. 유료 Cron Job은 자동 알림을 실제로 켤 때 별도로 추가한다.
+- 루트 `package.json`의 `postinstall`이 `apps/classbot` 의존성 설치와 Vite 빌드를 완료해야 한다.
+- `node -c server.js`와 classbot 테스트가 모두 통과해야 한다.
 
 ## 2. Supabase 스키마
 
@@ -32,19 +32,18 @@ select
 
 기대값은 schema version `1`과 모든 RPC의 `true`다. 모든 일정 관리 테이블은 RLS가 활성화되고 anon/authenticated 정책은 만들지 않는다. 서버만 service role key로 접근한다.
 
-## 3. Render Blueprint
+## 3. 기존 Render 서비스 설정
 
-Render에서 New Blueprint를 만들고 Blueprint Path를 `apps/classbot/render.yaml`로 지정한다. Blueprint는 모노레포 Root Directory를 `apps/classbot`으로 제한하며, 자동 배포는 GitHub 검사가 성공한 커밋에서만 진행한다.
+기존 Quilo Render 서비스의 Environment에 아래 값을 추가한 뒤 같은 서비스를 재배포한다.
 
 최초 입력이 필요한 값:
 
-- `CLASSBOT_ADMIN_PASSWORD`: 16자 이상, 다른 secret과 중복 금지
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `CLASSBOT_CRON_SECRET`: 32자 이상
+- `CLASSBOT_KAKAO_SKILL_SECRET`: 32자 이상
 
-세션, Cron, 카카오 스킬 secret은 Render가 각각 독립된 임의 값으로 생성한다. 앱은 Render 런타임을 항상 production으로 취급하며 placeholder, 개발 기본값, HTTP 외부 주소, 중복 secret을 거부한다.
+`SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SESSION_SECRET`, `ADMIN_PASSWORD`는 기존 Quilo 값을 재사용한다. 기존 `ADMIN_PASSWORD`가 16자 미만이면 `CLASSBOT_ADMIN_PASSWORD`를 16자 이상으로 별도 설정한다. 각 secret은 서로 다른 값이어야 한다. 운영 관리 화면은 별도 classbot 쿠키나 비밀번호 로그인을 만들지 않고, 기존 Quilo 관리자 세션을 매 요청 다시 검증한다.
 
-첫 배포에서는 `KAKAO_EVENT_ENABLED=false`를 유지한다. Web Service의 `/api/health`가 다음 조건을 만족해야 한다.
+첫 배포에서는 `KAKAO_EVENT_ENABLED=false`를 유지한다. `/schedule/api/health`가 다음 조건을 만족해야 한다.
 
 ```json
 {"ok":true,"storage":"supabase","kakaoEnabled":false}
@@ -56,19 +55,19 @@ Render에서 New Blueprint를 만들고 Blueprint Path를 `apps/classbot/render.
 
 ```bash
 cd apps/classbot
-CLASSBOT_EXPECT_STORAGE=supabase npm run smoke -- https://YOUR_CLASSBOT_HOST
+CLASSBOT_EXPECT_STORAGE=supabase npm run smoke -- https://quilolab.com/schedule
 ```
 
 Smoke test는 관리자 로그인을 시도하거나 데이터를 생성하지 않는다. 정적 화면, health, 익명 세션, 관리자 API 보호, Cron Bearer 보호, 카카오 스킬 secret 보호만 확인한다.
 
-기본 배포에는 Cron Job이 없다. 자동 알림을 나중에 켤 때만 Render private network의 `hostport`로 Web Service를 호출하는 Cron을 추가하고, REST API 키는 Render에 직접 입력한다. 외부 URL과 secret을 로그에 남기지 않으며 1분 주기 Cron 요금은 활성화 전에 확인한다.
+기본 배포에는 Cron Job이 없다. 자동 알림을 나중에 켤 때만 `/schedule/api/cron/notifications`를 호출하는 외부 Cron을 추가하고, REST API 키는 Render에 직접 입력한다.
 
 ## 5. 카카오 조회 기능 활성화
 
 1. 기본 채널형 `Quilo` 채널을 생성한다. 사용할 수 없으면 `Quilo 일정`을 사용한다. `Class`는 넣지 않는다.
 2. 챗봇 생성·채널 연결과 봇 배포를 완료한다. 단톡방에서 직접 호출하는 조회 기능만 쓸 때는 사업자 인증이나 월렛이 필요하지 않다.
-3. 카카오 스킬에 공개 HTTPS `/api/kakao/skill` 엔드포인트와 `X-Classbot-Skill-Secret` 헤더를 연결하고 폴백 블록이 스킬 응답을 사용하게 한다.
-4. Blueprint에 고정된 `KAKAO_BOT_ID=6a57ace9fd013545b6416293`을 확인하고, `KAKAO_REST_API_KEY`는 Render에 직접 입력한다.
+3. 카카오 스킬에 공개 HTTPS `/schedule/api/kakao/skill` 엔드포인트와 `X-Classbot-Skill-Secret` 헤더를 연결하고 폴백 블록이 스킬 응답을 사용하게 한다.
+4. `KAKAO_BOT_ID=6a57ace9fd013545b6416293`을 설정하고, `KAKAO_REST_API_KEY`는 Render에 직접 입력한다.
 5. 개발봇 또는 테스트 채널에서 `오늘 일정 학생 1`처럼 이름을 맨 뒤에 붙인 조회와 개인 일정 격리를 확인한다.
 
 자동 알림을 추가로 켜는 경우에만 비즈니스 채널 인증, 비즈앱, 카카오 로그인, 월렛과 Event 블록을 준비하고 이벤트명을 `quilo_schedule_notification`으로 설정한다. 테스트 구성원 한 명만 활성 수신자로 둔 상태에서 `KAKAO_EVENT_ENABLED=true`로 바꾸고 한 건만 시험 발송한다. POST 접수 후 task 결과가 `sent`로 확정되면 운영 Cron을 활성화하고, 실패하면 즉시 `KAKAO_EVENT_ENABLED=false`로 되돌린다.
@@ -79,7 +78,7 @@ Smoke test는 관리자 로그인을 시도하거나 데이터를 생성하지 �
 
 다음 중 하나라도 발생하면 카카오 발송을 먼저 끄고 직전 정상 배포로 롤백한다.
 
-- `/api/health`가 503이거나 schema version이 다르다.
+- `/schedule/api/health`가 503이거나 schema version이 다르다.
 - 관리자 세션이 반복 해제되거나 외부 Origin에서 관리자 API가 허용된다.
 - 동일 일정·공지·Cron 실행에서 중복 알림이 생긴다.
 - task 결과 조회 전 알림이 성공 처리된다.

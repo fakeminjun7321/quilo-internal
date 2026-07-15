@@ -5,16 +5,17 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const blueprint = fs.readFileSync(path.join(root, "render.yaml"), "utf8");
+const projectRoot = path.resolve(root, "../..");
+const rootPackage = fs.readFileSync(path.join(projectRoot, "package.json"), "utf8");
+const rootServer = fs.readFileSync(path.join(projectRoot, "server.js"), "utf8");
+const viteConfig = fs.readFileSync(path.join(root, "vite.config.js"), "utf8");
 
-test("기본 배포 blueprint는 무료 조회 서비스와 보호된 secret만 만든다", () => {
-  assert.match(blueprint, /rootDir: apps\/classbot/);
-  assert.match(blueprint, /plan: free/);
-  assert.match(blueprint, /buildCommand: npm ci --include=dev && npm run build && npm run preflight:production/);
-  assert.doesNotMatch(blueprint, /preDeployCommand:/);
-  assert.match(blueprint, /healthCheckPath: \/api\/health/);
-  assert.match(blueprint, /CLASSBOT_SESSION_SECRET[\s\S]*generateValue: true/);
-  assert.match(blueprint, /SUPABASE_SERVICE_ROLE_KEY[\s\S]*sync: false/);
-  assert.doesNotMatch(blueprint, /type: cron/);
-  assert.doesNotMatch(blueprint, /KAKAO_REST_API_KEY/);
+test("기존 Quilo Render 서비스가 /schedule namespace를 빌드하고 mount한다", () => {
+  assert.match(rootPackage, /npm ci --prefix apps\/classbot --include=dev/);
+  assert.match(rootPackage, /npm run build --prefix apps\/classbot/);
+  assert.match(rootServer, /app\.use\("\/schedule"/);
+  assert.match(rootServer, /import\("\.\/apps\/classbot\/server\/app\.js"\)/);
+  assert.match(rootServer, /SUPABASE_SERVICE_KEY/);
+  assert.match(viteConfig, /base: "\/schedule\/"/);
+  assert.equal(fs.existsSync(path.join(root, "render.yaml")), false);
 });

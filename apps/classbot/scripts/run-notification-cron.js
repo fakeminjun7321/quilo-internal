@@ -1,4 +1,4 @@
-import { resolveNotificationCronTarget } from "./notification-cron-target.js";
+import { classbotUrl, resolveNotificationCronTarget } from "./notification-cron-target.js";
 
 const privateHostPort = process.env.CLASSBOT_SERVICE_HOSTPORT;
 const rawHost = privateHostPort || process.env.CLASSBOT_BASE_URL;
@@ -15,7 +15,7 @@ const baseUrl = resolveNotificationCronTarget({
 });
 
 try {
-  const response = await fetch(new URL("/api/cron/notifications", baseUrl), {
+  const response = await fetch(classbotUrl(baseUrl, "/api/cron/notifications"), {
     method: "POST",
     headers: {
       Authorization: `Bearer ${secret}`,

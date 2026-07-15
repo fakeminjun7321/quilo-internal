@@ -1,6 +1,6 @@
 # Quilo
 
-2학년 4반의 시간표, 수행평가·과제 일정, 반 공지와 카카오톡 알림을 관리하는 독립 웹 서비스다. 관리자 화면은 데스크톱과 모바일을 지원한다. 학생은 카카오 챗봇에서 이름을 질문 맨 뒤에 붙여 반 공통 일정과 본인의 개인 일정을 조회하며, 초대 코드로 가입한 뒤에는 알림 수신 여부도 바꿀 수 있다.
+2학년 4반의 시간표, 수행평가·과제 일정, 반 공지와 카카오톡 알림을 관리하는 Quilo 내장 기능이다. 관리자 화면은 데스크톱과 모바일을 지원한다. 학생은 카카오 챗봇에서 이름을 질문 맨 뒤에 붙여 반 공통 일정과 본인의 개인 일정을 조회하며, 초대 코드로 가입한 뒤에는 알림 수신 여부도 바꿀 수 있다.
 
 ## 현재 구현 범위
 
@@ -42,18 +42,18 @@ npm run release:check
 ## 운영 배포
 
 1. Supabase 프로젝트의 SQL 편집기에서 [`db/schema.sql`](./db/schema.sql)을 적용한다.
-2. Render New Blueprint에서 Blueprint Path를 `apps/classbot/render.yaml`로 지정한다.
-3. Blueprint가 요구하는 관리자 비밀번호와 Supabase 값을 Render 화면에서 입력한다.
-4. `GET /api/health`가 `ok: true`와 `storage: supabase`를 반환하는지 확인한다.
-5. `CLASSBOT_EXPECT_STORAGE=supabase npm run smoke -- https://YOUR_SERVICE`로 읽기 전용 점검을 실행한다.
+2. 기존 Quilo Render 서비스에 Cron·카카오 스킬 비밀값을 설정한다. Supabase 연결과 관리자 로그인은 기존 Quilo 설정을 그대로 쓴다.
+3. 기존 Quilo 서비스를 재배포한다. 루트 `postinstall`이 일정 관리 화면을 함께 빌드한다.
+4. `GET /schedule/api/health`가 `ok: true`와 `storage: supabase`를 반환하는지 확인한다.
+5. 관리 화면은 `/schedule/`, 카카오 스킬은 `/schedule/api/kakao/skill`을 사용한다.
 
-기본 Blueprint는 직접 질문·응답용 무료 Web Service 하나만 만든다. 자동 알림이 필요해질 때만 별도의 유료 Cron Job과 Event API 환경변수를 추가한다. 메모리 저장소는 데이터와 중복 방지 기록이 재시작 때 사라지므로 운영에서 사용할 수 없다. 세부 순서와 롤백 기준은 [`docs/deployment.md`](./docs/deployment.md)를 따른다.
+일정 관리는 별도 Web Service를 만들지 않고 기존 Quilo 프로세스의 `/schedule` namespace에서 동작한다. 자동 알림이 필요해질 때만 외부 Cron과 Event API 설정을 추가한다. 메모리 저장소는 데이터와 중복 방지 기록이 재시작 때 사라지므로 운영에서 사용할 수 없다. 세부 순서와 롤백 기준은 [`docs/deployment.md`](./docs/deployment.md)를 따른다.
 
 ## 카카오 챗봇 연결
 
 단톡방에서 사용자가 직접 질문하고 답을 받는 조회 기능에는 배포된 챗봇과 공개 HTTPS 스킬 URL이 필요하다. 사업자 인증·월렛·Event API는 챗봇이 먼저 메시지를 보내는 자동 알림을 켤 때만 추가로 필요하다.
 
-- 스킬 URL: `POST https://YOUR_SERVICE/api/kakao/skill?secret=CLASSBOT_KAKAO_SKILL_SECRET`
+- 스킬 URL: `POST https://quilolab.com/schedule/api/kakao/skill?secret=CLASSBOT_KAKAO_SKILL_SECRET`
 - Event 이름: 관리자센터 값과 `KAKAO_EVENT_NAME`을 정확히 동일하게 설정
 - Event API 활성화: 준비가 끝난 뒤 `KAKAO_EVENT_ENABLED=true`
 - 일정 조회: `오늘 일정 학생 1`처럼 등록된 구성원 이름을 항상 맨 뒤에 입력

@@ -12,3 +12,11 @@ export function resolveNotificationCronTarget({ privateHostPort, externalBaseUrl
   }
   return target;
 }
+
+export function classbotUrl(baseUrl, path = "/") {
+  const target = new URL(baseUrl);
+  const current = target.pathname.replace(/\/$/, "");
+  const prefix = current.endsWith("/schedule") ? current : `${current}/schedule`;
+  const suffix = path.startsWith("/") ? path : `/${path}`;
+  return new URL(`${prefix}${suffix}`, target.origin);
+}

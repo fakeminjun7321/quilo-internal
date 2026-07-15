@@ -38,13 +38,16 @@ export function loadConfig(overrides = {}) {
     production,
     port: Number(env.PORT || 4310),
     allowedOrigin: env.CLASSBOT_ALLOWED_ORIGIN ?? (production ? "" : "http://localhost:5173"),
-    sessionSecret: env.CLASSBOT_SESSION_SECRET || developmentSecret,
-    adminPassword: env.CLASSBOT_ADMIN_PASSWORD || (production ? "" : "local-admin"),
+    sessionSecret: env.CLASSBOT_SESSION_SECRET || env.SESSION_SECRET || developmentSecret,
+    adminPassword: env.CLASSBOT_ADMIN_PASSWORD || env.ADMIN_PASSWORD || (production ? "" : "local-admin"),
     cronSecret: env.CLASSBOT_CRON_SECRET || (production ? "" : "local-cron-secret"),
     kakaoSkillSecret: env.CLASSBOT_KAKAO_SKILL_SECRET || "",
     storage,
     supabaseUrl: env.SUPABASE_URL || "",
-    supabaseServiceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY || "",
+    // The existing quilolab.com service uses SUPABASE_SERVICE_KEY. Accept the
+    // conventional service-role name as well so standalone development keeps
+    // working without duplicating production credentials.
+    supabaseServiceRoleKey: env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SERVICE_KEY || "",
     classCode: env.CLASSBOT_CLASS_CODE || "2-4",
     className: env.CLASSBOT_CLASS_NAME || "2학년 4반",
     timezone: env.CLASSBOT_TIMEZONE || "Asia/Seoul",
@@ -57,7 +60,7 @@ export function loadConfig(overrides = {}) {
     },
   };
 
-  requiredInProduction(production, "CLASSBOT_SESSION_SECRET", env.CLASSBOT_SESSION_SECRET, 32);
+  requiredInProduction(production, "CLASSBOT_SESSION_SECRET or SESSION_SECRET", config.sessionSecret, 32);
   requiredInProduction(production, "CLASSBOT_ADMIN_PASSWORD", config.adminPassword, 16);
   requiredInProduction(production, "CLASSBOT_CRON_SECRET", config.cronSecret, 32);
   requiredInProduction(production, "CLASSBOT_KAKAO_SKILL_SECRET", config.kakaoSkillSecret, 32);
@@ -92,7 +95,7 @@ export function loadConfig(overrides = {}) {
 
   if (storage === "supabase") {
     requiredInProduction(production, "SUPABASE_URL", config.supabaseUrl);
-    requiredInProduction(production, "SUPABASE_SERVICE_ROLE_KEY", config.supabaseServiceRoleKey);
+    requiredInProduction(production, "SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SERVICE_KEY", config.supabaseServiceRoleKey);
     if (!config.supabaseUrl || !config.supabaseServiceRoleKey) {
       throw new Error("Supabase storage requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY");
     }

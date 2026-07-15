@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { resolveNotificationCronTarget } from "./notification-cron-target.js";
+import { classbotUrl, resolveNotificationCronTarget } from "./notification-cron-target.js";
 
 test("allows Render private HTTP hostport", () => {
   const target = resolveNotificationCronTarget({
@@ -26,5 +26,16 @@ test("allows an HTTP localhost target for local verification", () => {
   assert.equal(
     resolveNotificationCronTarget({ externalBaseUrl: "http://127.0.0.1:4310" }).href,
     "http://127.0.0.1:4310/",
+  );
+});
+
+test("builds the existing Quilo /schedule Cron endpoint without duplicating the prefix", () => {
+  assert.equal(
+    classbotUrl("https://quilolab.com", "/api/cron/notifications").href,
+    "https://quilolab.com/schedule/api/cron/notifications",
+  );
+  assert.equal(
+    classbotUrl("https://quilolab.com/schedule/", "/api/health").href,
+    "https://quilolab.com/schedule/api/health",
   );
 });

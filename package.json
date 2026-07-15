@@ -18,7 +18,7 @@
     "sync:setup": "bash scripts/quilo-sync.sh setup",
     "sync:start": "bash scripts/quilo-sync.sh start",
     "sync:end": "bash scripts/quilo-sync.sh end",
-    "postinstall": "(python3 -m venv .venv && .venv/bin/pip install --upgrade pip && .venv/bin/pip install -r requirements.txt || echo 'WARN: python venv setup failed — hwpx output will be unavailable, docx still works'); bash scripts/install-tectonic.sh; bash scripts/install-pandoc.sh || echo 'WARN: pandoc setup failed — docx→hwpx unavailable'"
+    "postinstall": "npm ci --prefix apps/classbot --include=dev && npm run build --prefix apps/classbot && ((python3 -m venv .venv && .venv/bin/pip install --upgrade pip && .venv/bin/pip install -r requirements.txt || echo 'WARN: python venv setup failed — hwpx output will be unavailable, docx still works'); bash scripts/install-tectonic.sh; bash scripts/install-pandoc.sh || echo 'WARN: pandoc setup failed — docx→hwpx unavailable')"
   },
   "engines": {
     "node": ">=18.0.0"

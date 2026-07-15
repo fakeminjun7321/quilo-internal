@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { loadConfig } from "../server/config.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const projectRoot = path.resolve(root, "../..");
 
 function requireFile(relativePath) {
   const absolutePath = path.join(root, relativePath);
@@ -21,9 +22,10 @@ export function runPreflight({ env = process.env } = {}) {
   const packageJson = JSON.parse(requireFile("package.json"));
   const html = requireFile("dist/index.html");
   const schema = requireFile("db/schema.sql");
-  const blueprint = requireFile("render.yaml");
+  const rootPackage = fs.readFileSync(path.join(projectRoot, "package.json"), "utf8");
+  const rootServer = fs.readFileSync(path.join(projectRoot, "server.js"), "utf8");
 
-  requireIncludes(html, ["Quilo", "/assets/"], "dist/index.html");
+  requireIncludes(html, ["Quilo", "/schedule/assets/"], "dist/index.html");
   requireIncludes(schema, [
     "classbot_schema_meta",
     "classbot_health_check",
@@ -33,12 +35,15 @@ export function runPreflight({ env = process.env } = {}) {
     "classbot_claim_invite",
     "classbot_replace_timetable_day",
   ], "db/schema.sql");
-  requireIncludes(blueprint, [
-    "rootDir: apps/classbot",
-    "healthCheckPath: /api/health",
-    "CLASSBOT_STORAGE",
-    "SUPABASE_SERVICE_ROLE_KEY",
-  ], "render.yaml");
+  requireIncludes(rootPackage, [
+    "npm ci --prefix apps/classbot --include=dev",
+    "npm run build --prefix apps/classbot",
+  ], "../../package.json");
+  requireIncludes(rootServer, [
+    'app.use("/schedule"',
+    'import("./apps/classbot/server/app.js")',
+    "SUPABASE_SERVICE_KEY",
+  ], "../../server.js");
 
   let runtime = null;
   if (env.NODE_ENV === "production") {

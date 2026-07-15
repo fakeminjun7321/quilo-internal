@@ -1,15 +1,9 @@
 import assert from "node:assert/strict";
-import { createRequire } from "node:module";
-import path from "node:path";
 import test from "node:test";
-import { fileURLToPath } from "node:url";
+import express4 from "express4";
 import request from "supertest";
 import { createApp } from "./app.js";
 import { loadConfig } from "./config.js";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const requireFromRoot = createRequire(path.resolve(__dirname, "../../../server.js"));
-const express4 = requireFromRoot("express");
 
 test("기존 Express 4 Quilo 서버의 /schedule namespace에서 API가 동작한다", async () => {
   const child = await createApp({

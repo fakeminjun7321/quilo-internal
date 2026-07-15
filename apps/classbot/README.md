@@ -1,0 +1,66 @@
+# Quilo
+
+2학년 4반의 시간표, 수행평가·과제 일정, 반 공지와 카카오톡 알림을 관리하는 독립 웹 서비스다. 관리자 화면은 데스크톱과 모바일을 지원한다. 학생은 카카오 챗봇에서 이름을 질문 맨 뒤에 붙여 반 공통 일정과 본인의 개인 일정을 조회하며, 초대 코드로 가입한 뒤에는 알림 수신 여부도 바꿀 수 있다.
+
+## 현재 구현 범위
+
+- 오늘 대시보드, 일정, 시간표, 반 공지, 구성원, 알림 기록, 설정
+- 최대 16명 구성원과 1회용 초대 코드 가입
+- 카카오 챗봇 명령: `오늘 일정 학생 1`, `내일 시간표 학생 1`, `이번 주 수행평가 학생 1`, `과제 학생 1`, `공지`, `알림 설정`
+- 조회 답변의 퀵 리플은 조회한 구성원 이름을 맨 뒤에 붙여 다음 질문을 바로 선택할 수 있게 한다.
+- 반 전체 일정과 구성원별 개인 일정, 개인 일정 대상자에게만 보내는 알림
+- 일정 마감·변경, 평일 아침 시간표, 반 공지 Event API 알림
+- Event API 작업 결과 조회와 사용자별 성공·실패 기록
+- 일정·공지 생성 멱등성, 명시적 실패 재시도, 감사 로그
+- 로컬 메모리 저장소와 운영 Supabase 저장소
+
+## 로컬 실행
+
+Node.js 20 이상이 필요하다.
+
+```bash
+cd apps/classbot
+npm ci
+cp .env.example .env
+npm run dev
+```
+
+- 웹: `http://localhost:5173`
+- API: `http://localhost:4310`
+- 개발 기본 관리자 비밀번호: `local-admin`
+- 로컬 메모리 데이터는 서버 재시작 시 초기화된다.
+
+검증은 다음 명령으로 실행한다.
+
+```bash
+npm run check
+npm audit --omit=dev
+# 또는 전체 릴리스 점검
+npm run release:check
+```
+
+## 운영 배포
+
+1. Supabase 프로젝트의 SQL 편집기에서 [`db/schema.sql`](./db/schema.sql)을 적용한다.
+2. Render New Blueprint에서 Blueprint Path를 `apps/classbot/render.yaml`로 지정한다.
+3. Blueprint가 요구하는 관리자 비밀번호와 Supabase 값을 Render 화면에서 입력한다.
+4. `GET /api/health`가 `ok: true`와 `storage: supabase`를 반환하는지 확인한다.
+5. `CLASSBOT_EXPECT_STORAGE=supabase npm run smoke -- https://YOUR_SERVICE`로 읽기 전용 점검을 실행한다.
+
+Blueprint에는 1분 간격의 별도 Render Cron Job이 포함되며 유료 리소스다. 적용 전 현재 Render 요금을 확인한다. 메모리 저장소는 데이터와 중복 방지 기록이 재시작 때 사라지므로 운영에서 사용할 수 없다. 세부 순서와 롤백 기준은 [`docs/deployment.md`](./docs/deployment.md)를 따른다.
+
+## 카카오 챗봇 연결
+
+단톡방에서 사용자가 직접 질문하고 답을 받는 조회 기능에는 배포된 챗봇과 공개 HTTPS 스킬 URL이 필요하다. 사업자 인증·월렛·Event API는 챗봇이 먼저 메시지를 보내는 자동 알림을 켤 때만 추가로 필요하다.
+
+- 스킬 URL: `POST https://YOUR_SERVICE/api/kakao/skill?secret=CLASSBOT_KAKAO_SKILL_SECRET`
+- Event 이름: 관리자센터 값과 `KAKAO_EVENT_NAME`을 정확히 동일하게 설정
+- Event API 활성화: 준비가 끝난 뒤 `KAKAO_EVENT_ENABLED=true`
+- 일정 조회: `오늘 일정 학생 1`처럼 등록된 구성원 이름을 항상 맨 뒤에 입력
+- 학생 가입: 자동 알림이 필요할 때 관리자 화면에서 초대 코드를 만든 뒤 챗봇에 `가입 ABCD-EFGH` 입력
+
+Event API의 POST 성공은 접수 성공일 뿐 실제 전송 완료가 아니다. 이 서비스는 `taskId` 결과 조회 후에만 `sent`로 기록하며, 실패는 자동 재시도하지 않는다. 상세 운영 정책은 [`server/README.md`](./server/README.md), 공식 연동 근거와 열품타 정책은 [`docs/integrations.md`](./docs/integrations.md)를 참고한다.
+
+## 열품타
+
+2026-07-16 기준 일반 개발자가 사용할 수 있는 공식 공개 API·웹훅·OAuth·ICS 내보내기 문서를 확인하지 못했다. 따라서 비공개 API 역공학, 토큰·쿠키 추출, 앱 자동화 또는 화면 스크래핑은 사용하지 않는다. 현재는 Quilo를 학급 일정 원본으로 사용하고 필요한 항목만 열품타 Todo로 직접 옮기는 방식이다.

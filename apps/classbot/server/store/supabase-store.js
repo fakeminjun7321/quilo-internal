@@ -19,7 +19,10 @@ function redactAuditData(value) {
 }
 
 function fetchWithTimeout(url, options = {}) {
-  const timeout = AbortSignal.timeout(10_000);
+  // Free Render instances can need extra time for their first outbound TLS
+  // connection after a cold start. Keep the request bounded without killing
+  // Supabase initialization during that warm-up window.
+  const timeout = AbortSignal.timeout(30_000);
   const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
   return fetch(url, { ...options, signal });
 }

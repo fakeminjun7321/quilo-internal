@@ -8524,6 +8524,10 @@ app.use("/schedule/api/admin/session", (req, _res, next) => {
 });
 
 app.use("/schedule/api/admin", (req, res, next) => {
+  // 세션 확인은 익명 사용자도 통과시켜 classbot이
+  // `{ authenticated: false }`를 반환하게 한다. 그래야 관리 화면이
+  // 연결 오류 대신 기존 Quilo 로그인 링크를 정상적으로 보여준다.
+  if (req.method === "GET" && req.path === "/session") return next();
   // 관리자 API는 기존 Quilo의 fail-closed 권한 재검증을 그대로 통과시킨다.
   // 서버 내부 플래그는 브라우저에서 위조할 수 없고 카카오/health/자산은 영향 없다.
   requireAdmin(req, res, () => {

@@ -6,7 +6,7 @@ services:
     name: quilo-schedule
     runtime: node
     region: singapore
-    plan: starter
+    plan: free
     rootDir: apps/classbot
     buildCommand: npm ci && npm run build
     preDeployCommand: npm run preflight:production
@@ -36,8 +36,6 @@ services:
         value: "false"
       - key: KAKAO_BOT_ID
         value: 6a57ace9fd013545b6416293
-      - key: KAKAO_REST_API_KEY
-        sync: false
       - key: KAKAO_EVENT_NAME
         value: quilo_schedule_notification
       - key: CLASSBOT_CLASS_CODE
@@ -46,25 +44,3 @@ services:
         value: 2학년 4반
       - key: CLASSBOT_TIMEZONE
         value: Asia/Seoul
-
-  - type: cron
-    name: quilo-schedule-notifications
-    runtime: node
-    region: singapore
-    plan: starter
-    rootDir: apps/classbot
-    schedule: "* * * * *"
-    buildCommand: npm ci --omit=dev
-    startCommand: node scripts/run-notification-cron.js
-    autoDeployTrigger: checksPass
-    envVars:
-      - key: CLASSBOT_SERVICE_HOSTPORT
-        fromService:
-          type: web
-          name: quilo-schedule
-          property: hostport
-      - key: CLASSBOT_CRON_SECRET
-        fromService:
-          type: web
-          name: quilo-schedule
-          envVarKey: CLASSBOT_CRON_SECRET

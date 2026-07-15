@@ -14,7 +14,7 @@ npm run release:check
 
 - `apps/classbot`이 Git에 커밋되어 원격 저장소에 올라가 있어야 한다.
 - 기존 Quilo 보고서 Render 서비스의 Build Filter에서 `apps/classbot/**`를 제외한다. 일정 관리 변경 때문에 보고서 서버가 불필요하게 재배포되지 않게 하기 위함이다.
-- [`render.yaml`](../render.yaml)은 Starter Web Service와 유료 Cron Job을 만든다. Render Blueprint를 적용하기 전에 현재 요금을 확인한다.
+- [`render.yaml`](../render.yaml)은 조회용 무료 Web Service 하나만 만든다. 유료 Cron Job은 자동 알림을 실제로 켤 때 별도로 추가한다.
 
 ## 2. Supabase 스키마
 
@@ -41,7 +41,6 @@ Render에서 New Blueprint를 만들고 Blueprint Path를 `apps/classbot/render.
 - `CLASSBOT_ADMIN_PASSWORD`: 16자 이상, 다른 secret과 중복 금지
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `KAKAO_REST_API_KEY`: 연결한 Quilo 비즈앱의 REST API 키. 채팅이나 문서에 복사하지 않고 Render에 직접 입력한다.
 
 세션, Cron, 카카오 스킬 secret은 Render가 각각 독립된 임의 값으로 생성한다. 앱은 Render 런타임을 항상 production으로 취급하며 placeholder, 개발 기본값, HTTP 외부 주소, 중복 secret을 거부한다.
 
@@ -62,7 +61,7 @@ CLASSBOT_EXPECT_STORAGE=supabase npm run smoke -- https://YOUR_CLASSBOT_HOST
 
 Smoke test는 관리자 로그인을 시도하거나 데이터를 생성하지 않는다. 정적 화면, health, 익명 세션, 관리자 API 보호, Cron Bearer 보호, 카카오 스킬 secret 보호만 확인한다.
 
-Cron Job은 Render private network의 `hostport`로 Web Service를 호출한다. 외부 URL과 secret을 로그에 남기지 않으며 성공 시 처리 건수만 출력한다. 1분마다 실행하므로 Render Cron 요금이 발생한다.
+기본 배포에는 Cron Job이 없다. 자동 알림을 나중에 켤 때만 Render private network의 `hostport`로 Web Service를 호출하는 Cron을 추가하고, REST API 키는 Render에 직접 입력한다. 외부 URL과 secret을 로그에 남기지 않으며 1분 주기 Cron 요금은 활성화 전에 확인한다.
 
 ## 5. 카카오 조회 기능 활성화
 

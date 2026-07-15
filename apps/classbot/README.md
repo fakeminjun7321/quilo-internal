@@ -47,7 +47,7 @@ npm run release:check
 4. `GET /api/health`가 `ok: true`와 `storage: supabase`를 반환하는지 확인한다.
 5. `CLASSBOT_EXPECT_STORAGE=supabase npm run smoke -- https://YOUR_SERVICE`로 읽기 전용 점검을 실행한다.
 
-Blueprint에는 1분 간격의 별도 Render Cron Job이 포함되며 유료 리소스다. 적용 전 현재 Render 요금을 확인한다. 메모리 저장소는 데이터와 중복 방지 기록이 재시작 때 사라지므로 운영에서 사용할 수 없다. 세부 순서와 롤백 기준은 [`docs/deployment.md`](./docs/deployment.md)를 따른다.
+기본 Blueprint는 직접 질문·응답용 무료 Web Service 하나만 만든다. 자동 알림이 필요해질 때만 별도의 유료 Cron Job과 Event API 환경변수를 추가한다. 메모리 저장소는 데이터와 중복 방지 기록이 재시작 때 사라지므로 운영에서 사용할 수 없다. 세부 순서와 롤백 기준은 [`docs/deployment.md`](./docs/deployment.md)를 따른다.
 
 ## 카카오 챗봇 연결
 

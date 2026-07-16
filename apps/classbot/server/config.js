@@ -58,6 +58,14 @@ export function loadConfig(overrides = {}) {
       eventName: env.KAKAO_EVENT_NAME || "quilo_schedule_notification",
       apiBase: (env.KAKAO_EVENT_API_BASE || "https://bot-api.kakao.com").replace(/\/$/, ""),
     },
+    googleDrive: {
+      // The folder is created with the connected Quilo Google OAuth token so
+      // the intentionally narrow drive.file scope can access it. An explicit
+      // ID is only an override for a folder already created by the same app.
+      folderId: String(env.CLASSBOT_GOOGLE_DRIVE_FOLDER_ID || "").trim(),
+      folderName: String(env.CLASSBOT_GOOGLE_DRIVE_FOLDER_NAME || "Quilo schedule 자료실").trim(),
+      ownerUserId: String(env.CLASSBOT_GOOGLE_DRIVE_OWNER_USER_ID || "").trim(),
+    },
   };
 
   requiredInProduction(production, "CLASSBOT_SESSION_SECRET or SESSION_SECRET", config.sessionSecret, 32);
@@ -104,6 +112,15 @@ export function loadConfig(overrides = {}) {
 
   if (config.kakao.enabled && (!config.kakao.botId || !config.kakao.restApiKey)) {
     throw new Error("Kakao Event API requires KAKAO_BOT_ID and KAKAO_REST_API_KEY when enabled");
+  }
+  if (config.googleDrive.folderId && !/^[A-Za-z0-9_-]{10,300}$/.test(config.googleDrive.folderId)) {
+    throw new Error("CLASSBOT_GOOGLE_DRIVE_FOLDER_ID is invalid");
+  }
+  if (config.googleDrive.ownerUserId && !/^[A-Za-z0-9_-]{8,300}$/.test(config.googleDrive.ownerUserId)) {
+    throw new Error("CLASSBOT_GOOGLE_DRIVE_OWNER_USER_ID is invalid");
+  }
+  if (!config.googleDrive.folderName || config.googleDrive.folderName.length > 100) {
+    throw new Error("CLASSBOT_GOOGLE_DRIVE_FOLDER_NAME must be between 1 and 100 characters");
   }
   requireProductionHttpsUrl(production, "KAKAO_EVENT_API_BASE", config.kakao.apiBase);
 

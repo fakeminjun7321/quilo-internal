@@ -1,4 +1,4 @@
-import { Beaker, Bell, CheckCircle2, ChevronRight, CircleAlert, Clock3, Edit3, Mic2, PenLine, Radical, Send } from "lucide-react";
+import { Beaker, Bell, CheckCircle2, ChevronRight, CircleAlert, Clock3, Mic2, Radical } from "lucide-react";
 import { dateLabel, dayDistance, eventTargetLabel, notificationTitle, todayWeekday } from "../lib/format.js";
 
 const eventIcons = [Beaker, Mic2, Radical];
@@ -20,17 +20,16 @@ function EventSummary({ events, members, onOpen, onAll }) {
   );
 }
 
-function NotificationSummary({ notifications, onAll }) {
+function NotificationSummary({ notifications }) {
   const recent = [...notifications].sort((a, b) => new Date(b.scheduled_for) - new Date(a.scheduled_for)).slice(0, 3);
   const next = notifications.find((item) => item.status === "reserved");
   return (
     <section className="home-panel">
       <h2>다음 알림</h2>
       <div className="border-list notification-summary">
-        <div className="next-notification"><span className="square-icon"><Bell size={18} /></span><span><strong>{next ? dateLabel(next.scheduled_for) : "예정된 알림 없음"}</strong><small>{next ? notificationTitle(next) : "새 알림을 예약해 보세요"}</small></span><button className="small-button" onClick={onAll}>기록</button></div>
+        <div className="next-notification"><span className="square-icon"><Bell size={18} /></span><span><strong>{next ? dateLabel(next.scheduled_for) : "예정된 알림 없음"}</strong><small>{next ? notificationTitle(next) : "설정된 알림이 없습니다"}</small></span></div>
         <div className="list-subtitle">최근 알림 상태</div>
         {recent.map((item) => <div className="notification-mini-row" key={item.id}><span>{dateLabel(item.scheduled_for)}</span><span>{notificationTitle(item)}</span><NotificationStatus status={item.status} /></div>)}
-        <button className="list-more" onClick={onAll}>알림 기록 전체 보기 <ChevronRight size={17} /></button>
       </div>
     </section>
   );
@@ -49,12 +48,12 @@ export default function TodayPage({ overview, onEditEvent, onNavigate }) {
   const fullDate = new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "long" }).format(new Date());
   return (
     <div className="page today-page">
-      <div className="page-heading split"><div><h1>오늘의 학급 운영</h1><p className="date-emphasis">{fullDate}</p></div><button className="outline-button timetable-edit" onClick={() => onNavigate("timetable")}><PenLine size={19} />시간표 수정</button></div>
+      <div className="page-heading split"><div><h1>오늘의 학급 운영</h1><p className="date-emphasis">{fullDate}</p></div></div>
       <div className="timetable-table compact-table">
         <div className="table-head"><span>교시</span><span>과목</span><span>수업/활동</span><span>담당 선생님</span><span>메모</span><span>작업</span></div>
-        {rows.map((row) => <div className="table-row" key={row.id}><span className="period-cell"><i className="drag-dots">⠿</i>{row.period}교시</span><strong>{row.subject}</strong><span>{row.activity || "-"}</span><span>{row.teacher || "-"}</span><span className="muted-cell">{row.memo || "-"}</span><span><button className="icon-button" onClick={() => onNavigate("timetable")} aria-label={`${row.period}교시 수정`}><Edit3 size={18} /></button></span></div>)}
+        {rows.map((row) => <div className="table-row" key={row.id}><span className="period-cell"><i className="drag-dots">⠿</i>{row.period}교시</span><strong>{row.subject}</strong><span>{row.activity || "-"}</span><span>{row.teacher || "-"}</span><span className="muted-cell">{row.memo || "-"}</span><span>-</span></div>)}
       </div>
-      <div className="home-grid"><EventSummary events={overview.events} members={overview.members} onOpen={onEditEvent} onAll={() => onNavigate("events")} /><NotificationSummary notifications={overview.notifications} onAll={() => onNavigate("notifications")} /></div>
+      <div className="home-grid"><EventSummary events={overview.events} members={overview.members} onOpen={onEditEvent} onAll={() => onNavigate("events")} /><NotificationSummary notifications={overview.notifications} /></div>
     </div>
   );
 }

@@ -88,7 +88,7 @@ test("가입된 본인은 파일 명령에서 이름 suffix를 생략하고 이�
     "다음 일정",
     "수행평가 과제 통합 요약",
     "시간표 전체",
-    "자료 목록",
+    "파일 리스트",
   ]);
 
   const privateImage = await ask(store, "이미지 개인피드백", { userId: "joined-hong", makeFileUrl });
@@ -210,41 +210,37 @@ test("이번 주 남은 일정은 현재 시각 이후 일정만 유지한다", 
   assert.doesNotMatch(text(response), /오늘 지난 일정|다음 주 일정/);
 });
 
-test("도움말은 최초 이름등록, 이름 없는 본인 조회와 명시적 타인 일정 조회를 안내한다", async () => {
+test("첫 인사와 도움말은 코드 없는 이름 등록, 파일 후보 확인과 주요 quick reply를 안내한다", async () => {
   const store = fixture();
   const help = await ask(store, "도움말");
-  assert.match(text(help), /이름등록 ABCD-EFGH/);
-  assert.match(text(help), /본인 일정.*이름을 붙이지 않아도/);
+  assert.match(text(help), /이름 등록 구민준/);
+  assert.match(text(help), /초대 코드는 필요하지 않습니다/);
   assert.match(text(help), /다음 일정/);
   assert.match(text(help), /이번 달 일정/);
   assert.match(text(help), /수행평가 과제 통합 요약/);
   assert.match(text(help), /시간표 전체/);
-  assert.match(text(help), /자료 목록/);
-  assert.match(text(help), /다른 구성원의 일정.*등록 이름/);
+  assert.match(text(help), /파일 리스트/);
+  assert.match(text(help), /후보를 확인/);
+  assert.equal(help.template.quickReplies.some((item) => item.messageText === "파일 리스트"), true);
+
+  const greeting = await ask(store, "안녕하세요");
+  assert.match(text(greeting), /Quilo schedule 사용법/);
+  assert.equal(greeting.template.quickReplies.length, 5);
 
   const response = await ask(store, "이번 달 일정 홍길동");
   assert.equal(response.template.quickReplies.length, 5);
   assert.equal(response.template.quickReplies.every((item) => item.messageText.endsWith("홍길동")), true);
 });
 
-test("이름등록은 기존 가입과 같은 초대코드 매핑을 사용하고 이후 이름 없이 본인 일정을 조회한다", async () => {
+test("이름 등록은 명단의 정확한 이름을 현재 Kakao key에 묶고 이후 이름 없이 본인 일정을 조회한다", async () => {
   const store = fixture();
   const member = store.members[0];
-  let claimInput;
-  store.claimInvite = async (input) => {
-    claimInput = input;
-    member.status = "active";
-    member.kakao_user_key = input.userKey;
-    member.kakao_user_key_type = input.userKeyType;
-    return { ...member };
-  };
   await store.createEvent({ title: "반 전체 일정", due_at: "2026-07-15T16:00:00" });
   await store.createEvent({ member_id: member.id, title: "홍길동 개인 일정", due_at: "2026-07-15T17:00:00" });
 
-  const registration = await ask(store, "이름등록 ABCD-EFGH", { userId: "new-hong-user" });
-  assert.match(text(registration), /이름 등록.*가입이 완료/);
-  assert.equal(claimInput.code, "ABCD-EFGH");
-  assert.equal(claimInput.userKey, "new-hong-user");
+  const registration = await ask(store, "이름 등록 홍길동", { userId: "new-hong-user" });
+  assert.match(text(registration), /홍길동님, 이름 등록이 완료/);
+  assert.equal(store.members[0].kakao_user_key, "new-hong-user");
   assert.equal(registration.template.quickReplies[0].messageText, "오늘 일정");
 
   const response = await ask(store, "오늘 일정", { userId: "new-hong-user" });
@@ -252,6 +248,48 @@ test("이름등록은 기존 가입과 같은 초대코드 매핑을 사용하�
   assert.match(text(response), /반 전체 일정/);
   assert.match(text(response), /홍길동 개인 일정/);
   assert.equal(response.template.quickReplies.every((item) => !item.messageText.includes("홍길동")), true);
+});
+
+test("이름 등록은 없는 이름·동명이인·다른 key의 이름 탈취·한 key의 재바인딩을 거절한다", async () => {
+  const store = fixture();
+  assert.match(text(await ask(store, "이름 등록 없는학생", { userId: "new-user" })), /명단에서.*찾을 수 없습니다/);
+
+  await ask(store, "이름 등록 홍길동", { userId: "hong-key" });
+  assert.match(text(await ask(store, "이름 등록 홍길동", { userId: "attacker-key" })), /이미 다른 카카오 계정/);
+  assert.match(text(await ask(store, "이름 등록 김학생", { userId: "hong-key" })), /이미 다른 구성원/);
+
+  const duplicateStore = fixture();
+  duplicateStore.members[2].display_name = "홍길동";
+  assert.match(text(await ask(duplicateStore, "이름 등록 홍길동", { userId: "new-user" })), /동명이인/);
+});
+
+test("정확한 파일명·별칭은 바로 열고 오타는 후보 확인 뒤 네/응으로 첫 후보를 연다", async () => {
+  const store = fileFixture();
+  store.files.push(
+    { id: "worksheet-main", alias: "김종수T 학습지", filename: "김종수T_학습지.pdf", description: "수업 자료", mime_type: "application/pdf", size_bytes: 2048, member_id: null, status: "active" },
+    { id: "worksheet-answer", alias: "김종수T 학습지 정답", filename: "김종수T_학습지_정답.pdf", description: "정답", mime_type: "application/pdf", size_bytes: 2048, member_id: null, status: "active" },
+  );
+  const makeFileUrl = async (file) => `https://files.example.test/${file.id}`;
+
+  const exact = await ask(store, "김종수T 학습지", { userId: "joined-hong", makeFileUrl });
+  assert.equal(exact.template.outputs[0].textCard.buttons[0].webLinkUrl, "https://files.example.test/worksheet-main");
+
+  const suggested = await ask(store, "김종수T 학습", { userId: "joined-hong", makeFileUrl });
+  assert.match(text(suggested), /이게 맞나요|맞나요/);
+  assert.match(text(suggested), /김종수T 학습지/);
+  assert.equal(suggested.template.quickReplies.some((item) => item.messageText === "맞아요"), true);
+
+  const confirmed = await ask(store, "응", { userId: "joined-hong", makeFileUrl });
+  assert.equal(confirmed.template.outputs[0].textCard.buttons[0].webLinkUrl, "https://files.example.test/worksheet-main");
+  assert.equal(await store.getPendingFileSelection(store.members[0].id), null);
+});
+
+test("파일 리스트 명령은 자료 목록과 같은 범위의 파일명을 보여준다", async () => {
+  const store = fileFixture();
+  const response = await ask(store, "파일 리스트", { userId: "joined-hong" });
+  assert.match(text(response), /홍길동님의 자료 목록/);
+  assert.match(text(response), /좌석표|가정통신문/);
+  assert.doesNotMatch(text(response), /김학생자료/);
 });
 
 test("active 요청자는 본인 개인 조회를 이름 없이 쓰고 다른 이름 조회에서는 반 일정만 본다", async () => {
@@ -278,7 +316,7 @@ test("active 요청자는 본인 개인 조회를 이름 없이 쓰고 다른 �
       "다음 일정",
       "수행평가 과제 통합 요약",
       "시간표 전체",
-      "자료 목록",
+      "파일 리스트",
     ]);
   }
 
@@ -297,7 +335,7 @@ test("등록된 요청자의 알림·공지 응답 Quick Reply에도 이름 suff
     "다음 일정",
     "수행평가 과제 통합 요약",
     "시간표 전체",
-    "자료 목록",
+    "파일 리스트",
   ]);
 
   const notices = await ask(store, "공지", { userId: "joined-hong" });

@@ -73,10 +73,10 @@ function PortalEventModal({ open, date, isAdmin, saving, error, onClose, onSave 
   </form></section></div>;
 }
 
-export default function PortalCalendar({ onOverview }) {
-  const [view, setView] = useState("month");
+export default function PortalCalendar({ onOverview, initialView = "month" }) {
+  const [view, setView] = useState(initialView);
   const [cursor, setCursor] = useState(() => new Date());
-  const [data, setData] = useState({ member: null, classroom: null, timetable: [], events: [], notices: [] });
+  const [data, setData] = useState({ member: null, classroom: null, timetable: [], events: [], notices: [], members: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
@@ -92,7 +92,7 @@ export default function PortalCalendar({ onOverview }) {
     setLoading(true); setError("");
     api.portalOverview(from, to).then((result) => {
       if (cancelled) return;
-      const next = { member: result.member || null, classroom: result.classroom || null, timetable: result.timetable || [], events: (result.events || []).filter((event) => event.status !== "cancelled"), notices: result.notices || [] };
+      const next = { member: result.member || null, classroom: result.classroom || null, timetable: result.timetable || [], events: (result.events || []).filter((event) => event.status !== "cancelled"), notices: result.notices || [], members: result.members || [] };
       setData(next); onOverview?.(next);
     }).catch((err) => { if (!cancelled) setError(err.message || "일정을 불러오지 못했습니다."); }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };

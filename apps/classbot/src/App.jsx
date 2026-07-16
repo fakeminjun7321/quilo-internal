@@ -5,11 +5,9 @@ import { BottomNavigation, Sidebar, Topbar } from "./components/AppShell.jsx";
 import { EventDrawer, NoticeDrawer } from "./components/Editors.jsx";
 import TodayPage from "./pages/TodayPage.jsx";
 import EventsPage from "./pages/EventsPage.jsx";
-import TimetablePage from "./pages/TimetablePage.jsx";
 import NoticesPage from "./pages/NoticesPage.jsx";
 import FilesPage from "./pages/FilesPage.jsx";
 import MembersPage from "./pages/MembersPage.jsx";
-import NotificationsPage from "./pages/NotificationsPage.jsx";
 import SettingsPage from "./pages/SettingsPage.jsx";
 import PortalLogin from "./portal/PortalLogin.jsx";
 import StudentPortal from "./portal/StudentPortal.jsx";
@@ -40,7 +38,7 @@ export default function App() {
   const [overview, setOverview] = useState(null);
   const [active, setActive] = useState("today");
   const [drawer, setDrawer] = useState({ type: null, item: null, open: false });
-  const [fileLibrary, setFileLibrary] = useState({ items: [], loading: false, loaded: false, error: "" });
+  const [fileLibrary, setFileLibrary] = useState({ items: [], loading: false, loaded: false, error: "", drive: null });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
@@ -74,8 +72,18 @@ export default function App() {
   const loadFiles = async () => {
     setFileLibrary((current) => ({ ...current, loading: true, error: "" }));
     try {
-      const result = await api.files();
-      setFileLibrary({ items: result.items || result.files || [], loading: false, loaded: true, error: "" });
+      const [result, drive] = await Promise.all([
+        api.files(),
+        api.driveStatus().catch(() => ({ configured: false, connected: false, reason: "status_unavailable" })),
+      ]);
+      const items = result.items || result.files || [];
+      setFileLibrary({
+        items,
+        loading: false,
+        loaded: true,
+        error: "",
+        drive: { ...drive, item_count: items.filter((item) => item.provider === "google_drive").length },
+      });
     } catch (err) {
       setFileLibrary((current) => ({ ...current, loading: false, loaded: false, error: err.message || "자료 목록 요청에 실패했습니다." }));
     }
@@ -90,7 +98,7 @@ export default function App() {
   const logoutPortal = async () => {
     if (busy) return;
     setBusy(true); setError("");
-    try { await api.portalLogout(); setPortalSession({ authenticated: false }); }
+    try { await api.quiloLogout(); window.location.assign("/"); }
     catch (err) { setError(err.message || "로그아웃하지 못했습니다."); }
     finally { setBusy(false); }
   };
@@ -112,17 +120,22 @@ export default function App() {
   const uploadFile = async (input) => { if (busy) return false; setBusy(true); try { const result = await api.uploadFile(input); setFileLibrary((current) => ({ ...current, items: [result.item, ...current.items], loaded: true, error: "" })); flash("자료를 업로드했습니다."); return true; } catch (err) { flash(err.message); return false; } finally { setBusy(false); } };
   const deleteFile = async (item) => { if (busy || !window.confirm(`'${item.alias || item.original_name || "자료"}'을 삭제할까요?`)) return; setBusy(true); try { await api.deleteFile(item.id); setFileLibrary((current) => ({ ...current, items: current.items.filter((file) => file.id !== item.id) })); flash("자료를 삭제했습니다."); } catch (err) { flash(err.message); } finally { setBusy(false); } };
   const copyFileLink = async (item) => { try { await copyText(api.fileShareUrl(item)); flash("자료 링크를 복사했습니다."); } catch { flash("링크를 복사하지 못했습니다."); } };
+  const syncDrive = async () => {
+    if (busy) return;
+    setBusy(true);
+    try { await api.syncDrive(); await loadFiles(); flash("Google Drive 자료를 동기화했습니다."); }
+    catch (err) { flash(err.message || "Google Drive를 동기화하지 못했습니다."); }
+    finally { setBusy(false); }
+  };
   const navigate = (id) => { setActive(id); if (id === "files" && !fileLibrary.loaded && !fileLibrary.loading) loadFiles(); if (drawer.open) closeDrawer(); };
 
   const screen = useMemo(() => {
     if (!overview) return null;
     if (active === "today") return <TodayPage overview={overview} onEditEvent={(item) => setDrawer({ type: "event", item, open: true })} onNavigate={navigate} />;
     if (active === "events") return <EventsPage events={overview.events} members={overview.members} onEdit={(item) => setDrawer({ type: "event", item, open: true })} />;
-    if (active === "timetable") return <TimetablePage timetable={overview.timetable} saving={busy} onSave={async (weekday, items) => { if (busy) return; setBusy(true); try { const result = await api.saveTimetable(weekday, items); setOverview((current) => ({ ...current, timetable: [...current.timetable.filter((item) => item.weekday !== weekday), ...result.items] })); flash(`${["", "월", "화", "수", "목", "금"][weekday]}요일 시간표를 저장했습니다.`); } catch (err) { flash(err.message); } finally { setBusy(false); } }} />;
-    if (active === "notices") return <NoticesPage notices={overview.notices} onEdit={(item) => setDrawer({ type: "notice", item, open: true })} onSend={async (id) => { if (busy) return; setBusy(true); try { const result = await api.sendNotice(id); patchCollection("notices", result.item); flash("게시 요청을 접수했습니다. 전송 결과는 알림 기록에서 확인하세요."); } catch (err) { flash(err.message); } finally { setBusy(false); } }} />;
-    if (active === "files") return <FilesPage files={fileLibrary.items} members={overview.members} busy={busy} loading={fileLibrary.loading} error={fileLibrary.error} onUpload={uploadFile} onDelete={deleteFile} onCopy={copyFileLink} onRefresh={loadFiles} downloadUrl={api.fileDownloadUrl} />;
+    if (active === "notices") return <NoticesPage notices={overview.notices} onEdit={(item) => setDrawer({ type: "notice", item, open: true })} onSend={async (id) => { if (busy) return; setBusy(true); try { const result = await api.sendNotice(id); patchCollection("notices", result.item); flash("게시 요청을 접수했습니다. 전송 상태는 오늘 화면에서 확인할 수 있습니다."); } catch (err) { flash(err.message); } finally { setBusy(false); } }} />;
+    if (active === "files") return <FilesPage files={fileLibrary.items} members={overview.members} busy={busy} loading={fileLibrary.loading} error={fileLibrary.error} drive={fileLibrary.drive} onDriveSync={syncDrive} onUpload={uploadFile} onDelete={deleteFile} onCopy={copyFileLink} onRefresh={loadFiles} downloadUrl={api.fileDownloadUrl} />;
     if (active === "members") return <MembersPage members={overview.members} classroom={overview.classroom} busy={busy} onCreate={async (input) => { if (busy) return false; setBusy(true); try { const result = await api.createMember(input); addCollection("members", result.item); flash("구성원을 추가했습니다."); return true; } catch (err) { flash(err.message); return false; } finally { setBusy(false); } }} onUpdate={async (id, patch) => { if (busy) return; setBusy(true); try { const result = await api.updateMember(id, patch); patchCollection("members", result.item); } catch (err) { flash(err.message); } finally { setBusy(false); } }} onInvite={async (id) => { if (busy) return; setBusy(true); try { const result = await api.inviteMember(id); await navigator.clipboard?.writeText(result.invite_url || result.code || ""); flash("초대 링크를 복사했습니다."); } catch (err) { flash(err.message); } finally { setBusy(false); } }} />;
-    if (active === "notifications") return <NotificationsPage notifications={overview.notifications} busy={busy} onRefresh={async () => { if (busy) return; setBusy(true); try { const result = await api.notifications(); setOverview((current) => ({ ...current, notifications: result.items })); flash("알림 상태를 새로고침했습니다."); } catch (err) { flash(err.message); } finally { setBusy(false); } }} onTest={async () => { if (busy) return; setBusy(true); try { const result = await api.testNotification(); if (result.item) addCollection("notifications", result.item); flash("테스트 알림 요청을 접수했습니다. 아직 전송 완료 상태는 아닙니다."); } catch (err) { flash(err.message); } finally { setBusy(false); } }} />;
     return <SettingsPage classroom={overview.classroom} saving={busy} onSave={async (patch) => { if (busy) return; setBusy(true); try { const result = await api.updateSettings(patch); setOverview((current) => ({ ...current, classroom: result.item })); flash("설정을 저장했습니다."); } catch (err) { flash(err.message); } finally { setBusy(false); } }} onLogout={async () => { await api.logout(); setSession({ authenticated: false }); setPortalSession({ authenticated: false }); setOverview(null); }} />;
   }, [active, overview, busy, drawer.item, fileLibrary]);
 
@@ -131,12 +144,12 @@ export default function App() {
   if (!session) return <ConnectionError message="관리자 세션을 확인하지 못했습니다." onRetry={load} />;
   if (!session.authenticated) {
     if (portalSession?.authenticated) return <StudentPortal session={portalSession} onLogout={logoutPortal} />;
-    return <PortalLogin onLogin={loginPortal} busy={busy} error={error} />;
+    return <PortalLogin onLogin={loginPortal} busy={busy} error={error} session={portalSession} embedded={api.embedded} />;
   }
   if (!overview) return <div className="app-loading"><AlertTriangle /><span>{error || "데이터를 불러오지 못했습니다."}</span><button className="outline-button" onClick={load}>다시 시도</button></div>;
   return (
     <div className={`app-shell ${drawer.open ? "drawer-open" : ""}`}>
-      <Sidebar active={active} onNavigate={navigate} classroom={overview.classroom} memberCount={overview.members.length} />
+      <Sidebar active={active} onNavigate={navigate} classroom={overview.classroom} memberCount={overview.members.length} profileName={session.actor?.name || "구민준"} profileRole="관리자" />
       <div className="workspace"><Topbar classroom={overview.classroom} action={actions[active]} onAction={openCreate} demoMode={session.demo || api.mode === "local"} /><main className="main-content">{screen}</main></div>
       <EventDrawer open={drawer.open && drawer.type === "event"} item={drawer.item} members={overview.members} onClose={closeDrawer} onSave={saveEvent} onDelete={deleteEvent} busy={busy} />
       <NoticeDrawer open={drawer.open && drawer.type === "notice"} item={drawer.item} onClose={closeDrawer} onSave={saveNotice} onDelete={deleteNotice} busy={busy} />

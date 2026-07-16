@@ -2,9 +2,26 @@ import { AlertTriangle, ArrowRight, ShieldCheck, UserRoundCheck } from "lucide-r
 import { useState } from "react";
 import { Brand } from "../components/AppShell.jsx";
 
-export default function PortalLogin({ busy, error, onLogin }) {
+export default function PortalLogin({ busy, error, onLogin, session, embedded = false }) {
   const [name, setName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+  if (embedded) {
+    const mismatched = session?.reason === "roster_mismatch";
+    return (
+      <main className="portal-login-page">
+        <section className="portal-login-card">
+          <Brand />
+          <div className="portal-login-icon"><UserRoundCheck size={27} /></div>
+          <h1>{mismatched ? "학급 구성원 확인 필요" : "Quilo 로그인이 필요합니다"}</h1>
+          <p>{mismatched
+            ? "현재 Quilo 계정 이름이 2학년 4반 명단과 일치하지 않습니다. 가입한 계정의 이름을 확인해 주세요."
+            : "Quilo에 로그인하면 등록된 학급 이름을 자동으로 확인해 바로 입장합니다."}</p>
+          <div className="portal-privacy"><ShieldCheck size={18} /><p>별도의 이름·초대 코드 입력 없이 기존 Quilo 로그인 세션만 사용합니다.</p></div>
+          <a className="primary-button wide" href={mismatched ? "/#settings" : (session?.login_url || "/login.html?next=/schedule/")}>{mismatched ? "Quilo 계정 확인" : "Quilo 로그인"}<ArrowRight size={18} /></a>
+        </section>
+      </main>
+    );
+  }
   return (
     <main className="portal-login-page">
       <section className="portal-login-card">

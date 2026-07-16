@@ -265,6 +265,7 @@ export class MemoryStore {
     this.auditLogs = [];
     this.files = [];
     this.fileBodies = new Map();
+    this.kakaoStates = new Map();
   }
 
   async healthCheck() {
@@ -399,6 +400,36 @@ export class MemoryStore {
     return clone(member);
   }
 
+  async claimMemberByName({ displayName, userKey, userKeyType = "botUserKey" }) {
+    const name = String(displayName || "").trim();
+    const normalizedKey = String(userKey || "").trim();
+    if (!name) throw new Error("명단의 이름을 정확히 입력해 주세요.");
+    if (name.length > 40) throw new Error("명단의 이름을 40자 이내로 정확히 입력해 주세요.");
+    if (!normalizedKey) throw new Error("카카오 사용자 식별값이 필요합니다.");
+    if (!["botUserKey", "plusfriendUserKey", "appUserId"].includes(userKeyType)) throw new Error("올바른 카카오 사용자 식별값 유형이 아닙니다.");
+
+    const matches = this.members.filter((item) => item.status !== "left" && String(item.display_name || "").trim() === name);
+    if (matches.length !== 1) {
+      throw new Error(matches.length > 1
+        ? `명단에 '${name}' 동명이인이 있어 이름만으로 등록할 수 없습니다.`
+        : `명단에서 '${name}'을(를) 찾을 수 없습니다. 이름을 정확히 입력해 주세요.`);
+    }
+    const member = matches[0];
+    if (member.status === "disabled") throw new Error("비활성 구성원은 이름을 등록할 수 없습니다.");
+    const boundToKey = this.members.find((item) => item.kakao_user_key === normalizedKey);
+    if (boundToKey && boundToKey.id !== member.id) throw new Error("이미 다른 구성원으로 등록된 카카오 계정입니다.");
+    if (member.kakao_user_key && member.kakao_user_key !== normalizedKey) throw new Error("이미 다른 카카오 계정에 등록된 이름입니다. 관리자에게 문의해 주세요.");
+    if (member.kakao_user_key === normalizedKey && member.status === "active") return clone(member);
+
+    member.kakao_user_key = normalizedKey;
+    member.kakao_user_key_type = userKeyType;
+    member.status = "active";
+    member.joined_at ||= nowIso();
+    member.updated_at = nowIso();
+    await this.appendAudit({ actor: member.id, action: "member.name_claim", entityType: "member", entityId: member.id, after: { status: "active" } });
+    return clone(member);
+  }
+
   async claimPortalInvite({ memberId, code }) {
     const member = this.members.find((item) => item.id === memberId);
     const codeHash = hashInviteCode(code);
@@ -423,6 +454,31 @@ export class MemoryStore {
   async findMemberByUserKey(userKey) {
     const member = this.members.find((item) => item.kakao_user_key === userKey && item.status === "active");
     return member ? clone(member) : null;
+  }
+
+  async setPendingFileSelection({ memberId, fileIds, expiresAt }) {
+    const member = this.members.find((item) => item.id === memberId && item.status === "active");
+    const ids = [...new Set((Array.isArray(fileIds) ? fileIds : []).map(String).filter(Boolean))].slice(0, 3);
+    const expires = new Date(expiresAt);
+    if (!member) throw new Error("구성원을 찾을 수 없습니다.");
+    if (!ids.length || Number.isNaN(expires.getTime())) throw new Error("파일 후보 상태가 올바르지 않습니다.");
+    const state = { class_id: this.classroom.id, member_id: memberId, file_ids: ids, expires_at: expires.toISOString() };
+    this.kakaoStates.set(memberId, state);
+    return clone(state);
+  }
+
+  async getPendingFileSelection(memberId) {
+    const state = this.kakaoStates.get(memberId);
+    if (!state) return null;
+    if (new Date(state.expires_at).getTime() <= Date.now()) {
+      this.kakaoStates.delete(memberId);
+      return null;
+    }
+    return clone(state);
+  }
+
+  async clearPendingFileSelection(memberId) {
+    this.kakaoStates.delete(memberId);
   }
 
   async listTimetable({ weekday } = {}) {

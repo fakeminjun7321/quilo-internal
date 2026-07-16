@@ -26,6 +26,7 @@
     ["vibe-coding", "바이브 코딩 생성기", "아이디어에서 프로젝트 구조를 설계합니다.", "/vibe-coding.html", "pro", "pro"],
     ["quilo-code", "Quilo Code", "코드를 생성하고 수정하며 미리 봅니다.", "/editor.html", "pro", "pro"],
     ["file-chat", "파일 챗봇", "업로드한 파일을 바탕으로 대화합니다.", "/filechat.html", "pro", "pro"],
+    ["quilo-schedule", "Quilo schedule", "등록된 2학년 4반 구성원의 시간표와 일정을 확인합니다.", "/schedule/", "member", "active"],
     ["pdf-translate", "PDF 통번역", "문서 구조를 지키며 번역하고 재조판합니다.", "/translate.html", "max", "max"],
     ["cap-translate", "Capstone 번역", "측정 구조를 보존해 Capstone 파일을 번역합니다.", "/?report=cap-translate", "pro", "pro"],
     ["file-convert", "파일 및 PDF 도구", "파일, 이미지, PDF를 브라우저에서 처리합니다.", "/tools/index.html", "public", "active"],
@@ -79,6 +80,7 @@
     "table-analysis": ["엑셀", "excel", "xlsx", "csv", "표 분석", "데이터 분석"],
     graph: ["차트", "그래프", "산점도", "막대그래프"],
     "file-chat": ["문서 질문", "파일 대화", "pdf 챗"],
+    "quilo-schedule": ["학급 일정", "2학년 4반", "시간표", "반 공지", "학급 자료실"],
     "my-jobs": ["작업 내역", "생성 현황", "진행 상태"],
     "my-files": ["파일함", "생성 파일", "다운로드"],
   });
@@ -130,6 +132,7 @@
           { title: "수행평가", items: items(["phys-inquiry", "math-inquiry", "coding-test"]) },
           { title: "시험 대비", items: items(["problem-set", "vocabulary-book", "eng-exam-prep", "korean-lit-exam", "phys-mock-exam"]) },
           { title: "심화 학습", items: items(["physics-studio", "relativity-study", "file-chat"]) },
+          { title: "학급", items: items(["quilo-schedule"]) },
         ],
         all: { title: "학습 기능 전체 보기", path: "/developers.html#catalog" },
       },

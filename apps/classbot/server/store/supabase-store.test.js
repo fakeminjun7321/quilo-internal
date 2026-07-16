@@ -70,3 +70,40 @@ test("개인 시간표 교체는 학급과 구성원을 함께 scope한 원자�
   }]);
   assert.deepEqual(audits[0].after, { member_id: "member-1", row_count: 1 });
 });
+
+test("Kakao key 조회와 파일 후보 저장은 Supabase 결과를 store 계약 형태로 반환한다", async () => {
+  const store = Object.create(SupabaseStore.prototype);
+  store.classroom = { id: "class-private" };
+  const member = { id: "member-1", display_name: "홍길동", status: "active" };
+  const savedState = {
+    class_id: "class-private",
+    member_id: "member-1",
+    pending_file_ids: ["gdrive_signed-file-id", "supabase-file-id"],
+    pending_expires_at: "2026-07-16T12:00:00.000Z",
+  };
+  store.client = {
+    from(table) {
+      const query = {
+        select() { return query; },
+        eq() { return query; },
+        upsert() { return query; },
+        async maybeSingle() { return { data: member, error: null }; },
+        async single() { return { data: savedState, error: null }; },
+      };
+      assert.ok(["classbot_members", "classbot_kakao_states"].includes(table));
+      return query;
+    },
+  };
+
+  assert.deepEqual(await store.findMemberByUserKey("kakao-key"), member);
+  assert.deepEqual(await store.setPendingFileSelection({
+    memberId: "member-1",
+    fileIds: savedState.pending_file_ids,
+    expiresAt: savedState.pending_expires_at,
+  }), {
+    class_id: "class-private",
+    member_id: "member-1",
+    file_ids: savedState.pending_file_ids,
+    expires_at: savedState.pending_expires_at,
+  });
+});

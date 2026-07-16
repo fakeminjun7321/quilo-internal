@@ -28,6 +28,10 @@ function fetchWithTimeout(url, options = {}) {
   return fetch(url, { ...options, signal });
 }
 
+function isTransientSupabaseConnectionError(error) {
+  return /fetch failed|network|econnreset|enotfound|eai_again|und_err/i.test(String(error?.message || error));
+}
+
 const FILE_BUCKET = "classbot-files";
 const FILE_MIME_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/webp", "image/gif"];
 const FILE_EXTENSIONS = new Map([
@@ -106,9 +110,23 @@ export class SupabaseStore {
       global: { fetch: fetchWithTimeout },
     });
     this.classroom = null;
+    this.initializationRetryDelays = config.supabaseInitializationRetryDelaysMs || [1_000, 2_500, 5_000];
   }
 
   async initialize() {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        await this.initializeOnce();
+        return;
+      } catch (error) {
+        const delay = this.initializationRetryDelays[attempt];
+        if (delay === undefined || !isTransientSupabaseConnectionError(error)) throw error;
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  async initializeOnce() {
     const existing = unwrap(
       await this.client.from("classbot_classes").select("*").eq("code", this.config.classCode).maybeSingle(),
       "학급 조회 실패",

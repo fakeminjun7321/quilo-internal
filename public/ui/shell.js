@@ -86,6 +86,7 @@
   });
 
   const SEARCH_PINNED = ["vocabulary-book", "problem-set", "phys-result", "chem-pre", "pdf-translate", "file-convert"];
+  const HIDDEN_FEATURE_IDS = new Set(["quilo-schedule"]);
 
   const escapeHtml = (value) => String(value == null ? "" : value)
     .replaceAll("&", "&amp;")
@@ -96,6 +97,7 @@
   const featureMap = new Map(FALLBACK_FEATURES.map((feature) => [feature.id, feature]));
 
   function feature(id) {
+    if (HIDDEN_FEATURE_IDS.has(id)) return null;
     return featureMap.get(id) || null;
   }
 
@@ -168,7 +170,7 @@
         ],
         all: { title: "이용 가이드 열기", path: "/guide.html" },
       },
-    ];
+    ].map((group) => ({ ...group, sections: group.sections.filter((section) => section.items.length) }));
   }
 
   function itemMarkup(item) {
@@ -415,6 +417,7 @@
   function searchFeatures(query) {
     if (!normalizeSearch(query)) return SEARCH_PINNED.map(feature).filter(Boolean);
     return [...featureMap.values()]
+      .filter((item) => !HIDDEN_FEATURE_IDS.has(item.id))
       .map((item) => ({ item, score: searchScore(item, query) }))
       .filter(({ score }) => score >= 38)
       .sort((a, b) => b.score - a.score || a.item.title.localeCompare(b.item.title, "ko"))

@@ -1,7 +1,9 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const http = require("node:http");
+const path = require("node:path");
 const test = require("node:test");
 const express = require("express");
 const {
@@ -35,6 +37,15 @@ test("catalog represents the broad Quilo product, not only reports", () => {
   for (const id of ["dropbox", "google-drive", "google-docs", "notion"]) {
     assert.equal(features.find((feature) => feature.id === id).path, "/#integrations");
   }
+});
+
+test("Quilo schedule stays available by direct URL but is hidden from the Quilo site shell", () => {
+  const schedule = listFeatures().find((feature) => feature.id === "quilo-schedule");
+  const shell = fs.readFileSync(path.join(__dirname, "../public/ui/shell.js"), "utf8");
+  assert.equal(schedule.path, "/schedule/");
+  assert.match(shell, /HIDDEN_FEATURE_IDS = new Set\(\["quilo-schedule"\]\)/);
+  assert.match(shell, /if \(HIDDEN_FEATURE_IDS\.has\(id\)\) return null/);
+  assert.match(shell, /filter\(\(item\) => !HIDDEN_FEATURE_IDS\.has\(item\.id\)\)/);
 });
 
 test("scope normalization rejects unknown permissions", () => {

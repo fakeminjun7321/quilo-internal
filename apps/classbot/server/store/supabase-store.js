@@ -135,7 +135,7 @@ export class SupabaseStore {
   async healthCheck() {
     await this.ensureClassroom();
     const version = unwrap(await this.client.rpc("classbot_health_check"), "학급 저장소 상태 확인 실패");
-    if (Number(version) !== 3) throw new Error("지원하지 않는 Classbot 데이터베이스 스키마입니다.");
+    if (Number(version) !== 4) throw new Error("지원하지 않는 Classbot 데이터베이스 스키마입니다.");
     return { ok: true, storage: "supabase" };
   }
 
@@ -240,10 +240,10 @@ export class SupabaseStore {
     unwrap(
       await this.client
         .from("classbot_invites")
-        .update({ used_at: new Date().toISOString() })
+        .update({ used_at: new Date().toISOString(), portal_used_at: new Date().toISOString() })
         .eq("class_id", classroom.id)
         .eq("member_id", memberId)
-        .is("used_at", null),
+        .or("used_at.is.null,portal_used_at.is.null"),
       "기존 초대 코드 정리 실패",
     );
     const invite = unwrap(
@@ -282,13 +282,13 @@ export class SupabaseStore {
     const invite = unwrap(
       await this.client
         .from("classbot_invites")
-        .update({ used_at: usedAt })
+        .update({ portal_used_at: usedAt })
         .eq("class_id", classroom.id)
         .eq("member_id", memberId)
         .eq("code_hash", hashInviteCode(code))
-        .is("used_at", null)
+        .is("portal_used_at", null)
         .gt("expires_at", usedAt)
-        .select("id,member_id,used_at")
+        .select("id,member_id,portal_used_at")
         .maybeSingle(),
       "학생 포털 초대 코드 확인 실패",
     );
@@ -300,7 +300,7 @@ export class SupabaseStore {
       action: "portal.login",
       entityType: "invite",
       entityId: invite.id,
-      after: { member_id: member.id, used_at: invite.used_at },
+      after: { member_id: member.id, portal_used_at: invite.portal_used_at },
     }).catch(() => {});
     return member;
   }

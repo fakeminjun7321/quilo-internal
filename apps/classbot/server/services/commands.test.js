@@ -27,7 +27,7 @@ function text(response) {
   return response.template.outputs[0].simpleText.text;
 }
 
-test("익명 그룹챗 개인 조회는 반 전체와 대상 개인 일정만 반환하고 개인화 Quick Reply를 붙인다", async () => {
+test("익명 그룹챗 이름 조회는 반 전체 일정만 반환하고 개인 일정은 숨긴다", async () => {
   const store = fixture();
   await store.createEvent({ title: "반 전체 준비", due_at: "2026-07-15T16:00:00" });
   await store.createEvent({ member_id: store.members[0].id, title: "홍길동 개인 준비", due_at: "2026-07-15T17:00:00" });
@@ -36,8 +36,7 @@ test("익명 그룹챗 개인 조회는 반 전체와 대상 개인 일정만 �
   const response = await ask(store, "오늘 일정 홍길동");
   assert.match(text(response), /홍길동님의 7월 15일 수요일 일정/);
   assert.match(text(response), /반 전체 준비/);
-  assert.match(text(response), /홍길동 개인 준비/);
-  assert.doesNotMatch(text(response), /김학생 개인 준비/);
+  assert.doesNotMatch(text(response), /홍길동 개인 준비|김학생 개인 준비/);
   const replies = response.template.quickReplies;
   assert.deepEqual(replies.map((item) => item.messageText), [
     "오늘 일정 홍길동",
@@ -141,26 +140,26 @@ test("파일 형식·별칭이 다르거나 URL 발급기가 없으면 안전한
 });
 
 test("다음 일정은 현재 이후 가장 빠른 반 전체 또는 개인 일정 한 건만 보여준다", async () => {
-  const store = fixture();
+  const store = fileFixture();
   await store.createEvent({ title: "이미 지난 반 일정", due_at: "2026-07-15T10:00:00+09:00" });
   await store.createEvent({ member_id: store.members[1].id, title: "다른 학생 다음 일정", due_at: "2026-07-15T13:00:00+09:00" });
   await store.createEvent({ member_id: store.members[0].id, title: "가장 가까운 개인 일정", due_at: "2026-07-15T13:30:00+09:00" });
   await store.createEvent({ title: "그다음 반 일정", due_at: "2026-07-15T14:00:00+09:00" });
 
-  const response = await ask(store, "다음 일정 홍길동");
+  const response = await ask(store, "다음 일정", { userId: "joined-hong" });
   assert.match(text(response), /홍길동님의 다음 일정/);
   assert.match(text(response), /가장 가까운 개인 일정/);
   assert.doesNotMatch(text(response), /이미 지난 반 일정|다른 학생 다음 일정|그다음 반 일정/);
 });
 
 test("이번 달 일정은 서울 달력 경계 안의 반 전체와 본인 일정만 보여준다", async () => {
-  const store = fixture();
+  const store = fileFixture();
   await store.createEvent({ title: "7월 반 일정", due_at: "2026-07-01T00:00:00+09:00" });
   await store.createEvent({ member_id: store.members[0].id, title: "7월 개인 일정", due_at: "2026-07-31T23:59:00+09:00" });
   await store.createEvent({ member_id: store.members[1].id, title: "7월 타인 일정", due_at: "2026-07-20T12:00:00+09:00" });
   await store.createEvent({ title: "8월 일정", due_at: "2026-08-01T00:00:00+09:00" });
 
-  const response = await ask(store, "이번 달 일정 홍길동");
+  const response = await ask(store, "이번 달 일정", { userId: "joined-hong" });
   assert.match(text(response), /홍길동님의 2026년 7월 일정/);
   assert.match(text(response), /7월 반 일정/);
   assert.match(text(response), /7월 개인 일정/);
@@ -168,12 +167,12 @@ test("이번 달 일정은 서울 달력 경계 안의 반 전체와 본인 일�
 });
 
 test("수행평가·과제 통합 요약은 두 유형만 함께 보여준다", async () => {
-  const store = fixture();
+  const store = fileFixture();
   await store.createEvent({ category: "assessment", title: "물리 수행평가", due_at: "2026-07-16T13:00:00+09:00" });
   await store.createEvent({ member_id: store.members[0].id, category: "assignment", title: "영어 과제", due_at: "2026-07-17T13:00:00+09:00" });
   await store.createEvent({ category: "class", title: "진로 수업", due_at: "2026-07-18T13:00:00+09:00" });
 
-  const response = await ask(store, "수행평가 과제 통합 요약 홍길동");
+  const response = await ask(store, "수행평가 과제 통합 요약", { userId: "joined-hong" });
   assert.match(text(response), /수행평가·과제 통합 요약/);
   assert.match(text(response), /물리 수행평가/);
   assert.match(text(response), /영어 과제/);
@@ -181,7 +180,7 @@ test("수행평가·과제 통합 요약은 두 유형만 함께 보여준다", 
 });
 
 test("시간표 전체는 대상 학생의 개인 시간표를 우선해서 보여준다", async () => {
-  const store = fixture();
+  const store = fileFixture();
   await store.replaceMemberTimetable({ memberId: store.members[0].id, rows: [{
     weekday: 1,
     period: 1,
@@ -190,7 +189,7 @@ test("시간표 전체는 대상 학생의 개인 시간표를 우선해서 보�
     room: "선택 강의실",
     effective_from: "2026-07-01",
   }] });
-  const response = await ask(store, "시간표 전체 홍길동");
+  const response = await ask(store, "시간표 전체", { userId: "joined-hong" });
   assert.match(text(response), /홍길동님의 월~금 전체 시간표/);
   assert.match(text(response), /7월 13일 월요일/);
   assert.match(text(response), /7월 17일 금요일/);
@@ -198,13 +197,13 @@ test("시간표 전체는 대상 학생의 개인 시간표를 우선해서 보�
 });
 
 test("이번 주 남은 일정은 현재 시각 이후 일정만 유지한다", async () => {
-  const store = fixture();
+  const store = fileFixture();
   await store.createEvent({ title: "오늘 지난 일정", due_at: "2026-07-15T10:00:00+09:00" });
   await store.createEvent({ title: "오늘 남은 일정", due_at: "2026-07-15T13:00:00+09:00" });
   await store.createEvent({ member_id: store.members[0].id, title: "금요일 개인 일정", due_at: "2026-07-17T13:00:00+09:00" });
   await store.createEvent({ title: "다음 주 일정", due_at: "2026-07-20T13:00:00+09:00" });
 
-  const response = await ask(store, "이번 주 남은 일정 홍길동");
+  const response = await ask(store, "이번 주 남은 일정", { userId: "joined-hong" });
   assert.match(text(response), /홍길동님의 이번 주 남은 일정/);
   assert.match(text(response), /오늘 남은 일정/);
   assert.match(text(response), /금요일 개인 일정/);
@@ -255,7 +254,7 @@ test("이름등록은 기존 가입과 같은 초대코드 매핑을 사용하�
   assert.equal(response.template.quickReplies.every((item) => !item.messageText.includes("홍길동")), true);
 });
 
-test("active 요청자는 모든 본인 조회 명령을 이름 없이 사용하고 명시한 다른 이름 일정도 조회한다", async () => {
+test("active 요청자는 본인 개인 조회를 이름 없이 쓰고 다른 이름 조회에서는 반 일정만 본다", async () => {
   const store = fileFixture();
   await store.createEvent({ title: "오늘 반 일정", due_at: "2026-07-15T16:00:00" });
   await store.createEvent({ member_id: store.members[0].id, category: "assessment", title: "홍길동 수행평가", due_at: "2026-07-16T16:00:00" });
@@ -285,7 +284,8 @@ test("active 요청자는 모든 본인 조회 명령을 이름 없이 사용하
 
   const other = await ask(store, "오늘 일정 김학생", { userId: "joined-hong" });
   assert.match(text(other), /김학생님의/);
-  assert.match(text(other), /김학생 개인 일정/);
+  assert.match(text(other), /오늘 반 일정/);
+  assert.doesNotMatch(text(other), /김학생 개인 일정/);
   assert.equal(other.template.quickReplies[0].messageText, "오늘 일정 김학생");
 });
 
@@ -305,18 +305,18 @@ test("등록된 요청자의 알림·공지 응답 Quick Reply에도 이름 suff
 });
 
 test("오늘·내일·모레·이번 주·다음 주와 시험·숙제 변형을 대상 범위로 해석한다", async () => {
-  const store = fixture();
+  const store = fileFixture();
   await store.createEvent({ member_id: store.members[0].id, category: "assessment", title: "오늘 시험", due_at: "2026-07-15T16:00:00" });
   await store.createEvent({ member_id: store.members[0].id, category: "assignment", title: "내일 숙제", due_at: "2026-07-16T16:00:00" });
   await store.createEvent({ member_id: store.members[0].id, category: "class", title: "모레 상담", due_at: "2026-07-17T16:00:00" });
   await store.createEvent({ member_id: store.members[0].id, category: "assessment", title: "다음 주 시험", due_at: "2026-07-21T16:00:00" });
 
-  assert.match(text(await ask(store, "오늘 시험 홍길동")), /오늘 시험/);
-  assert.match(text(await ask(store, "내일 숙제 홍길동")), /내일 숙제/);
-  assert.match(text(await ask(store, "모레 뭐 있어 홍길동?")), /모레 상담/);
-  assert.match(text(await ask(store, "이번주 일정 홍길동")), /오늘 시험/);
-  assert.match(text(await ask(store, "다음 주 시험 홍길동")), /다음 주 시험/);
-  assert.match(text(await ask(store, "과제 홍길동")), /내일 숙제/);
+  assert.match(text(await ask(store, "오늘 시험 홍길동", { userId: "joined-hong" })), /오늘 시험/);
+  assert.match(text(await ask(store, "내일 숙제 홍길동", { userId: "joined-hong" })), /내일 숙제/);
+  assert.match(text(await ask(store, "모레 뭐 있어 홍길동?", { userId: "joined-hong" })), /모레 상담/);
+  assert.match(text(await ask(store, "이번주 일정 홍길동", { userId: "joined-hong" })), /오늘 시험/);
+  assert.match(text(await ask(store, "다음 주 시험 홍길동", { userId: "joined-hong" })), /다음 주 시험/);
+  assert.match(text(await ask(store, "과제 홍길동", { userId: "joined-hong" })), /내일 숙제/);
 });
 
 test("시간표도 이름을 맨 뒤에 요구하며 요청자 가입 없이 일간·주간 조회한다", async () => {

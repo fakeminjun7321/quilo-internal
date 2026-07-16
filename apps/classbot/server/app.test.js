@@ -106,6 +106,23 @@ test("학생 포털은 초대 코드로 최초 로그인하고 HMAC 쿠키 세�
   assert.deepEqual((await agent.get("/api/portal/session")).body, { authenticated: false });
 });
 
+test("같은 초대 코드는 카카오와 웹 포털에서 채널별로 한 번씩 사용할 수 있다", async () => {
+  const { app, store } = await fixture();
+  const [first, second] = (await store.listMembers()).filter((item) => item.role === "student").slice(0, 2);
+
+  const portalFirstCode = await issuePortalInvite(store, first, "PORT-AL01");
+  assert.equal((await request(app).post("/api/portal/login").send({ display_name: first.display_name, invite_code: portalFirstCode })).status, 200);
+  const kakaoAfterPortal = await store.claimInvite({ code: portalFirstCode, userKey: "kakao-after-portal" });
+  assert.equal(kakaoAfterPortal.id, first.id);
+  await assert.rejects(() => store.claimInvite({ code: portalFirstCode, userKey: "kakao-reuse" }), /올바르지 않거나 만료/);
+
+  const kakaoFirstCode = await issuePortalInvite(store, second, "KAKA-O001");
+  const kakaoFirst = await store.claimInvite({ code: kakaoFirstCode, userKey: "kakao-before-portal" });
+  assert.equal(kakaoFirst.id, second.id);
+  assert.equal((await request(app).post("/api/portal/login").send({ display_name: second.display_name, invite_code: kakaoFirstCode })).status, 200);
+  assert.equal((await request(app).post("/api/portal/login").send({ display_name: second.display_name, invite_code: kakaoFirstCode })).status, 401);
+});
+
 test("학생 포털 로그인 실패는 이름 사칭·중복·비활성 여부를 같은 오류로 숨기고 요청 횟수를 제한한다", async () => {
   const { app, store } = await fixture();
   const members = await store.listMembers();
@@ -152,7 +169,11 @@ test("학생 포털 overview는 반 전체와 본인 일정·게시 공지만 �
   await store.createEvent({ member_id: member.id, category: "assignment", title: "내 개인 일정", due_at: "2026-07-21T10:00:00" });
   await store.createEvent({ member_id: other.id, category: "assignment", title: "다른 학생 비밀 일정", due_at: "2026-07-22T10:00:00" });
   await store.createNotice({ title: "초안 공지", body: "노출 금지", status: "draft" });
-  store.listMemberTimetable = async (memberId) => [{ period: 1, subject: "개인 선택", member_id: memberId }];
+  let timetableOptions;
+  store.listMemberTimetable = async (memberId, options) => {
+    timetableOptions = options;
+    return [{ period: 1, subject: "개인 선택", member_id: memberId }];
+  };
 
   const agent = request.agent(app);
   assert.equal((await loginPortal(agent, store, member)).status, 200);
@@ -160,6 +181,7 @@ test("학생 포털 overview는 반 전체와 본인 일정·게시 공지만 �
   assert.equal(response.status, 200);
   assert.deepEqual(response.body.member, { id: member.id, display_name: member.display_name, role: "student" });
   assert.deepEqual(response.body.timetable, [{ period: 1, subject: "개인 선택", member_id: member.id }]);
+  assert.equal(timetableOptions.date, "2026-07-19T15:00:00.000Z");
   const titles = response.body.events.map((item) => item.title);
   assert.equal(titles.includes("반 전체 행사"), true);
   assert.equal(titles.includes("내 개인 일정"), true);
@@ -168,6 +190,27 @@ test("학생 포털 overview는 반 전체와 본인 일정·게시 공지만 �
   assert.equal(response.body.notices.some((item) => item.title === "초안 공지"), false);
   assert.equal((await agent.get("/api/portal/overview?from=2026-07-23&to=2026-07-20")).status, 400);
   assert.equal((await agent.get("/api/portal/overview?from=not-a-date")).status, 400);
+});
+
+test("관리자 API는 구성원 개인 시간표를 조회하고 원자적으로 교체한다", async () => {
+  const { app, agent, store } = await fixture();
+  const member = (await store.listMembers()).find((item) => item.role === "student");
+  await login(agent);
+  const saved = await agent.put(`/api/admin/members/${member.id}/timetable`).send({ rows: [{
+    weekday: 1,
+    period: 1,
+    subject: "개인 선택 과목",
+    teacher: "담당 교사",
+    room: "선택 강의실",
+    effective_from: "2026-08-01",
+  }] });
+  assert.equal(saved.status, 200);
+  assert.equal(saved.body.items[0].member_id, member.id);
+  const listed = await agent.get(`/api/admin/members/${member.id}/timetable?weekday=1&date=2026-08-01`);
+  assert.equal(listed.status, 200);
+  assert.equal(listed.body.items[0].subject, "개인 선택 과목");
+  assert.equal((await request(app).put(`/api/admin/members/${member.id}/timetable`).send({ rows: [] })).status, 401);
+  assert.equal((await agent.put(`/api/admin/members/${member.id}/timetable`).send({ rows: "invalid" })).status, 400);
 });
 
 test("학생 포털 파일 목록은 반 전체와 본인 자료만 15분 열기·다운로드 URL로 제공한다", async () => {

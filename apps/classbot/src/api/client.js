@@ -113,6 +113,13 @@ export const api = {
   createMember(input, options) { return remoteOrLocal(() => request("/api/admin/members", { method: "POST", headers: idempotencyHeaders("member", input, options), body: input }), () => createItem("members", "member", { status: "invited", notification_enabled: true, daily_digest_enabled: true, ...input })); },
   updateMember(id, patch) { return remoteOrLocal(() => request(`/api/admin/members/${id}`, { method: "PATCH", body: patch }), () => updateItem("members", id, patch)); },
   inviteMember(id, options = {}) { return remoteOrLocal(() => request(`/api/admin/members/${id}/invite`, { method: "POST", headers: { "Idempotency-Key": options.idempotencyKey || createIdempotencyKey("invite") } }), () => ({ invite_url: `${location.origin}/join/demo-${id.slice(-4)}`, expires_at: new Date(Date.now() + 7 * 86_400_000).toISOString() })); },
+  memberTimetable(id, { weekday, date } = {}) {
+    const query = new URLSearchParams();
+    if (weekday != null) query.set("weekday", String(weekday));
+    if (date) query.set("date", date);
+    return request(`/api/admin/members/${id}/timetable${query.size ? `?${query.toString()}` : ""}`);
+  },
+  saveMemberTimetable(id, rows) { return request(`/api/admin/members/${id}/timetable`, { method: "PUT", body: { rows } }); },
   timetable() { return remoteOrLocal(() => request("/api/admin/timetable"), () => ({ items: structuredClone(localState.timetable) })); },
   saveTimetable(weekday, items) {
     return remoteOrLocal(async () => {

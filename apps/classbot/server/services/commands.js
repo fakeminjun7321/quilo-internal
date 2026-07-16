@@ -268,27 +268,28 @@ async function answerFileQuery({ command, requester, store, makeFileUrl, quickRe
   }
 }
 
-async function answerReadQuery({ command, intent, member, store, now, quickReplies }) {
+async function answerReadQuery({ command, intent, member, store, now, quickReplies, privateAccess = false }) {
   const period = readPeriod(command, intent);
   const replies = quickReplies || personalizedQuickReplies(member.display_name);
+  const targetMemberId = privateAccess ? member.id : undefined;
 
   if (intent === "timetable") {
     if (period.kind === "full-timetable") {
-      const bundle = await getWeekTimetable(store, now, { targetMemberId: member.id });
+      const bundle = await getWeekTimetable(store, now, { targetMemberId });
       return simpleTextResponse(
         `${member.display_name}님의 월~금 전체 시간표\n\n${formatWeekTimetable(bundle)}`,
         replies,
       );
     }
     if (period.kind === "week") {
-      const bundle = await getWeekTimetable(store, now, { weekOffset: period.offset, targetMemberId: member.id });
+      const bundle = await getWeekTimetable(store, now, { weekOffset: period.offset, targetMemberId });
       return simpleTextResponse(
         `${member.display_name}님의 ${period.label} 시간표\n\n${formatWeekTimetable(bundle)}`,
         replies,
       );
     }
     const target = dateForSeoulOffset(now, period.offset);
-    const bundle = await getDaySchedule(store, target, { targetMemberId: member.id });
+    const bundle = await getDaySchedule(store, target, { targetMemberId });
     return simpleTextResponse(
       `${member.display_name}님의 ${formatKoreanDate(target)} 시간표\n\n${formatTimetableRows(bundle.timetable)}`,
       replies,
@@ -299,13 +300,13 @@ async function answerReadQuery({ command, intent, member, store, now, quickRepli
   let rangeLabel;
   if (period.kind === "day") {
     const target = dateForSeoulOffset(now, period.offset);
-    events = (await getDaySchedule(store, target, { targetMemberId: member.id })).events;
+    events = (await getDaySchedule(store, target, { targetMemberId })).events;
     rangeLabel = formatKoreanDate(target);
   } else if (period.kind === "week") {
-    events = await getWeekEvents(store, now, { weekOffset: period.offset, targetMemberId: member.id });
+    events = await getWeekEvents(store, now, { weekOffset: period.offset, targetMemberId });
     rangeLabel = period.label;
   } else if (period.kind === "remaining-week") {
-    events = (await getWeekEvents(store, now, { targetMemberId: member.id }))
+    events = (await getWeekEvents(store, now, { targetMemberId }))
       .filter((event) => new Date(event.due_at).getTime() >= now.getTime());
     rangeLabel = period.label;
   } else if (period.kind === "month") {
@@ -314,22 +315,23 @@ async function answerReadQuery({ command, intent, member, store, now, quickRepli
       from: bounds.start.toISOString(),
       to: bounds.end.toISOString(),
       status: "scheduled",
-      targetMemberId: member.id,
+      targetMemberId,
     });
     rangeLabel = bounds.label;
   } else if (period.kind === "next") {
     events = await store.listEvents({
       from: now.toISOString(),
       status: "scheduled",
-      targetMemberId: member.id,
+      targetMemberId,
     });
     events = events.slice(0, 1);
     rangeLabel = period.label;
   } else {
-    events = await getUpcomingEvents(store, now, period.days, { targetMemberId: member.id });
+    events = await getUpcomingEvents(store, now, period.days, { targetMemberId });
     rangeLabel = `앞으로 ${period.days}일`;
   }
 
+  if (!privateAccess) events = events.filter((event) => event.member_id == null);
   const kind = eventKind(intent);
   if (kind.category) events = events.filter((event) => event.category === kind.category);
   if (kind.categories) events = events.filter((event) => kind.categories.has(event.category));
@@ -407,6 +409,7 @@ export async function handleKakaoCommand({ payload, store, now = new Date(), mak
         store,
         now,
         quickReplies: targetQuickReplies,
+        privateAccess: Boolean(requester && requester.id === target.member.id),
       });
     }
 

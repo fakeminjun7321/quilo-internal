@@ -361,7 +361,10 @@ export class MemoryStore {
     if (member.status === "active") throw new Error("이미 가입한 구성원에게 초대 코드를 만들 수 없습니다.");
     const now = nowIso();
     for (const previous of this.invites) {
-      if (previous.member_id === memberId && !previous.used_at) previous.used_at = now;
+      if (previous.member_id === memberId && (!previous.used_at || !previous.portal_used_at)) {
+        previous.used_at = previous.used_at || now;
+        previous.portal_used_at = previous.portal_used_at || now;
+      }
     }
     const invite = {
       id: id("invite"),
@@ -370,6 +373,7 @@ export class MemoryStore {
       code_hash: codeHash,
       expires_at: expiresAt,
       used_at: null,
+      portal_used_at: null,
       created_at: nowIso(),
     };
     this.invites.push(invite);
@@ -401,17 +405,17 @@ export class MemoryStore {
     const invite = this.invites.find((item) => (
       item.member_id === memberId
       && item.code_hash === codeHash
-      && !item.used_at
+      && !item.portal_used_at
       && new Date(item.expires_at).getTime() > Date.now()
     ));
     if (!member || !invite) throw new Error("이름 또는 초대 코드를 확인할 수 없습니다.");
-    invite.used_at = nowIso();
+    invite.portal_used_at = nowIso();
     await this.appendAudit({
       actor: member.id,
       action: "portal.login",
       entityType: "invite",
       entityId: invite.id,
-      after: { member_id: member.id, used_at: invite.used_at },
+      after: { member_id: member.id, portal_used_at: invite.portal_used_at },
     });
     return clone(member);
   }

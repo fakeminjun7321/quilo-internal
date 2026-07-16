@@ -17,6 +17,18 @@ function defaultDependencies() {
   const supa = require("../../../../lib/supabase.js");
   return {
     findUserByName: (name) => supa.findUserByName(name),
+    findUsersByExactName: async (name) => {
+      const raw = String(name || "").trim();
+      const client = supa.getClient();
+      if (!client || !raw) return [];
+      const { data, error } = await client
+        .from("users")
+        .select("id,name")
+        .eq("name", raw)
+        .limit(20);
+      if (error) throw new Error(`Google Drive 운영 계정 조회 실패: ${error.message}`);
+      return (data || []).filter((user) => user?.id && user.name === raw);
+    },
     getCloudConnection: (userId, provider) => supa.getCloudConnection(userId, provider),
     decryptToken: (value) => cloud.decryptToken(value),
     getAccessToken: (refreshToken) => cloud.googleAccessToken(refreshToken),
@@ -77,7 +89,28 @@ export class GoogleDriveFileProvider {
 
   async resolveOwnerUserId(dependencies) {
     if (this.ownerUserId) return this.ownerUserId;
-    if (!this.ownerName || typeof dependencies.findUserByName !== "function") {
+    if (!this.ownerName) {
+      throw new Error("Google Drive 자료실 운영 계정을 찾을 수 없습니다.");
+    }
+
+    if (typeof dependencies.findUsersByExactName === "function") {
+      const candidates = await dependencies.findUsersByExactName(this.ownerName);
+      const exact = (Array.isArray(candidates) ? candidates : [])
+        .filter((owner) => owner?.id && owner.name === this.ownerName);
+      const connected = (await Promise.all(exact.map(async (owner) => ({
+        owner,
+        connection: await dependencies.getCloudConnection(owner.id, "google"),
+      })))).filter(({ connection }) => connection?.refresh_token);
+      if (connected.length !== 1) {
+        throw new Error(connected.length > 1
+          ? "동일한 이름의 Google Drive 연결 계정이 여러 개라 운영 계정을 자동 선택할 수 없습니다."
+          : "Google Drive가 연결된 자료실 운영 계정을 찾을 수 없습니다.");
+      }
+      this.ownerUserId = safeIdentifier(connected[0].owner.id, "Google Drive 운영 계정");
+      return this.ownerUserId;
+    }
+
+    if (typeof dependencies.findUserByName !== "function") {
       throw new Error("Google Drive 자료실 운영 계정을 찾을 수 없습니다.");
     }
     const owner = await dependencies.findUserByName(this.ownerName);

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, LockKeyhole, RotateCw } from "lucide-react";
+import { AlertTriangle, CheckCircle2, RotateCw } from "lucide-react";
 import { api } from "./api/client.js";
-import { BottomNavigation, Brand, Sidebar, Topbar } from "./components/AppShell.jsx";
+import { BottomNavigation, Sidebar, Topbar } from "./components/AppShell.jsx";
 import { EventDrawer, NoticeDrawer } from "./components/Editors.jsx";
 import TodayPage from "./pages/TodayPage.jsx";
 import EventsPage from "./pages/EventsPage.jsx";
@@ -11,9 +11,10 @@ import FilesPage from "./pages/FilesPage.jsx";
 import MembersPage from "./pages/MembersPage.jsx";
 import NotificationsPage from "./pages/NotificationsPage.jsx";
 import SettingsPage from "./pages/SettingsPage.jsx";
+import PortalLogin from "./portal/PortalLogin.jsx";
+import StudentPortal from "./portal/StudentPortal.jsx";
 
 const actions = { today: "일정 추가", events: "일정 추가", notices: "공지 추가" };
-const embeddedInQuilo = !import.meta.env.DEV && import.meta.env.BASE_URL.startsWith("/schedule/");
 
 async function copyText(value) {
   if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value);
@@ -27,20 +28,13 @@ async function copyText(value) {
   textarea.remove();
 }
 
-function Login({ onLogin, busy, error }) {
-  const [password, setPassword] = useState("");
-  if (embeddedInQuilo) {
-    return <main className="login-page"><div className="login-card"><Brand /><div className="login-icon"><LockKeyhole size={25} /></div><h1>관리자 로그인</h1><p>Quilo 관리자 계정으로 로그인한 뒤 일정 관리 화면을 이용해 주세요.</p><a className="primary-button wide" href="/login.html">Quilo에서 로그인</a></div></main>;
-  }
-  return <main className="login-page"><div className="login-card"><Brand /><div className="login-icon"><LockKeyhole size={25} /></div><h1>관리자 로그인</h1><p>학급 일정과 카카오톡 알림을 관리하려면 로그인해 주세요.</p><form onSubmit={(e) => { e.preventDefault(); onLogin(password); }}><label>관리자 비밀번호<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoFocus required /></label>{error && <p className="form-error"><AlertTriangle size={16} />{error}</p>}<button className="primary-button wide" disabled={busy}>{busy ? "확인 중" : "로그인"}</button></form></div></main>;
-}
-
 function ConnectionError({ message, onRetry }) {
   return <main className="connection-error"><div><AlertTriangle size={28} /><h1>관리 서버에 연결할 수 없습니다.</h1><p>{message || "잠시 후 다시 시도해 주세요."}</p><button className="outline-button" onClick={onRetry}><RotateCw size={17} />다시 시도</button></div></main>;
 }
 
 export default function App() {
   const [session, setSession] = useState(null);
+  const [portalSession, setPortalSession] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [overview, setOverview] = useState(null);
@@ -62,6 +56,10 @@ export default function App() {
         setSession({ ...nextSession, demo: nextSession.demo || api.mode === "local" });
         setOverview(data);
         if (window.matchMedia("(min-width: 1181px)").matches) setDrawer({ type: "event", item: null, open: true });
+      } else {
+        setOverview(null);
+        setDrawer({ type: null, item: null, open: false });
+        setPortalSession(await api.portalSession());
       }
     } catch (err) {
       setLoadError(err.message || "관리 서버 요청에 실패했습니다.");
@@ -83,10 +81,17 @@ export default function App() {
     }
   };
 
-  const login = async (password) => {
+  const loginPortal = async (credentials) => {
     setBusy(true); setError("");
-    try { const result = await api.login(password); setSession(result); setOverview(await api.overview()); }
+    try { await api.portalLogin(credentials); setPortalSession(await api.portalSession()); }
     catch (err) { setError(err.message); }
+    finally { setBusy(false); }
+  };
+  const logoutPortal = async () => {
+    if (busy) return;
+    setBusy(true); setError("");
+    try { await api.portalLogout(); setPortalSession({ authenticated: false }); }
+    catch (err) { setError(err.message || "로그아웃하지 못했습니다."); }
     finally { setBusy(false); }
   };
 
@@ -118,13 +123,16 @@ export default function App() {
     if (active === "files") return <FilesPage files={fileLibrary.items} members={overview.members} busy={busy} loading={fileLibrary.loading} error={fileLibrary.error} onUpload={uploadFile} onDelete={deleteFile} onCopy={copyFileLink} onRefresh={loadFiles} downloadUrl={api.fileDownloadUrl} />;
     if (active === "members") return <MembersPage members={overview.members} classroom={overview.classroom} busy={busy} onCreate={async (input) => { if (busy) return false; setBusy(true); try { const result = await api.createMember(input); addCollection("members", result.item); flash("구성원을 추가했습니다."); return true; } catch (err) { flash(err.message); return false; } finally { setBusy(false); } }} onUpdate={async (id, patch) => { if (busy) return; setBusy(true); try { const result = await api.updateMember(id, patch); patchCollection("members", result.item); } catch (err) { flash(err.message); } finally { setBusy(false); } }} onInvite={async (id) => { if (busy) return; setBusy(true); try { const result = await api.inviteMember(id); await navigator.clipboard?.writeText(result.invite_url || result.code || ""); flash("초대 링크를 복사했습니다."); } catch (err) { flash(err.message); } finally { setBusy(false); } }} />;
     if (active === "notifications") return <NotificationsPage notifications={overview.notifications} busy={busy} onRefresh={async () => { if (busy) return; setBusy(true); try { const result = await api.notifications(); setOverview((current) => ({ ...current, notifications: result.items })); flash("알림 상태를 새로고침했습니다."); } catch (err) { flash(err.message); } finally { setBusy(false); } }} onTest={async () => { if (busy) return; setBusy(true); try { const result = await api.testNotification(); if (result.item) addCollection("notifications", result.item); flash("테스트 알림 요청을 접수했습니다. 아직 전송 완료 상태는 아닙니다."); } catch (err) { flash(err.message); } finally { setBusy(false); } }} />;
-    return <SettingsPage classroom={overview.classroom} saving={busy} onSave={async (patch) => { if (busy) return; setBusy(true); try { const result = await api.updateSettings(patch); setOverview((current) => ({ ...current, classroom: result.item })); flash("설정을 저장했습니다."); } catch (err) { flash(err.message); } finally { setBusy(false); } }} onLogout={async () => { await api.logout(); setSession({ authenticated: false }); setOverview(null); }} />;
+    return <SettingsPage classroom={overview.classroom} saving={busy} onSave={async (patch) => { if (busy) return; setBusy(true); try { const result = await api.updateSettings(patch); setOverview((current) => ({ ...current, classroom: result.item })); flash("설정을 저장했습니다."); } catch (err) { flash(err.message); } finally { setBusy(false); } }} onLogout={async () => { await api.logout(); setSession({ authenticated: false }); setPortalSession({ authenticated: false }); setOverview(null); }} />;
   }, [active, overview, busy, drawer.item, fileLibrary]);
 
   if (loading) return <div className="app-loading"><RotateCw className="spin" /><span>학급 정보를 불러오는 중</span></div>;
   if (loadError && !overview) return <ConnectionError message={loadError} onRetry={load} />;
   if (!session) return <ConnectionError message="관리자 세션을 확인하지 못했습니다." onRetry={load} />;
-  if (!session.authenticated) return <Login onLogin={login} busy={busy} error={error} />;
+  if (!session.authenticated) {
+    if (portalSession?.authenticated) return <StudentPortal session={portalSession} onLogout={logoutPortal} />;
+    return <PortalLogin onLogin={loginPortal} busy={busy} error={error} />;
+  }
   if (!overview) return <div className="app-loading"><AlertTriangle /><span>{error || "데이터를 불러오지 못했습니다."}</span><button className="outline-button" onClick={load}>다시 시도</button></div>;
   return (
     <div className={`app-shell ${drawer.open ? "drawer-open" : ""}`}>

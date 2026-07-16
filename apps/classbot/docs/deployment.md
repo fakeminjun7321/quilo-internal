@@ -27,10 +27,11 @@ select
   to_regprocedure('public.classbot_health_check()') is not null as health_rpc,
   to_regprocedure('public.classbot_create_member(uuid,text,text)') is not null as member_rpc,
   to_regprocedure('public.classbot_claim_invite(uuid,text,text,text)') is not null as invite_rpc,
-  to_regprocedure('public.classbot_replace_timetable_day(uuid,integer,jsonb)') is not null as timetable_rpc;
+  to_regprocedure('public.classbot_replace_timetable_day(uuid,integer,jsonb)') is not null as timetable_rpc,
+  to_regprocedure('public.classbot_replace_member_timetable(uuid,uuid,jsonb)') is not null as member_timetable_rpc;
 ```
 
-기대값은 schema version `1`과 모든 RPC의 `true`다. 모든 일정 관리 테이블은 RLS가 활성화되고 anon/authenticated 정책은 만들지 않는다. 서버만 service role key로 접근한다.
+기대값은 schema version `3`과 모든 RPC의 `true`다. 기존 v2 운영 DB에는 전체 스키마 대신 [`003_member_timetable.sql`](../db/migrations/003_member_timetable.sql)을 적용할 수 있다. 모든 일정 관리 테이블은 RLS가 활성화되고 anon/authenticated 정책은 만들지 않는다. 서버만 service role key로 접근한다.
 
 ## 3. 기존 Render 서비스 설정
 
@@ -68,7 +69,9 @@ Smoke test는 관리자 로그인을 시도하거나 데이터를 생성하지 �
 2. 챗봇 생성·채널 연결과 봇 배포를 완료한다. 단톡방에서 직접 호출하는 조회 기능만 쓸 때는 사업자 인증이나 월렛이 필요하지 않다.
 3. 카카오 스킬에 공개 HTTPS `/schedule/api/kakao/skill` 엔드포인트와 `X-Classbot-Skill-Secret` 헤더를 연결하고 폴백 블록이 스킬 응답을 사용하게 한다.
 4. `KAKAO_BOT_ID=6a57ace9fd013545b6416293`을 설정하고, `KAKAO_REST_API_KEY`는 Render에 직접 입력한다.
-5. 개발봇 또는 테스트 채널에서 `오늘 일정 학생 1`처럼 이름을 맨 뒤에 붙인 조회와 개인 일정 격리를 확인한다.
+5. 개발봇 또는 테스트 채널에서 `이름등록 초대코드`를 한 번 실행한 뒤 `오늘 일정`, `시간표 전체`, `자료 목록`을 이름 없이 조회하고 개인 일정·개인 자료 격리를 확인한다.
+
+학생 웹 포털은 `https://quilolab.com/schedule/`에서 이름과 같은 일회용 초대 코드로 최초 로그인한다. 학생은 본인 일정만 추가할 수 있고 관리자 역할만 반 전체 공개 범위를 선택할 수 있는지 확인한다.
 
 자동 알림을 추가로 켜는 경우에만 비즈니스 채널 인증, 비즈앱, 카카오 로그인, 월렛과 Event 블록을 준비하고 이벤트명을 `quilo_schedule_notification`으로 설정한다. 테스트 구성원 한 명만 활성 수신자로 둔 상태에서 `KAKAO_EVENT_ENABLED=true`로 바꾸고 한 건만 시험 발송한다. POST 접수 후 task 결과가 `sent`로 확정되면 운영 Cron을 활성화하고, 실패하면 즉시 `KAKAO_EVENT_ENABLED=false`로 되돌린다.
 

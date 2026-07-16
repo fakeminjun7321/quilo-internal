@@ -28,6 +28,68 @@ function fileMetadata(file) {
   return clone(metadata);
 }
 
+function timetableDateKey(value = new Date()) {
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) throw new Error("올바른 시간표 적용 날짜를 입력해 주세요.");
+    return getSeoulParts(value).dateKey;
+  }
+  const raw = String(value || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const parsed = new Date(`${raw}T00:00:00+09:00`);
+    if (!Number.isNaN(parsed.getTime()) && getSeoulParts(parsed).dateKey === raw) return raw;
+    throw new Error("올바른 시간표 적용 날짜를 입력해 주세요.");
+  }
+  const parsed = new Date(raw);
+  if (raw && !Number.isNaN(parsed.getTime())) return getSeoulParts(parsed).dateKey;
+  throw new Error("올바른 시간표 적용 날짜를 입력해 주세요.");
+}
+
+function normalizeMemberTimetableRows(rows) {
+  if (!Array.isArray(rows)) throw new Error("개인 시간표 데이터는 배열이어야 합니다.");
+  const seen = new Set();
+  return rows
+    .filter((row) => String(row?.subject || "").trim())
+    .map((row) => {
+      const weekday = Number(row.weekday);
+      const period = Number(row.period);
+      if (!Number.isInteger(weekday) || weekday < 1 || weekday > 5) throw new Error("요일은 월요일부터 금요일까지만 선택할 수 있습니다.");
+      if (!Number.isInteger(period) || period < 1 || period > 12) throw new Error("교시는 1부터 12 사이여야 합니다.");
+      const effectiveFrom = timetableDateKey(row.effective_from || new Date());
+      const effectiveTo = row.effective_to ? timetableDateKey(row.effective_to) : null;
+      if (effectiveTo && effectiveTo < effectiveFrom) throw new Error("시간표 종료일은 시작일보다 빠를 수 없습니다.");
+      const normalized = {
+        weekday,
+        period,
+        subject: String(row.subject).trim(),
+        activity: String(row.activity || "").trim(),
+        teacher: String(row.teacher || "").trim(),
+        room: String(row.room || "").trim(),
+        memo: String(row.memo || "").trim(),
+        effective_from: effectiveFrom,
+        effective_to: effectiveTo,
+      };
+      const limits = { subject: 100, activity: 300, teacher: 100, room: 100, memo: 500 };
+      for (const [key, limit] of Object.entries(limits)) {
+        if (normalized[key].length > limit) throw new Error(`시간표 ${key} 값이 너무 깁니다.`);
+      }
+      const slot = `${weekday}:${period}:${effectiveFrom}`;
+      if (seen.has(slot)) throw new Error("같은 적용일의 동일 교시를 두 번 등록할 수 없습니다.");
+      seen.add(slot);
+      return normalized;
+    });
+}
+
+function activeTimetableRows(rows, dateKey) {
+  const latestBySlot = new Map();
+  for (const row of rows
+    .filter((item) => item.effective_from <= dateKey && (!item.effective_to || item.effective_to >= dateKey))
+    .sort((a, b) => b.effective_from.localeCompare(a.effective_from))) {
+    const slot = `${row.weekday}:${row.period}`;
+    if (!latestBySlot.has(slot)) latestBySlot.set(slot, row);
+  }
+  return [...latestBySlot.values()].sort((a, b) => a.weekday - b.weekday || a.period - b.period);
+}
+
 function seedTimetable(classId) {
   const subjects = {
     1: [
@@ -181,6 +243,7 @@ export class MemoryStore {
     }));
     this.invites = [];
     this.timetable = seedTimetable(classId);
+    this.memberTimetable = [];
     this.events = seedEvents(classId);
     this.notices = [
       {
@@ -332,6 +395,27 @@ export class MemoryStore {
     return clone(member);
   }
 
+  async claimPortalInvite({ memberId, code }) {
+    const member = this.members.find((item) => item.id === memberId);
+    const codeHash = hashInviteCode(code);
+    const invite = this.invites.find((item) => (
+      item.member_id === memberId
+      && item.code_hash === codeHash
+      && !item.used_at
+      && new Date(item.expires_at).getTime() > Date.now()
+    ));
+    if (!member || !invite) throw new Error("이름 또는 초대 코드를 확인할 수 없습니다.");
+    invite.used_at = nowIso();
+    await this.appendAudit({
+      actor: member.id,
+      action: "portal.login",
+      entityType: "invite",
+      entityId: invite.id,
+      after: { member_id: member.id, used_at: invite.used_at },
+    });
+    return clone(member);
+  }
+
   async findMemberByUserKey(userKey) {
     const member = this.members.find((item) => item.kakao_user_key === userKey && item.status === "active");
     return member ? clone(member) : null;
@@ -341,6 +425,39 @@ export class MemoryStore {
     return clone(this.timetable)
       .filter((row) => weekday == null || row.weekday === Number(weekday))
       .sort((a, b) => a.weekday - b.weekday || a.period - b.period);
+  }
+
+  async listMemberTimetable(memberId, { weekday, date } = {}) {
+    const member = this.members.find((item) => item.id === memberId && item.class_id === this.classroom.id && item.status !== "left");
+    if (!member) throw new Error("개인 시간표를 조회할 구성원을 찾을 수 없습니다.");
+    const dateKey = timetableDateKey(date || new Date());
+    return clone(activeTimetableRows(
+      this.memberTimetable.filter((row) => row.member_id === memberId && (weekday == null || row.weekday === Number(weekday))),
+      dateKey,
+    ));
+  }
+
+  async replaceMemberTimetable({ memberId, rows }, actor = "admin") {
+    const member = this.members.find((item) => item.id === memberId && item.class_id === this.classroom.id && item.status !== "left");
+    if (!member) throw new Error("개인 시간표를 등록할 구성원을 찾을 수 없습니다.");
+    const savedAt = nowIso();
+    const normalized = normalizeMemberTimetableRows(rows).map((row) => ({
+      id: id("member_tt"),
+      class_id: this.classroom.id,
+      member_id: memberId,
+      ...row,
+      created_at: savedAt,
+      updated_at: savedAt,
+    }));
+    this.memberTimetable = this.memberTimetable.filter((row) => row.member_id !== memberId).concat(normalized);
+    await this.appendAudit({
+      actor,
+      action: "member_timetable.replace",
+      entityType: "member_timetable",
+      entityId: memberId,
+      after: { member_id: memberId, row_count: normalized.length },
+    });
+    return clone(normalized).sort((a, b) => a.weekday - b.weekday || a.period - b.period);
   }
 
   async replaceTimetableDay({ weekday, rows }, actor = "admin") {

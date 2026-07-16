@@ -9,6 +9,13 @@ import { loadConfig } from "./config.js";
 import { createInviteCode, createCronGuard, hashInviteCode, requireAdmin, safeEqual } from "./security.js";
 import { createStore } from "./store/index.js";
 import { createFileToken, verifyFileToken } from "./services/file-tokens.js";
+import {
+  createPortalToken,
+  portalCookieOptions,
+  PORTAL_COOKIE_NAME,
+  readPortalCookie,
+  verifyPortalToken,
+} from "./services/portal-session.js";
 import { KakaoEventClient, simpleTextResponse } from "./services/kakao.js";
 import { handleKakaoCommand } from "./services/commands.js";
 import { NotificationService } from "./services/notifications.js";
@@ -22,6 +29,7 @@ const NOTICE_STATUSES = new Set(["draft", "published", "archived"]);
 const MEMBER_STATUSES = new Set(["invited", "active", "disabled", "left"]);
 const FILE_MIME_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp", "image/gif"]);
 const MAX_FILE_BYTES = 20 * 1024 * 1024;
+const PORTAL_LOGIN_ERROR = "이름을 확인할 수 없습니다.";
 
 class HttpError extends Error {
   constructor(status, message) {
@@ -76,9 +84,11 @@ function sendFileBody(res, file, body, { attachment = false } = {}) {
   return res.send(body);
 }
 
-function fileLink(req, token) {
+function fileLink(req, token, { download = false } = {}) {
   const basePath = String(req.baseUrl || "").replace(/\/$/, "");
-  return new URL(`${basePath}/api/files/${encodeURIComponent(token)}`, `${req.protocol}://${req.get("host")}`).toString();
+  const url = new URL(`${basePath}/api/files/${encodeURIComponent(token)}`, `${req.protocol}://${req.get("host")}`);
+  if (download) url.searchParams.set("download", "1");
+  return url.toString();
 }
 
 function booleanValue(value, fallback) {
@@ -225,6 +235,33 @@ function publicMembers(items) {
   return items.map(publicMember);
 }
 
+function portalMember(member) {
+  return { id: member.id, display_name: member.display_name, role: member.role };
+}
+
+function portalRange(query) {
+  const result = {};
+  for (const key of ["from", "to"]) {
+    const value = query[key];
+    if (value == null || value === "") continue;
+    if (typeof value !== "string" || value.length > 40) {
+      throw new HttpError(400, "올바른 일정 조회 기간을 입력해 주세요.");
+    }
+    const normalized = /^\d{4}-\d{2}-\d{2}$/.test(value)
+      ? `${value}T${key === "from" ? "00:00:00.000" : "23:59:59.999"}`
+      : value;
+    try {
+      result[key] = parseKoreaDateTime(normalized).toISOString();
+    } catch {
+      throw new HttpError(400, "올바른 일정 조회 기간을 입력해 주세요.");
+    }
+  }
+  if (result.from && result.to && new Date(result.from) > new Date(result.to)) {
+    throw new HttpError(400, "일정 조회 시작은 종료보다 늦을 수 없습니다.");
+  }
+  return result;
+}
+
 function createLoginLimiter() {
   const attempts = new Map();
   return (req, _res, next) => {
@@ -239,6 +276,21 @@ function createLoginLimiter() {
   };
 }
 
+function createPortalLoginLimiter() {
+  const attempts = new Map();
+  return (req, _res, next) => {
+    const key = req.ip || "unknown";
+    const current = Date.now();
+    const recent = (attempts.get(key) || []).filter((time) => current - time < 15 * 60_000);
+    if (recent.length >= 10) {
+      return next(new HttpError(429, "로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요."));
+    }
+    recent.push(current);
+    attempts.set(key, recent);
+    return next();
+  };
+}
+
 export async function createApp(options = {}) {
   const config = options.config || loadConfig();
   const store = options.store || (await createStore(config));
@@ -248,6 +300,51 @@ export async function createApp(options = {}) {
   const embedded = options.embedded === true;
   const app = express();
   const origins = allowedOrigins(config.allowedOrigin);
+  const portalCookie = portalCookieOptions({ embedded, production: config.production });
+  const clearPortalCookie = (res) => {
+    const { maxAge: _maxAge, ...options } = portalCookie;
+    res.clearCookie(PORTAL_COOKIE_NAME, options);
+  };
+  const setPortalCookie = (res, token) => res.cookie(PORTAL_COOKIE_NAME, token, portalCookie);
+  const resolvePortalMember = async (req) => {
+    const token = readPortalCookie(req.get("cookie"));
+    if (!token) return null;
+    let verified;
+    try {
+      verified = verifyPortalToken(token, config.sessionSecret, { now: now() });
+    } catch {
+      return null;
+    }
+    const member = await store.getMember(verified.memberId);
+    return member && !new Set(["left", "disabled"]).has(member.status) ? member : null;
+  };
+  const requirePortal = asyncRoute(async (req, _res, next) => {
+    const member = await resolvePortalMember(req);
+    if (!member) throw new HttpError(401, "학생 포털 로그인이 필요합니다.");
+    req.portalMember = member;
+    return next();
+  });
+  const portalCanManageEvent = (member, event) => Boolean(
+    event
+    && (event.member_id === member.id || (member.role === "admin" && event.member_id == null)),
+  );
+  const portalFile = (req, file, issuedAt) => {
+    const token = createFileToken(file.id, config.sessionSecret, { now: issuedAt, ttlSeconds: 15 * 60 });
+    return {
+      id: file.id,
+      alias: file.alias,
+      filename: file.filename,
+      description: file.description,
+      mime_type: file.mime_type,
+      size_bytes: file.size_bytes,
+      member_id: file.member_id || null,
+      visibility: file.member_id ? "private" : "class",
+      created_at: file.created_at,
+      open_url: fileLink(req, token),
+      download_url: fileLink(req, token, { download: true }),
+      links_expire_at: new Date(issuedAt.getTime() + 15 * 60_000).toISOString(),
+    };
+  };
   const fileForAdmin = (req, file) => {
     const safe = publicFile(file);
     if (file.member_id) return safe;
@@ -303,8 +400,8 @@ export async function createApp(options = {}) {
       res.set("Access-Control-Allow-Methods", "GET, POST, PATCH, PUT, DELETE, OPTIONS");
     }
     if (req.method === "OPTIONS") return originAllowed ? res.sendStatus(204) : res.sendStatus(403);
-    if (origin && !originAllowed && req.path.startsWith("/api/admin")) {
-      return next(new HttpError(403, "허용되지 않은 관리자 화면에서 보낸 요청입니다."));
+    if (origin && !originAllowed && (req.path.startsWith("/api/admin") || req.path.startsWith("/api/portal"))) {
+      return next(new HttpError(403, "허용되지 않은 화면에서 보낸 요청입니다."));
     }
     return next();
   });
@@ -343,7 +440,116 @@ export async function createApp(options = {}) {
     }
     const file = await store.getFile(verified.fileId);
     if (!file || file.status !== "active") throw new HttpError(404, "파일을 찾을 수 없습니다.");
-    sendFileBody(res, file, await store.downloadFile(file.id));
+    sendFileBody(res, file, await store.downloadFile(file.id), { attachment: req.query.download === "1" });
+  }));
+
+  app.post("/api/portal/login", createPortalLoginLimiter(), asyncRoute(async (req, res) => {
+    const displayName = typeof req.body?.display_name === "string" ? req.body.display_name.trim() : "";
+    const inviteCode = typeof req.body?.invite_code === "string" ? req.body.invite_code.trim() : "";
+    const members = displayName && displayName.length <= 40 && inviteCode && inviteCode.length <= 40
+      ? await store.listMembers()
+      : [];
+    const matches = members.filter((member) => member.display_name === displayName);
+    if (matches.length !== 1 || new Set(["left", "disabled"]).has(matches[0].status)) {
+      throw new HttpError(401, PORTAL_LOGIN_ERROR);
+    }
+    let member;
+    try {
+      member = await store.claimPortalInvite({ memberId: matches[0].id, code: inviteCode });
+    } catch {
+      throw new HttpError(401, PORTAL_LOGIN_ERROR);
+    }
+    if (!member || new Set(["left", "disabled"]).has(member.status)) {
+      throw new HttpError(401, PORTAL_LOGIN_ERROR);
+    }
+    setPortalCookie(res, createPortalToken(member.id, config.sessionSecret, { now: now() }));
+    res.json({ authenticated: true, member: portalMember(member) });
+  }));
+
+  app.get("/api/portal/session", asyncRoute(async (req, res) => {
+    const member = await resolvePortalMember(req);
+    if (!member) {
+      if (readPortalCookie(req.get("cookie"))) clearPortalCookie(res);
+      return res.json({ authenticated: false });
+    }
+    return res.json({ authenticated: true, member: portalMember(member) });
+  }));
+
+  app.post("/api/portal/logout", (req, res) => {
+    clearPortalCookie(res);
+    res.json({ authenticated: false });
+  });
+
+  app.get("/api/portal/overview", requirePortal, asyncRoute(async (req, res) => {
+    const range = portalRange(req.query || {});
+    const timetablePromise = (async () => {
+      if (typeof store.listMemberTimetable === "function") {
+        const memberTimetable = await store.listMemberTimetable(req.portalMember.id);
+        if (Array.isArray(memberTimetable) && memberTimetable.length) return memberTimetable;
+      }
+      return store.listTimetable();
+    })();
+    const [classroom, timetable, events, notices] = await Promise.all([
+      store.getClassroom(),
+      timetablePromise,
+      store.listEvents({ ...range, targetMemberId: req.portalMember.id }),
+      store.listNotices({ status: "published", limit: 50 }),
+    ]);
+    res.json({
+      member: portalMember(req.portalMember),
+      classroom,
+      timetable,
+      notices: notices.filter((notice) => notice.status === "published"),
+      events: events.filter((event) => event.member_id == null || event.member_id === req.portalMember.id),
+    });
+  }));
+
+  app.get("/api/portal/files", requirePortal, asyncRoute(async (req, res) => {
+    const issuedAt = now();
+    const files = await store.listFiles({ targetMemberId: req.portalMember.id, status: "active" });
+    res.json({
+      items: files
+        .filter((file) => file.status === "active" && (file.member_id == null || file.member_id === req.portalMember.id))
+        .map((file) => portalFile(req, file, issuedAt)),
+    });
+  }));
+
+  app.post("/api/portal/events", requirePortal, asyncRoute(async (req, res) => {
+    const requestedScope = String(req.body?.scope || "personal");
+    const scope = requestedScope === "self" ? "personal" : requestedScope;
+    if (!new Set(["personal", "class"]).has(scope)) throw new HttpError(400, "올바른 일정 공개 범위를 선택해 주세요.");
+    if (scope === "class" && req.portalMember.role !== "admin") {
+      throw new HttpError(403, "반 전체 일정은 학급 관리자만 등록할 수 있습니다.");
+    }
+    const memberId = scope === "class" ? null : req.portalMember.id;
+    if (req.body?.member_id !== undefined && (req.body.member_id || null) !== memberId) {
+      throw new HttpError(403, "다른 구성원의 일정은 등록할 수 없습니다.");
+    }
+    const input = {
+      ...eventInput({ ...(req.body || {}), member_id: memberId }),
+      request_key: requestKey(req),
+    };
+    const item = await store.createEvent(input, `portal:${req.portalMember.id}`);
+    res.status(201).json({ item });
+  }));
+
+  app.patch("/api/portal/events/:id", requirePortal, asyncRoute(async (req, res) => {
+    const current = await store.getEvent(req.params.id);
+    if (!portalCanManageEvent(req.portalMember, current)) throw new HttpError(404, "일정을 찾을 수 없습니다.");
+    if (req.body?.member_id !== undefined || req.body?.scope !== undefined) {
+      throw new HttpError(400, "학생 포털에서는 일정 공개 범위를 변경할 수 없습니다.");
+    }
+    const input = eventInput(req.body || {}, { partial: true });
+    if (!Object.keys(input).length) throw new HttpError(400, "변경할 일정 내용을 입력해 주세요.");
+    const item = await store.updateEvent(req.params.id, input, `portal:${req.portalMember.id}`);
+    res.json({ item });
+  }));
+
+  app.delete("/api/portal/events/:id", requirePortal, asyncRoute(async (req, res) => {
+    const current = await store.getEvent(req.params.id);
+    if (!portalCanManageEvent(req.portalMember, current)) throw new HttpError(404, "일정을 찾을 수 없습니다.");
+    const item = await store.cancelEvent(req.params.id, `portal:${req.portalMember.id}`);
+    res.json({ item });
   }));
 
   const isAdminRequest = (req) => embedded

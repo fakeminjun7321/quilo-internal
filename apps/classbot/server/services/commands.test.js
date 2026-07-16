@@ -180,13 +180,21 @@ test("수행평가·과제 통합 요약은 두 유형만 함께 보여준다", 
   assert.doesNotMatch(text(response), /진로 수업/);
 });
 
-test("시간표 전체는 월요일부터 금요일까지 등록 원본을 보여준다", async () => {
+test("시간표 전체는 대상 학생의 개인 시간표를 우선해서 보여준다", async () => {
   const store = fixture();
+  await store.replaceMemberTimetable({ memberId: store.members[0].id, rows: [{
+    weekday: 1,
+    period: 1,
+    subject: "개인 선택 과목",
+    teacher: "담당 교사",
+    room: "선택 강의실",
+    effective_from: "2026-07-01",
+  }] });
   const response = await ask(store, "시간표 전체 홍길동");
   assert.match(text(response), /홍길동님의 월~금 전체 시간표/);
   assert.match(text(response), /7월 13일 월요일/);
   assert.match(text(response), /7월 17일 금요일/);
-  assert.match(text(response), /1교시 물리학/);
+  assert.match(text(response), /1교시 개인 선택 과목/);
 });
 
 test("이번 주 남은 일정은 현재 시각 이후 일정만 유지한다", async () => {

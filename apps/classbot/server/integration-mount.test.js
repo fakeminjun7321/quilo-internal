@@ -44,6 +44,30 @@ test("기존 Express 4 Quilo 서버의 /schedule namespace에서 API가 동작�
   assert.equal(uploaded.status, 201);
   assert.match(new URL(uploaded.body.item.share_url).pathname, /^\/schedule\/api\/files\//);
 
+  const members = await request(parent).get("/schedule/api/admin/members");
+  const student = members.body.items.find((item) => item.role === "student");
+  const invite = await request(parent)
+    .post(`/schedule/api/admin/members/${student.id}/invite`)
+    .send({ expires_in_hours: 1 });
+  assert.equal(invite.status, 201);
+  const portalAgent = request.agent(parent);
+  const portalLogin = await portalAgent
+    .post("/schedule/api/portal/login")
+    .send({ display_name: student.display_name, invite_code: invite.body.code });
+  assert.equal(portalLogin.status, 200);
+  const portalCookie = portalLogin.headers["set-cookie"].find((item) => item.startsWith("classbot_portal="));
+  assert.match(portalCookie, /; Path=\/schedule;/);
+  assert.match(portalCookie, /; HttpOnly/);
+  assert.match(portalCookie, /; SameSite=Lax/);
+  const portalSession = await portalAgent.get("/schedule/api/portal/session");
+  assert.equal(portalSession.body.authenticated, true);
+  assert.equal(portalSession.body.member.id, student.id);
+  const portalFiles = await portalAgent.get("/schedule/api/portal/files");
+  assert.equal(portalFiles.status, 200);
+  assert.equal(portalFiles.body.items.length, 1);
+  assert.match(new URL(portalFiles.body.items[0].open_url).pathname, /^\/schedule\/api\/files\//);
+  assert.match(new URL(portalFiles.body.items[0].download_url).pathname, /^\/schedule\/api\/files\//);
+
   const rootApi = await request(parent).get("/api/health");
   assert.equal(rootApi.status, 404);
 

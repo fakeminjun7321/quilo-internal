@@ -15,7 +15,7 @@ const navItems = [
 ];
 
 export function Brand() {
-  return <div className="brand"><img src={`${import.meta.env.BASE_URL}quilo-chatbot-icon.png`} alt="" aria-hidden="true" /><span>Quilo</span></div>;
+  return <div className="brand"><img src={`${import.meta.env.BASE_URL}quilo-chatbot-icon.png`} alt="" aria-hidden="true" /><span>Quilo schedule</span></div>;
 }
 
 export function Sidebar({ active, onNavigate, classroom, memberCount }) {

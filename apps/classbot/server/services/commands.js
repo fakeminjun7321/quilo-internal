@@ -274,14 +274,14 @@ async function answerReadQuery({ command, intent, member, store, now, quickRepli
 
   if (intent === "timetable") {
     if (period.kind === "full-timetable") {
-      const bundle = await getWeekTimetable(store, now);
+      const bundle = await getWeekTimetable(store, now, { targetMemberId: member.id });
       return simpleTextResponse(
         `${member.display_name}님의 월~금 전체 시간표\n\n${formatWeekTimetable(bundle)}`,
         replies,
       );
     }
     if (period.kind === "week") {
-      const bundle = await getWeekTimetable(store, now, { weekOffset: period.offset });
+      const bundle = await getWeekTimetable(store, now, { weekOffset: period.offset, targetMemberId: member.id });
       return simpleTextResponse(
         `${member.display_name}님의 ${period.label} 시간표\n\n${formatWeekTimetable(bundle)}`,
         replies,

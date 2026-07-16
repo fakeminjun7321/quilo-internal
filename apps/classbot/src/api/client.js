@@ -170,6 +170,27 @@ export const api = {
     if (token) return new URL(resolveApiPath(`/api/files/${encodeURIComponent(token)}`), location.href).href;
     return this.fileDownloadUrl(item);
   },
+  portalSession() { return request("/api/portal/session"); },
+  portalLogin({ display_name, invite_code }) { return request("/api/portal/login", { method: "POST", body: { display_name, invite_code } }); },
+  portalLogout() { return request("/api/portal/logout", { method: "POST" }); },
+  portalOverview(from, to) {
+    const query = new URLSearchParams({ from, to });
+    return request(`/api/portal/overview?${query.toString()}`);
+  },
+  portalFiles() { return request("/api/portal/files"); },
+  portalFileUrl(value) {
+    if (!value) return "";
+    const url = new URL(value, location.href);
+    if (url.origin === location.origin && url.pathname.startsWith("/api/")) {
+      const base = new URL(API_PREFIX, location.href);
+      url.protocol = base.protocol; url.host = base.host;
+      url.pathname = `${base.pathname}${url.pathname.slice(4)}`;
+    }
+    return url.href;
+  },
+  portalCreateEvent(input, options) { return request("/api/portal/events", { method: "POST", headers: idempotencyHeaders("portal-event", input, options), body: input }); },
+  portalUpdateEvent(id, patch) { return request(`/api/portal/events/${id}`, { method: "PATCH", body: patch }); },
+  portalDeleteEvent(id) { return request(`/api/portal/events/${id}`, { method: "DELETE" }); },
   notifications() { return remoteOrLocal(() => request("/api/admin/notifications"), () => ({ items: structuredClone(localState.notifications) })); },
   testNotification(options = {}) { return remoteOrLocal(() => request("/api/admin/notifications/test", { method: "POST", headers: { "Idempotency-Key": options.idempotencyKey || createIdempotencyKey("notification-test") } }), () => createItem("notifications", "notification", { kind: "test", status: "reserved", scheduled_for: new Date().toISOString(), payload: { title: "테스트 알림" } })); },
 };

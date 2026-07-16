@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import request from "supertest";
 import { createApp } from "./app.js";
+import { hashInviteCode } from "./security.js";
 import { createFileToken } from "./services/file-tokens.js";
 import { MemoryStore } from "./store/memory-store.js";
 
@@ -36,6 +37,20 @@ async function login(agent) {
   assert.equal(response.status, 200);
 }
 
+async function issuePortalInvite(store, member, code = "ABCD-EFGH") {
+  await store.createInvite({
+    memberId: member.id,
+    codeHash: hashInviteCode(code),
+    expiresAt: new Date(Date.now() + 60 * 60_000).toISOString(),
+  });
+  return code;
+}
+
+async function loginPortal(agent, store, member, code = "ABCD-EFGH") {
+  await issuePortalInvite(store, member, code);
+  return agent.post("/api/portal/login").send({ display_name: member.display_name, invite_code: code });
+}
+
 test("관리자 세션이 보호되고 로그인 후 overview를 조회한다", async () => {
   const { app, agent } = await fixture();
   assert.equal((await request(app).get("/api/admin/overview")).status, 401);
@@ -49,6 +64,222 @@ test("관리자 세션이 보호되고 로그인 후 overview를 조회한다", 
   assert.equal(response.body.classroom.name, "2학년 4반");
   assert.equal(response.body.stats.memberCount, 13);
   assert.equal(Array.isArray(response.body.notices), true);
+});
+
+test("학생 포털은 초대 코드로 최초 로그인하고 HMAC 쿠키 세션을 유지·해제한다", async () => {
+  const { app, store } = await fixture();
+  const member = (await store.listMembers()).find((item) => item.role === "student");
+  const code = await issuePortalInvite(store, member);
+
+  const anonymous = await request(app).get("/api/portal/session");
+  assert.deepEqual(anonymous.body, { authenticated: false });
+  assert.equal((await request(app).get("/api/portal/overview")).status, 401);
+  assert.equal((await request(app).get("/api/portal/files")).status, 401);
+
+  const wrongCase = await request(app)
+    .post("/api/portal/login")
+    .send({ display_name: `${member.display_name}님`, invite_code: code });
+  assert.equal(wrongCase.status, 401);
+  assert.equal(wrongCase.body.error, "이름을 확인할 수 없습니다.");
+
+  const agent = request.agent(app);
+  const response = await agent
+    .post("/api/portal/login")
+    .send({ display_name: member.display_name, invite_code: code });
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body.member, { id: member.id, display_name: member.display_name, role: "student" });
+  const cookie = response.headers["set-cookie"].find((item) => item.startsWith("classbot_portal="));
+  assert.match(cookie, /; Path=\/;/);
+  assert.match(cookie, /; HttpOnly/);
+  assert.match(cookie, /; SameSite=Lax/);
+  assert.doesNotMatch(cookie, /; Secure/);
+
+  const session = await agent.get("/api/portal/session");
+  assert.deepEqual(session.body, { authenticated: true, member: response.body.member });
+  const reused = await request(app)
+    .post("/api/portal/login")
+    .send({ display_name: member.display_name, invite_code: code });
+  assert.equal(reused.status, 401);
+  assert.equal(reused.body.error, wrongCase.body.error);
+
+  assert.equal((await agent.post("/api/portal/logout")).status, 200);
+  assert.deepEqual((await agent.get("/api/portal/session")).body, { authenticated: false });
+});
+
+test("학생 포털 로그인 실패는 이름 사칭·중복·비활성 여부를 같은 오류로 숨기고 요청 횟수를 제한한다", async () => {
+  const { app, store } = await fixture();
+  const members = await store.listMembers();
+  const first = members.find((item) => item.role === "student");
+  const second = members.find((item) => item.role === "student" && item.id !== first.id);
+  const code = await issuePortalInvite(store, first, "JKLM-NPQR");
+
+  const impersonation = await request(app)
+    .post("/api/portal/login")
+    .send({ display_name: second.display_name, invite_code: code });
+  assert.equal(impersonation.status, 401);
+  assert.deepEqual(impersonation.body, { error: "이름을 확인할 수 없습니다." });
+  assert.equal(JSON.stringify(impersonation.body).includes(first.display_name), false);
+  assert.equal(JSON.stringify(impersonation.body).includes(second.display_name), false);
+
+  store.members.find((item) => item.id === second.id).display_name = first.display_name;
+  const duplicate = await request(app)
+    .post("/api/portal/login")
+    .send({ display_name: first.display_name, invite_code: code });
+  assert.equal(duplicate.status, 401);
+  assert.deepEqual(duplicate.body, impersonation.body);
+
+  const limitedFixture = await fixture();
+  for (let index = 0; index < 10; index += 1) {
+    const failed = await request(limitedFixture.app)
+      .post("/api/portal/login")
+      .send({ display_name: `없는 학생 ${index}`, invite_code: "BAD-CODE" });
+    assert.equal(failed.status, 401);
+  }
+  const limited = await request(limitedFixture.app)
+    .post("/api/portal/login")
+    .send({ display_name: "없는 학생", invite_code: "BAD-CODE" });
+  assert.equal(limited.status, 429);
+  assert.match(limited.body.error, /로그인 시도가 너무 많습니다/);
+  assert.equal(JSON.stringify(limited.body).includes("학생 1"), false);
+});
+
+test("학생 포털 overview는 반 전체와 본인 일정·게시 공지만 반환하고 구성원별 시간표 adapter를 사용한다", async () => {
+  const { app, store } = await fixture();
+  const students = (await store.listMembers()).filter((item) => item.role === "student");
+  const member = students[0];
+  const other = students[1];
+  await store.createEvent({ category: "class", title: "반 전체 행사", due_at: "2026-07-20T10:00:00" });
+  await store.createEvent({ member_id: member.id, category: "assignment", title: "내 개인 일정", due_at: "2026-07-21T10:00:00" });
+  await store.createEvent({ member_id: other.id, category: "assignment", title: "다른 학생 비밀 일정", due_at: "2026-07-22T10:00:00" });
+  await store.createNotice({ title: "초안 공지", body: "노출 금지", status: "draft" });
+  store.listMemberTimetable = async (memberId) => [{ period: 1, subject: "개인 선택", member_id: memberId }];
+
+  const agent = request.agent(app);
+  assert.equal((await loginPortal(agent, store, member)).status, 200);
+  const response = await agent.get("/api/portal/overview?from=2026-07-20&to=2026-07-22");
+  assert.equal(response.status, 200);
+  assert.deepEqual(response.body.member, { id: member.id, display_name: member.display_name, role: "student" });
+  assert.deepEqual(response.body.timetable, [{ period: 1, subject: "개인 선택", member_id: member.id }]);
+  const titles = response.body.events.map((item) => item.title);
+  assert.equal(titles.includes("반 전체 행사"), true);
+  assert.equal(titles.includes("내 개인 일정"), true);
+  assert.equal(titles.includes("다른 학생 비밀 일정"), false);
+  assert.equal(response.body.notices.every((item) => item.status === "published"), true);
+  assert.equal(response.body.notices.some((item) => item.title === "초안 공지"), false);
+  assert.equal((await agent.get("/api/portal/overview?from=2026-07-23&to=2026-07-20")).status, 400);
+  assert.equal((await agent.get("/api/portal/overview?from=not-a-date")).status, 400);
+});
+
+test("학생 포털 파일 목록은 반 전체와 본인 자료만 15분 열기·다운로드 URL로 제공한다", async () => {
+  const { app, store } = await fixture();
+  const students = (await store.listMembers()).filter((item) => item.role === "student");
+  const member = students[0];
+  const classFile = await store.createFile({
+    alias: "반 전체 안내",
+    filename: "guide.pdf",
+    description: "공개 자료",
+    mime_type: "application/pdf",
+  }, Buffer.from("%PDF-1.4\n%%EOF"));
+  const privateFile = await store.createFile({
+    member_id: member.id,
+    alias: "개인 비밀 자료",
+    filename: "private.pdf",
+    description: "노출 금지",
+    mime_type: "application/pdf",
+  }, Buffer.from("%PDF-1.4\nprivate\n%%EOF"));
+  const otherPrivateFile = await store.createFile({
+    member_id: students[1].id,
+    alias: "다른 학생 비밀 자료",
+    filename: "other-private.pdf",
+    description: "다른 학생에게만 공개",
+    mime_type: "application/pdf",
+  }, Buffer.from("%PDF-1.4\nother-private\n%%EOF"));
+
+  const agent = request.agent(app);
+  assert.equal((await loginPortal(agent, store, member)).status, 200);
+  const response = await agent.get("/api/portal/files");
+  assert.equal(response.status, 200);
+  assert.equal(response.body.items.length, 2);
+  const item = response.body.items.find((entry) => entry.id === classFile.id);
+  const personalItem = response.body.items.find((entry) => entry.id === privateFile.id);
+  assert.equal(personalItem.member_id, member.id);
+  assert.equal(personalItem.visibility, "private");
+  assert.equal(JSON.stringify(response.body).includes(otherPrivateFile.id), false);
+  assert.equal(JSON.stringify(response.body).includes("다른 학생 비밀 자료"), false);
+  for (const hidden of ["bucket", "object_path", "status", "created_by"]) {
+    assert.equal(hidden in item, false);
+  }
+  const openUrl = new URL(item.open_url);
+  const downloadUrl = new URL(item.download_url);
+  assert.match(openUrl.pathname, /^\/api\/files\//);
+  assert.equal(openUrl.search, "");
+  assert.equal(downloadUrl.pathname, openUrl.pathname);
+  assert.equal(downloadUrl.searchParams.get("download"), "1");
+
+  const opened = await request(app).get(`${openUrl.pathname}${openUrl.search}`).buffer(true);
+  assert.equal(opened.status, 200);
+  assert.match(opened.headers["content-disposition"], /^inline/);
+  const downloaded = await request(app).get(`${downloadUrl.pathname}${downloadUrl.search}`).buffer(true);
+  assert.equal(downloaded.status, 200);
+  assert.match(downloaded.headers["content-disposition"], /^attachment/);
+});
+
+test("학생 포털 일정 쓰기는 본인 소유를 강제하고 포털 admin만 반 전체 일정을 관리한다", async () => {
+  const { app, store } = await fixture();
+  const members = await store.listMembers();
+  const student = members.find((item) => item.role === "student");
+  const other = members.find((item) => item.role === "student" && item.id !== student.id);
+  const portalAdmin = members.find((item) => item.role === "admin");
+  const studentAgent = request.agent(app);
+  const adminAgent = request.agent(app);
+  assert.equal((await loginPortal(studentAgent, store, student, "STUD-ENT2")).status, 200);
+  assert.equal((await loginPortal(adminAgent, store, portalAdmin, "ADMN-PORT")).status, 200);
+
+  const own = await studentAgent.post("/api/portal/events").send({
+    scope: "personal",
+    category: "assignment",
+    title: "학생 본인 일정",
+    due_at: "2026-07-25T18:00:00",
+  });
+  assert.equal(own.status, 201);
+  assert.equal(own.body.item.member_id, student.id);
+  const classDenied = await studentAgent.post("/api/portal/events").send({
+    scope: "class",
+    category: "class",
+    title: "학생의 반 일정 사칭",
+    due_at: "2026-07-25T19:00:00",
+  });
+  assert.equal(classDenied.status, 403);
+  const impersonation = await studentAgent.post("/api/portal/events").send({
+    member_id: other.id,
+    category: "assignment",
+    title: "다른 학생 일정 사칭",
+    due_at: "2026-07-25T20:00:00",
+  });
+  assert.equal(impersonation.status, 403);
+
+  const classEvent = await adminAgent.post("/api/portal/events").send({
+    scope: "class",
+    category: "class",
+    title: "포털 관리자 반 일정",
+    due_at: "2026-07-26T09:00:00",
+  });
+  assert.equal(classEvent.status, 201);
+  assert.equal(classEvent.body.item.member_id, null);
+  assert.equal((await studentAgent.patch(`/api/portal/events/${classEvent.body.item.id}`).send({ title: "학생 변조" })).status, 404);
+  assert.equal((await studentAgent.delete(`/api/portal/events/${classEvent.body.item.id}`)).status, 404);
+
+  const ownUpdated = await studentAgent.patch(`/api/portal/events/${own.body.item.id}`).send({ title: "학생 본인 일정 수정" });
+  assert.equal(ownUpdated.status, 200);
+  const ownDeleted = await studentAgent.delete(`/api/portal/events/${own.body.item.id}`);
+  assert.equal(ownDeleted.status, 200);
+  assert.equal(ownDeleted.body.item.status, "cancelled");
+
+  const classUpdated = await adminAgent.patch(`/api/portal/events/${classEvent.body.item.id}`).send({ title: "관리자 반 일정 수정" });
+  assert.equal(classUpdated.status, 200);
+  const classDeleted = await adminAgent.delete(`/api/portal/events/${classEvent.body.item.id}`);
+  assert.equal(classDeleted.status, 200);
+  assert.equal(classDeleted.body.item.status, "cancelled");
 });
 
 test("관리자는 실제 PDF·이미지만 자료실에 올리고 비공개 링크로 내려받는다", async () => {

@@ -19,4 +19,6 @@ Kakao Event API의 POST `SUCCESS`는 접수 성공일 뿐 실제 발송 성공�
 
 운영 환경은 `CLASSBOT_STORAGE=supabase`만 허용한다. 메모리 저장소는 재시작 시 데이터와 중복 방지 기록을 잃으므로 로컬 개발 전용이다. 세션·Cron·카카오 스킬 secret은 각각 32자 이상, 관리자 비밀번호는 16자 이상이어야 한다. 카카오 스킬 secret은 스킬 URL의 `?secret=` 또는 `X-Classbot-Skill-Secret` 헤더로 전달한다.
 
-구성원 생성과 시간표 요일 교체는 Supabase RPC 안에서 학급 행을 잠그고 처리한다. 관리자 API의 구성원 DTO와 audit JSON에는 `kakao_user_key` 원문을 반환하거나 기록하지 않는다.
+구성원 생성, 반 시간표 요일 교체, 개인별 시간표 전체 교체는 Supabase RPC 안에서 대상 행을 잠그고 처리한다. 개인별 시간표 테이블은 RLS를 켜고 anon/authenticated 정책을 만들지 않는다. 관리자 API의 구성원 DTO와 audit JSON에는 `kakao_user_key` 원문을 반환하거나 기록하지 않는다.
+
+학생 포털 최초 로그인은 등록 이름과 일회용 초대 코드를 함께 검증한다. 성공 시 30일 HMAC HttpOnly 쿠키를 발급하며, 학생 요청의 `member_id`는 쿠키의 구성원으로 서버에서 강제한다. 학생은 다른 구성원 일정·자료를 조회하거나 수정할 수 없고, 관리자 역할만 반 전체 일정을 관리할 수 있다.

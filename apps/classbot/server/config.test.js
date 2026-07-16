@@ -73,3 +73,19 @@ test("기존 Quilo 서버의 Supabase·세션·관리자 환경변수를 그대�
   assert.equal(config.adminPassword, "existing-quilo-admin-password");
   assert.equal(config.supabaseServiceRoleKey, "existing-service-key");
 });
+
+test("Google Drive 자료실은 Quilo 사용자와 앱 소유 폴더 override만 허용한다", () => {
+  const config = loadConfig({
+    ...validProduction,
+    CLASSBOT_GOOGLE_DRIVE_OWNER_USER_ID: "11111111-2222-3333-4444-555555555555",
+    CLASSBOT_GOOGLE_DRIVE_FOLDER_NAME: "Quilo schedule 자료실",
+  });
+  assert.equal(config.googleDrive.folderId, "");
+  assert.equal(config.googleDrive.ownerUserId, "11111111-2222-3333-4444-555555555555");
+  assert.equal(config.googleDrive.ownerName, "구민준");
+  assert.equal(config.googleDrive.folderName, "Quilo schedule 자료실");
+  assert.throws(
+    () => loadConfig({ ...validProduction, CLASSBOT_GOOGLE_DRIVE_FOLDER_ID: "invalid folder/id" }),
+    /FOLDER_ID is invalid/,
+  );
+});

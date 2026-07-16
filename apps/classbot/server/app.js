@@ -10,6 +10,10 @@ import { createInviteCode, createCronGuard, hashInviteCode, requireAdmin, safeEq
 import { createStore } from "./store/index.js";
 import { createFileToken, verifyFileToken } from "./services/file-tokens.js";
 import {
+  CompositeFileStore,
+  createGoogleDriveFileProvider,
+} from "./services/google-drive-files.js";
+import {
   createPortalToken,
   portalCookieOptions,
   PORTAL_COOKIE_NAME,
@@ -297,6 +301,18 @@ export async function createApp(options = {}) {
   const kakaoClient = options.kakaoClient || new KakaoEventClient(config.kakao);
   const notifications = options.notificationService || new NotificationService({ store, kakaoClient });
   const now = typeof options.now === "function" ? options.now : () => new Date();
+  const googleDriveFiles = options.googleDriveFileProvider
+    || createGoogleDriveFileProvider(config, options.googleDriveDependencies);
+  const fileStore = options.fileStore || new CompositeFileStore(store, googleDriveFiles);
+  const commandStore = new Proxy(store, {
+    get(target, property) {
+      if (property === "listFiles") return fileStore.listFiles.bind(fileStore);
+      if (property === "getFile") return fileStore.getFile.bind(fileStore);
+      if (property === "downloadFile") return fileStore.downloadFile.bind(fileStore);
+      const value = Reflect.get(target, property, target);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
   const embedded = options.embedded === true;
   const app = express();
   const origins = allowedOrigins(config.allowedOrigin);
@@ -307,6 +323,16 @@ export async function createApp(options = {}) {
   };
   const setPortalCookie = (res, token) => res.cookie(PORTAL_COOKIE_NAME, token, portalCookie);
   const resolvePortalMember = async (req) => {
+    if (embedded) {
+      const identity = req.classbotExternalUser;
+      if (!identity?.id || typeof identity.name !== "string" || !identity.name) return null;
+      const members = await store.listMembers();
+      const matches = members.filter((member) => (
+        member.display_name === identity.name
+        && !new Set(["left", "disabled"]).has(member.status)
+      ));
+      return matches.length === 1 ? matches[0] : null;
+    }
     const token = readPortalCookie(req.get("cookie"));
     if (!token) return null;
     let verified;
@@ -438,12 +464,15 @@ export async function createApp(options = {}) {
     } catch (error) {
       throw new HttpError(/만료/.test(error.message) ? 410 : 403, error.message);
     }
-    const file = await store.getFile(verified.fileId);
+    const file = await fileStore.getFile(verified.fileId);
     if (!file || file.status !== "active") throw new HttpError(404, "파일을 찾을 수 없습니다.");
-    sendFileBody(res, file, await store.downloadFile(file.id), { attachment: req.query.download === "1" });
+    sendFileBody(res, file, await fileStore.downloadFile(file.id), { attachment: req.query.download === "1" });
   }));
 
   app.post("/api/portal/login", createPortalLoginLimiter(), asyncRoute(async (req, res) => {
+    if (embedded) {
+      throw new HttpError(410, "별도 학급 로그인이 없어졌습니다. Quilo 계정으로 로그인해 주세요.");
+    }
     const displayName = typeof req.body?.display_name === "string" ? req.body.display_name.trim() : "";
     const inviteCode = typeof req.body?.invite_code === "string" ? req.body.invite_code.trim() : "";
     const members = displayName && displayName.length <= 40 && inviteCode && inviteCode.length <= 40
@@ -469,8 +498,14 @@ export async function createApp(options = {}) {
   app.get("/api/portal/session", asyncRoute(async (req, res) => {
     const member = await resolvePortalMember(req);
     if (!member) {
-      if (readPortalCookie(req.get("cookie"))) clearPortalCookie(res);
-      return res.json({ authenticated: false });
+      if (!embedded && readPortalCookie(req.get("cookie"))) clearPortalCookie(res);
+      return res.json({
+        authenticated: false,
+        ...(embedded ? {
+          reason: req.classbotExternalUser ? "roster_mismatch" : "login_required",
+          login_url: "/login.html?next=/schedule/",
+        } : {}),
+      });
     }
     return res.json({ authenticated: true, member: portalMember(member) });
   }));
@@ -489,11 +524,12 @@ export async function createApp(options = {}) {
       }
       return store.listTimetable();
     })();
-    const [classroom, timetable, events, notices] = await Promise.all([
+    const [classroom, timetable, events, notices, members] = await Promise.all([
       store.getClassroom(),
       timetablePromise,
       store.listEvents({ ...range, targetMemberId: req.portalMember.id }),
       store.listNotices({ status: "published", limit: 50 }),
+      store.listMembers(),
     ]);
     res.json({
       member: portalMember(req.portalMember),
@@ -501,12 +537,15 @@ export async function createApp(options = {}) {
       timetable,
       notices: notices.filter((notice) => notice.status === "published"),
       events: events.filter((event) => event.member_id == null || event.member_id === req.portalMember.id),
+      members: members
+        .filter((member) => !new Set(["left", "disabled"]).has(member.status))
+        .map(portalMember),
     });
   }));
 
   app.get("/api/portal/files", requirePortal, asyncRoute(async (req, res) => {
     const issuedAt = now();
-    const files = await store.listFiles({ targetMemberId: req.portalMember.id, status: "active" });
+    const files = await fileStore.listFiles({ targetMemberId: req.portalMember.id, status: "active" });
     res.json({
       items: files
         .filter((file) => file.status === "active" && (file.member_id == null || file.member_id === req.portalMember.id))
@@ -556,7 +595,15 @@ export async function createApp(options = {}) {
     ? req.classbotExternalAdmin === true
     : req.session?.isAdmin === true;
 
-  app.get("/api/admin/session", (req, res) => res.json({ authenticated: isAdminRequest(req) }));
+  app.get("/api/admin/session", (req, res) => {
+    const authenticated = isAdminRequest(req);
+    return res.json({
+      authenticated,
+      ...(authenticated && req.classbotExternalUser
+        ? { actor: { id: req.classbotExternalUser.id, name: req.classbotExternalUser.name } }
+        : {}),
+    });
+  });
   app.post("/api/admin/login", createLoginLimiter(), asyncRoute(async (req, res) => {
     if (embedded) throw new HttpError(401, "Quilo 관리자 계정으로 먼저 로그인해 주세요.");
     const password = requireString(req.body?.password, "관리자 비밀번호", 512);
@@ -577,7 +624,21 @@ export async function createApp(options = {}) {
   });
 
   app.get("/api/admin/files", asyncRoute(async (req, res) => {
-    res.json({ items: (await store.listFiles({ all: true })).map((file) => fileForAdmin(req, file)) });
+    res.json({ items: (await fileStore.listFiles({ all: true })).map((file) => fileForAdmin(req, file)) });
+  }));
+  app.get("/api/admin/drive/status", asyncRoute(async (_req, res) => {
+    res.json(await googleDriveFiles.status());
+  }));
+  app.post("/api/admin/drive/sync", asyncRoute(async (req, res) => {
+    if (!googleDriveFiles.configured) {
+      throw new HttpError(409, "Google Drive 자료실 운영 계정이 설정되지 않았습니다.");
+    }
+    const items = await googleDriveFiles.listFiles();
+    res.json({
+      ok: true,
+      item_count: items.length,
+      items: items.map((file) => fileForAdmin(req, file)),
+    });
   }));
   app.post("/api/admin/files", receiveFile, asyncRoute(async (req, res) => {
     if (!req.file?.buffer?.length) throw new HttpError(400, "올릴 PDF 또는 이미지 파일을 선택해 주세요.");
@@ -594,7 +655,7 @@ export async function createApp(options = {}) {
       const member = await store.getMember(memberId);
       if (!member || member.status === "left") throw new HttpError(400, "개인 자료를 받을 구성원을 찾을 수 없습니다.");
     }
-    const item = await store.createFile({
+    const item = await fileStore.createFile({
       member_id: memberId,
       alias: requireString(req.body?.alias, "자료 별칭", 60),
       filename: requireString(req.file.originalname, "파일 이름", 180),
@@ -608,15 +669,15 @@ export async function createApp(options = {}) {
     if (req.body.alias !== undefined) patch.alias = requireString(req.body.alias, "자료 별칭", 60);
     if (req.body.description !== undefined) patch.description = optionalString(req.body.description, "자료 설명", 1000);
     if (!Object.keys(patch).length) throw new HttpError(400, "변경할 자료 정보를 입력해 주세요.");
-    res.json({ item: fileForAdmin(req, await store.updateFile(req.params.id, patch, "admin")) });
+    res.json({ item: fileForAdmin(req, await fileStore.updateFile(req.params.id, patch, "admin")) });
   }));
   app.get("/api/admin/files/:id/download", asyncRoute(async (req, res) => {
-    const file = await store.getFile(req.params.id);
+    const file = await fileStore.getFile(req.params.id);
     if (!file || file.status !== "active") throw new HttpError(404, "파일을 찾을 수 없습니다.");
-    sendFileBody(res, file, await store.downloadFile(file.id), { attachment: true });
+    sendFileBody(res, file, await fileStore.downloadFile(file.id), { attachment: true });
   }));
   app.delete("/api/admin/files/:id", asyncRoute(async (req, res) => {
-    res.json({ item: publicFile(await store.deleteFile(req.params.id, "admin")) });
+    res.json({ item: publicFile(await fileStore.deleteFile(req.params.id, "admin")) });
   }));
 
   app.get("/api/admin/overview", asyncRoute(async (_req, res) => {
@@ -816,7 +877,7 @@ export async function createApp(options = {}) {
     }
     res.json(await handleKakaoCommand({
       payload: req.body || {},
-      store,
+      store: commandStore,
       now: now(),
       makeFileUrl: (file) => fileLink(req, createFileToken(file.id, config.sessionSecret, { now: now() })),
     }));

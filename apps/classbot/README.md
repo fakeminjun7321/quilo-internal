@@ -1,17 +1,18 @@
 # Quilo schedule
 
-2학년 4반의 개인별 시간표, 수행평가·과제 일정, 반 공지와 카카오톡 조회를 관리하는 Quilo 내장 기능이다. 관리자와 학생 화면은 데스크톱·모바일을 지원한다. 학생은 최초 한 번 이름과 초대 코드로 본인 확인한 뒤 웹과 카카오에서 이름을 반복 입력하지 않아도 된다.
+2학년 4반의 개인별 시간표, 수행평가·과제 일정, 반 공지와 카카오톡 조회를 관리하는 Quilo 내장 기능이다. 관리자와 학생 화면은 데스크톱·모바일을 지원한다. 웹은 기존 Quilo 계정 이름이 16명 명단과 정확히 일치할 때 열리고, 카카오는 최초 한 번 명단 이름을 등록한 뒤 이름을 반복 입력하지 않아도 된다.
 
 ## 현재 구현 범위
 
-- 관리자용 오늘 대시보드, 일정, 시간표, 반 공지, 자료실, 구성원, 알림 기록, 설정
+- 관리자·학생 공통 메뉴: 오늘, 일정, 공지, 자료실, 구성원, 설정
 - 학생용 월·주·일 캘린더, 개인별 시간표, 일정 추가, PDF·이미지 드라이브
-- 최대 16명 구성원과 1회용 초대 코드 가입, 30일 HttpOnly 학생 포털 세션
-- 카카오 챗봇 명령: `오늘 일정`, `다음 일정`, `이번 달 일정`, `이번 주 남은 일정`, `수행평가 과제 통합 요약`, `시간표 전체`, `자료 목록`, `PDF 별칭`, `이미지 별칭`
-- 미등록 사용자는 질문 맨 뒤에 등록 이름을 붙일 수 있고, `이름등록 ABCD-EFGH`를 한 뒤에는 본인 조회에서 이름을 생략한다.
+- 최대 16명 구성원과 기존 Quilo 로그인 세션 기반 접근 제어
+- 카카오 챗봇 명령: `도움말`, `이름 등록 구민준`, `오늘 일정`, `다음 일정`, `이번 달 일정`, `이번 주 남은 일정`, `수행평가 과제 통합 요약`, `시간표 전체`, `파일 리스트`, `김종수T 학습지`
+- 파일명·별칭이 정확히 일치하면 바로 보내고, 비슷하면 최대 3개 후보를 물은 뒤 `맞아` 또는 번호 응답으로 보낸다.
 - 반 전체 일정과 구성원별 개인 일정, 개인 일정 대상자에게만 보내는 알림
 - 학생은 자기 개인 일정만 생성·수정·삭제하고, 관리자 역할만 반 전체 일정을 생성·수정·삭제한다.
-- 반 전체 자료와 본인 개인 자료만 노출하는 비공개 파일 저장소와 15분 열기·다운로드 링크
+- 반 전체 자료는 Google Drive, 개인 자료는 비공개 Supabase 저장소에 보관하고 15분 프록시 링크로만 연다.
+- Google Drive 운영 계정은 기존 Quilo의 `구민준` 계정을 정확한 이름으로 찾아 연결한다.
 - 일정 마감·변경, 평일 아침 시간표, 반 공지 Event API 알림
 - Event API 작업 결과 조회와 사용자별 성공·실패 기록
 - 일정·공지 생성 멱등성, 명시적 실패 재시도, 감사 로그
@@ -44,7 +45,7 @@ npm run release:check
 
 ## 운영 배포
 
-1. Supabase 프로젝트의 SQL 편집기에서 [`db/schema.sql`](./db/schema.sql)을 적용한다. 기존 v2 운영 DB는 [`db/migrations/003_member_timetable.sql`](./db/migrations/003_member_timetable.sql), [`db/migrations/004_portal_invite_channel.sql`](./db/migrations/004_portal_invite_channel.sql) 순서로 적용한다.
+1. Supabase 프로젝트의 SQL 편집기에서 [`db/schema.sql`](./db/schema.sql)을 적용한다. 기존 v4 운영 DB는 [`db/migrations/005_kakao_name_registration.sql`](./db/migrations/005_kakao_name_registration.sql)을 적용한다.
 2. 기존 Quilo Render 서비스에 Cron·카카오 스킬 비밀값을 설정한다. Supabase 연결과 관리자 로그인은 기존 Quilo 설정을 그대로 쓴다.
 3. 기존 Quilo 서비스를 재배포한다. 루트 `postinstall`이 일정 관리 화면을 함께 빌드한다.
 4. `GET /schedule/api/health`가 `ok: true`와 `storage: supabase`를 반환하는지 확인한다.
@@ -59,8 +60,8 @@ npm run release:check
 - 스킬 URL: `POST https://quilolab.com/schedule/api/kakao/skill?secret=CLASSBOT_KAKAO_SKILL_SECRET`
 - Event 이름: 관리자센터 값과 `KAKAO_EVENT_NAME`을 정확히 동일하게 설정
 - Event API 활성화: 준비가 끝난 뒤 `KAKAO_EVENT_ENABLED=true`
-- 최초 이름 등록: 관리자 화면에서 받은 일회용 코드를 챗봇에 `이름등록 ABCD-EFGH`로 입력
-- 등록 후 조회: `오늘 일정`, `내일 시간표`, `시간표 전체`, `자료 목록`처럼 이름 없이 사용
+- 최초 이름 등록: 챗봇에 명단 이름 그대로 `이름 등록 구민준` 입력. 초대 코드는 필요 없다.
+- 등록 후 조회: `오늘 일정`, `내일 시간표`, `시간표 전체`, `파일 리스트`처럼 이름 없이 사용
 - 명시적 대상 조회: 미등록 상태이거나 다른 구성원의 공개 일정을 볼 때만 `오늘 일정 등록이름`처럼 이름을 맨 뒤에 입력
 
 Event API의 POST 성공은 접수 성공일 뿐 실제 전송 완료가 아니다. 이 서비스는 `taskId` 결과 조회 후에만 `sent`로 기록하며, 실패는 자동 재시도하지 않는다. 상세 운영 정책은 [`server/README.md`](./server/README.md), 공식 연동 근거와 열품타 정책은 [`docs/integrations.md`](./docs/integrations.md)를 참고한다.

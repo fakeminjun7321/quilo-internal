@@ -19,8 +19,14 @@ test("기존 Express 4 Quilo 서버의 /schedule namespace에서 API가 동작�
     }),
   });
   const parent = express4();
+  const student = (await child.locals.classbot.store.listMembers()).find((item) => item.role === "student");
   parent.use("/schedule/api/admin", (req, _res, next) => {
     req.classbotExternalAdmin = true;
+    req.classbotExternalUser = { id: "quilo-admin", name: "구민준", isAdmin: true };
+    next();
+  });
+  parent.use("/schedule/api/portal", (req, _res, next) => {
+    req.classbotExternalUser = { id: "quilo-student", name: student.display_name, isAdmin: false };
     next();
   });
   parent.use("/schedule", child);
@@ -44,25 +50,12 @@ test("기존 Express 4 Quilo 서버의 /schedule namespace에서 API가 동작�
   assert.equal(uploaded.status, 201);
   assert.match(new URL(uploaded.body.item.share_url).pathname, /^\/schedule\/api\/files\//);
 
-  const members = await request(parent).get("/schedule/api/admin/members");
-  const student = members.body.items.find((item) => item.role === "student");
-  const invite = await request(parent)
-    .post(`/schedule/api/admin/members/${student.id}/invite`)
-    .send({ expires_in_hours: 1 });
-  assert.equal(invite.status, 201);
-  const portalAgent = request.agent(parent);
-  const portalLogin = await portalAgent
-    .post("/schedule/api/portal/login")
-    .send({ display_name: student.display_name, invite_code: invite.body.code });
-  assert.equal(portalLogin.status, 200);
-  const portalCookie = portalLogin.headers["set-cookie"].find((item) => item.startsWith("classbot_portal="));
-  assert.match(portalCookie, /; Path=\/schedule;/);
-  assert.match(portalCookie, /; HttpOnly/);
-  assert.match(portalCookie, /; SameSite=Lax/);
-  const portalSession = await portalAgent.get("/schedule/api/portal/session");
+  const portalLogin = await request(parent).post("/schedule/api/portal/login").send({ display_name: student.display_name, invite_code: "unused" });
+  assert.equal(portalLogin.status, 410);
+  const portalSession = await request(parent).get("/schedule/api/portal/session");
   assert.equal(portalSession.body.authenticated, true);
   assert.equal(portalSession.body.member.id, student.id);
-  const portalFiles = await portalAgent.get("/schedule/api/portal/files");
+  const portalFiles = await request(parent).get("/schedule/api/portal/files");
   assert.equal(portalFiles.status, 200);
   assert.equal(portalFiles.body.items.length, 1);
   assert.match(new URL(portalFiles.body.items[0].open_url).pathname, /^\/schedule\/api\/files\//);
@@ -79,4 +72,21 @@ test("기존 Express 4 Quilo 서버의 /schedule namespace에서 API가 동작�
   assert.equal(anonymousSession.headers["set-cookie"], undefined);
   const anonymousOverview = await request(anonymousParent).get("/schedule/api/admin/overview");
   assert.equal(anonymousOverview.status, 401);
+  const anonymousPortal = await request(anonymousParent).get("/schedule/api/portal/session");
+  assert.deepEqual(anonymousPortal.body, {
+    authenticated: false,
+    reason: "login_required",
+    login_url: "/login.html?next=/schedule/",
+  });
+
+  const mismatchedParent = express4();
+  mismatchedParent.use("/schedule/api/portal", (req, _res, next) => {
+    req.classbotExternalUser = { id: "quilo-outsider", name: `${student.display_name}님`, isAdmin: false };
+    next();
+  });
+  mismatchedParent.use("/schedule", child);
+  const mismatchedSession = await request(mismatchedParent).get("/schedule/api/portal/session");
+  assert.equal(mismatchedSession.body.authenticated, false);
+  assert.equal(mismatchedSession.body.reason, "roster_mismatch");
+  assert.equal((await request(mismatchedParent).get("/schedule/api/portal/overview")).status, 401);
 });

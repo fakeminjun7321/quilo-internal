@@ -17,7 +17,7 @@ const { listFeatures } = require("../lib/quilo-catalog");
 test("catalog represents the broad Quilo product, not only reports", () => {
   const features = listFeatures();
   assert.ok(features.length >= 30);
-  for (const id of ["pdf-translate", "cap-translate", "image-ocr", "pdf-analysis", "vibe-coding", "file-chat", "community", "lab", "dropbox", "google-drive", "google-docs", "notion", "email-results", "codex-plugin"]) {
+  for (const id of ["pdf-translate", "cap-translate", "image-ocr", "pdf-analysis", "vibe-coding", "file-chat", "quilo-schedule", "community", "lab", "dropbox", "google-drive", "google-docs", "notion", "email-results", "codex-plugin"]) {
     assert.ok(features.some((feature) => feature.id === id), `missing ${id}`);
   }
   assert.ok(new Set(features.map((feature) => feature.category)).size >= 6);
@@ -28,6 +28,7 @@ test("catalog represents the broad Quilo product, not only reports", () => {
   assert.equal(features.find((feature) => feature.id === "phys-inquiry").execution, "paused");
   assert.equal(features.find((feature) => feature.id === "vibe-coding").execution, "remote");
   assert.equal(features.find((feature) => feature.id === "file-chat").execution, "remote");
+  assert.equal(features.find((feature) => feature.id === "quilo-schedule").path, "/schedule/");
   assert.equal(features.find((feature) => feature.id === "community").execution, "remote");
   assert.equal(features.find((feature) => feature.id === "cap-translate").status, "pro");
   assert.equal(features.find((feature) => feature.id === "cap-translate").execution, "remote");

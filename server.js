@@ -8516,6 +8516,29 @@ function getClassbotApp() {
   return classbotAppPromise;
 }
 
+async function attachClassbotExternalUser(req, _res, next) {
+  // Quilo Schedule reuses the browser session only. Scoped API tokens must not
+  // become a browser/classroom identity, even when both credentials are sent.
+  if (req.apiUser || !req.session?.userInfo) {
+    req.classbotExternalUser = null;
+    return next();
+  }
+  try {
+    const user = await refreshSessionUser(req, { failClosed: true });
+    req.classbotExternalUser = user?.id && user?.name
+      ? { id: user.id, name: user.name, isAdmin: user.isAdmin === true }
+      : null;
+    return next();
+  } catch (error) {
+    return next(error);
+  }
+}
+
+// The child app receives only a freshly verified, minimal Quilo identity. It
+// performs the authoritative exact-name roster match itself for every portal
+// request, while admin/Drive routes can reuse the stable Quilo user id.
+app.use(["/schedule/api/portal", "/schedule/api/admin"], attachClassbotExternalUser);
+
 app.use("/schedule/api/admin/session", (req, _res, next) => {
   // 화면이 로그인 여부를 확인하는 읽기 전용 endpoint는 익명에게도 false를 돌려준다.
   // 실제 데이터 API는 바로 아래 requireAdmin에서 권한을 매 요청 다시 검증한다.

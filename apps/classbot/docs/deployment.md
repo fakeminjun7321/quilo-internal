@@ -27,11 +27,12 @@ select
   to_regprocedure('public.classbot_health_check()') is not null as health_rpc,
   to_regprocedure('public.classbot_create_member(uuid,text,text)') is not null as member_rpc,
   to_regprocedure('public.classbot_claim_invite(uuid,text,text,text)') is not null as invite_rpc,
+  to_regprocedure('public.classbot_claim_member_by_name(uuid,text,text,text)') is not null as name_claim_rpc,
   to_regprocedure('public.classbot_replace_timetable_day(uuid,integer,jsonb)') is not null as timetable_rpc,
   to_regprocedure('public.classbot_replace_member_timetable(uuid,uuid,jsonb)') is not null as member_timetable_rpc;
 ```
 
-기대값은 schema version `4`와 모든 RPC의 `true`다. 기존 v2 운영 DB에는 전체 스키마 대신 [`003_member_timetable.sql`](../db/migrations/003_member_timetable.sql), [`004_portal_invite_channel.sql`](../db/migrations/004_portal_invite_channel.sql)을 순서대로 적용할 수 있다. 모든 일정 관리 테이블은 RLS가 활성화되고 anon/authenticated 정책은 만들지 않는다. 서버만 service role key로 접근한다.
+기대값은 schema version `5`와 모든 RPC의 `true`다. 기존 v4 운영 DB에는 전체 스키마 대신 [`005_kakao_name_registration.sql`](../db/migrations/005_kakao_name_registration.sql)을 적용할 수 있다. 모든 일정 관리 테이블은 RLS가 활성화되고 anon/authenticated 정책은 만들지 않는다. 서버만 service role key로 접근한다.
 
 ## 3. 기존 Render 서비스 설정
 
@@ -41,6 +42,22 @@ select
 
 - `CLASSBOT_CRON_SECRET`: 32자 이상
 - `CLASSBOT_KAKAO_SKILL_SECRET`: 32자 이상
+- `CLASSBOT_GOOGLE_DRIVE_OWNER_NAME`: Google Drive를 연결한 Quilo 관리자 계정 이름. 기본값은 `구민준`
+
+자료실은 기존 Quilo의 Google OAuth 연결과 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `CLOUD_TOKEN_SECRET`을 그대로 재사용한다. 관리자가 Quilo에서 Google Drive를 먼저 연결하면 서버가 제한된 `drive.file` 권한으로 `Quilo schedule 자료실` 폴더를 자동 생성하고, 그 폴더의 PDF·이미지만 일정 사이트와 챗봇에 표시한다. 공개 공유 링크를 만들지 않으며, 파일은 기존 15분 HMAC 링크를 거쳐 서버가 프록시한다.
+
+반 전체 파일은 일정 사이트의 자료 업로드 화면을 통해 올려야 Google Drive 파일로 생성되어 동기화된다. `drive.file` 최소 권한 특성상 사용자가 Drive 화면에서 직접 만든 파일은 같은 폴더에 넣어도 Quilo 앱이 읽지 못할 수 있다. 개인 자료는 Drive에 올리지 않고 기존 비공개 Supabase 저장소에 유지한다. Drive 폴더 열기는 관리자에게만 제공하며 학생과 챗봇에는 Google 원본 링크를 노출하지 않는다.
+
+기본 폴더 이름은 `CLASSBOT_GOOGLE_DRIVE_FOLDER_NAME=Quilo schedule 자료실`이다. `CLASSBOT_GOOGLE_DRIVE_FOLDER_ID`는 같은 Quilo OAuth 앱이 이미 생성해 접근 가능한 폴더를 지정할 때만 선택적으로 사용한다. 외부 Google Drive 앱이나 Connector가 만든 폴더 ID를 넣으면 `drive.file` 권한으로 접근할 수 없으므로 사용하지 않는다.
+
+배포 후 관리자 세션으로 아래를 확인한다.
+
+```text
+GET  /schedule/api/admin/drive/status
+POST /schedule/api/admin/drive/sync
+```
+
+서버는 기본적으로 이름이 정확히 `구민준`인 Quilo 계정의 UUID를 내부에서 찾아 사용한다. 동명이인 등으로 이름 조회를 쓸 수 없을 때만 `CLASSBOT_GOOGLE_DRIVE_OWNER_USER_ID`를 override로 지정한다. `connected: true`가 아니면 owner 이름, Quilo의 Google 연결 상태, 세 OAuth 환경변수를 먼저 확인한다. Drive 연결이 실패해도 기존 Supabase 자료실은 계속 작동한다.
 
 `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SESSION_SECRET`, `ADMIN_PASSWORD`는 기존 Quilo 값을 재사용한다. 기존 `ADMIN_PASSWORD`가 16자 미만이면 `CLASSBOT_ADMIN_PASSWORD`를 16자 이상으로 별도 설정한다. 각 secret은 서로 다른 값이어야 한다. 운영 관리 화면은 별도 classbot 쿠키나 비밀번호 로그인을 만들지 않고, 기존 Quilo 관리자 세션을 매 요청 다시 검증한다.
 
@@ -69,9 +86,9 @@ Smoke test는 관리자 로그인을 시도하거나 데이터를 생성하지 �
 2. 챗봇 생성·채널 연결과 봇 배포를 완료한다. 단톡방에서 직접 호출하는 조회 기능만 쓸 때는 사업자 인증이나 월렛이 필요하지 않다.
 3. 카카오 스킬에 공개 HTTPS `/schedule/api/kakao/skill` 엔드포인트와 `X-Classbot-Skill-Secret` 헤더를 연결하고 폴백 블록이 스킬 응답을 사용하게 한다.
 4. `KAKAO_BOT_ID=6a57ace9fd013545b6416293`을 설정하고, `KAKAO_REST_API_KEY`는 Render에 직접 입력한다.
-5. 개발봇 또는 테스트 채널에서 `이름등록 초대코드`를 한 번 실행한 뒤 `오늘 일정`, `시간표 전체`, `자료 목록`을 이름 없이 조회하고 개인 일정·개인 자료 격리를 확인한다.
+5. 개발봇 또는 테스트 채널에서 `이름 등록 구민준`처럼 명단의 정확한 이름을 한 번 입력한 뒤 `오늘 일정`, `시간표 전체`, `파일 리스트`를 이름 없이 조회하고 개인 일정·개인 자료 격리를 확인한다.
 
-학생 웹 포털은 `https://quilolab.com/schedule/`에서 이름과 같은 일회용 초대 코드로 최초 로그인한다. 학생은 본인 일정만 추가할 수 있고 관리자 역할만 반 전체 공개 범위를 선택할 수 있는지 확인한다.
+학생 웹 포털은 `https://quilolab.com/schedule/`에서 기존 Quilo 계정으로 로그인한다. 계정 이름이 16명 명단 중 한 명과 정확히 일치해야 열리며, 학생은 본인 일정만 추가할 수 있고 관리자 역할만 반 전체 공개 범위를 선택할 수 있는지 확인한다.
 
 자동 알림을 추가로 켜는 경우에만 비즈니스 채널 인증, 비즈앱, 카카오 로그인, 월렛과 Event 블록을 준비하고 이벤트명을 `quilo_schedule_notification`으로 설정한다. 테스트 구성원 한 명만 활성 수신자로 둔 상태에서 `KAKAO_EVENT_ENABLED=true`로 바꾸고 한 건만 시험 발송한다. POST 접수 후 task 결과가 `sent`로 확정되면 운영 Cron을 활성화하고, 실패하면 즉시 `KAKAO_EVENT_ENABLED=false`로 되돌린다.
 
@@ -85,6 +102,6 @@ Smoke test는 관리자 로그인을 시도하거나 데이터를 생성하지 �
 - 관리자 세션이 반복 해제되거나 외부 Origin에서 관리자 API가 허용된다.
 - 동일 일정·공지·Cron 실행에서 중복 알림이 생긴다.
 - task 결과 조회 전 알림이 성공 처리된다.
-- 데이터가 재배포 후 사라지거나 16명 정원·초대 코드 일회성 규칙이 깨진다.
+- 데이터가 재배포 후 사라지거나 16명 정원·카카오 이름 1회 연결 규칙이 깨진다.
 
 롤백 후에도 Supabase 스키마를 임의로 삭제하지 않는다. 먼저 `KAKAO_EVENT_ENABLED=false`로 전송을 정지하고 Render의 직전 정상 Deploy를 선택한다.

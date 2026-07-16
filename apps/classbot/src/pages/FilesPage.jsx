@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import {
-  Copy, ExternalLink, FileImage, FileText, FolderOpen, LoaderCircle,
-  LockKeyhole, Trash2, Upload, Users, X,
+  Cloud, Copy, ExternalLink, FileImage, FileText, FolderOpen, LoaderCircle,
+  LockKeyhole, RefreshCw, Trash2, Upload, Users, X,
 } from "lucide-react";
 import { dateLabel } from "../lib/format.js";
 
@@ -28,7 +28,14 @@ function fileSize(item) {
   return `${(value / 1024 ** 2).toFixed(value < 10 * 1024 ** 2 ? 1 : 0)} MB`;
 }
 
-export default function FilesPage({ files, members, busy, loading, error, onUpload, onDelete, onCopy, onRefresh, downloadUrl }) {
+function driveStatusText(drive) {
+  if (drive?.connected) return `${drive.folder_name || "Quilo schedule 자료실"} · ${drive.item_count || 0}개 동기화`;
+  if (drive?.reason === "owner_user_missing") return "Google Drive 운영 계정 이름을 설정해 주세요.";
+  if (drive?.reason === "demo_mode") return "데모에서는 Google Drive를 연결하지 않습니다.";
+  return "Quilo 계정의 Google Drive 연결을 확인해 주세요.";
+}
+
+export default function FilesPage({ files, members, busy, loading, error, drive, onDriveSync, onUpload, onDelete, onCopy, onRefresh, downloadUrl }) {
   const inputRef = useRef(null);
   const [file, setFile] = useState(null);
   const [alias, setAlias] = useState("");
@@ -65,7 +72,19 @@ export default function FilesPage({ files, members, busy, loading, error, onUplo
 
   return (
     <div className="page files-page">
-      <div className="page-heading"><h1>자료실</h1><p>PDF와 이미지를 반 전체 또는 선택한 구성원에게 안전하게 공유합니다.</p></div>
+      <div className="page-heading split">
+        <span><h1>자료실</h1><p>PDF와 이미지를 반 전체 또는 선택한 구성원에게 안전하게 공유합니다.</p></span>
+        <span className="drive-heading-actions">
+          {drive?.folder_url ? <a className="outline-button" href={drive.folder_url} target="_blank" rel="noreferrer"><FolderOpen size={17} />Drive 열기</a> : null}
+          <button type="button" className="secondary-button" onClick={onDriveSync} disabled={busy || !drive?.configured}><RefreshCw className={busy ? "spin" : ""} size={17} />Drive 동기화</button>
+        </span>
+      </div>
+
+      <section className={`drive-status-card ${drive?.connected ? "connected" : "disconnected"}`}>
+        <span className="drive-status-icon"><Cloud size={20} /></span>
+        <span><strong>{drive?.connected ? "Google Drive 연결됨" : "Google Drive 연결 필요"}</strong><small>{driveStatusText(drive)}</small></span>
+        {!drive?.connected && drive?.connect_url ? <a href={drive.connect_url} target="_top">Quilo 연결 설정 열기</a> : null}
+      </section>
 
       <form className="content-panel file-upload-panel" onSubmit={submit}>
         <div className="section-line"><h2>자료 업로드</h2><span>PDF · 이미지</span></div>
@@ -85,7 +104,7 @@ export default function FilesPage({ files, members, busy, loading, error, onUplo
             <label>별칭 <span>*</span><input value={alias} onChange={(event) => setAlias(event.target.value)} placeholder="자료실에 표시할 이름" required disabled={busy} /></label>
             <label>설명<textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="자료에 대한 간단한 설명" rows="3" disabled={busy} /></label>
             <label>공개 범위 <span>*</span><select value={memberId} onChange={(event) => setMemberId(event.target.value)} disabled={busy}><option value="">반 전체 공개</option>{targetOptions.map((member) => <option key={member.id} value={member.id}>개인 공개 · {member.display_name}</option>)}</select></label>
-            <p className="help-text">개인 공개 자료는 선택한 구성원에게만 표시됩니다.</p>
+            <p className="help-text">반 전체 자료는 {drive?.connected ? "Google Drive에 저장되고" : "기존 비공개 저장소에 저장되며"}, 개인 자료는 항상 선택한 구성원에게만 표시됩니다.</p>
             <button className="primary-button file-submit" disabled={busy || !file || !alias.trim()}><Upload size={18} />{busy ? "업로드 중" : "자료 업로드"}</button>
           </div>
         </div>
@@ -99,11 +118,12 @@ export default function FilesPage({ files, members, busy, loading, error, onUplo
           const isImage = fileMime(item).startsWith("image/") || /\.(png|jpe?g|gif|webp)$/i.test(originalName(item));
           const targetName = item.member_id ? memberNames.get(item.member_id) || "구성원 정보 없음" : "반 전체";
           const targetClass = item.member_id ? "private" : "classwide";
+          const fromDrive = item.provider === "google_drive";
           return <article className="file-row" key={item.id}>
             <span className={`file-type-icon ${isImage ? "image" : "pdf"}`}>{isImage ? <FileImage size={22} /> : <FileText size={22} />}</span>
-            <span className="file-copy"><strong>{item.alias || item.title || originalName(item)}</strong><small>{originalName(item)} · {fileSize(item)}</small>{item.description && <p>{item.description}</p>}<time>{dateLabel(item.created_at)}</time></span>
+            <span className="file-copy"><strong>{item.alias || item.title || originalName(item)}{fromDrive ? <em className="drive-file-badge">Drive</em> : null}</strong><small>{originalName(item)} · {fileSize(item)}</small>{item.description && <p>{item.description}</p>}<time>{dateLabel(item.created_at)}</time></span>
             <span className={`file-visibility ${targetClass}`}>{item.member_id ? <LockKeyhole size={14} /> : <Users size={14} />}{targetName}</span>
-            <span className="file-actions"><a className="icon-button" href={downloadUrl(item)} target="_blank" rel="noreferrer" aria-label={`${item.alias || originalName(item)} 열기`} title="파일 열기"><ExternalLink size={18} /></a>{!item.member_id && <button className="icon-button" onClick={() => onCopy(item)} aria-label={`${item.alias || originalName(item)} 링크 복사`} title="링크 복사"><Copy size={18} /></button>}<button className="icon-button danger" onClick={() => onDelete(item)} aria-label={`${item.alias || originalName(item)} 삭제`} title="삭제" disabled={busy}><Trash2 size={18} /></button></span>
+            <span className="file-actions"><a className="icon-button" href={downloadUrl(item)} target="_blank" rel="noreferrer" aria-label={`${item.alias || originalName(item)} 열기`} title="파일 열기"><ExternalLink size={18} /></a>{!item.member_id && <button className="icon-button" onClick={() => onCopy(item)} aria-label={`${item.alias || originalName(item)} 링크 복사`} title="링크 복사"><Copy size={18} /></button>}{fromDrive ? null : <button className="icon-button danger" onClick={() => onDelete(item)} aria-label={`${item.alias || originalName(item)} 삭제`} title="삭제" disabled={busy}><Trash2 size={18} /></button>}</span>
           </article>;
         })}
         {!loading && !error && !ordered.length && <div className="empty-state"><FolderOpen size={30} /><strong>공유된 자료가 없습니다.</strong><p>PDF나 이미지를 올려 학급 자료실을 시작해 보세요.</p></div>}

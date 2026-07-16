@@ -38,7 +38,7 @@ export default function PortalDrive() {
 
   return (
     <section className="portal-drive-page">
-      <div className="portal-page-heading"><div><h1>드라이브</h1><p>나에게 공개된 학급 PDF와 이미지를 확인할 수 있습니다.</p></div><label className="portal-drive-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="자료 검색" aria-label="자료 검색" /></label></div>
+      <div className="portal-page-heading"><div><h1>자료실</h1><p>나에게 공개된 학급 PDF와 이미지를 확인할 수 있습니다.</p></div><label className="portal-drive-search"><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="자료 검색" aria-label="자료 검색" /></label></div>
       <section className="content-panel portal-drive-list">
         <div className="section-line"><h2>공유 자료</h2><span>{visible.length}개</span></div>
         {loading && <div className="portal-calendar-state"><RotateCw className="spin" size={23} /><span>공유 자료를 불러오는 중</span></div>}

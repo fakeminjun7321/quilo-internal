@@ -87,6 +87,7 @@ function createItem(collection, prefix, input) {
 
 export const api = {
   get mode() { return transport; },
+  get embedded() { return EMBEDDED_IN_QUILO; },
   get demoFallbackEnabled() { return DEMO_FALLBACK_ENABLED; },
   async session() {
     return remoteOrLocal(() => request("/api/admin/session"), () => ({ authenticated: true, actor: "demo-admin", demo: true }));
@@ -141,6 +142,13 @@ export const api = {
   deleteNotice(id) { return remoteOrLocal(() => request(`/api/admin/notices/${id}`, { method: "DELETE" }), () => { localState.notices = localState.notices.filter((item) => item.id !== id); persistLocal(); return { ok: true }; }); },
   sendNotice(id, options = {}) { return remoteOrLocal(() => request(`/api/admin/notices/${id}/send`, { method: "POST", headers: { "Idempotency-Key": options.idempotencyKey || createIdempotencyKey("notice-send") } }), () => updateItem("notices", id, { status: "published", published_at: new Date().toISOString() })); },
   files() { return remoteOrLocal(() => request("/api/admin/files"), () => ({ items: structuredClone(localState.files) })); },
+  driveStatus() {
+    return remoteOrLocal(
+      () => request("/api/admin/drive/status"),
+      () => ({ configured: false, connected: false, reason: "demo_mode" }),
+    );
+  },
+  syncDrive() { return request("/api/admin/drive/sync", { method: "POST" }); },
   uploadFile(input, options) {
     const body = new FormData();
     body.append("file", input.file);
@@ -180,6 +188,11 @@ export const api = {
   portalSession() { return request("/api/portal/session"); },
   portalLogin({ display_name, invite_code }) { return request("/api/portal/login", { method: "POST", body: { display_name, invite_code } }); },
   portalLogout() { return request("/api/portal/logout", { method: "POST" }); },
+  quiloLogout() {
+    return EMBEDDED_IN_QUILO
+      ? request("/api/logout", { method: "POST", root: true })
+      : request("/api/portal/logout", { method: "POST" });
+  },
   portalOverview(from, to) {
     const query = new URLSearchParams({ from, to });
     return request(`/api/portal/overview?${query.toString()}`);

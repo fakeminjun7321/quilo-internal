@@ -135,7 +135,7 @@ export class SupabaseStore {
   async healthCheck() {
     await this.ensureClassroom();
     const version = unwrap(await this.client.rpc("classbot_health_check"), "학급 저장소 상태 확인 실패");
-    if (Number(version) !== 4) throw new Error("지원하지 않는 Classbot 데이터베이스 스키마입니다.");
+    if (Number(version) !== 5) throw new Error("지원하지 않는 Classbot 데이터베이스 스키마입니다.");
     return { ok: true, storage: "supabase" };
   }
 
@@ -276,6 +276,23 @@ export class SupabaseStore {
     return member;
   }
 
+  async claimMemberByName({ displayName, userKey, userKeyType = "botUserKey" }) {
+    const classroom = await this.ensureClassroom();
+    const claimed = unwrap(
+      await this.client.rpc("classbot_claim_member_by_name", {
+        p_class_id: classroom.id,
+        p_display_name: String(displayName || "").trim(),
+        p_user_key: String(userKey || "").trim(),
+        p_user_key_type: userKeyType,
+      }),
+      "이름 등록 처리 실패",
+    );
+    const member = claimed?.[0];
+    if (!member) throw new Error("명단에서 이름을 찾을 수 없습니다. 이름을 정확히 입력해 주세요.");
+    await this.appendAudit({ actor: member.id, action: "member.name_claim", entityType: "member", entityId: member.id, after: { status: "active" } });
+    return member;
+  }
+
   async claimPortalInvite({ memberId, code }) {
     const classroom = await this.ensureClassroom();
     const usedAt = new Date().toISOString();
@@ -316,6 +333,64 @@ export class SupabaseStore {
         .eq("status", "active")
         .maybeSingle(),
       "구성원 조회 실패",
+    );
+  }
+
+  async setPendingFileSelection({ memberId, fileIds, expiresAt }) {
+    const classroom = await this.ensureClassroom();
+    const ids = [...new Set((Array.isArray(fileIds) ? fileIds : []).map(String).filter(Boolean))].slice(0, 3);
+    const expires = new Date(expiresAt);
+    if (!String(memberId || "").trim() || !ids.length || Number.isNaN(expires.getTime())) throw new Error("파일 후보 상태가 올바르지 않습니다.");
+    const state = unwrap(
+      await this.client
+        .from("classbot_kakao_states")
+        .upsert({
+          class_id: classroom.id,
+          member_id: memberId,
+          pending_file_ids: ids,
+          pending_expires_at: expires.toISOString(),
+        }, { onConflict: "member_id" })
+        .select("class_id,member_id,pending_file_ids,pending_expires_at")
+        .single(),
+      "파일 후보 저장 실패",
+    );
+    return {
+      class_id: state.class_id,
+      member_id: state.member_id,
+      file_ids: state.pending_file_ids,
+      expires_at: state.pending_expires_at,
+    };
+  }
+
+  async getPendingFileSelection(memberId) {
+    const classroom = await this.ensureClassroom();
+    const state = unwrap(
+      await this.client
+        .from("classbot_kakao_states")
+        .select("class_id,member_id,pending_file_ids,pending_expires_at")
+        .eq("class_id", classroom.id)
+        .eq("member_id", memberId)
+        .gt("pending_expires_at", new Date().toISOString())
+        .maybeSingle(),
+      "파일 후보 조회 실패",
+    );
+    return state ? {
+      class_id: state.class_id,
+      member_id: state.member_id,
+      file_ids: state.pending_file_ids,
+      expires_at: state.pending_expires_at,
+    } : null;
+  }
+
+  async clearPendingFileSelection(memberId) {
+    const classroom = await this.ensureClassroom();
+    unwrap(
+      await this.client
+        .from("classbot_kakao_states")
+        .delete()
+        .eq("class_id", classroom.id)
+        .eq("member_id", memberId),
+      "파일 후보 삭제 실패",
     );
   }
 

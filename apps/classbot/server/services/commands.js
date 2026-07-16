@@ -40,7 +40,15 @@ function extractInviteCode(payload, command) {
   const params = payload.action?.params || {};
   const explicit = parameterValue(params.inviteCode || params.invite_code || params.code).trim();
   if (explicit) return explicit;
-  return command.match(/(?:가입|초대|이름등록)\s*([A-Z0-9]{4}-?[A-Z0-9]{4})/i)?.[1] || "";
+  return command.match(/(?:가입|초대)\s*([A-Z0-9]{4}-?[A-Z0-9]{4})/i)?.[1] || "";
+}
+
+function readNameRegistration(payload, command) {
+  const params = payload.action?.params || {};
+  const explicit = parameterValue(params.displayName || params.display_name || params.memberName || params.member_name).trim();
+  const match = normalizedText(command).match(/^이름\s*등록(?:\s+(.+))?$/u);
+  if (!match) return null;
+  return normalizedText(explicit || match[1] || "");
 }
 
 function normalizedText(value) {
@@ -54,15 +62,22 @@ function compactText(value) {
   return normalizedText(value).replace(/\s+/g, "").toLowerCase();
 }
 
-function looksLikeFileCommand(command) {
-  return /^(?:자료\s*(?:목록|리스트)|파일(?:\s|$)|pdf(?:\s|$)|이미지(?:\s|$))/iu.test(normalizedText(command));
+function compactFileText(value) {
+  return normalizedText(value)
+    .normalize("NFKC")
+    .toLocaleLowerCase("ko")
+    .replace(/[\p{P}\p{S}\s]+/gu, "");
 }
 
-function readFileCommand(command) {
+function looksLikeFileCommand(command) {
+  return /^(?:자료\s*(?:목록|리스트)|파일\s*(?:목록|리스트)|파일(?:\s|$)|pdf(?:\s|$)|이미지(?:\s|$))/iu.test(normalizedText(command));
+}
+
+function readFileCommand(command, { allowRaw = false } = {}) {
   const text = normalizedText(command);
-  if (/^자료\s*(?:목록|리스트)$/u.test(text)) return { kind: "list" };
+  if (/^(?:자료|파일)\s*(?:목록|리스트)$/u.test(text)) return { kind: "list" };
   const match = text.match(/^(파일|pdf|이미지)\s+(.+)$/iu);
-  if (!match) return null;
+  if (!match) return allowRaw && text ? { kind: "open", requestedType: "file", alias: text } : null;
   const requestedType = match[1].toLowerCase() === "pdf"
     ? "pdf"
     : match[1] === "이미지"
@@ -145,22 +160,34 @@ function noticeText(notices) {
     .join("\n\n");
 }
 
-function helpText() {
+function helpText({ registered = false, displayName = "" } = {}) {
+  const registration = registered
+    ? `${displayName || "구성원"}님으로 등록되어 있어요. 이제 명령 뒤에 이름을 붙이지 않아도 됩니다.`
+    : "먼저 명단의 이름 그대로 ‘이름 등록 구민준’처럼 입력해 주세요. 초대 코드는 필요하지 않습니다.";
   return [
-    "Quilo에서 이렇게 물어보세요.",
-    "최초 1회 관리자에게 받은 코드로 ‘이름등록 ABCD-EFGH’를 입력해 주세요.",
-    "등록 후 본인 일정·시간표·자료 조회에는 이름을 붙이지 않아도 됩니다.",
+    "Quilo schedule 사용법",
+    registration,
+    "",
+    "일정·시간표",
     "• 오늘 일정 / 내일 일정 / 다음 일정",
     "• 이번 주 남은 일정 / 이번 달 일정",
     "• 수행평가 과제 통합 요약 / 다음 주 시험",
     "• 오늘 시간표 / 시간표 전체",
-    "• 자료 목록 / PDF 가정통신문 / 이미지 좌석표",
-    "다른 구성원의 일정은 기존처럼 질문 맨 뒤에 등록 이름을 붙여 조회할 수 있어요.",
-    "자료는 카카오 가입이 완료된 본인만 열 수 있어요.",
-    "• 공지",
-    "• 이름등록 ABCD-EFGH (기존 ‘가입 ABCD-EFGH’도 가능)",
+    "",
+    "공지·자료·알림",
+    "• 공지 / 파일 리스트",
+    "• 파일 좌석표 / PDF 가정통신문 / 이미지 좌석표",
+    "• 파일명이나 별칭을 바로 입력해도 됩니다. 비슷한 파일이면 후보를 확인해 드려요.",
     "• 알림 설정 / 알림 켜기 / 알림 끄기",
+    "",
+    "다른 구성원의 반 전체 일정은 질문 맨 뒤에 정확한 이름을 붙여 조회할 수 있어요.",
   ].join("\n");
+}
+
+function helpQuickReplies(registered = false) {
+  if (registered) return registeredQuickReplies();
+  return ["도움말", "공지", "오늘 일정", "시간표 전체", "파일 리스트"]
+    .map((messageText) => ({ label: messageText, action: "message", messageText }));
 }
 
 function eventKind(intent) {
@@ -220,28 +247,51 @@ function fileListText(files, displayName) {
   return `${displayName}님의 자료 목록\n\n${rows.join("\n")}`;
 }
 
-async function answerFileQuery({ command, requester, store, makeFileUrl, quickReplies }) {
-  const replies = quickReplies || registeredQuickReplies();
-  if (typeof store.listFiles !== "function") {
-    return simpleTextResponse("현재 자료 조회 기능을 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.", replies);
+function fileMatchesType(file, requestedType) {
+  return requestedType === "file"
+    || (requestedType === "pdf" && isPdfFile(file))
+    || (requestedType === "image" && isImageFile(file));
+}
+
+function fileLookupKeys(file) {
+  return [...new Set([file.alias, file.filename].map(compactFileText).filter(Boolean))];
+}
+
+function bigrams(value) {
+  if (value.length < 2) return new Set(value ? [value] : []);
+  return new Set(Array.from({ length: value.length - 1 }, (_, index) => value.slice(index, index + 2)));
+}
+
+function similarityScore(query, candidate) {
+  if (!query || !candidate) return 0;
+  if (query === candidate) return 1;
+  if (candidate.includes(query) || query.includes(candidate)) {
+    return 0.62 + (Math.min(query.length, candidate.length) / Math.max(query.length, candidate.length)) * 0.3;
   }
-  const spec = readFileCommand(command);
-  if (!spec) return simpleTextResponse("‘자료 목록 이름’ 또는 ‘파일 별칭 이름’처럼 입력해 주세요.", replies);
+  const left = bigrams(query);
+  const right = bigrams(candidate);
+  let overlap = 0;
+  for (const token of left) if (right.has(token)) overlap += 1;
+  return left.size + right.size ? (2 * overlap) / (left.size + right.size) : 0;
+}
 
-  const files = availableFiles(await store.listFiles({ targetMemberId: requester.id }), requester.id);
-  if (spec.kind === "list") return simpleTextResponse(fileListText(files, requester.display_name), replies);
+function rankFileCandidates(files, query, requestedType) {
+  const compactQuery = compactFileText(query);
+  return files
+    .filter((file) => fileMatchesType(file, requestedType))
+    .map((file) => ({
+      file,
+      score: Math.max(0, ...fileLookupKeys(file).map((key) => similarityScore(compactQuery, key))),
+    }))
+    .filter((item) => item.score >= 0.34)
+    .sort((a, b) => b.score - a.score || String(a.file.alias || a.file.filename).localeCompare(String(b.file.alias || b.file.filename), "ko"))
+    .slice(0, 3);
+}
 
-  const alias = normalizedText(spec.alias).toLowerCase();
-  const matches = files.filter((file) => normalizedText(file.alias || file.filename).toLowerCase() === alias);
-  const typedMatches = matches.filter((file) => spec.requestedType === "file"
-    || (spec.requestedType === "pdf" && isPdfFile(file))
-    || (spec.requestedType === "image" && isImageFile(file)));
-  if (typedMatches.length !== 1) return simpleTextResponse("요청한 자료를 찾을 수 없습니다. ‘자료 목록’에서 별칭을 확인해 주세요.", replies);
+async function respondWithFile({ file, makeFileUrl, replies }) {
   if (typeof makeFileUrl !== "function") {
     return simpleTextResponse("현재 자료 열기 기능을 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.", replies);
   }
-
-  const file = typedMatches[0];
   let url;
   try {
     url = await makeFileUrl(file);
@@ -266,6 +316,79 @@ async function answerFileQuery({ command, requester, store, makeFileUrl, quickRe
   } catch {
     return simpleTextResponse("현재 자료 열기 기능을 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.", replies);
   }
+}
+
+function candidateQuickReplies(candidates) {
+  return [
+    { label: "맞아요", action: "message", messageText: "맞아요" },
+    ...candidates.map(({ file }, index) => {
+      const name = String(file.alias || file.filename || `후보 ${index + 1}`);
+      return { label: `${index + 1}. ${name}`.slice(0, 14), action: "message", messageText: `${index + 1}번` };
+    }),
+    { label: "파일 리스트", action: "message", messageText: "파일 리스트" },
+  ];
+}
+
+async function rememberFileCandidates(store, requester, candidates) {
+  if (typeof store.setPendingFileSelection !== "function") return;
+  await store.setPendingFileSelection({
+    memberId: requester.id,
+    fileIds: candidates.map(({ file }) => file.id),
+    expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+  });
+}
+
+async function answerFileQuery({ command, requester, store, makeFileUrl, quickReplies, allowRaw = false }) {
+  const replies = quickReplies || registeredQuickReplies();
+  if (typeof store.listFiles !== "function") {
+    return simpleTextResponse("현재 자료 조회 기능을 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.", replies);
+  }
+  const spec = readFileCommand(command, { allowRaw });
+  if (!spec) return allowRaw ? null : simpleTextResponse("‘파일 리스트’ 또는 ‘파일 별칭’처럼 입력해 주세요.", replies);
+
+  const files = availableFiles(await store.listFiles({ targetMemberId: requester.id }), requester.id);
+  if (spec.kind === "list") return simpleTextResponse(fileListText(files, requester.display_name), replies);
+
+  const query = compactFileText(spec.alias);
+  const exactMatches = files.filter((file) => (
+    fileMatchesType(file, spec.requestedType) && fileLookupKeys(file).includes(query)
+  ));
+  if (exactMatches.length === 1) {
+    if (typeof store.clearPendingFileSelection === "function") await store.clearPendingFileSelection(requester.id);
+    return respondWithFile({ file: exactMatches[0], makeFileUrl, replies });
+  }
+  const candidates = rankFileCandidates(files, spec.alias, spec.requestedType);
+  if (!candidates.length) {
+    return allowRaw ? null : simpleTextResponse("요청한 자료를 찾을 수 없습니다. ‘파일 리스트’에서 파일명이나 별칭을 확인해 주세요.", replies);
+  }
+  await rememberFileCandidates(store, requester, candidates);
+  const names = candidates.map(({ file }, index) => `${index + 1}. ${file.alias || file.filename}`).join("\n");
+  return simpleTextResponse(
+    `혹시 ‘${candidates[0].file.alias || candidates[0].file.filename}’ 파일이 맞나요?\n\n비슷한 후보\n${names}\n\n맞으면 ‘맞아’, 아니면 아래 후보나 ‘파일 리스트’를 눌러 주세요.`,
+    candidateQuickReplies(candidates),
+  );
+}
+
+const FILE_CONFIRM_YES = new Set(["맞아", "맞아요", "맞습니다", "네", "넵", "예", "응", "ㅇㅇ"]);
+const FILE_CONFIRM_NO = new Set(["아니", "아니야", "아니요", "ㄴㄴ"]);
+
+async function answerPendingFileConfirmation({ command, requester, store, makeFileUrl }) {
+  const normalized = compactText(command);
+  const ordinal = normalized.match(/^([123])(?:번|번째)?$/)?.[1];
+  if (!FILE_CONFIRM_YES.has(normalized) && !FILE_CONFIRM_NO.has(normalized) && !ordinal) return null;
+  if (typeof store.getPendingFileSelection !== "function") return null;
+  const pending = await store.getPendingFileSelection(requester.id);
+  if (!pending?.file_ids?.length) return null;
+  if (FILE_CONFIRM_NO.has(normalized)) {
+    if (typeof store.clearPendingFileSelection === "function") await store.clearPendingFileSelection(requester.id);
+    return simpleTextResponse("알겠습니다. ‘파일 리스트’를 눌러 정확한 파일명이나 별칭을 확인해 주세요.", registeredQuickReplies());
+  }
+  const selectedId = pending.file_ids[ordinal ? Number(ordinal) - 1 : 0];
+  const files = availableFiles(await store.listFiles({ targetMemberId: requester.id }), requester.id);
+  const file = files.find((item) => item.id === selectedId);
+  if (typeof store.clearPendingFileSelection === "function") await store.clearPendingFileSelection(requester.id);
+  if (!file) return simpleTextResponse("후보 파일이 만료되었거나 더 이상 사용할 수 없습니다. ‘파일 리스트’를 다시 확인해 주세요.", registeredQuickReplies());
+  return respondWithFile({ file, makeFileUrl, replies: registeredQuickReplies() });
 }
 
 async function answerReadQuery({ command, intent, member, store, now, quickReplies, privateAccess = false }) {
@@ -358,10 +481,25 @@ export async function handleKakaoCommand({ payload, store, now = new Date(), mak
   };
 
   try {
-    if (/^(가입|초대|이름등록)/.test(command)) {
+    const registrationName = readNameRegistration(payload, command);
+    if (registrationName !== null) {
+      if (!user) return simpleTextResponse("카카오 사용자 식별값을 확인할 수 없어 이름을 등록할 수 없습니다.", helpQuickReplies());
+      if (!registrationName) return simpleTextResponse("명단의 이름을 정확히 입력해 주세요. 예: ‘이름 등록 구민준’", helpQuickReplies());
+      if (registrationName.length > 40) return simpleTextResponse("명단의 이름을 40자 이내로 정확히 입력해 주세요.", helpQuickReplies());
+      if (typeof store.claimMemberByName !== "function") return simpleTextResponse("현재 이름 등록 기능을 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.", helpQuickReplies());
+      const member = await store.claimMemberByName({ displayName: registrationName, userKey: user.id, userKeyType: user.type });
+      const isFriend = String(payload.userRequest?.user?.properties?.isFriend ?? "").toLowerCase();
+      const friendGuide = isFriend === "false" ? "\n알림을 받으려면 이 카카오톡 채널을 친구 추가해 주세요." : "";
+      return simpleTextResponse(
+        `${member.display_name}님, 이름 등록이 완료되었습니다.\n이제 ‘오늘 일정’, ‘시간표 전체’, ‘파일 리스트’처럼 이름 없이 바로 물어보세요.${friendGuide}\n\n‘도움말’을 보내면 전체 사용법을 다시 볼 수 있습니다.`,
+        registeredQuickReplies(),
+      );
+    }
+
+    if (/^(가입|초대)/.test(command)) {
       const code = extractInviteCode(payload, command);
       if (!user) return simpleTextResponse("카카오 사용자 식별값을 확인할 수 없어 가입할 수 없습니다.");
-      if (!code) return simpleTextResponse("관리자에게 받은 코드로 ‘이름등록 ABCD-EFGH’처럼 입력해 주세요. 기존 ‘가입’ 명령도 사용할 수 있습니다.");
+      if (!code) return simpleTextResponse("이름 등록에는 초대 코드가 필요하지 않습니다. ‘이름 등록 구민준’처럼 명단의 이름을 입력해 주세요.", helpQuickReplies());
       const member = await store.claimInvite({ code, userKey: user.id, userKeyType: user.type });
       const isFriend = String(payload.userRequest?.user?.properties?.isFriend ?? "").toLowerCase();
       const friendGuide = isFriend === "false" ? "\n알림을 받으려면 이 카카오톡 채널을 친구 추가해 주세요." : "";
@@ -371,12 +509,32 @@ export async function handleKakaoCommand({ payload, store, now = new Date(), mak
       );
     }
 
+    if (!normalized || new Set(["시작", "처음", "도움말", "사용법", "안녕", "안녕하세요", "뭐할수있어", "뭘할수있어"]).has(normalized)) {
+      const requester = await getRequester();
+      const registered = requester?.status === "active";
+      return simpleTextResponse(
+        helpText({ registered, displayName: requester?.display_name }),
+        helpQuickReplies(registered),
+      );
+    }
+
+    const confirmingRequester = await getRequester();
+    if (confirmingRequester?.status === "active") {
+      const confirmation = await answerPendingFileConfirmation({
+        command,
+        requester: confirmingRequester,
+        store,
+        makeFileUrl,
+      });
+      if (confirmation) return confirmation;
+    }
+
     if (looksLikeFileCommand(command)) {
       const requester = await getRequester();
       const text = normalizedText(command);
       const requesterName = normalizedText(requester?.display_name);
       if (!requester || requester.status !== "active" || !requesterName) {
-        return simpleTextResponse("자료를 조회할 권한이 없습니다. 먼저 관리자에게 받은 코드로 이름등록을 완료해 주세요.");
+        return simpleTextResponse("자료를 조회할 권한이 없습니다. 먼저 ‘이름 등록 구민준’처럼 명단의 이름으로 등록해 주세요.", helpQuickReplies());
       }
       const registered = (await store.listMembers()).filter((member) => member.status !== "left");
       const trailingMatches = registered.filter((member) => {
@@ -416,7 +574,7 @@ export async function handleKakaoCommand({ payload, store, now = new Date(), mak
     const member = await getRequester();
     const requiresMembership = normalized.includes("알림") || normalized.includes("공지");
     if (requiresMembership && !member) {
-      return simpleTextResponse("2학년 4반 구성원만 조회할 수 있습니다. 먼저 ‘가입 초대코드’를 입력해 주세요.");
+      return simpleTextResponse("2학년 4반 구성원만 조회할 수 있습니다. 먼저 ‘이름 등록 구민준’처럼 명단의 이름으로 등록해 주세요.", helpQuickReplies());
     }
 
     const memberReplies = member ? registeredQuickReplies() : undefined;
@@ -448,9 +606,24 @@ export async function handleKakaoCommand({ payload, store, now = new Date(), mak
       return simpleTextResponse(`2학년 4반 공지\n\n${noticeText(notices)}`, memberReplies);
     }
 
-    return simpleTextResponse(helpText());
+    if (member?.status === "active") {
+      const fileResponse = await answerFileQuery({
+        command,
+        requester: member,
+        store,
+        makeFileUrl,
+        quickReplies: registeredQuickReplies(),
+        allowRaw: true,
+      });
+      if (fileResponse) return fileResponse;
+    }
+
+    return simpleTextResponse(
+      helpText({ registered: member?.status === "active", displayName: member?.display_name }),
+      helpQuickReplies(member?.status === "active"),
+    );
   } catch (error) {
-    const friendly = /초대 코드|이미 다른 구성원|이미 가입|학급 정원|찾을 수 없습니다|필요합니다|구성원 이름|등록된 구성원|동명이인|맨 뒤/.test(error.message)
+    const friendly = /초대 코드|이미 다른 구성원|이미 가입|이미 등록|다른 카카오|학급 정원|찾을 수 없습니다|명단|정확|필요합니다|구성원 이름|등록된 구성원|동명이인|맨 뒤|비활성/.test(error.message)
       ? error.message
       : "잠시 후 다시 시도해 주세요.";
     const replies = targetQuickReplies || (targetDisplayName ? personalizedQuickReplies(targetDisplayName) : undefined);

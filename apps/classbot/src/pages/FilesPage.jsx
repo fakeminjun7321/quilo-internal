@@ -30,7 +30,7 @@ function fileSize(item) {
 
 function driveStatusText(drive) {
   if (drive?.connected) return `${drive.folder_name || "Quilo schedule 자료실"} · ${drive.item_count || 0}개 동기화`;
-  if (drive?.reason === "owner_user_id_missing") return "Render에 Google Drive 운영 계정 UUID를 설정해 주세요.";
+  if (drive?.reason === "owner_user_missing") return "Google Drive 운영 계정 이름을 설정해 주세요.";
   if (drive?.reason === "demo_mode") return "데모에서는 Google Drive를 연결하지 않습니다.";
   return "Quilo 계정의 Google Drive 연결을 확인해 주세요.";
 }

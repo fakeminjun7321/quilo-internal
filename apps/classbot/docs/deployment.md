@@ -42,7 +42,7 @@ select
 
 - `CLASSBOT_CRON_SECRET`: 32자 이상
 - `CLASSBOT_KAKAO_SKILL_SECRET`: 32자 이상
-- `CLASSBOT_GOOGLE_DRIVE_OWNER_USER_ID`: Google Drive를 연결한 Quilo 관리자 계정의 사용자 UUID
+- `CLASSBOT_GOOGLE_DRIVE_OWNER_NAME`: Google Drive를 연결한 Quilo 관리자 계정 이름. 기본값은 `구민준`
 
 자료실은 기존 Quilo의 Google OAuth 연결과 `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `CLOUD_TOKEN_SECRET`을 그대로 재사용한다. 관리자가 Quilo에서 Google Drive를 먼저 연결하면 서버가 제한된 `drive.file` 권한으로 `Quilo schedule 자료실` 폴더를 자동 생성하고, 그 폴더의 PDF·이미지만 일정 사이트와 챗봇에 표시한다. 공개 공유 링크를 만들지 않으며, 파일은 기존 15분 HMAC 링크를 거쳐 서버가 프록시한다.
 
@@ -57,7 +57,7 @@ GET  /schedule/api/admin/drive/status
 POST /schedule/api/admin/drive/sync
 ```
 
-`connected: true`가 아니면 owner UUID, Quilo의 Google 연결 상태, 세 OAuth 환경변수를 먼저 확인한다. Drive 연결이 실패해도 기존 Supabase 자료실은 계속 작동한다.
+서버는 기본적으로 이름이 정확히 `구민준`인 Quilo 계정의 UUID를 내부에서 찾아 사용한다. 동명이인 등으로 이름 조회를 쓸 수 없을 때만 `CLASSBOT_GOOGLE_DRIVE_OWNER_USER_ID`를 override로 지정한다. `connected: true`가 아니면 owner 이름, Quilo의 Google 연결 상태, 세 OAuth 환경변수를 먼저 확인한다. Drive 연결이 실패해도 기존 Supabase 자료실은 계속 작동한다.
 
 `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SESSION_SECRET`, `ADMIN_PASSWORD`는 기존 Quilo 값을 재사용한다. 기존 `ADMIN_PASSWORD`가 16자 미만이면 `CLASSBOT_ADMIN_PASSWORD`를 16자 이상으로 별도 설정한다. 각 secret은 서로 다른 값이어야 한다. 운영 관리 화면은 별도 classbot 쿠키나 비밀번호 로그인을 만들지 않고, 기존 Quilo 관리자 세션을 매 요청 다시 검증한다.
 

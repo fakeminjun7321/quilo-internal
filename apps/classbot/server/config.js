@@ -65,6 +65,7 @@ export function loadConfig(overrides = {}) {
       folderId: String(env.CLASSBOT_GOOGLE_DRIVE_FOLDER_ID || "").trim(),
       folderName: String(env.CLASSBOT_GOOGLE_DRIVE_FOLDER_NAME || "Quilo schedule 자료실").trim(),
       ownerUserId: String(env.CLASSBOT_GOOGLE_DRIVE_OWNER_USER_ID || "").trim(),
+      ownerName: String(env.CLASSBOT_GOOGLE_DRIVE_OWNER_NAME || "구민준").trim(),
     },
   };
 
@@ -118,6 +119,9 @@ export function loadConfig(overrides = {}) {
   }
   if (config.googleDrive.ownerUserId && !/^[A-Za-z0-9_-]{8,300}$/.test(config.googleDrive.ownerUserId)) {
     throw new Error("CLASSBOT_GOOGLE_DRIVE_OWNER_USER_ID is invalid");
+  }
+  if (!config.googleDrive.ownerName || config.googleDrive.ownerName.length > 40) {
+    throw new Error("CLASSBOT_GOOGLE_DRIVE_OWNER_NAME must be between 1 and 40 characters");
   }
   if (!config.googleDrive.folderName || config.googleDrive.folderName.length > 100) {
     throw new Error("CLASSBOT_GOOGLE_DRIVE_FOLDER_NAME must be between 1 and 100 characters");

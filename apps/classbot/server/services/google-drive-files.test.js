@@ -102,6 +102,25 @@ test("Quilo OAuth로 전용 Drive 폴더를 만들고 PDF·이미지만 class-wi
   assert.equal(calls.filter(([kind]) => kind === "folder").length, 1, "한 프로세스에서는 폴더를 중복 생성하지 않는다");
 });
 
+test("owner UUID가 없어도 기존 Quilo 계정의 정확한 이름으로 Drive 연결을 찾는다", async () => {
+  const { dependencies, calls } = fixture();
+  dependencies.findUserByName = async (name) => {
+    calls.push(["owner", name]);
+    return { id: "resolved-owner-user", name: "구민준" };
+  };
+  const provider = new GoogleDriveFileProvider({
+    ownerName: "구민준",
+    secret: "drive-provider-test-secret",
+    dependencies,
+  });
+
+  const items = await provider.listFiles();
+  assert.equal(items.length, 1);
+  assert.deepEqual(calls.find(([kind]) => kind === "owner"), ["owner", "구민준"]);
+  assert.deepEqual(calls.find(([kind]) => kind === "connection"), ["connection", "resolved-owner-user", "google"]);
+  assert.equal(provider.ownerUserId, "resolved-owner-user");
+});
+
 test("Drive 다운로드는 서명된 provider ID와 설정 폴더 parent를 모두 검증한다", async () => {
   const { provider, sourceFiles } = fixture();
   const [item] = await provider.listFiles();

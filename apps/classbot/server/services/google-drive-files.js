@@ -16,6 +16,7 @@ function defaultDependencies() {
   const cloud = require("../../../../lib/cloud/oauth-providers.js");
   const supa = require("../../../../lib/supabase.js");
   return {
+    findUserByName: (name) => supa.findUserByName(name),
     getCloudConnection: (userId, provider) => supa.getCloudConnection(userId, provider),
     decryptToken: (value) => cloud.decryptToken(value),
     getAccessToken: (refreshToken) => cloud.googleAccessToken(refreshToken),
@@ -58,10 +59,11 @@ function hmac(value, secret) {
 }
 
 export class GoogleDriveFileProvider {
-  constructor({ folderId = "", folderName = "Quilo schedule 자료실", ownerUserId = "", secret = "", dependencies } = {}) {
+  constructor({ folderId = "", folderName = "Quilo schedule 자료실", ownerUserId = "", ownerName = "구민준", secret = "", dependencies } = {}) {
     this.folderId = String(folderId || "").trim();
     this.folderName = String(folderName || "Quilo schedule 자료실").trim().slice(0, 100) || "Quilo schedule 자료실";
     this.ownerUserId = String(ownerUserId || "").trim();
+    this.ownerName = String(ownerName || "").trim();
     this.secret = String(secret || "");
     this.dependencies = dependencies || null;
     this.lastError = null;
@@ -70,7 +72,20 @@ export class GoogleDriveFileProvider {
   }
 
   get configured() {
-    return Boolean(this.ownerUserId && this.secret);
+    return Boolean((this.ownerUserId || this.ownerName) && this.secret);
+  }
+
+  async resolveOwnerUserId(dependencies) {
+    if (this.ownerUserId) return this.ownerUserId;
+    if (!this.ownerName || typeof dependencies.findUserByName !== "function") {
+      throw new Error("Google Drive 자료실 운영 계정을 찾을 수 없습니다.");
+    }
+    const owner = await dependencies.findUserByName(this.ownerName);
+    if (!owner?.id || owner.name !== this.ownerName) {
+      throw new Error("Google Drive 자료실 운영 계정을 찾을 수 없습니다.");
+    }
+    this.ownerUserId = safeIdentifier(owner.id, "Google Drive 운영 계정");
+    return this.ownerUserId;
   }
 
   isManagedId(value) {
@@ -102,9 +117,9 @@ export class GoogleDriveFileProvider {
   }
 
   async context() {
-    if (!this.ownerUserId) throw new Error("CLASSBOT_GOOGLE_DRIVE_OWNER_USER_ID가 설정되지 않았습니다.");
     const dependencies = this.dependencies || defaultDependencies();
-    const connection = await dependencies.getCloudConnection(this.ownerUserId, "google");
+    const ownerUserId = await this.resolveOwnerUserId(dependencies);
+    const connection = await dependencies.getCloudConnection(ownerUserId, "google");
     if (!connection?.refresh_token) throw new Error("Quilo 관리자 계정에 Google Drive 연결이 없습니다.");
     const refreshToken = dependencies.decryptToken(connection.refresh_token);
     const accessToken = await dependencies.getAccessToken(refreshToken);
@@ -219,7 +234,7 @@ export class GoogleDriveFileProvider {
   }
 
   async status() {
-    if (!this.ownerUserId) return { configured: false, connected: false, reason: "owner_user_id_missing", connect_url: null };
+    if (!this.ownerUserId && !this.ownerName) return { configured: false, connected: false, reason: "owner_user_missing", connect_url: null };
     if (!this.secret) return { configured: false, connected: false, reason: "signing_secret_missing", connect_url: null };
     const links = { connect_url: "/api/cloud/google/connect" };
     try {
@@ -297,6 +312,7 @@ export function createGoogleDriveFileProvider(config, dependencies) {
     folderId: config?.googleDrive?.folderId,
     folderName: config?.googleDrive?.folderName,
     ownerUserId: config?.googleDrive?.ownerUserId,
+    ownerName: config?.googleDrive?.ownerName,
     secret: config?.sessionSecret,
     dependencies,
   });

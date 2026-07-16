@@ -1,6 +1,7 @@
+import crypto from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { hashInviteCode } from "../security.js";
-import { parseKoreaDateTime } from "../time.js";
+import { getSeoulParts, parseKoreaDateTime } from "../time.js";
 
 function unwrap(result, message) {
   if (result.error) throw new Error(`${message}: ${result.error.message}`);
@@ -25,6 +26,76 @@ function fetchWithTimeout(url, options = {}) {
   const timeout = AbortSignal.timeout(30_000);
   const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
   return fetch(url, { ...options, signal });
+}
+
+const FILE_BUCKET = "classbot-files";
+const FILE_MIME_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/webp", "image/gif"];
+const FILE_EXTENSIONS = new Map([
+  ["application/pdf", "pdf"],
+  ["image/jpeg", "jpg"],
+  ["image/png", "png"],
+  ["image/webp", "webp"],
+  ["image/gif", "gif"],
+]);
+
+function timetableDateKey(value = new Date()) {
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) throw new Error("올바른 시간표 적용 날짜를 입력해 주세요.");
+    return getSeoulParts(value).dateKey;
+  }
+  const raw = String(value || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const parsed = new Date(`${raw}T00:00:00+09:00`);
+    if (!Number.isNaN(parsed.getTime()) && getSeoulParts(parsed).dateKey === raw) return raw;
+    throw new Error("올바른 시간표 적용 날짜를 입력해 주세요.");
+  }
+  const parsed = new Date(raw);
+  if (raw && !Number.isNaN(parsed.getTime())) return getSeoulParts(parsed).dateKey;
+  throw new Error("올바른 시간표 적용 날짜를 입력해 주세요.");
+}
+
+function normalizeMemberTimetableRows(rows) {
+  if (!Array.isArray(rows)) throw new Error("개인 시간표 데이터는 배열이어야 합니다.");
+  const seen = new Set();
+  return rows
+    .filter((row) => String(row?.subject || "").trim())
+    .map((row) => {
+      const weekday = Number(row.weekday);
+      const period = Number(row.period);
+      if (!Number.isInteger(weekday) || weekday < 1 || weekday > 5) throw new Error("요일은 월요일부터 금요일까지만 선택할 수 있습니다.");
+      if (!Number.isInteger(period) || period < 1 || period > 12) throw new Error("교시는 1부터 12 사이여야 합니다.");
+      const effectiveFrom = timetableDateKey(row.effective_from || new Date());
+      const effectiveTo = row.effective_to ? timetableDateKey(row.effective_to) : null;
+      if (effectiveTo && effectiveTo < effectiveFrom) throw new Error("시간표 종료일은 시작일보다 빠를 수 없습니다.");
+      const normalized = {
+        weekday,
+        period,
+        subject: String(row.subject).trim(),
+        activity: String(row.activity || "").trim(),
+        teacher: String(row.teacher || "").trim(),
+        room: String(row.room || "").trim(),
+        memo: String(row.memo || "").trim(),
+        effective_from: effectiveFrom,
+        effective_to: effectiveTo,
+      };
+      const limits = { subject: 100, activity: 300, teacher: 100, room: 100, memo: 500 };
+      for (const [key, limit] of Object.entries(limits)) {
+        if (normalized[key].length > limit) throw new Error(`시간표 ${key} 값이 너무 깁니다.`);
+      }
+      const slot = `${weekday}:${period}:${effectiveFrom}`;
+      if (seen.has(slot)) throw new Error("같은 적용일의 동일 교시를 두 번 등록할 수 없습니다.");
+      seen.add(slot);
+      return normalized;
+    });
+}
+
+function activeTimetableRows(rows) {
+  const latestBySlot = new Map();
+  for (const row of rows.slice().sort((a, b) => b.effective_from.localeCompare(a.effective_from))) {
+    const slot = `${row.weekday}:${row.period}`;
+    if (!latestBySlot.has(slot)) latestBySlot.set(slot, row);
+  }
+  return [...latestBySlot.values()].sort((a, b) => a.weekday - b.weekday || a.period - b.period);
 }
 
 export class SupabaseStore {
@@ -64,7 +135,7 @@ export class SupabaseStore {
   async healthCheck() {
     await this.ensureClassroom();
     const version = unwrap(await this.client.rpc("classbot_health_check"), "학급 저장소 상태 확인 실패");
-    if (Number(version) !== 1) throw new Error("지원하지 않는 Classbot 데이터베이스 스키마입니다.");
+    if (Number(version) !== 3) throw new Error("지원하지 않는 Classbot 데이터베이스 스키마입니다.");
     return { ok: true, storage: "supabase" };
   }
 
@@ -205,6 +276,35 @@ export class SupabaseStore {
     return member;
   }
 
+  async claimPortalInvite({ memberId, code }) {
+    const classroom = await this.ensureClassroom();
+    const usedAt = new Date().toISOString();
+    const invite = unwrap(
+      await this.client
+        .from("classbot_invites")
+        .update({ used_at: usedAt })
+        .eq("class_id", classroom.id)
+        .eq("member_id", memberId)
+        .eq("code_hash", hashInviteCode(code))
+        .is("used_at", null)
+        .gt("expires_at", usedAt)
+        .select("id,member_id,used_at")
+        .maybeSingle(),
+      "학생 포털 초대 코드 확인 실패",
+    );
+    if (!invite) throw new Error("이름 또는 초대 코드를 확인할 수 없습니다.");
+    const member = await this.getMember(memberId);
+    if (!member) throw new Error("이름 또는 초대 코드를 확인할 수 없습니다.");
+    await this.appendAudit({
+      actor: member.id,
+      action: "portal.login",
+      entityType: "invite",
+      entityId: invite.id,
+      after: { member_id: member.id, used_at: invite.used_at },
+    }).catch(() => {});
+    return member;
+  }
+
   async findMemberByUserKey(userKey) {
     const classroom = await this.ensureClassroom();
     return unwrap(
@@ -224,6 +324,51 @@ export class SupabaseStore {
     let query = this.client.from("classbot_timetable").select("*").eq("class_id", classroom.id);
     if (weekday != null) query = query.eq("weekday", Number(weekday));
     return unwrap(await query.order("weekday").order("period"), "시간표 조회 실패");
+  }
+
+  async listMemberTimetable(memberId, { weekday, date } = {}) {
+    const classroom = await this.ensureClassroom();
+    if (!String(memberId || "").trim()) throw new Error("개인 시간표를 조회할 구성원이 필요합니다.");
+    const dateKey = timetableDateKey(date || new Date());
+    let query = this.client
+      .from("classbot_member_timetable")
+      .select("*")
+      .eq("class_id", classroom.id)
+      .eq("member_id", memberId)
+      .lte("effective_from", dateKey)
+      .or(`effective_to.is.null,effective_to.gte.${dateKey}`);
+    if (weekday != null) {
+      const numericWeekday = Number(weekday);
+      if (!Number.isInteger(numericWeekday) || numericWeekday < 1 || numericWeekday > 5) throw new Error("요일은 월요일부터 금요일까지만 선택할 수 있습니다.");
+      query = query.eq("weekday", numericWeekday);
+    }
+    const rows = unwrap(
+      await query.order("weekday").order("period").order("effective_from", { ascending: false }),
+      "개인 시간표 조회 실패",
+    );
+    return activeTimetableRows(rows);
+  }
+
+  async replaceMemberTimetable({ memberId, rows }, actor = "admin") {
+    const classroom = await this.ensureClassroom();
+    if (!String(memberId || "").trim()) throw new Error("개인 시간표를 등록할 구성원이 필요합니다.");
+    const payload = normalizeMemberTimetableRows(rows);
+    const saved = unwrap(
+      await this.client.rpc("classbot_replace_member_timetable", {
+        p_class_id: classroom.id,
+        p_member_id: memberId,
+        p_rows: payload,
+      }),
+      "개인 시간표 저장 실패",
+    );
+    await this.appendAudit({
+      actor,
+      action: "member_timetable.replace",
+      entityType: "member_timetable",
+      entityId: memberId,
+      after: { member_id: memberId, row_count: saved.length },
+    });
+    return saved;
   }
 
   async replaceTimetableDay({ weekday, rows }, actor = "admin") {
@@ -456,6 +601,128 @@ export class SupabaseStore {
     if (!current) throw new Error("공지를 찾을 수 없습니다.");
     if (current.status === "archived") throw new Error("보관된 공지는 먼저 복원해야 게시할 수 있습니다.");
     return { notice: current, newlyPublished: false };
+  }
+
+  async ensureFileBucket() {
+    const existing = await this.client.storage.getBucket(FILE_BUCKET);
+    if (existing.data) return;
+    const created = await this.client.storage.createBucket(FILE_BUCKET, {
+      public: false,
+      fileSizeLimit: 20 * 1024 * 1024,
+      allowedMimeTypes: FILE_MIME_TYPES,
+    });
+    if (created.error && !/already exists|duplicate/i.test(created.error.message || "")) {
+      throw new Error(`자료실 저장소 준비 실패: ${created.error.message}`);
+    }
+  }
+
+  async listFiles({ targetMemberId, all = false, status = "active" } = {}) {
+    const classroom = await this.ensureClassroom();
+    let query = this.client
+      .from("classbot_files")
+      .select("*")
+      .eq("class_id", classroom.id)
+      .order("created_at", { ascending: false });
+    if (status) query = query.eq("status", status);
+    if (!all) {
+      query = targetMemberId
+        ? query.or(`member_id.is.null,member_id.eq.${targetMemberId}`)
+        : query.is("member_id", null);
+    }
+    return unwrap(await query, "자료실 조회 실패");
+  }
+
+  async getFile(fileId) {
+    const classroom = await this.ensureClassroom();
+    return unwrap(
+      await this.client.from("classbot_files").select("*").eq("class_id", classroom.id).eq("id", fileId).maybeSingle(),
+      "파일 조회 실패",
+    );
+  }
+
+  async createFile(input, body, actor = "admin") {
+    const classroom = await this.ensureClassroom();
+    if (!Buffer.isBuffer(body) || body.length < 1 || body.length > 20 * 1024 * 1024) {
+      throw new Error("파일은 20MB 이하여야 합니다.");
+    }
+    const countResult = await this.client
+      .from("classbot_files")
+      .select("id", { count: "exact", head: true })
+      .eq("class_id", classroom.id)
+      .eq("status", "active");
+    if (countResult.error) throw new Error(`자료실 용량 확인 실패: ${countResult.error.message}`);
+    if ((countResult.count || 0) >= 100) throw new Error("자료실에는 최대 100개의 파일만 보관할 수 있습니다.");
+
+    await this.ensureFileBucket();
+    const extension = FILE_EXTENSIONS.get(input.mime_type);
+    if (!extension) throw new Error("PDF 또는 지원되는 이미지 파일만 올릴 수 있습니다.");
+    const fileId = crypto.randomUUID();
+    const objectPath = `${classroom.id}/${fileId}/${crypto.randomUUID()}.${extension}`;
+    const upload = await this.client.storage.from(FILE_BUCKET).upload(objectPath, body, {
+      contentType: input.mime_type,
+      cacheControl: "0",
+      upsert: false,
+    });
+    if (upload.error) throw new Error(`파일 업로드 실패: ${upload.error.message}`);
+
+    const result = await this.client.from("classbot_files").insert({
+      id: fileId,
+      class_id: classroom.id,
+      member_id: input.member_id || null,
+      alias: input.alias,
+      filename: input.filename,
+      description: input.description || "",
+      mime_type: input.mime_type,
+      size_bytes: body.length,
+      bucket: FILE_BUCKET,
+      object_path: objectPath,
+      status: "active",
+      created_by: actor,
+    }).select("*").single();
+    if (result.error) {
+      await this.client.storage.from(FILE_BUCKET).remove([objectPath]);
+      if (result.error.code === "23505") throw new Error("같은 대상에 동일한 자료 별칭을 두 번 등록할 수 없습니다.");
+      throw new Error(`파일 정보 저장 실패: ${result.error.message}`);
+    }
+    await this.appendAudit({ actor, action: "file.create", entityType: "file", entityId: result.data.id, after: result.data });
+    return result.data;
+  }
+
+  async updateFile(fileId, patch, actor = "admin") {
+    const classroom = await this.ensureClassroom();
+    const before = await this.getFile(fileId);
+    if (!before) throw new Error("파일을 찾을 수 없습니다.");
+    const allowed = Object.fromEntries(
+      Object.entries(patch).filter(([key]) => ["alias", "description", "member_id", "status"].includes(key)),
+    );
+    const updated = unwrap(
+      await this.client.from("classbot_files").update(allowed).eq("class_id", classroom.id).eq("id", fileId).select("*").single(),
+      "파일 정보 저장 실패",
+    );
+    await this.appendAudit({ actor, action: "file.update", entityType: "file", entityId: fileId, before, after: updated });
+    return updated;
+  }
+
+  async deleteFile(fileId, actor = "admin") {
+    const classroom = await this.ensureClassroom();
+    const file = await this.getFile(fileId);
+    if (!file) throw new Error("파일을 찾을 수 없습니다.");
+    const removedObject = await this.client.storage.from(file.bucket).remove([file.object_path]);
+    if (removedObject.error) throw new Error(`파일 삭제 실패: ${removedObject.error.message}`);
+    unwrap(
+      await this.client.from("classbot_files").delete().eq("class_id", classroom.id).eq("id", fileId),
+      "파일 정보 삭제 실패",
+    );
+    await this.appendAudit({ actor, action: "file.delete", entityType: "file", entityId: fileId, before: file });
+    return file;
+  }
+
+  async downloadFile(fileId) {
+    const file = await this.getFile(fileId);
+    if (!file || file.status !== "active") throw new Error("파일을 찾을 수 없습니다.");
+    const downloaded = await this.client.storage.from(file.bucket).download(file.object_path);
+    if (downloaded.error) throw new Error(`파일 다운로드 실패: ${downloaded.error.message}`);
+    return Buffer.from(await downloaded.data.arrayBuffer());
   }
 
   async listNotifications({ limit = 50, status } = {}) {

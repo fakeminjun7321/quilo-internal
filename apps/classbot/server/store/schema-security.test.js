@@ -34,11 +34,34 @@ test("스키마 버전 health RPC와 전체 RLS가 운영 준비 상태를 검�
   assert.match(schema, /create table if not exists public\.classbot_schema_meta/);
   assert.match(schema, /create or replace function public\.classbot_health_check\(\)/);
   assert.match(schema, /grant execute on function public\.classbot_health_check\(\) to service_role/);
-  for (const table of ["schema_meta", "classes", "members", "invites", "timetable", "events", "notices", "notifications", "audit_logs"]) {
+  assert.match(schema, /values \(1, 3, now\(\)\)/);
+  for (const table of ["schema_meta", "classes", "members", "invites", "timetable", "member_timetable", "events", "notices", "files", "notifications", "audit_logs"]) {
     assert.match(schema, new RegExp(`alter table public\\.classbot_${table} enable row level security`));
   }
   assert.match(storeSource, /\.rpc\("classbot_health_check"\)/);
   assert.match(storeSource, /result\.error\.code === "23505"/);
+});
+
+test("개인별 시간표는 학급-구성원 복합 경계와 원자적 전체 교체 RPC를 사용한다", () => {
+  assert.match(schema, /create table if not exists public\.classbot_member_timetable/);
+  assert.match(schema, /foreign key \(class_id, member_id\)[\s\S]*references public\.classbot_members\(class_id, id\)/);
+  assert.match(schema, /unique \(class_id, member_id, weekday, period, effective_from\)/);
+  assert.match(schema, /classbot_member_timetable_lookup_idx/);
+  const replaceFunction = schema.match(/create or replace function public\.classbot_replace_member_timetable[\s\S]*?\$\$;/)?.[0] || "";
+  assert.match(replaceFunction, /class_id = p_class_id[\s\S]*id = p_member_id[\s\S]*for update/);
+  assert.match(replaceFunction, /delete from public\.classbot_member_timetable/);
+  assert.match(storeSource, /\.rpc\("classbot_replace_member_timetable"/);
+  assert.match(storeSource, /Number\(version\) !== 3/);
+});
+
+test("자료실은 비공개 서버 경계와 대상별 별칭 중복 방지를 스키마에 둔다", () => {
+  assert.match(schema, /create table if not exists public\.classbot_files/);
+  assert.match(schema, /mime_type in \('application\/pdf', 'image\/jpeg', 'image\/png', 'image\/webp', 'image\/gif'\)/);
+  assert.match(schema, /size_bytes between 1 and 20971520/);
+  assert.match(schema, /classbot_files_class_alias_idx/);
+  assert.match(schema, /classbot_files_member_alias_idx/);
+  assert.match(storeSource, /storage\.createBucket\(FILE_BUCKET/);
+  assert.match(storeSource, /public: false/);
 });
 
 test("개인 일정은 nullable member FK와 대상별 반 전체 포함 조회를 사용한다", () => {

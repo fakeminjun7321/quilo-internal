@@ -37,3 +37,36 @@ test("DB가 기존 구성원을 감지해 0을 반환하면 명단과 audit를 �
   assert.equal(await store.seedMembersIfEmpty([{ display_name: "홍길동", role: "admin" }]), 0);
   assert.equal(audits.length, 0);
 });
+
+test("개인 시간표 교체는 학급과 구성원을 함께 scope한 원자적 RPC만 호출한다", async () => {
+  const saved = [{ id: "row-1", member_id: "member-1", weekday: 1, period: 1, subject: "수학" }];
+  const { store, calls, audits } = fixture(saved);
+  const rows = [{
+    weekday: 1,
+    period: 1,
+    subject: " 수학 ",
+    activity: " 함수 ",
+    effective_from: "2026-08-01",
+  }];
+
+  assert.deepEqual(await store.replaceMemberTimetable({ memberId: "member-1", rows }), saved);
+  assert.deepEqual(calls, [{
+    name: "classbot_replace_member_timetable",
+    args: {
+      p_class_id: "class-private",
+      p_member_id: "member-1",
+      p_rows: [{
+        weekday: 1,
+        period: 1,
+        subject: "수학",
+        activity: "함수",
+        teacher: "",
+        room: "",
+        memo: "",
+        effective_from: "2026-08-01",
+        effective_to: null,
+      }],
+    },
+  }]);
+  assert.deepEqual(audits[0].after, { member_id: "member-1", row_count: 1 });
+});

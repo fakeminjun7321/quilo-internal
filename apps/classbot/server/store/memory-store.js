@@ -23,6 +23,73 @@ function id(prefix) {
   return `${prefix}_${crypto.randomUUID()}`;
 }
 
+function fileMetadata(file) {
+  const { body: _body, ...metadata } = file;
+  return clone(metadata);
+}
+
+function timetableDateKey(value = new Date()) {
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) throw new Error("올바른 시간표 적용 날짜를 입력해 주세요.");
+    return getSeoulParts(value).dateKey;
+  }
+  const raw = String(value || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const parsed = new Date(`${raw}T00:00:00+09:00`);
+    if (!Number.isNaN(parsed.getTime()) && getSeoulParts(parsed).dateKey === raw) return raw;
+    throw new Error("올바른 시간표 적용 날짜를 입력해 주세요.");
+  }
+  const parsed = new Date(raw);
+  if (raw && !Number.isNaN(parsed.getTime())) return getSeoulParts(parsed).dateKey;
+  throw new Error("올바른 시간표 적용 날짜를 입력해 주세요.");
+}
+
+function normalizeMemberTimetableRows(rows) {
+  if (!Array.isArray(rows)) throw new Error("개인 시간표 데이터는 배열이어야 합니다.");
+  const seen = new Set();
+  return rows
+    .filter((row) => String(row?.subject || "").trim())
+    .map((row) => {
+      const weekday = Number(row.weekday);
+      const period = Number(row.period);
+      if (!Number.isInteger(weekday) || weekday < 1 || weekday > 5) throw new Error("요일은 월요일부터 금요일까지만 선택할 수 있습니다.");
+      if (!Number.isInteger(period) || period < 1 || period > 12) throw new Error("교시는 1부터 12 사이여야 합니다.");
+      const effectiveFrom = timetableDateKey(row.effective_from || new Date());
+      const effectiveTo = row.effective_to ? timetableDateKey(row.effective_to) : null;
+      if (effectiveTo && effectiveTo < effectiveFrom) throw new Error("시간표 종료일은 시작일보다 빠를 수 없습니다.");
+      const normalized = {
+        weekday,
+        period,
+        subject: String(row.subject).trim(),
+        activity: String(row.activity || "").trim(),
+        teacher: String(row.teacher || "").trim(),
+        room: String(row.room || "").trim(),
+        memo: String(row.memo || "").trim(),
+        effective_from: effectiveFrom,
+        effective_to: effectiveTo,
+      };
+      const limits = { subject: 100, activity: 300, teacher: 100, room: 100, memo: 500 };
+      for (const [key, limit] of Object.entries(limits)) {
+        if (normalized[key].length > limit) throw new Error(`시간표 ${key} 값이 너무 깁니다.`);
+      }
+      const slot = `${weekday}:${period}:${effectiveFrom}`;
+      if (seen.has(slot)) throw new Error("같은 적용일의 동일 교시를 두 번 등록할 수 없습니다.");
+      seen.add(slot);
+      return normalized;
+    });
+}
+
+function activeTimetableRows(rows, dateKey) {
+  const latestBySlot = new Map();
+  for (const row of rows
+    .filter((item) => item.effective_from <= dateKey && (!item.effective_to || item.effective_to >= dateKey))
+    .sort((a, b) => b.effective_from.localeCompare(a.effective_from))) {
+    const slot = `${row.weekday}:${row.period}`;
+    if (!latestBySlot.has(slot)) latestBySlot.set(slot, row);
+  }
+  return [...latestBySlot.values()].sort((a, b) => a.weekday - b.weekday || a.period - b.period);
+}
+
 function seedTimetable(classId) {
   const subjects = {
     1: [
@@ -176,6 +243,7 @@ export class MemoryStore {
     }));
     this.invites = [];
     this.timetable = seedTimetable(classId);
+    this.memberTimetable = [];
     this.events = seedEvents(classId);
     this.notices = [
       {
@@ -195,6 +263,8 @@ export class MemoryStore {
     ];
     this.notifications = [];
     this.auditLogs = [];
+    this.files = [];
+    this.fileBodies = new Map();
   }
 
   async healthCheck() {
@@ -325,6 +395,27 @@ export class MemoryStore {
     return clone(member);
   }
 
+  async claimPortalInvite({ memberId, code }) {
+    const member = this.members.find((item) => item.id === memberId);
+    const codeHash = hashInviteCode(code);
+    const invite = this.invites.find((item) => (
+      item.member_id === memberId
+      && item.code_hash === codeHash
+      && !item.used_at
+      && new Date(item.expires_at).getTime() > Date.now()
+    ));
+    if (!member || !invite) throw new Error("이름 또는 초대 코드를 확인할 수 없습니다.");
+    invite.used_at = nowIso();
+    await this.appendAudit({
+      actor: member.id,
+      action: "portal.login",
+      entityType: "invite",
+      entityId: invite.id,
+      after: { member_id: member.id, used_at: invite.used_at },
+    });
+    return clone(member);
+  }
+
   async findMemberByUserKey(userKey) {
     const member = this.members.find((item) => item.kakao_user_key === userKey && item.status === "active");
     return member ? clone(member) : null;
@@ -334,6 +425,39 @@ export class MemoryStore {
     return clone(this.timetable)
       .filter((row) => weekday == null || row.weekday === Number(weekday))
       .sort((a, b) => a.weekday - b.weekday || a.period - b.period);
+  }
+
+  async listMemberTimetable(memberId, { weekday, date } = {}) {
+    const member = this.members.find((item) => item.id === memberId && item.class_id === this.classroom.id && item.status !== "left");
+    if (!member) throw new Error("개인 시간표를 조회할 구성원을 찾을 수 없습니다.");
+    const dateKey = timetableDateKey(date || new Date());
+    return clone(activeTimetableRows(
+      this.memberTimetable.filter((row) => row.member_id === memberId && (weekday == null || row.weekday === Number(weekday))),
+      dateKey,
+    ));
+  }
+
+  async replaceMemberTimetable({ memberId, rows }, actor = "admin") {
+    const member = this.members.find((item) => item.id === memberId && item.class_id === this.classroom.id && item.status !== "left");
+    if (!member) throw new Error("개인 시간표를 등록할 구성원을 찾을 수 없습니다.");
+    const savedAt = nowIso();
+    const normalized = normalizeMemberTimetableRows(rows).map((row) => ({
+      id: id("member_tt"),
+      class_id: this.classroom.id,
+      member_id: memberId,
+      ...row,
+      created_at: savedAt,
+      updated_at: savedAt,
+    }));
+    this.memberTimetable = this.memberTimetable.filter((row) => row.member_id !== memberId).concat(normalized);
+    await this.appendAudit({
+      actor,
+      action: "member_timetable.replace",
+      entityType: "member_timetable",
+      entityId: memberId,
+      after: { member_id: memberId, row_count: normalized.length },
+    });
+    return clone(normalized).sort((a, b) => a.weekday - b.weekday || a.period - b.period);
   }
 
   async replaceTimetableDay({ weekday, rows }, actor = "admin") {
@@ -500,6 +624,88 @@ export class MemoryStore {
     if (current.status === "archived") throw new Error("보관된 공지는 먼저 복원해야 게시할 수 있습니다.");
     if (current.status === "published") return { notice: clone(current), newlyPublished: false };
     return { notice: await this.updateNotice(noticeId, { status: "published" }, actor), newlyPublished: true };
+  }
+
+  async listFiles({ targetMemberId, all = false, status = "active" } = {}) {
+    return this.files
+      .filter((file) => (!status || file.status === status))
+      .filter((file) => all || file.member_id == null || (targetMemberId && file.member_id === targetMemberId))
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .map(fileMetadata);
+  }
+
+  async getFile(fileId) {
+    const file = this.files.find((item) => item.id === fileId);
+    return file ? fileMetadata(file) : null;
+  }
+
+  async createFile(input, body, actor = "admin") {
+    if (!Buffer.isBuffer(body) || body.length < 1 || body.length > 20 * 1024 * 1024) {
+      throw new Error("파일은 20MB 이하여야 합니다.");
+    }
+    if (this.files.filter((file) => file.status === "active").length >= 100) {
+      throw new Error("자료실에는 최대 100개의 파일만 보관할 수 있습니다.");
+    }
+    const storedBytes = [...this.fileBodies.values()].reduce((sum, value) => sum + value.length, 0);
+    if (storedBytes + body.length > 100 * 1024 * 1024) {
+      throw new Error("개발용 자료실의 총 저장 용량 100MB를 초과할 수 없습니다.");
+    }
+    const alias = String(input.alias || "").trim();
+    const duplicate = this.files.find((file) => (
+      file.status === "active"
+      && file.member_id === (input.member_id || null)
+      && file.alias.toLocaleLowerCase("ko") === alias.toLocaleLowerCase("ko")
+    ));
+    if (duplicate) throw new Error("같은 대상에 동일한 자료 별칭을 두 번 등록할 수 없습니다.");
+    const now = nowIso();
+    const file = {
+      id: id("file"),
+      class_id: this.classroom.id,
+      member_id: input.member_id || null,
+      alias,
+      filename: String(input.filename || "").trim(),
+      description: String(input.description || "").trim(),
+      mime_type: input.mime_type,
+      size_bytes: body.length,
+      bucket: "memory",
+      object_path: id("object"),
+      status: "active",
+      created_by: actor,
+      created_at: now,
+      updated_at: now,
+    };
+    this.files.push(file);
+    this.fileBodies.set(file.id, Buffer.from(body));
+    await this.appendAudit({ actor, action: "file.create", entityType: "file", entityId: file.id, after: file });
+    return fileMetadata(file);
+  }
+
+  async updateFile(fileId, patch, actor = "admin") {
+    const file = this.files.find((item) => item.id === fileId);
+    if (!file) throw new Error("파일을 찾을 수 없습니다.");
+    const before = fileMetadata(file);
+    for (const key of ["alias", "description", "member_id", "status"]) {
+      if (patch[key] !== undefined) file[key] = patch[key];
+    }
+    file.updated_at = nowIso();
+    await this.appendAudit({ actor, action: "file.update", entityType: "file", entityId: file.id, before, after: file });
+    return fileMetadata(file);
+  }
+
+  async deleteFile(fileId, actor = "admin") {
+    const index = this.files.findIndex((item) => item.id === fileId);
+    if (index < 0) throw new Error("파일을 찾을 수 없습니다.");
+    const [file] = this.files.splice(index, 1);
+    this.fileBodies.delete(file.id);
+    await this.appendAudit({ actor, action: "file.delete", entityType: "file", entityId: file.id, before: file });
+    return fileMetadata(file);
+  }
+
+  async downloadFile(fileId) {
+    const file = this.files.find((item) => item.id === fileId && item.status === "active");
+    const body = this.fileBodies.get(fileId);
+    if (!file || !body) throw new Error("파일을 찾을 수 없습니다.");
+    return Buffer.from(body);
   }
 
   async listNotifications({ limit = 50, status } = {}) {

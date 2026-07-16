@@ -19,9 +19,19 @@ export function categoryLabel(category) {
   return CATEGORY_LABELS[category] || "일정";
 }
 
+async function timetableForMemberOrClass(store, { targetMemberId, weekday, date }) {
+  if (targetMemberId && typeof store.listMemberTimetable === "function") {
+    const personal = await store.listMemberTimetable(targetMemberId, { weekday, date });
+    if (personal.length) return personal;
+  }
+  return store.listTimetable({ weekday });
+}
+
 export async function getDaySchedule(store, date = new Date(), { targetMemberId } = {}) {
   const parts = getSeoulParts(date);
-  const timetable = parts.weekday >= 1 && parts.weekday <= 5 ? await store.listTimetable({ weekday: parts.weekday }) : [];
+  const timetable = parts.weekday >= 1 && parts.weekday <= 5
+    ? await timetableForMemberOrClass(store, { targetMemberId, weekday: parts.weekday, date: parts.dateKey })
+    : [];
   const events = await store.listEvents({
     from: startOfSeoulDay(date).toISOString(),
     to: endOfSeoulDay(date).toISOString(),
@@ -58,13 +68,21 @@ export async function getUpcomingEvents(store, date = new Date(), days = 30, { t
   });
 }
 
-export async function getWeekTimetable(store, date = new Date(), { weekOffset = 0 } = {}) {
+export async function getWeekTimetable(store, date = new Date(), { weekOffset = 0, targetMemberId } = {}) {
   const { monday } = getWeekBounds(date, weekOffset);
-  const rows = await store.listTimetable();
+  const [classRows, memberRows] = await Promise.all([
+    store.listTimetable(),
+    targetMemberId && typeof store.listMemberTimetable === "function"
+      ? store.listMemberTimetable(targetMemberId, { date: getSeoulParts(monday).dateKey })
+      : Promise.resolve([]),
+  ]);
   const days = Array.from({ length: 5 }, (_, index) => ({
     date: dateForSeoulOffset(monday, index),
     weekday: index + 1,
-    rows: rows.filter((row) => row.weekday === index + 1),
+    rows: (() => {
+      const personal = memberRows.filter((row) => row.weekday === index + 1);
+      return personal.length ? personal : classRows.filter((row) => row.weekday === index + 1);
+    })(),
   }));
   return { monday, days };
 }

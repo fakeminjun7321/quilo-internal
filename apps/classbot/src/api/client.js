@@ -26,6 +26,7 @@ function readLocal() {
 }
 
 let localState = readLocal();
+if (!Array.isArray(localState.files)) localState.files = [];
 
 function persistLocal() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(localState)); } catch { /* private mode */ }
@@ -37,11 +38,12 @@ function nextId(prefix) {
 
 async function request(path, options = {}) {
   const { body, headers, root = false, ...rest } = options;
+  const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
   const response = await fetch(root ? path : resolveApiPath(path), {
     credentials: "same-origin",
     ...rest,
-    headers: body ? { "Content-Type": "application/json", ...headers } : headers,
-    body: body && typeof body !== "string" ? JSON.stringify(body) : body,
+    headers: body && !isFormData ? { "Content-Type": "application/json", ...headers } : headers,
+    body: body && typeof body !== "string" && !isFormData ? JSON.stringify(body) : body,
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -131,6 +133,64 @@ export const api = {
   updateNotice(id, patch) { return remoteOrLocal(() => request(`/api/admin/notices/${id}`, { method: "PATCH", body: patch }), () => updateItem("notices", id, patch)); },
   deleteNotice(id) { return remoteOrLocal(() => request(`/api/admin/notices/${id}`, { method: "DELETE" }), () => { localState.notices = localState.notices.filter((item) => item.id !== id); persistLocal(); return { ok: true }; }); },
   sendNotice(id, options = {}) { return remoteOrLocal(() => request(`/api/admin/notices/${id}/send`, { method: "POST", headers: { "Idempotency-Key": options.idempotencyKey || createIdempotencyKey("notice-send") } }), () => updateItem("notices", id, { status: "published", published_at: new Date().toISOString() })); },
+  files() { return remoteOrLocal(() => request("/api/admin/files"), () => ({ items: structuredClone(localState.files) })); },
+  uploadFile(input, options) {
+    const body = new FormData();
+    body.append("file", input.file);
+    body.append("alias", input.alias);
+    body.append("description", input.description || "");
+    body.append("member_id", input.member_id || "");
+    body.append("visibility", input.member_id ? "private" : "class");
+    return remoteOrLocal(
+      () => request("/api/admin/files", { method: "POST", headers: idempotencyHeaders("file", input, options), body }),
+      () => {
+        const now = new Date().toISOString();
+        const item = {
+          id: nextId("file"), alias: input.alias, description: input.description || "", member_id: input.member_id || null,
+          filename: input.file.name, original_name: input.file.name, mime_type: input.file.type || "application/octet-stream",
+          size_bytes: input.file.size, visibility: input.member_id ? "private" : "class",
+          download_url: URL.createObjectURL(input.file), created_at: now, updated_at: now,
+        };
+        localState.files.unshift(item);
+        persistLocal();
+        return { item: structuredClone(item) };
+      },
+    );
+  },
+  deleteFile(id) { return remoteOrLocal(() => request(`/api/admin/files/${id}`, { method: "DELETE" }), () => { localState.files = localState.files.filter((item) => item.id !== id); persistLocal(); return { ok: true }; }); },
+  fileDownloadUrl(item) {
+    const value = item?.admin_download_url || item?.download_url || item?.file_url;
+    if (value) return new URL(value, location.href).href;
+    return new URL(resolveApiPath(`/api/admin/files/${item.id}/download`), location.href).href;
+  },
+  fileShareUrl(item) {
+    const value = item?.share_url || item?.public_url || item?.url;
+    if (value) return new URL(value, location.href).href;
+    const token = item?.share_token || item?.public_token || item?.token;
+    if (token) return new URL(resolveApiPath(`/api/files/${encodeURIComponent(token)}`), location.href).href;
+    return this.fileDownloadUrl(item);
+  },
+  portalSession() { return request("/api/portal/session"); },
+  portalLogin({ display_name, invite_code }) { return request("/api/portal/login", { method: "POST", body: { display_name, invite_code } }); },
+  portalLogout() { return request("/api/portal/logout", { method: "POST" }); },
+  portalOverview(from, to) {
+    const query = new URLSearchParams({ from, to });
+    return request(`/api/portal/overview?${query.toString()}`);
+  },
+  portalFiles() { return request("/api/portal/files"); },
+  portalFileUrl(value) {
+    if (!value) return "";
+    const url = new URL(value, location.href);
+    if (url.origin === location.origin && url.pathname.startsWith("/api/")) {
+      const base = new URL(API_PREFIX, location.href);
+      url.protocol = base.protocol; url.host = base.host;
+      url.pathname = `${base.pathname}${url.pathname.slice(4)}`;
+    }
+    return url.href;
+  },
+  portalCreateEvent(input, options) { return request("/api/portal/events", { method: "POST", headers: idempotencyHeaders("portal-event", input, options), body: input }); },
+  portalUpdateEvent(id, patch) { return request(`/api/portal/events/${id}`, { method: "PATCH", body: patch }); },
+  portalDeleteEvent(id) { return request(`/api/portal/events/${id}`, { method: "DELETE" }); },
   notifications() { return remoteOrLocal(() => request("/api/admin/notifications"), () => ({ items: structuredClone(localState.notifications) })); },
   testNotification(options = {}) { return remoteOrLocal(() => request("/api/admin/notifications/test", { method: "POST", headers: { "Idempotency-Key": options.idempotencyKey || createIdempotencyKey("notification-test") } }), () => createItem("notifications", "notification", { kind: "test", status: "reserved", scheduled_for: new Date().toISOString(), payload: { title: "테스트 알림" } })); },
 };

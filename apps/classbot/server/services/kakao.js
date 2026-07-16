@@ -31,14 +31,50 @@ function normalizedEventData(data) {
   return Object.fromEntries(entries);
 }
 
-export function simpleTextResponse(text, quickReplies = QUICK_REPLIES) {
+export function templateResponse(outputs, quickReplies = QUICK_REPLIES) {
+  if (!Array.isArray(outputs) || !outputs.length) throw new Error("Kakao 응답에는 출력이 하나 이상 필요합니다.");
   return {
     version: "2.0",
     template: {
-      outputs: [{ simpleText: { text: String(text).slice(0, 1000) } }],
+      outputs: outputs.slice(0, 3),
       quickReplies,
     },
   };
+}
+
+export function simpleTextResponse(text, quickReplies = QUICK_REPLIES) {
+  return templateResponse([{ simpleText: { text: String(text).slice(0, 1000) } }], quickReplies);
+}
+
+function safeWebUrl(value) {
+  const url = new URL(String(value || ""));
+  if (!new Set(["https:", "http:"]).has(url.protocol) || url.username || url.password) {
+    throw new Error("자료 URL은 인증정보가 없는 HTTP 또는 HTTPS 주소여야 합니다.");
+  }
+  return url.href;
+}
+
+export function simpleImageResponse({ imageUrl, altText }, quickReplies = QUICK_REPLIES) {
+  return templateResponse([{
+    simpleImage: {
+      imageUrl: safeWebUrl(imageUrl),
+      altText: String(altText || "Quilo 자료 이미지").slice(0, 1000),
+    },
+  }], quickReplies);
+}
+
+export function textCardResponse({ title, description, url, buttonLabel = "열기" }, quickReplies = QUICK_REPLIES) {
+  return templateResponse([{
+    textCard: {
+      title: String(title || "Quilo 자료").slice(0, 50),
+      description: String(description || "").slice(0, 230),
+      buttons: [{
+        action: "webLink",
+        label: String(buttonLabel || "열기").slice(0, 14),
+        webLinkUrl: safeWebUrl(url),
+      }],
+    },
+  }], quickReplies);
 }
 
 export function personalizedQuickReplies(displayName) {
@@ -46,10 +82,20 @@ export function personalizedQuickReplies(displayName) {
   if (!name) return QUICK_REPLIES;
   return [
     `오늘 일정 ${name}`,
-    `내일 일정 ${name}`,
-    `이번 주 일정 ${name}`,
-    `오늘 시간표 ${name}`,
-    `과제 ${name}`,
+    `다음 일정 ${name}`,
+    `수행평가 과제 통합 요약 ${name}`,
+    `시간표 전체 ${name}`,
+    `자료 목록 ${name}`,
+  ].map((messageText) => ({ label: messageText, action: "message", messageText }));
+}
+
+export function registeredQuickReplies() {
+  return [
+    "오늘 일정",
+    "다음 일정",
+    "수행평가 과제 통합 요약",
+    "시간표 전체",
+    "자료 목록",
   ].map((messageText) => ({ label: messageText, action: "message", messageText }));
 }
 

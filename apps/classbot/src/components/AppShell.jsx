@@ -1,6 +1,6 @@
 import {
   Bell, CalendarDays, ChevronDown, ClipboardList, Clock3,
-  LayoutDashboard, Megaphone, Plus, Settings, Users, X,
+  FolderOpen, LayoutDashboard, Megaphone, Plus, Settings, Users, X,
 } from "lucide-react";
 
 const navItems = [
@@ -8,13 +8,14 @@ const navItems = [
   ["events", "일정", CalendarDays],
   ["timetable", "시간표", ClipboardList],
   ["notices", "반 공지", Megaphone],
+  ["files", "자료실", FolderOpen],
   ["members", "구성원", Users],
   ["notifications", "알림 기록", Bell],
   ["settings", "설정", Settings],
 ];
 
 export function Brand() {
-  return <div className="brand"><img src="/quilo-chatbot-icon.png" alt="" aria-hidden="true" /><span>Quilo</span></div>;
+  return <div className="brand"><img src={`${import.meta.env.BASE_URL}quilo-chatbot-icon.png`} alt="" aria-hidden="true" /><span>Quilo</span></div>;
 }
 
 export function Sidebar({ active, onNavigate, classroom, memberCount }) {

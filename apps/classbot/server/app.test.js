@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import request from "supertest";
 import { createApp } from "./app.js";
+import { createFileToken } from "./services/file-tokens.js";
 import { MemoryStore } from "./store/memory-store.js";
 
 const config = {
@@ -48,6 +49,50 @@ test("관리자 세션이 보호되고 로그인 후 overview를 조회한다", 
   assert.equal(response.body.classroom.name, "2학년 4반");
   assert.equal(response.body.stats.memberCount, 13);
   assert.equal(Array.isArray(response.body.notices), true);
+});
+
+test("관리자는 실제 PDF·이미지만 자료실에 올리고 비공개 링크로 내려받는다", async () => {
+  const { app, agent, store } = await fixture();
+  await login(agent);
+  const pdf = Buffer.from("%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF");
+  const uploaded = await agent
+    .post("/api/admin/files")
+    .field("alias", "화학 실험 안내")
+    .field("description", "실험 전 읽을 자료")
+    .field("visibility", "class")
+    .attach("file", pdf, { filename: "화학안내.pdf", contentType: "application/pdf" });
+  assert.equal(uploaded.status, 201);
+  assert.equal(uploaded.body.item.alias, "화학 실험 안내");
+  assert.equal(uploaded.body.item.visibility, "class");
+  assert.equal("bucket" in uploaded.body.item, false);
+  assert.equal("object_path" in uploaded.body.item, false);
+
+  const listed = await agent.get("/api/admin/files");
+  assert.equal(listed.body.items.length, 1);
+  const adminDownload = await agent.get(`/api/admin/files/${uploaded.body.item.id}/download`).buffer(true);
+  assert.equal(adminDownload.status, 200);
+  assert.match(adminDownload.headers["content-disposition"], /attachment/);
+
+  const token = createFileToken(uploaded.body.item.id, config.sessionSecret, {
+    now: new Date("2026-07-15T03:00:00.000Z"),
+    ttlSeconds: 60,
+  });
+  const publicDownload = await request(app).get(`/api/files/${encodeURIComponent(token)}`).buffer(true);
+  assert.equal(publicDownload.status, 200);
+  assert.match(publicDownload.headers["content-disposition"], /inline/);
+  assert.equal(publicDownload.headers["x-content-type-options"], "nosniff");
+
+  const rejected = await agent
+    .post("/api/admin/files")
+    .field("alias", "가짜 PDF")
+    .field("visibility", "class")
+    .attach("file", Buffer.from("<html>not a pdf</html>"), { filename: "fake.pdf", contentType: "application/pdf" });
+  assert.equal(rejected.status, 400);
+  assert.equal((await store.listFiles({ all: true })).length, 1);
+
+  const removed = await agent.delete(`/api/admin/files/${uploaded.body.item.id}`);
+  assert.equal(removed.status, 200);
+  assert.equal((await request(app).get(`/api/files/${encodeURIComponent(token)}`)).status, 404);
 });
 
 test("health check는 저장소 연결 실패를 503으로 노출하되 내부 오류는 숨긴다", async () => {

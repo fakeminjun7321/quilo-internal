@@ -36,6 +36,14 @@ test("기존 Express 4 Quilo 서버의 /schedule namespace에서 API가 동작�
   const overview = await request(parent).get("/schedule/api/admin/overview");
   assert.equal(overview.status, 200);
 
+  const uploaded = await request(parent)
+    .post("/schedule/api/admin/files")
+    .field("alias", "마운트 자료")
+    .field("visibility", "class")
+    .attach("file", Buffer.from("%PDF-1.4\n%%EOF"), { filename: "mount.pdf", contentType: "application/pdf" });
+  assert.equal(uploaded.status, 201);
+  assert.match(new URL(uploaded.body.item.share_url).pathname, /^\/schedule\/api\/files\//);
+
   const rootApi = await request(parent).get("/api/health");
   assert.equal(rootApi.status, 404);
 

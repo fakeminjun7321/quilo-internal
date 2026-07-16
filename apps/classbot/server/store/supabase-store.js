@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { hashInviteCode } from "../security.js";
 import { parseKoreaDateTime } from "../time.js";
@@ -26,6 +27,16 @@ function fetchWithTimeout(url, options = {}) {
   const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
   return fetch(url, { ...options, signal });
 }
+
+const FILE_BUCKET = "classbot-files";
+const FILE_MIME_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/webp", "image/gif"];
+const FILE_EXTENSIONS = new Map([
+  ["application/pdf", "pdf"],
+  ["image/jpeg", "jpg"],
+  ["image/png", "png"],
+  ["image/webp", "webp"],
+  ["image/gif", "gif"],
+]);
 
 export class SupabaseStore {
   constructor(config) {
@@ -64,7 +75,7 @@ export class SupabaseStore {
   async healthCheck() {
     await this.ensureClassroom();
     const version = unwrap(await this.client.rpc("classbot_health_check"), "학급 저장소 상태 확인 실패");
-    if (Number(version) !== 1) throw new Error("지원하지 않는 Classbot 데이터베이스 스키마입니다.");
+    if (Number(version) !== 2) throw new Error("지원하지 않는 Classbot 데이터베이스 스키마입니다.");
     return { ok: true, storage: "supabase" };
   }
 
@@ -456,6 +467,128 @@ export class SupabaseStore {
     if (!current) throw new Error("공지를 찾을 수 없습니다.");
     if (current.status === "archived") throw new Error("보관된 공지는 먼저 복원해야 게시할 수 있습니다.");
     return { notice: current, newlyPublished: false };
+  }
+
+  async ensureFileBucket() {
+    const existing = await this.client.storage.getBucket(FILE_BUCKET);
+    if (existing.data) return;
+    const created = await this.client.storage.createBucket(FILE_BUCKET, {
+      public: false,
+      fileSizeLimit: 20 * 1024 * 1024,
+      allowedMimeTypes: FILE_MIME_TYPES,
+    });
+    if (created.error && !/already exists|duplicate/i.test(created.error.message || "")) {
+      throw new Error(`자료실 저장소 준비 실패: ${created.error.message}`);
+    }
+  }
+
+  async listFiles({ targetMemberId, all = false, status = "active" } = {}) {
+    const classroom = await this.ensureClassroom();
+    let query = this.client
+      .from("classbot_files")
+      .select("*")
+      .eq("class_id", classroom.id)
+      .order("created_at", { ascending: false });
+    if (status) query = query.eq("status", status);
+    if (!all) {
+      query = targetMemberId
+        ? query.or(`member_id.is.null,member_id.eq.${targetMemberId}`)
+        : query.is("member_id", null);
+    }
+    return unwrap(await query, "자료실 조회 실패");
+  }
+
+  async getFile(fileId) {
+    const classroom = await this.ensureClassroom();
+    return unwrap(
+      await this.client.from("classbot_files").select("*").eq("class_id", classroom.id).eq("id", fileId).maybeSingle(),
+      "파일 조회 실패",
+    );
+  }
+
+  async createFile(input, body, actor = "admin") {
+    const classroom = await this.ensureClassroom();
+    if (!Buffer.isBuffer(body) || body.length < 1 || body.length > 20 * 1024 * 1024) {
+      throw new Error("파일은 20MB 이하여야 합니다.");
+    }
+    const countResult = await this.client
+      .from("classbot_files")
+      .select("id", { count: "exact", head: true })
+      .eq("class_id", classroom.id)
+      .eq("status", "active");
+    if (countResult.error) throw new Error(`자료실 용량 확인 실패: ${countResult.error.message}`);
+    if ((countResult.count || 0) >= 100) throw new Error("자료실에는 최대 100개의 파일만 보관할 수 있습니다.");
+
+    await this.ensureFileBucket();
+    const extension = FILE_EXTENSIONS.get(input.mime_type);
+    if (!extension) throw new Error("PDF 또는 지원되는 이미지 파일만 올릴 수 있습니다.");
+    const fileId = crypto.randomUUID();
+    const objectPath = `${classroom.id}/${fileId}/${crypto.randomUUID()}.${extension}`;
+    const upload = await this.client.storage.from(FILE_BUCKET).upload(objectPath, body, {
+      contentType: input.mime_type,
+      cacheControl: "0",
+      upsert: false,
+    });
+    if (upload.error) throw new Error(`파일 업로드 실패: ${upload.error.message}`);
+
+    const result = await this.client.from("classbot_files").insert({
+      id: fileId,
+      class_id: classroom.id,
+      member_id: input.member_id || null,
+      alias: input.alias,
+      filename: input.filename,
+      description: input.description || "",
+      mime_type: input.mime_type,
+      size_bytes: body.length,
+      bucket: FILE_BUCKET,
+      object_path: objectPath,
+      status: "active",
+      created_by: actor,
+    }).select("*").single();
+    if (result.error) {
+      await this.client.storage.from(FILE_BUCKET).remove([objectPath]);
+      if (result.error.code === "23505") throw new Error("같은 대상에 동일한 자료 별칭을 두 번 등록할 수 없습니다.");
+      throw new Error(`파일 정보 저장 실패: ${result.error.message}`);
+    }
+    await this.appendAudit({ actor, action: "file.create", entityType: "file", entityId: result.data.id, after: result.data });
+    return result.data;
+  }
+
+  async updateFile(fileId, patch, actor = "admin") {
+    const classroom = await this.ensureClassroom();
+    const before = await this.getFile(fileId);
+    if (!before) throw new Error("파일을 찾을 수 없습니다.");
+    const allowed = Object.fromEntries(
+      Object.entries(patch).filter(([key]) => ["alias", "description", "member_id", "status"].includes(key)),
+    );
+    const updated = unwrap(
+      await this.client.from("classbot_files").update(allowed).eq("class_id", classroom.id).eq("id", fileId).select("*").single(),
+      "파일 정보 저장 실패",
+    );
+    await this.appendAudit({ actor, action: "file.update", entityType: "file", entityId: fileId, before, after: updated });
+    return updated;
+  }
+
+  async deleteFile(fileId, actor = "admin") {
+    const classroom = await this.ensureClassroom();
+    const file = await this.getFile(fileId);
+    if (!file) throw new Error("파일을 찾을 수 없습니다.");
+    const removedObject = await this.client.storage.from(file.bucket).remove([file.object_path]);
+    if (removedObject.error) throw new Error(`파일 삭제 실패: ${removedObject.error.message}`);
+    unwrap(
+      await this.client.from("classbot_files").delete().eq("class_id", classroom.id).eq("id", fileId),
+      "파일 정보 삭제 실패",
+    );
+    await this.appendAudit({ actor, action: "file.delete", entityType: "file", entityId: fileId, before: file });
+    return file;
+  }
+
+  async downloadFile(fileId) {
+    const file = await this.getFile(fileId);
+    if (!file || file.status !== "active") throw new Error("파일을 찾을 수 없습니다.");
+    const downloaded = await this.client.storage.from(file.bucket).download(file.object_path);
+    if (downloaded.error) throw new Error(`파일 다운로드 실패: ${downloaded.error.message}`);
+    return Buffer.from(await downloaded.data.arrayBuffer());
   }
 
   async listNotifications({ limit = 50, status } = {}) {

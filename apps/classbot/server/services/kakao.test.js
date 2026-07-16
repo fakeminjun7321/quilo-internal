@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { KakaoEventClient } from "./kakao.js";
+import { KakaoEventClient, personalizedQuickReplies, registeredQuickReplies, templateResponse } from "./kakao.js";
 
 const config = {
   enabled: true,
@@ -50,4 +50,24 @@ test("Event API 사용자 타입, 인원수, data 타입을 발송 전에 검증
     client.send({ users: [{ type: "botUserKey", id: "x" }], data: { count: 1 } }),
     /모두 문자열/,
   );
+});
+
+test("스킬 응답 output은 최대 3개로 제한하고 개인화 Quick Reply는 자료 목록을 포함해 5개다", () => {
+  const outputs = Array.from({ length: 5 }, (_, index) => ({ simpleText: { text: String(index) } }));
+  const response = templateResponse(outputs, personalizedQuickReplies("홍길동"));
+  assert.equal(response.template.outputs.length, 3);
+  assert.equal(response.template.quickReplies.length, 5);
+  assert.equal(response.template.quickReplies.at(-1).messageText, "자료 목록 홍길동");
+  assert.equal(response.template.quickReplies.every((item) => item.messageText.endsWith("홍길동")), true);
+});
+
+test("이름등록이 끝난 요청자용 Quick Reply는 이름 suffix 없이 5개다", () => {
+  const replies = registeredQuickReplies();
+  assert.deepEqual(replies.map((item) => item.messageText), [
+    "오늘 일정",
+    "다음 일정",
+    "수행평가 과제 통합 요약",
+    "시간표 전체",
+    "자료 목록",
+  ]);
 });

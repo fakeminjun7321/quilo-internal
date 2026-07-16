@@ -4,9 +4,11 @@ import { fileURLToPath } from "node:url";
 import cookieSession from "cookie-session";
 import express from "express";
 import helmet from "helmet";
+import multer from "multer";
 import { loadConfig } from "./config.js";
 import { createInviteCode, createCronGuard, hashInviteCode, requireAdmin, safeEqual } from "./security.js";
 import { createStore } from "./store/index.js";
+import { createFileToken, verifyFileToken } from "./services/file-tokens.js";
 import { KakaoEventClient, simpleTextResponse } from "./services/kakao.js";
 import { handleKakaoCommand } from "./services/commands.js";
 import { NotificationService } from "./services/notifications.js";
@@ -18,6 +20,8 @@ const CATEGORIES = new Set(["assessment", "assignment", "class", "schedule_chang
 const EVENT_STATUSES = new Set(["scheduled", "completed", "cancelled"]);
 const NOTICE_STATUSES = new Set(["draft", "published", "archived"]);
 const MEMBER_STATUSES = new Set(["invited", "active", "disabled", "left"]);
+const FILE_MIME_TYPES = new Set(["application/pdf", "image/jpeg", "image/png", "image/webp", "image/gif"]);
+const MAX_FILE_BYTES = 20 * 1024 * 1024;
 
 class HttpError extends Error {
   constructor(status, message) {
@@ -39,6 +43,42 @@ function optionalString(value, label, maxLength = 1000) {
   const text = String(value ?? "").trim();
   if (text.length > maxLength) throw new HttpError(400, `${label}은(는) ${maxLength}자 이하여야 합니다.`);
   return text;
+}
+
+function detectedFileMime(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 4) return null;
+  if (buffer.subarray(0, 1024).includes(Buffer.from("%PDF-"))) return "application/pdf";
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "image/jpeg";
+  if (buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "image/png";
+  if (["GIF87a", "GIF89a"].includes(buffer.subarray(0, 6).toString("ascii"))) return "image/gif";
+  if (buffer.subarray(0, 4).toString("ascii") === "RIFF" && buffer.subarray(8, 12).toString("ascii") === "WEBP") return "image/webp";
+  return null;
+}
+
+function publicFile(file) {
+  const { bucket: _bucket, object_path: _objectPath, created_by: _createdBy, ...safe } = file;
+  return { ...safe, visibility: safe.member_id ? "private" : "class" };
+}
+
+function safeFileName(value) {
+  return String(value || "file").replace(/[\r\n\0"]/g, "_").slice(0, 180) || "file";
+}
+
+function sendFileBody(res, file, body, { attachment = false } = {}) {
+  const filename = safeFileName(file.filename);
+  res.set({
+    "Content-Type": file.mime_type,
+    "Content-Length": String(body.length),
+    "Content-Disposition": `${attachment ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    "Cache-Control": "private, no-store, max-age=0",
+    "X-Content-Type-Options": "nosniff",
+  });
+  return res.send(body);
+}
+
+function fileLink(req, token) {
+  const basePath = String(req.baseUrl || "").replace(/\/$/, "");
+  return new URL(`${basePath}/api/files/${encodeURIComponent(token)}`, `${req.protocol}://${req.get("host")}`).toString();
 }
 
 function booleanValue(value, fallback) {
@@ -208,6 +248,25 @@ export async function createApp(options = {}) {
   const embedded = options.embedded === true;
   const app = express();
   const origins = allowedOrigins(config.allowedOrigin);
+  const fileForAdmin = (req, file) => {
+    const safe = publicFile(file);
+    if (file.member_id) return safe;
+    const issuedAt = now();
+    return {
+      ...safe,
+      share_url: fileLink(req, createFileToken(file.id, config.sessionSecret, { now: issuedAt })),
+      share_expires_at: new Date(issuedAt.getTime() + 15 * 60_000).toISOString(),
+    };
+  };
+  const fileUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: MAX_FILE_BYTES, files: 1, fields: 8, fieldSize: 4 * 1024 },
+  }).single("file");
+  const receiveFile = (req, res, next) => fileUpload(req, res, (error) => {
+    if (!error) return next();
+    if (error.code === "LIMIT_FILE_SIZE") return next(new HttpError(413, "파일은 20MB 이하여야 합니다."));
+    return next(new HttpError(400, "파일 업로드 형식이 올바르지 않습니다."));
+  });
 
   if (config.production) app.set("trust proxy", 1);
   app.disable("x-powered-by");
@@ -275,6 +334,18 @@ export async function createApp(options = {}) {
     }
   }));
 
+  app.get("/api/files/:token", asyncRoute(async (req, res) => {
+    let verified;
+    try {
+      verified = verifyFileToken(req.params.token, config.sessionSecret, { now: now() });
+    } catch (error) {
+      throw new HttpError(/만료/.test(error.message) ? 410 : 403, error.message);
+    }
+    const file = await store.getFile(verified.fileId);
+    if (!file || file.status !== "active") throw new HttpError(404, "파일을 찾을 수 없습니다.");
+    sendFileBody(res, file, await store.downloadFile(file.id));
+  }));
+
   const isAdminRequest = (req) => embedded
     ? req.classbotExternalAdmin === true
     : req.session?.isAdmin === true;
@@ -298,6 +369,49 @@ export async function createApp(options = {}) {
     if (isAdminRequest(req)) return next();
     return requireAdmin(req, res, next);
   });
+
+  app.get("/api/admin/files", asyncRoute(async (req, res) => {
+    res.json({ items: (await store.listFiles({ all: true })).map((file) => fileForAdmin(req, file)) });
+  }));
+  app.post("/api/admin/files", receiveFile, asyncRoute(async (req, res) => {
+    if (!req.file?.buffer?.length) throw new HttpError(400, "올릴 PDF 또는 이미지 파일을 선택해 주세요.");
+    const mimeType = detectedFileMime(req.file.buffer);
+    if (!mimeType || !FILE_MIME_TYPES.has(mimeType)) {
+      throw new HttpError(400, "PDF, JPEG, PNG, WebP, GIF 파일만 올릴 수 있습니다.");
+    }
+    const visibility = String(req.body?.visibility || (req.body?.member_id ? "private" : "class"));
+    if (!new Set(["class", "private"]).has(visibility)) throw new HttpError(400, "자료 공개 범위가 올바르지 않습니다.");
+    let memberId = req.body?.member_id ? requireString(req.body.member_id, "개인 자료 구성원", 128) : null;
+    if (visibility === "private" && !memberId) throw new HttpError(400, "개인 자료를 받을 구성원을 선택해 주세요.");
+    if (visibility === "class" && memberId) throw new HttpError(400, "반 전체 자료에는 개인 구성원을 지정할 수 없습니다.");
+    if (memberId) {
+      const member = await store.getMember(memberId);
+      if (!member || member.status === "left") throw new HttpError(400, "개인 자료를 받을 구성원을 찾을 수 없습니다.");
+    }
+    const item = await store.createFile({
+      member_id: memberId,
+      alias: requireString(req.body?.alias, "자료 별칭", 60),
+      filename: requireString(req.file.originalname, "파일 이름", 180),
+      description: optionalString(req.body?.description, "자료 설명", 1000),
+      mime_type: mimeType,
+    }, req.file.buffer, "admin");
+    res.status(201).json({ item: fileForAdmin(req, item) });
+  }));
+  app.patch("/api/admin/files/:id", asyncRoute(async (req, res) => {
+    const patch = {};
+    if (req.body.alias !== undefined) patch.alias = requireString(req.body.alias, "자료 별칭", 60);
+    if (req.body.description !== undefined) patch.description = optionalString(req.body.description, "자료 설명", 1000);
+    if (!Object.keys(patch).length) throw new HttpError(400, "변경할 자료 정보를 입력해 주세요.");
+    res.json({ item: fileForAdmin(req, await store.updateFile(req.params.id, patch, "admin")) });
+  }));
+  app.get("/api/admin/files/:id/download", asyncRoute(async (req, res) => {
+    const file = await store.getFile(req.params.id);
+    if (!file || file.status !== "active") throw new HttpError(404, "파일을 찾을 수 없습니다.");
+    sendFileBody(res, file, await store.downloadFile(file.id), { attachment: true });
+  }));
+  app.delete("/api/admin/files/:id", asyncRoute(async (req, res) => {
+    res.json({ item: publicFile(await store.deleteFile(req.params.id, "admin")) });
+  }));
 
   app.get("/api/admin/overview", asyncRoute(async (_req, res) => {
     const [classroom, members, timetable, events, notices, notificationItems] = await Promise.all([
@@ -482,7 +596,12 @@ export async function createApp(options = {}) {
       const supplied = req.get("x-classbot-skill-secret") || req.query.secret;
       if (!safeEqual(supplied, config.kakaoSkillSecret)) return res.status(401).json(simpleTextResponse("인증되지 않은 스킬 요청입니다."));
     }
-    res.json(await handleKakaoCommand({ payload: req.body || {}, store, now: now() }));
+    res.json(await handleKakaoCommand({
+      payload: req.body || {},
+      store,
+      now: now(),
+      makeFileUrl: (file) => fileLink(req, createFileToken(file.id, config.sessionSecret, { now: now() })),
+    }));
   }));
 
   app.post("/api/cron/notifications", createCronGuard(config.cronSecret), asyncRoute(async (req, res) => {

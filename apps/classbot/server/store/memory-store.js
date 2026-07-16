@@ -23,6 +23,11 @@ function id(prefix) {
   return `${prefix}_${crypto.randomUUID()}`;
 }
 
+function fileMetadata(file) {
+  const { body: _body, ...metadata } = file;
+  return clone(metadata);
+}
+
 function seedTimetable(classId) {
   const subjects = {
     1: [
@@ -195,6 +200,8 @@ export class MemoryStore {
     ];
     this.notifications = [];
     this.auditLogs = [];
+    this.files = [];
+    this.fileBodies = new Map();
   }
 
   async healthCheck() {
@@ -500,6 +507,88 @@ export class MemoryStore {
     if (current.status === "archived") throw new Error("보관된 공지는 먼저 복원해야 게시할 수 있습니다.");
     if (current.status === "published") return { notice: clone(current), newlyPublished: false };
     return { notice: await this.updateNotice(noticeId, { status: "published" }, actor), newlyPublished: true };
+  }
+
+  async listFiles({ targetMemberId, all = false, status = "active" } = {}) {
+    return this.files
+      .filter((file) => (!status || file.status === status))
+      .filter((file) => all || file.member_id == null || (targetMemberId && file.member_id === targetMemberId))
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+      .map(fileMetadata);
+  }
+
+  async getFile(fileId) {
+    const file = this.files.find((item) => item.id === fileId);
+    return file ? fileMetadata(file) : null;
+  }
+
+  async createFile(input, body, actor = "admin") {
+    if (!Buffer.isBuffer(body) || body.length < 1 || body.length > 20 * 1024 * 1024) {
+      throw new Error("파일은 20MB 이하여야 합니다.");
+    }
+    if (this.files.filter((file) => file.status === "active").length >= 100) {
+      throw new Error("자료실에는 최대 100개의 파일만 보관할 수 있습니다.");
+    }
+    const storedBytes = [...this.fileBodies.values()].reduce((sum, value) => sum + value.length, 0);
+    if (storedBytes + body.length > 100 * 1024 * 1024) {
+      throw new Error("개발용 자료실의 총 저장 용량 100MB를 초과할 수 없습니다.");
+    }
+    const alias = String(input.alias || "").trim();
+    const duplicate = this.files.find((file) => (
+      file.status === "active"
+      && file.member_id === (input.member_id || null)
+      && file.alias.toLocaleLowerCase("ko") === alias.toLocaleLowerCase("ko")
+    ));
+    if (duplicate) throw new Error("같은 대상에 동일한 자료 별칭을 두 번 등록할 수 없습니다.");
+    const now = nowIso();
+    const file = {
+      id: id("file"),
+      class_id: this.classroom.id,
+      member_id: input.member_id || null,
+      alias,
+      filename: String(input.filename || "").trim(),
+      description: String(input.description || "").trim(),
+      mime_type: input.mime_type,
+      size_bytes: body.length,
+      bucket: "memory",
+      object_path: id("object"),
+      status: "active",
+      created_by: actor,
+      created_at: now,
+      updated_at: now,
+    };
+    this.files.push(file);
+    this.fileBodies.set(file.id, Buffer.from(body));
+    await this.appendAudit({ actor, action: "file.create", entityType: "file", entityId: file.id, after: file });
+    return fileMetadata(file);
+  }
+
+  async updateFile(fileId, patch, actor = "admin") {
+    const file = this.files.find((item) => item.id === fileId);
+    if (!file) throw new Error("파일을 찾을 수 없습니다.");
+    const before = fileMetadata(file);
+    for (const key of ["alias", "description", "member_id", "status"]) {
+      if (patch[key] !== undefined) file[key] = patch[key];
+    }
+    file.updated_at = nowIso();
+    await this.appendAudit({ actor, action: "file.update", entityType: "file", entityId: file.id, before, after: file });
+    return fileMetadata(file);
+  }
+
+  async deleteFile(fileId, actor = "admin") {
+    const index = this.files.findIndex((item) => item.id === fileId);
+    if (index < 0) throw new Error("파일을 찾을 수 없습니다.");
+    const [file] = this.files.splice(index, 1);
+    this.fileBodies.delete(file.id);
+    await this.appendAudit({ actor, action: "file.delete", entityType: "file", entityId: file.id, before: file });
+    return fileMetadata(file);
+  }
+
+  async downloadFile(fileId) {
+    const file = this.files.find((item) => item.id === fileId && item.status === "active");
+    const body = this.fileBodies.get(fileId);
+    if (!file || !body) throw new Error("파일을 찾을 수 없습니다.");
+    return Buffer.from(body);
   }
 
   async listNotifications({ limit = 50, status } = {}) {

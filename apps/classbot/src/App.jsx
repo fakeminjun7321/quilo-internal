@@ -7,12 +7,25 @@ import TodayPage from "./pages/TodayPage.jsx";
 import EventsPage from "./pages/EventsPage.jsx";
 import TimetablePage from "./pages/TimetablePage.jsx";
 import NoticesPage from "./pages/NoticesPage.jsx";
+import FilesPage from "./pages/FilesPage.jsx";
 import MembersPage from "./pages/MembersPage.jsx";
 import NotificationsPage from "./pages/NotificationsPage.jsx";
 import SettingsPage from "./pages/SettingsPage.jsx";
 
 const actions = { today: "일정 추가", events: "일정 추가", notices: "공지 추가" };
 const embeddedInQuilo = !import.meta.env.DEV && import.meta.env.BASE_URL.startsWith("/schedule/");
+
+async function copyText(value) {
+  if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value);
+  const textarea = document.createElement("textarea");
+  textarea.value = value;
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  document.execCommand("copy");
+  textarea.remove();
+}
 
 function Login({ onLogin, busy, error }) {
   const [password, setPassword] = useState("");
@@ -33,6 +46,7 @@ export default function App() {
   const [overview, setOverview] = useState(null);
   const [active, setActive] = useState("today");
   const [drawer, setDrawer] = useState({ type: null, item: null, open: false });
+  const [fileLibrary, setFileLibrary] = useState({ items: [], loading: false, loaded: false, error: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [toast, setToast] = useState("");
@@ -59,6 +73,15 @@ export default function App() {
 
   const patchCollection = (collection, item) => setOverview((current) => ({ ...current, [collection]: current[collection].map((existing) => existing.id === item.id ? item : existing) }));
   const addCollection = (collection, item) => setOverview((current) => ({ ...current, [collection]: [item, ...current[collection]] }));
+  const loadFiles = async () => {
+    setFileLibrary((current) => ({ ...current, loading: true, error: "" }));
+    try {
+      const result = await api.files();
+      setFileLibrary({ items: result.items || result.files || [], loading: false, loaded: true, error: "" });
+    } catch (err) {
+      setFileLibrary((current) => ({ ...current, loading: false, loaded: false, error: err.message || "자료 목록 요청에 실패했습니다." }));
+    }
+  };
 
   const login = async (password) => {
     setBusy(true); setError("");
@@ -81,7 +104,10 @@ export default function App() {
   const deleteEvent = async () => { if (busy || !drawer.item || !window.confirm("이 일정을 삭제할까요?")) return; setBusy(true); try { await api.deleteEvent(drawer.item.id); setOverview((current) => ({ ...current, events: current.events.filter((item) => item.id !== drawer.item.id) })); closeDrawer(); flash("일정을 삭제했습니다."); } finally { setBusy(false); } };
   const saveNotice = async (input) => { if (busy) return; setBusy(true); try { const result = drawer.item ? await api.updateNotice(drawer.item.id, input) : await api.createNotice(input); drawer.item ? patchCollection("notices", result.item) : addCollection("notices", result.item); closeDrawer(); flash("공지를 저장했습니다."); } catch (err) { flash(err.message); } finally { setBusy(false); } };
   const deleteNotice = async () => { if (busy || !drawer.item || !window.confirm("이 공지를 삭제할까요?")) return; setBusy(true); try { await api.deleteNotice(drawer.item.id); setOverview((current) => ({ ...current, notices: current.notices.filter((item) => item.id !== drawer.item.id) })); closeDrawer(); flash("공지를 삭제했습니다."); } finally { setBusy(false); } };
-  const navigate = (id) => { setActive(id); if (drawer.open) closeDrawer(); };
+  const uploadFile = async (input) => { if (busy) return false; setBusy(true); try { const result = await api.uploadFile(input); setFileLibrary((current) => ({ ...current, items: [result.item, ...current.items], loaded: true, error: "" })); flash("자료를 업로드했습니다."); return true; } catch (err) { flash(err.message); return false; } finally { setBusy(false); } };
+  const deleteFile = async (item) => { if (busy || !window.confirm(`'${item.alias || item.original_name || "자료"}'을 삭제할까요?`)) return; setBusy(true); try { await api.deleteFile(item.id); setFileLibrary((current) => ({ ...current, items: current.items.filter((file) => file.id !== item.id) })); flash("자료를 삭제했습니다."); } catch (err) { flash(err.message); } finally { setBusy(false); } };
+  const copyFileLink = async (item) => { try { await copyText(api.fileShareUrl(item)); flash("자료 링크를 복사했습니다."); } catch { flash("링크를 복사하지 못했습니다."); } };
+  const navigate = (id) => { setActive(id); if (id === "files" && !fileLibrary.loaded && !fileLibrary.loading) loadFiles(); if (drawer.open) closeDrawer(); };
 
   const screen = useMemo(() => {
     if (!overview) return null;
@@ -89,10 +115,11 @@ export default function App() {
     if (active === "events") return <EventsPage events={overview.events} members={overview.members} onEdit={(item) => setDrawer({ type: "event", item, open: true })} />;
     if (active === "timetable") return <TimetablePage timetable={overview.timetable} saving={busy} onSave={async (weekday, items) => { if (busy) return; setBusy(true); try { const result = await api.saveTimetable(weekday, items); setOverview((current) => ({ ...current, timetable: [...current.timetable.filter((item) => item.weekday !== weekday), ...result.items] })); flash(`${["", "월", "화", "수", "목", "금"][weekday]}요일 시간표를 저장했습니다.`); } catch (err) { flash(err.message); } finally { setBusy(false); } }} />;
     if (active === "notices") return <NoticesPage notices={overview.notices} onEdit={(item) => setDrawer({ type: "notice", item, open: true })} onSend={async (id) => { if (busy) return; setBusy(true); try { const result = await api.sendNotice(id); patchCollection("notices", result.item); flash("게시 요청을 접수했습니다. 전송 결과는 알림 기록에서 확인하세요."); } catch (err) { flash(err.message); } finally { setBusy(false); } }} />;
+    if (active === "files") return <FilesPage files={fileLibrary.items} members={overview.members} busy={busy} loading={fileLibrary.loading} error={fileLibrary.error} onUpload={uploadFile} onDelete={deleteFile} onCopy={copyFileLink} onRefresh={loadFiles} downloadUrl={api.fileDownloadUrl} />;
     if (active === "members") return <MembersPage members={overview.members} classroom={overview.classroom} busy={busy} onCreate={async (input) => { if (busy) return false; setBusy(true); try { const result = await api.createMember(input); addCollection("members", result.item); flash("구성원을 추가했습니다."); return true; } catch (err) { flash(err.message); return false; } finally { setBusy(false); } }} onUpdate={async (id, patch) => { if (busy) return; setBusy(true); try { const result = await api.updateMember(id, patch); patchCollection("members", result.item); } catch (err) { flash(err.message); } finally { setBusy(false); } }} onInvite={async (id) => { if (busy) return; setBusy(true); try { const result = await api.inviteMember(id); await navigator.clipboard?.writeText(result.invite_url || result.code || ""); flash("초대 링크를 복사했습니다."); } catch (err) { flash(err.message); } finally { setBusy(false); } }} />;
     if (active === "notifications") return <NotificationsPage notifications={overview.notifications} busy={busy} onRefresh={async () => { if (busy) return; setBusy(true); try { const result = await api.notifications(); setOverview((current) => ({ ...current, notifications: result.items })); flash("알림 상태를 새로고침했습니다."); } catch (err) { flash(err.message); } finally { setBusy(false); } }} onTest={async () => { if (busy) return; setBusy(true); try { const result = await api.testNotification(); if (result.item) addCollection("notifications", result.item); flash("테스트 알림 요청을 접수했습니다. 아직 전송 완료 상태는 아닙니다."); } catch (err) { flash(err.message); } finally { setBusy(false); } }} />;
     return <SettingsPage classroom={overview.classroom} saving={busy} onSave={async (patch) => { if (busy) return; setBusy(true); try { const result = await api.updateSettings(patch); setOverview((current) => ({ ...current, classroom: result.item })); flash("설정을 저장했습니다."); } catch (err) { flash(err.message); } finally { setBusy(false); } }} onLogout={async () => { await api.logout(); setSession({ authenticated: false }); setOverview(null); }} />;
-  }, [active, overview, busy, drawer.item]);
+  }, [active, overview, busy, drawer.item, fileLibrary]);
 
   if (loading) return <div className="app-loading"><RotateCw className="spin" /><span>학급 정보를 불러오는 중</span></div>;
   if (loadError && !overview) return <ConnectionError message={loadError} onRetry={load} />;

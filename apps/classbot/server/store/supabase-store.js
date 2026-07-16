@@ -135,7 +135,7 @@ export class SupabaseStore {
   async healthCheck() {
     await this.ensureClassroom();
     const version = unwrap(await this.client.rpc("classbot_health_check"), "학급 저장소 상태 확인 실패");
-    if (Number(version) !== 5) throw new Error("지원하지 않는 Classbot 데이터베이스 스키마입니다.");
+    if (Number(version) !== 6) throw new Error("지원하지 않는 Classbot 데이터베이스 스키마입니다.");
     return { ok: true, storage: "supabase" };
   }
 
@@ -391,6 +391,59 @@ export class SupabaseStore {
         .eq("class_id", classroom.id)
         .eq("member_id", memberId),
       "파일 후보 삭제 실패",
+    );
+  }
+
+  async setPendingKakaoAction({ memberId, action, eventId = null, payload, expiresAt }) {
+    const classroom = await this.ensureClassroom();
+    const expires = new Date(expiresAt);
+    if (!String(memberId || "").trim() || !["create", "update", "complete", "delete"].includes(action)) {
+      throw new Error("일정 변경 상태가 올바르지 않습니다.");
+    }
+    if (!payload || typeof payload !== "object" || Array.isArray(payload) || Number.isNaN(expires.getTime())) {
+      throw new Error("일정 변경 상태가 올바르지 않습니다.");
+    }
+    const state = unwrap(
+      await this.client
+        .from("classbot_kakao_pending_actions")
+        .upsert({
+          class_id: classroom.id,
+          member_id: memberId,
+          action,
+          event_id: eventId || null,
+          payload,
+          expires_at: expires.toISOString(),
+        }, { onConflict: "member_id" })
+        .select("class_id,member_id,action,event_id,payload,expires_at")
+        .single(),
+      "일정 변경 상태 저장 실패",
+    );
+    return state;
+  }
+
+  async getPendingKakaoAction(memberId) {
+    const classroom = await this.ensureClassroom();
+    return unwrap(
+      await this.client
+        .from("classbot_kakao_pending_actions")
+        .select("class_id,member_id,action,event_id,payload,expires_at")
+        .eq("class_id", classroom.id)
+        .eq("member_id", memberId)
+        .gt("expires_at", new Date().toISOString())
+        .maybeSingle(),
+      "일정 변경 상태 조회 실패",
+    );
+  }
+
+  async clearPendingKakaoAction(memberId) {
+    const classroom = await this.ensureClassroom();
+    unwrap(
+      await this.client
+        .from("classbot_kakao_pending_actions")
+        .delete()
+        .eq("class_id", classroom.id)
+        .eq("member_id", memberId),
+      "일정 변경 상태 삭제 실패",
     );
   }
 

@@ -84,9 +84,9 @@ test("가입된 본인은 파일 명령에서 이름 suffix를 생략하고 이�
   const list = await ask(store, "자료 목록", { userId: "joined-hong" });
   assert.match(text(list), /좌석표|개인피드백/);
   assert.deepEqual(list.template.quickReplies.map((item) => item.messageText), [
+    "오늘 브리핑",
     "오늘 일정",
     "다음 일정",
-    "수행평가 과제 통합 요약",
     "시간표 전체",
     "파일 리스트",
   ]);
@@ -215,12 +215,13 @@ test("첫 인사와 도움말은 코드 없는 이름 등록, 파일 후보 확�
   const help = await ask(store, "도움말");
   assert.match(text(help), /이름 등록 구민준/);
   assert.match(text(help), /초대 코드는 필요하지 않습니다/);
-  assert.match(text(help), /다음 일정/);
-  assert.match(text(help), /이번 달 일정/);
-  assert.match(text(help), /수행평가 과제 통합 요약/);
+  assert.match(text(help), /오늘 브리핑/);
+  assert.match(text(help), /수학 수행평가 추가/);
+  assert.match(text(help), /일정 완료/);
   assert.match(text(help), /시간표 전체/);
   assert.match(text(help), /파일 리스트/);
-  assert.match(text(help), /후보를 확인/);
+  assert.match(text(help), /김종수T 학습지/);
+  assert.match(text(help), /확인 후 적용/);
   assert.equal(help.template.quickReplies.some((item) => item.messageText === "파일 리스트"), true);
 
   const greeting = await ask(store, "안녕하세요");
@@ -241,7 +242,7 @@ test("이름 등록은 명단의 정확한 이름을 현재 Kakao key에 묶고 
   const registration = await ask(store, "이름 등록 홍길동", { userId: "new-hong-user" });
   assert.match(text(registration), /홍길동님, 이름 등록이 완료/);
   assert.equal(store.members[0].kakao_user_key, "new-hong-user");
-  assert.equal(registration.template.quickReplies[0].messageText, "오늘 일정");
+  assert.equal(registration.template.quickReplies[0].messageText, "오늘 브리핑");
 
   const response = await ask(store, "오늘 일정", { userId: "new-hong-user" });
   assert.match(text(response), /홍길동님의.*오늘|홍길동님의 7월 15일/);
@@ -312,9 +313,9 @@ test("active 요청자는 본인 개인 조회를 이름 없이 쓰고 다른 �
     const response = await ask(store, utterance, { userId: "joined-hong" });
     assert.match(text(response), /홍길동님의/);
     assert.deepEqual(response.template.quickReplies.map((item) => item.messageText), [
+      "오늘 브리핑",
       "오늘 일정",
       "다음 일정",
-      "수행평가 과제 통합 요약",
       "시간표 전체",
       "파일 리스트",
     ]);
@@ -331,9 +332,9 @@ test("등록된 요청자의 알림·공지 응답 Quick Reply에도 이름 suff
   const store = fileFixture();
   const notifications = await ask(store, "알림 설정", { userId: "joined-hong" });
   assert.deepEqual(notifications.template.quickReplies.map((item) => item.messageText), [
+    "오늘 브리핑",
     "오늘 일정",
     "다음 일정",
-    "수행평가 과제 통합 요약",
     "시간표 전체",
     "파일 리스트",
   ]);

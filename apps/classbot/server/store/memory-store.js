@@ -266,6 +266,7 @@ export class MemoryStore {
     this.files = [];
     this.fileBodies = new Map();
     this.kakaoStates = new Map();
+    this.kakaoActionStates = new Map();
   }
 
   async healthCheck() {
@@ -479,6 +480,40 @@ export class MemoryStore {
 
   async clearPendingFileSelection(memberId) {
     this.kakaoStates.delete(memberId);
+  }
+
+  async setPendingKakaoAction({ memberId, action, eventId = null, payload, expiresAt }) {
+    const member = this.members.find((item) => item.id === memberId && item.status === "active");
+    const expires = new Date(expiresAt);
+    if (!member) throw new Error("구성원을 찾을 수 없습니다.");
+    if (!["create", "update", "complete", "delete"].includes(action)) throw new Error("일정 변경 상태가 올바르지 않습니다.");
+    if (!payload || typeof payload !== "object" || Array.isArray(payload) || Number.isNaN(expires.getTime())) {
+      throw new Error("일정 변경 상태가 올바르지 않습니다.");
+    }
+    const state = {
+      class_id: this.classroom.id,
+      member_id: memberId,
+      action,
+      event_id: eventId || null,
+      payload: clone(payload),
+      expires_at: expires.toISOString(),
+    };
+    this.kakaoActionStates.set(memberId, state);
+    return clone(state);
+  }
+
+  async getPendingKakaoAction(memberId) {
+    const state = this.kakaoActionStates.get(memberId);
+    if (!state) return null;
+    if (new Date(state.expires_at).getTime() <= Date.now()) {
+      this.kakaoActionStates.delete(memberId);
+      return null;
+    }
+    return clone(state);
+  }
+
+  async clearPendingKakaoAction(memberId) {
+    this.kakaoActionStates.delete(memberId);
   }
 
   async listTimetable({ weekday } = {}) {

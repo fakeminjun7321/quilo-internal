@@ -16,6 +16,13 @@ import {
   getWeekTimetable,
 } from "./schedule.js";
 import { dateForSeoulOffset, formatKoreanDate, getSeoulParts } from "../time.js";
+import { answerEventMutation, answerPendingEventMutation } from "./event-commands.js";
+import {
+  buildTodayBriefing,
+  isTodayBriefingCommand,
+  rankBrowseFileCandidates,
+  readFileBrowseSpec,
+} from "./chatbot-read-features.js";
 
 const TRAILING_REQUEST_WORDS = new Set([
   "알려줘", "알려주세요", "보여줘", "보여주세요", "확인", "확인해줘", "확인해주세요",
@@ -168,19 +175,15 @@ function helpText({ registered = false, displayName = "" } = {}) {
     "Quilo schedule 사용법",
     registration,
     "",
-    "일정·시간표",
-    "• 오늘 일정 / 내일 일정 / 다음 일정",
-    "• 이번 주 남은 일정 / 이번 달 일정",
-    "• 수행평가 과제 통합 요약 / 다음 주 시험",
-    "• 오늘 시간표 / 시간표 전체",
+    "자주 쓰는 기능",
+    "• 오늘 브리핑 / 오늘 일정 / 시간표 전체",
+    "• 7월 20일 수학 수행평가 추가",
+    "• 방금 일정 완료 / 수학 수행평가 22일로 변경",
+    "• 공지 / 파일 리스트 / 최근 올라온 파일",
+    "• 수학 자료 / 김종수T 학습지 / 영어 PDF",
+    "• 알림 설정",
     "",
-    "공지·자료·알림",
-    "• 공지 / 파일 리스트",
-    "• 파일 좌석표 / PDF 가정통신문 / 이미지 좌석표",
-    "• 파일명이나 별칭을 바로 입력해도 됩니다. 비슷한 파일이면 후보를 확인해 드려요.",
-    "• 알림 설정 / 알림 켜기 / 알림 끄기",
-    "",
-    "다른 구성원의 반 전체 일정은 질문 맨 뒤에 정확한 이름을 붙여 조회할 수 있어요.",
+    "일정 변경은 확인 후 적용됩니다. 다른 구성원의 반 전체 일정은 질문 맨 뒤에 정확한 이름을 붙여 조회할 수 있어요.",
   ].join("\n");
 }
 
@@ -331,6 +334,9 @@ function candidateQuickReplies(candidates) {
 
 async function rememberFileCandidates(store, requester, candidates) {
   if (typeof store.setPendingFileSelection !== "function") return;
+  if (typeof store.clearPendingKakaoAction === "function") {
+    await store.clearPendingKakaoAction(requester.id);
+  }
   await store.setPendingFileSelection({
     memberId: requester.id,
     fileIds: candidates.map(({ file }) => file.id),
@@ -343,7 +349,11 @@ async function answerFileQuery({ command, requester, store, makeFileUrl, quickRe
   if (typeof store.listFiles !== "function") {
     return simpleTextResponse("현재 자료 조회 기능을 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.", replies);
   }
-  const spec = readFileCommand(command, { allowRaw });
+  const browseSpec = readFileBrowseSpec(command, { allowRaw });
+  const baseSpec = readFileCommand(command, { allowRaw });
+  const spec = browseSpec
+    ? { kind: "open", requestedType: browseSpec.requestedType, alias: browseSpec.query }
+    : baseSpec;
   if (!spec) return allowRaw ? null : simpleTextResponse("‘파일 리스트’ 또는 ‘파일 별칭’처럼 입력해 주세요.", replies);
 
   const files = availableFiles(await store.listFiles({ targetMemberId: requester.id }), requester.id);
@@ -357,9 +367,18 @@ async function answerFileQuery({ command, requester, store, makeFileUrl, quickRe
     if (typeof store.clearPendingFileSelection === "function") await store.clearPendingFileSelection(requester.id);
     return respondWithFile({ file: exactMatches[0], makeFileUrl, replies });
   }
-  const candidates = rankFileCandidates(files, spec.alias, spec.requestedType);
+  const browseCandidates = browseSpec ? rankBrowseFileCandidates(files, browseSpec) : [];
+  if (browseCandidates.length === 1) {
+    if (typeof store.clearPendingFileSelection === "function") await store.clearPendingFileSelection(requester.id);
+    return respondWithFile({ file: browseCandidates[0].file, makeFileUrl, replies });
+  }
+  const candidates = browseCandidates.length > 1
+    ? browseCandidates
+    : rankFileCandidates(files, spec.alias, spec.requestedType);
   if (!candidates.length) {
-    return allowRaw ? null : simpleTextResponse("요청한 자료를 찾을 수 없습니다. ‘파일 리스트’에서 파일명이나 별칭을 확인해 주세요.", replies);
+    return allowRaw && !browseSpec?.explicit
+      ? null
+      : simpleTextResponse("요청한 자료를 찾을 수 없습니다. ‘파일 리스트’에서 파일명이나 별칭을 확인해 주세요.", replies);
   }
   await rememberFileCandidates(store, requester, candidates);
   const names = candidates.map(({ file }, index) => `${index + 1}. ${file.alias || file.filename}`).join("\n");
@@ -520,6 +539,12 @@ export async function handleKakaoCommand({ payload, store, now = new Date(), mak
 
     const confirmingRequester = await getRequester();
     if (confirmingRequester?.status === "active") {
+      const eventConfirmation = await answerPendingEventMutation({
+        command,
+        member: confirmingRequester,
+        store,
+      });
+      if (eventConfirmation) return eventConfirmation;
       const confirmation = await answerPendingFileConfirmation({
         command,
         requester: confirmingRequester,
@@ -528,6 +553,24 @@ export async function handleKakaoCommand({ payload, store, now = new Date(), mak
       });
       if (confirmation) return confirmation;
     }
+
+    if (isTodayBriefingCommand(command)) {
+      if (!confirmingRequester || confirmingRequester.status !== "active") {
+        return simpleTextResponse("오늘 브리핑은 2학년 4반 구성원만 볼 수 있습니다. 먼저 ‘이름 등록 구민준’처럼 명단의 이름으로 등록해 주세요.", helpQuickReplies());
+      }
+      return simpleTextResponse(
+        await buildTodayBriefing({ store, member: confirmingRequester, now }),
+        registeredQuickReplies(),
+      );
+    }
+
+    const mutationResponse = await answerEventMutation({
+      command,
+      member: confirmingRequester,
+      store,
+      now,
+    });
+    if (mutationResponse) return mutationResponse;
 
     if (looksLikeFileCommand(command)) {
       const requester = await getRequester();
@@ -623,7 +666,7 @@ export async function handleKakaoCommand({ payload, store, now = new Date(), mak
       helpQuickReplies(member?.status === "active"),
     );
   } catch (error) {
-    const friendly = /초대 코드|이미 다른 구성원|이미 가입|이미 등록|다른 카카오|학급 정원|찾을 수 없습니다|명단|정확|필요합니다|구성원 이름|등록된 구성원|동명이인|맨 뒤|비활성/.test(error.message)
+    const friendly = /초대 코드|이미 다른 구성원|이미 가입|이미 등록|다른 카카오|학급 정원|찾을 수 없습니다|명단|정확|필요합니다|구성원 이름|등록된 구성원|동명이인|맨 뒤|비활성|날짜|시간|일정 제목|본인 개인 일정|이미 삭제|이미 완료/.test(error.message)
       ? error.message
       : "잠시 후 다시 시도해 주세요.";
     const replies = targetQuickReplies || (targetDisplayName ? personalizedQuickReplies(targetDisplayName) : undefined);

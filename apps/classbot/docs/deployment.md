@@ -32,7 +32,7 @@ select
   to_regprocedure('public.classbot_replace_member_timetable(uuid,uuid,jsonb)') is not null as member_timetable_rpc;
 ```
 
-기대값은 schema version `5`와 모든 RPC의 `true`다. 기존 v4 운영 DB에는 전체 스키마 대신 [`005_kakao_name_registration.sql`](../db/migrations/005_kakao_name_registration.sql)을 적용할 수 있다. 모든 일정 관리 테이블은 RLS가 활성화되고 anon/authenticated 정책은 만들지 않는다. 서버만 service role key로 접근한다.
+기대값은 schema version `6`와 모든 RPC의 `true`다. 기존 v5 운영 DB에는 전체 스키마 대신 [`006_kakao_personal_event_actions.sql`](../db/migrations/006_kakao_personal_event_actions.sql)을 적용할 수 있다. 모든 일정 관리 테이블은 RLS가 활성화되고 anon/authenticated 정책은 만들지 않는다. 서버만 service role key로 접근한다.
 
 ## 3. 기존 Render 서비스 설정
 

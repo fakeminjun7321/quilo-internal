@@ -34,8 +34,8 @@ test("스키마 버전 health RPC와 전체 RLS가 운영 준비 상태를 검�
   assert.match(schema, /create table if not exists public\.classbot_schema_meta/);
   assert.match(schema, /create or replace function public\.classbot_health_check\(\)/);
   assert.match(schema, /grant execute on function public\.classbot_health_check\(\) to service_role/);
-  assert.match(schema, /values \(1, 5, now\(\)\)/);
-  for (const table of ["schema_meta", "classes", "members", "invites", "timetable", "member_timetable", "events", "notices", "files", "kakao_states", "notifications", "audit_logs"]) {
+  assert.match(schema, /values \(1, 6, now\(\)\)/);
+  for (const table of ["schema_meta", "classes", "members", "invites", "timetable", "member_timetable", "events", "notices", "files", "kakao_states", "kakao_pending_actions", "notifications", "audit_logs"]) {
     assert.match(schema, new RegExp(`alter table public\\.classbot_${table} enable row level security`));
   }
   assert.match(storeSource, /\.rpc\("classbot_health_check"\)/);
@@ -51,7 +51,7 @@ test("개인별 시간표는 학급-구성원 복합 경계와 원자적 전체 
   assert.match(replaceFunction, /class_id = p_class_id[\s\S]*id = p_member_id[\s\S]*for update/);
   assert.match(replaceFunction, /delete from public\.classbot_member_timetable/);
   assert.match(storeSource, /\.rpc\("classbot_replace_member_timetable"/);
-  assert.match(storeSource, /Number\(version\) !== 5/);
+  assert.match(storeSource, /Number\(version\) !== 6/);
 });
 
 test("이름 등록 RPC는 학급 lock과 정확 일치로 key 탈취·재바인딩을 막는다", () => {
@@ -70,6 +70,15 @@ test("카카오 파일 후보 상태는 구성원 경계·최대 3개·만료 �
   assert.match(schema, /cardinality\(pending_file_ids\) between 1 and 3/);
   assert.match(schema, /pending_expires_at timestamptz not null/);
   assert.match(storeSource, /from\("classbot_kakao_states"\)[\s\S]*pending_expires_at/);
+});
+
+test("카카오 일정 변경은 구성원별 10분 pending 상태와 작업 종류를 DB 경계에 둔다", () => {
+  assert.match(schema, /create table if not exists public\.classbot_kakao_pending_actions/);
+  assert.match(schema, /action text not null check \(action in \('create', 'update', 'complete', 'delete'\)\)/);
+  assert.match(schema, /payload jsonb not null check \(jsonb_typeof\(payload\) = 'object'\)/);
+  assert.match(schema, /foreign key \(class_id, member_id\)[\s\S]*references public\.classbot_members\(class_id, id\)/);
+  assert.match(schema, /check \(\(action = 'create' and event_id is null\) or \(action <> 'create' and event_id is not null\)\)/);
+  assert.match(storeSource, /from\("classbot_kakao_pending_actions"\)[\s\S]*expires_at/);
 });
 
 test("카카오와 학생 포털은 같은 초대 코드의 일회성 사용 상태를 채널별로 분리한다", () => {

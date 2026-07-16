@@ -91,9 +91,9 @@ export function personalizedQuickReplies(displayName) {
 
 export function registeredQuickReplies() {
   return [
+    "오늘 브리핑",
     "오늘 일정",
     "다음 일정",
-    "수행평가 과제 통합 요약",
     "시간표 전체",
     "파일 리스트",
   ].map((messageText) => ({ label: messageText, action: "message", messageText }));

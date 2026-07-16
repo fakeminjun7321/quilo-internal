@@ -7,7 +7,7 @@ create table if not exists public.classbot_schema_meta (
 );
 
 insert into public.classbot_schema_meta(id, version, applied_at)
-values (1, 5, now())
+values (1, 6, now())
 on conflict (id) do update set version = excluded.version, applied_at = excluded.applied_at;
 
 create or replace function public.classbot_health_check()
@@ -677,6 +677,23 @@ create table if not exists public.classbot_kakao_states (
 create index if not exists classbot_kakao_states_expiry_idx
   on public.classbot_kakao_states(class_id, pending_expires_at);
 
+create table if not exists public.classbot_kakao_pending_actions (
+  member_id uuid primary key references public.classbot_members(id) on delete cascade,
+  class_id uuid not null references public.classbot_classes(id) on delete cascade,
+  action text not null check (action in ('create', 'update', 'complete', 'delete')),
+  event_id uuid references public.classbot_events(id) on delete cascade,
+  payload jsonb not null check (jsonb_typeof(payload) = 'object'),
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  foreign key (class_id, member_id)
+    references public.classbot_members(class_id, id) on delete cascade,
+  check ((action = 'create' and event_id is null) or (action <> 'create' and event_id is not null))
+);
+
+create index if not exists classbot_kakao_pending_actions_expiry_idx
+  on public.classbot_kakao_pending_actions(class_id, expires_at);
+
 create table if not exists public.classbot_notifications (
   id uuid primary key default gen_random_uuid(),
   class_id uuid not null references public.classbot_classes(id) on delete cascade,
@@ -739,6 +756,7 @@ begin
     'classbot_notices',
     'classbot_files',
     'classbot_kakao_states',
+    'classbot_kakao_pending_actions',
     'classbot_notifications'
   ]
   loop
@@ -761,6 +779,7 @@ alter table public.classbot_events enable row level security;
 alter table public.classbot_notices enable row level security;
 alter table public.classbot_files enable row level security;
 alter table public.classbot_kakao_states enable row level security;
+alter table public.classbot_kakao_pending_actions enable row level security;
 alter table public.classbot_notifications enable row level security;
 alter table public.classbot_audit_logs enable row level security;
 

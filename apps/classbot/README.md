@@ -45,7 +45,7 @@ npm run release:check
 
 ## 운영 배포
 
-1. Supabase 프로젝트의 SQL 편집기에서 [`db/schema.sql`](./db/schema.sql)을 적용한다. 기존 v4 운영 DB는 [`db/migrations/005_kakao_name_registration.sql`](./db/migrations/005_kakao_name_registration.sql)을 적용한다.
+1. Supabase 프로젝트의 SQL 편집기에서 [`db/schema.sql`](./db/schema.sql)을 적용한다. 기존 v5 운영 DB는 [`db/migrations/006_kakao_personal_event_actions.sql`](./db/migrations/006_kakao_personal_event_actions.sql)을 적용한다.
 2. 기존 Quilo Render 서비스에 Cron·카카오 스킬 비밀값을 설정한다. Supabase 연결과 관리자 로그인은 기존 Quilo 설정을 그대로 쓴다.
 3. 기존 Quilo 서비스를 재배포한다. 루트 `postinstall`이 일정 관리 화면을 함께 빌드한다.
 4. `GET /schedule/api/health`가 `ok: true`와 `storage: supabase`를 반환하는지 확인한다.
@@ -62,6 +62,7 @@ npm run release:check
 - Event API 활성화: 준비가 끝난 뒤 `KAKAO_EVENT_ENABLED=true`
 - 최초 이름 등록: 챗봇에 명단 이름 그대로 `이름 등록 구민준` 입력. 초대 코드는 필요 없다.
 - 등록 후 조회: `오늘 일정`, `내일 시간표`, `시간표 전체`, `파일 리스트`처럼 이름 없이 사용
+- 개인 일정 변경: `내일 영어 과제 추가`, `수학 수행평가 22일로 변경`, `방금 일정 완료`처럼 입력하고 10분 안에 확인. 반 전체 일정은 카카오에서 변경할 수 없음
 - 명시적 대상 조회: 미등록 상태이거나 다른 구성원의 공개 일정을 볼 때만 `오늘 일정 등록이름`처럼 이름을 맨 뒤에 입력
 
 Event API의 POST 성공은 접수 성공일 뿐 실제 전송 완료가 아니다. 이 서비스는 `taskId` 결과 조회 후에만 `sent`로 기록하며, 실패는 자동 재시도하지 않는다. 상세 운영 정책은 [`server/README.md`](./server/README.md), 공식 연동 근거와 열품타 정책은 [`docs/integrations.md`](./docs/integrations.md)를 참고한다.

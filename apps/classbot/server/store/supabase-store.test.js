@@ -107,3 +107,47 @@ test("Kakao key 조회와 파일 후보 저장은 Supabase 결과를 store 계�
     expires_at: savedState.pending_expires_at,
   });
 });
+
+test("카카오 개인 일정 pending은 학급·구성원·만료 시각과 함께 저장한다", async () => {
+  const calls = [];
+  const savedState = {
+    class_id: "class-private",
+    member_id: "member-1",
+    action: "update",
+    event_id: "event-1",
+    payload: { title: "수학 수행평가", due_at: "2026-07-22T14:59:00.000Z" },
+    expires_at: "2026-07-16T12:10:00.000Z",
+  };
+  const store = Object.create(SupabaseStore.prototype);
+  store.classroom = { id: "class-private" };
+  store.client = {
+    from(table) {
+      assert.equal(table, "classbot_kakao_pending_actions");
+      const query = {
+        upsert(value, options) { calls.push({ value, options }); return query; },
+        select() { return query; },
+        async single() { return { data: savedState, error: null }; },
+      };
+      return query;
+    },
+  };
+
+  assert.deepEqual(await store.setPendingKakaoAction({
+    memberId: savedState.member_id,
+    action: savedState.action,
+    eventId: savedState.event_id,
+    payload: savedState.payload,
+    expiresAt: savedState.expires_at,
+  }), savedState);
+  assert.deepEqual(calls, [{
+    value: {
+      class_id: "class-private",
+      member_id: "member-1",
+      action: "update",
+      event_id: "event-1",
+      payload: savedState.payload,
+      expires_at: savedState.expires_at,
+    },
+    options: { onConflict: "member_id" },
+  }]);
+});

@@ -64,9 +64,9 @@ test("스킬 응답 output은 최대 3개로 제한하고 개인화 Quick Reply�
 test("이름등록이 끝난 요청자용 Quick Reply는 이름 suffix 없이 5개다", () => {
   const replies = registeredQuickReplies();
   assert.deepEqual(replies.map((item) => item.messageText), [
+    "오늘 브리핑",
     "오늘 일정",
     "다음 일정",
-    "수행평가 과제 통합 요약",
     "시간표 전체",
     "파일 리스트",
   ]);

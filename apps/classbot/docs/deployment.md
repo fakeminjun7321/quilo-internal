@@ -31,7 +31,7 @@ select
   to_regprocedure('public.classbot_replace_member_timetable(uuid,uuid,jsonb)') is not null as member_timetable_rpc;
 ```
 
-기대값은 schema version `3`과 모든 RPC의 `true`다. 기존 v2 운영 DB에는 전체 스키마 대신 [`003_member_timetable.sql`](../db/migrations/003_member_timetable.sql)을 적용할 수 있다. 모든 일정 관리 테이블은 RLS가 활성화되고 anon/authenticated 정책은 만들지 않는다. 서버만 service role key로 접근한다.
+기대값은 schema version `4`와 모든 RPC의 `true`다. 기존 v2 운영 DB에는 전체 스키마 대신 [`003_member_timetable.sql`](../db/migrations/003_member_timetable.sql), [`004_portal_invite_channel.sql`](../db/migrations/004_portal_invite_channel.sql)을 순서대로 적용할 수 있다. 모든 일정 관리 테이블은 RLS가 활성화되고 anon/authenticated 정책은 만들지 않는다. 서버만 service role key로 접근한다.
 
 ## 3. 기존 Render 서비스 설정
 

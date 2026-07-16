@@ -44,7 +44,7 @@ npm run release:check
 
 ## 운영 배포
 
-1. Supabase 프로젝트의 SQL 편집기에서 [`db/schema.sql`](./db/schema.sql)을 적용한다. 기존 v2 운영 DB는 [`db/migrations/003_member_timetable.sql`](./db/migrations/003_member_timetable.sql)을 적용한다.
+1. Supabase 프로젝트의 SQL 편집기에서 [`db/schema.sql`](./db/schema.sql)을 적용한다. 기존 v2 운영 DB는 [`db/migrations/003_member_timetable.sql`](./db/migrations/003_member_timetable.sql), [`db/migrations/004_portal_invite_channel.sql`](./db/migrations/004_portal_invite_channel.sql) 순서로 적용한다.
 2. 기존 Quilo Render 서비스에 Cron·카카오 스킬 비밀값을 설정한다. Supabase 연결과 관리자 로그인은 기존 Quilo 설정을 그대로 쓴다.
 3. 기존 Quilo 서비스를 재배포한다. 루트 `postinstall`이 일정 관리 화면을 함께 빌드한다.
 4. `GET /schedule/api/health`가 `ok: true`와 `storage: supabase`를 반환하는지 확인한다.

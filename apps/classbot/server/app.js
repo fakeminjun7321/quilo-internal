@@ -484,7 +484,7 @@ export async function createApp(options = {}) {
     const range = portalRange(req.query || {});
     const timetablePromise = (async () => {
       if (typeof store.listMemberTimetable === "function") {
-        const memberTimetable = await store.listMemberTimetable(req.portalMember.id);
+        const memberTimetable = await store.listMemberTimetable(req.portalMember.id, { date: range.from || now() });
         if (Array.isArray(memberTimetable) && memberTimetable.length) return memberTimetable;
       }
       return store.listTimetable();
@@ -694,6 +694,18 @@ export async function createApp(options = {}) {
     const expiresAt = new Date(Date.now() + expiresInHours * 3_600_000).toISOString();
     const item = await store.createInvite({ memberId: req.params.id, codeHash: hashInviteCode(code), expiresAt }, "admin");
     res.status(201).json({ item: { id: item.id, member_id: item.member_id, expires_at: item.expires_at }, code });
+  }));
+
+  app.get("/api/admin/members/:id/timetable", asyncRoute(async (req, res) => {
+    const weekday = req.query.weekday === undefined ? undefined : Number(req.query.weekday);
+    if (weekday !== undefined && (!Number.isInteger(weekday) || weekday < 1 || weekday > 5)) {
+      throw new HttpError(400, "요일은 1~5 사이여야 합니다.");
+    }
+    res.json({ items: await store.listMemberTimetable(req.params.id, { weekday, date: req.query.date || now() }) });
+  }));
+  app.put("/api/admin/members/:id/timetable", asyncRoute(async (req, res) => {
+    if (!Array.isArray(req.body?.rows)) throw new HttpError(400, "개인 시간표 rows 배열이 필요합니다.");
+    res.json({ items: await store.replaceMemberTimetable({ memberId: req.params.id, rows: req.body.rows }, "admin") });
   }));
 
   app.get("/api/admin/timetable", asyncRoute(async (req, res) => {

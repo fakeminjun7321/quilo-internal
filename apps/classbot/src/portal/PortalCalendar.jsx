@@ -92,7 +92,7 @@ export default function PortalCalendar({ onOverview }) {
     setLoading(true); setError("");
     api.portalOverview(from, to).then((result) => {
       if (cancelled) return;
-      const next = { member: result.member || null, classroom: result.classroom || null, timetable: result.timetable || [], events: result.events || [], notices: result.notices || [] };
+      const next = { member: result.member || null, classroom: result.classroom || null, timetable: result.timetable || [], events: (result.events || []).filter((event) => event.status !== "cancelled"), notices: result.notices || [] };
       setData(next); onOverview?.(next);
     }).catch((err) => { if (!cancelled) setError(err.message || "일정을 불러오지 못했습니다."); }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };

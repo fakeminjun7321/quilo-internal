@@ -34,7 +34,7 @@ test("스키마 버전 health RPC와 전체 RLS가 운영 준비 상태를 검�
   assert.match(schema, /create table if not exists public\.classbot_schema_meta/);
   assert.match(schema, /create or replace function public\.classbot_health_check\(\)/);
   assert.match(schema, /grant execute on function public\.classbot_health_check\(\) to service_role/);
-  assert.match(schema, /values \(1, 3, now\(\)\)/);
+  assert.match(schema, /values \(1, 4, now\(\)\)/);
   for (const table of ["schema_meta", "classes", "members", "invites", "timetable", "member_timetable", "events", "notices", "files", "notifications", "audit_logs"]) {
     assert.match(schema, new RegExp(`alter table public\\.classbot_${table} enable row level security`));
   }
@@ -51,7 +51,13 @@ test("개인별 시간표는 학급-구성원 복합 경계와 원자적 전체 
   assert.match(replaceFunction, /class_id = p_class_id[\s\S]*id = p_member_id[\s\S]*for update/);
   assert.match(replaceFunction, /delete from public\.classbot_member_timetable/);
   assert.match(storeSource, /\.rpc\("classbot_replace_member_timetable"/);
-  assert.match(storeSource, /Number\(version\) !== 3/);
+  assert.match(storeSource, /Number\(version\) !== 4/);
+});
+
+test("카카오와 학생 포털은 같은 초대 코드의 일회성 사용 상태를 채널별로 분리한다", () => {
+  assert.match(schema, /portal_used_at timestamptz/);
+  assert.match(storeSource, /update\(\{ portal_used_at: usedAt \}\)/);
+  assert.match(storeSource, /\.is\("portal_used_at", null\)/);
 });
 
 test("자료실은 비공개 서버 경계와 대상별 별칭 중복 방지를 스키마에 둔다", () => {

@@ -7,7 +7,7 @@ create table if not exists public.classbot_schema_meta (
 );
 
 insert into public.classbot_schema_meta(id, version, applied_at)
-values (1, 3, now())
+values (1, 4, now())
 on conflict (id) do update set version = excluded.version, applied_at = excluded.applied_at;
 
 create or replace function public.classbot_health_check()
@@ -171,8 +171,11 @@ create table if not exists public.classbot_invites (
   code_hash text not null unique,
   expires_at timestamptz not null,
   used_at timestamptz,
+  portal_used_at timestamptz,
   created_at timestamptz not null default now()
 );
+
+alter table public.classbot_invites add column if not exists portal_used_at timestamptz;
 
 drop function if exists public.classbot_claim_invite(text, text, text);
 

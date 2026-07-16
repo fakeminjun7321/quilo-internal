@@ -151,3 +151,58 @@ test("카카오 개인 일정 pending은 학급·구성원·만료 시각과 함
     options: { onConflict: "member_id" },
   }]);
 });
+
+test("Supabase 초기 연결의 일시적 fetch 실패는 짧게 재시도한다", async () => {
+  let attempts = 0;
+  const store = Object.create(SupabaseStore.prototype);
+  store.config = {
+    classCode: "2-4",
+    className: "2학년 4반",
+    timezone: "Asia/Seoul",
+  };
+  store.classroom = null;
+  store.initializationRetryDelays = [0, 0];
+  store.client = {
+    from(table) {
+      assert.equal(table, "classbot_classes");
+      const query = {
+        select() { return query; },
+        eq() { return query; },
+        async maybeSingle() {
+          attempts += 1;
+          if (attempts < 3) return { data: null, error: { message: "TypeError: fetch failed" } };
+          return { data: { id: "class-private", code: "2-4" }, error: null };
+        },
+      };
+      return query;
+    },
+  };
+
+  await store.initialize();
+  assert.equal(attempts, 3);
+  assert.deepEqual(store.classroom, { id: "class-private", code: "2-4" });
+});
+
+test("Supabase 스키마 오류는 연결 재시도 대상으로 숨기지 않는다", async () => {
+  let attempts = 0;
+  const store = Object.create(SupabaseStore.prototype);
+  store.config = { classCode: "2-4" };
+  store.classroom = null;
+  store.initializationRetryDelays = [0, 0];
+  store.client = {
+    from() {
+      const query = {
+        select() { return query; },
+        eq() { return query; },
+        async maybeSingle() {
+          attempts += 1;
+          return { data: null, error: { message: "relation classbot_classes does not exist" } };
+        },
+      };
+      return query;
+    },
+  };
+
+  await assert.rejects(store.initialize(), /relation classbot_classes does not exist/);
+  assert.equal(attempts, 1);
+});

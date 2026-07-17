@@ -36,7 +36,7 @@
 
       <div id="gate" class="gate app-inline-vibe-coding-1" hidden>
         🔒 이 기능은 <b>로그인한 사용자</b>가 이용할 수 있어요.
-        <div class="app-inline-vibe-coding-2"><a class="btn app-inline-vibe-coding-3" href="/login.html">로그인하기</a></div>
+        <div class="app-inline-vibe-coding-2"><a class="btn app-inline-vibe-coding-3" href="/login.html?next=%2Fvibe-coding.html">로그인하기</a></div>
       </div>
 
       <!-- 위저드 -->
@@ -230,7 +230,7 @@
           renderResult(lastResult);
           if (state.imageOn && imageAvailable && lastResult.imagePrompt) loadImage(lastResult.imagePrompt);
         } catch (e) {
-          if (e.status === 401) { location.href = "/login.html"; return; }
+          if (e.status === 401) { location.href = "/login.html?next=%2Fvibe-coding.html"; return; }
           $("loading").hidden = true;
           $("wizard").hidden = false; $("intro").hidden = false;
           showReview();
@@ -312,7 +312,7 @@
           if (out.plan && out.plan.title) { lastResult = out.plan; renderPlan(out.plan); }
           if (typeof j.newBalance === "number") { bal.credits = j.newBalance; refreshRefineCost(); }
         } catch (e) {
-          if (e.status === 401) { location.href = "/login.html"; return; }
+          if (e.status === 401) { location.href = "/login.html?next=%2Fvibe-coding.html"; return; }
           thinking.querySelector(".bubble").textContent = "⚠ " + e.message;
           thinking.classList.remove("pending");
         } finally {

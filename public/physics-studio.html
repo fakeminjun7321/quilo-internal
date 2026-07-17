@@ -35,7 +35,7 @@
 
       <div id="gate" class="locked app-inline-physics-studio-1" hidden>
         🔒 이 기능은 <b>로그인한 사용자</b>가 이용할 수 있어요.
-        <div class="app-inline-physics-studio-2"><a class="btn app-inline-physics-studio-3" href="/login.html">로그인하기</a></div>
+        <div class="app-inline-physics-studio-2"><a class="btn app-inline-physics-studio-3" href="/login.html?next=%2Fphysics-studio.html">로그인하기</a></div>
       </div>
 
       <div class="grid app-inline-physics-studio-1" id="app" hidden>
@@ -159,7 +159,7 @@
           render(j.result);
           if (typeof j.newBalance === "number") $("bal").textContent = "· 보유 크레딧 " + j.newBalance;
         } catch (e) {
-          if (e.status === 401) { location.href = "/login.html"; return; }
+          if (e.status === 401) { location.href = "/login.html?next=%2Fphysics-studio.html"; return; }
           $("out").innerHTML = '<div class="placeholder">생성에 실패했습니다.</div>';
           $("err").textContent = e.message;
         } finally {

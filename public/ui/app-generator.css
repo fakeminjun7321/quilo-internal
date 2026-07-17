@@ -144,3 +144,28 @@
   .app-shell--physics-studio .grid { grid-template-columns: 340px minmax(0, 1fr); }
   .app-shell--vibe-coding .page { width: calc(100% - 40px); }
 }
+
+@media (max-width: 760px) {
+  .app-shell--physics-studio #main-content,
+  .app-shell--vibe-coding #main-content { min-height: 0; }
+  .app-shell--physics-studio .intro { align-items: flex-start; flex-direction: column; gap: 6px; padding: 14px; }
+  .app-shell--physics-studio .intro h1 { white-space: normal; }
+  .app-shell--physics-studio .grid { grid-template-columns: 1fr; }
+  .app-shell--physics-studio #formCard { padding: 16px; border-right: 0; border-bottom: 1px solid var(--app-line); overflow: visible; }
+  .app-shell--physics-studio .two { grid-template-columns: 1fr; }
+  .app-shell--physics-studio #out { min-height: 360px; padding: 18px 14px; overflow: visible; }
+  .app-shell--physics-studio #out > .card { padding: 18px; }
+  .app-shell--physics-studio .ptop { align-items: flex-start; flex-direction: column; gap: 6px; }
+
+  .app-shell--vibe-coding .page { width: calc(100% - 28px); padding-block: 20px 38px; }
+  .app-shell--vibe-coding .intro { grid-template-columns: 1fr; gap: 8px; }
+  .app-shell--vibe-coding .eyebrow { grid-row: auto; }
+  .app-shell--vibe-coding .intro h1 { font-size: 25px; }
+  .app-shell--vibe-coding #wizard { margin-top: 20px; }
+  .app-shell--vibe-coding .qcard { padding: 18px; }
+  .app-shell--vibe-coding .rv { grid-template-columns: 86px minmax(0, 1fr); }
+  .app-shell--vibe-coding .ctrlrow { grid-template-columns: 1fr; }
+  .app-shell--vibe-coding .loading { width: 100%; margin-block: 50px; }
+  .app-shell--vibe-coding .result .hero,
+  .app-shell--vibe-coding .result .box { padding: 18px; }
+}

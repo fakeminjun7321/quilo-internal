@@ -69,7 +69,7 @@ async function loadAccount() {
   if (session.state === "anonymous") {
     $("accountStatus").textContent = "토큰을 만들려면 Quilo 로그인이 필요합니다.";
     $("loginLink").textContent = "Quilo 로그인";
-    $("loginLink").href = "/?login=1";
+    $("loginLink").href = "/login.html?next=%2Fdevelopers.html";
     $("tokenMessage").textContent = "로그인 후 이 페이지로 돌아오세요.";
     return;
   }

@@ -163,7 +163,7 @@
       function lockedHtml(name) {
         if (!me)
           return '<p>🔒 <b>' + name + '</b>은 로그인 후 Pro 회원에게 열립니다.</p>' +
-            '<p class="app-runtime-gap-top"><a class="qbtn primary" href="/login.html">로그인</a></p>';
+            '<p class="app-runtime-gap-top"><a class="qbtn primary" href="/login.html?next=%2Fexam-prep.html">로그인</a></p>';
         return '<p>🧩 <b>' + name + '</b>은 현재 <b>Pro 회원</b>에게만 열려 있습니다.<br>' +
           '사용을 원하면 운영자에게 요청하세요.</p>' +
           '<p class="app-runtime-gap-top"><a class="qbtn" href="/">메인으로</a></p>';

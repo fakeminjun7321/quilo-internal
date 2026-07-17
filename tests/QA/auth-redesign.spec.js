@@ -164,6 +164,42 @@ test("login rejects non-local OAuth redirect values", async ({ page }) => {
   await expect(page).toHaveURL(`${baseUrl}/`);
 });
 
+test("login returns to a safe next path and rejects an external next target", async ({ page }) => {
+  loginRedirect = null;
+  await page.goto(`${baseUrl}/login.html?next=${encodeURIComponent("/developer-notes.html?from=login#latest")}`);
+  await page.locator("#li_username").fill("qa-user");
+  await page.locator("#li_password").fill("qa-password");
+  await page.locator("#loginForm").evaluate((form) => form.requestSubmit());
+  await expect(page).toHaveURL(`${baseUrl}/developer-notes.html?from=login#latest`);
+
+  await page.goto(`${baseUrl}/login.html?next=${encodeURIComponent("//malicious.example/steal")}`);
+  await page.locator("#li_username").fill("qa-user");
+  await page.locator("#li_password").fill("qa-password");
+  await page.locator("#loginForm").evaluate((form) => form.requestSubmit());
+  await expect(page).toHaveURL(`${baseUrl}/`);
+});
+
+test("mobile login submits and returns to the requested page without horizontal overflow", async ({ page }) => {
+  loginRedirect = null;
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${baseUrl}/login.html?next=${encodeURIComponent("/developer-notes.html#latest")}`);
+
+  await expect(page.locator("#loginForm")).toBeVisible();
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+  await page.locator("#li_username").fill("mobile-qa");
+  await page.locator("#li_password").fill("mobile-password");
+  await page.locator("#loginForm").evaluate((form) => form.requestSubmit());
+
+  await expect(page).toHaveURL(`${baseUrl}/developer-notes.html#latest`);
+  expect(apiRequests).toEqual([
+    {
+      pathname: "/api/login",
+      body: { username: "mobile-qa", password: "mobile-password", remember: true },
+    },
+  ]);
+});
+
 test("signup preserves validation and exact API payload", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`${baseUrl}/signup.html`);

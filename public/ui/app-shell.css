@@ -237,6 +237,21 @@ body.app-shell {
 .app-runtime-disabled { opacity: .5; pointer-events: none; }
 .app-runtime-flex-spacer, .sp { flex: 1; }
 
+@media (max-width: 760px) {
+  html,
+  body.app-shell {
+    width: 100%;
+    min-width: 0;
+  }
+
+  body.app-shell { overflow-x: hidden; }
+  .app-statusbar { padding-inline: 14px; }
+  .app-entitlement,
+  .locked,
+  .gate,
+  .study-lock { width: calc(100% - 28px); margin-block: 24px; padding: 22px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }

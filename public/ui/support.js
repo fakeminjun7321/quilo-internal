@@ -8,7 +8,7 @@
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;");
 
-  const loginUrl = () => `/?login=1&returnTo=${encodeURIComponent(location.pathname + location.search)}`;
+  const loginUrl = () => `/login.html?next=${encodeURIComponent(location.pathname + location.search + location.hash)}`;
 
   async function readJson(response) {
     const data = await response.json().catch(() => ({}));

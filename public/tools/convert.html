@@ -255,7 +255,7 @@
             });
             if (r.status === 401) {
               st.innerHTML =
-                '로그인이 필요합니다. <a href="/login.html">로그인</a>';
+                '로그인이 필요합니다. <a href="/login.html?next=%2Ftools%2Fconvert.html">로그인</a>';
               return;
             }
             if (!r.ok) {

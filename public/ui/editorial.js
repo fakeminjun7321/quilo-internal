@@ -767,7 +767,9 @@
       };
     } catch (error) {
       if (error.status === 401) return null;
-      return null;
+      // 권한 저장소/네트워크 오류는 로그아웃과 구분한다. 읽기 화면은 유지하되
+      // 쓰기 권한은 fail-closed 상태로 둔다.
+      return { state: "unknown", capabilities: {}, profile: null };
     }
   }
 

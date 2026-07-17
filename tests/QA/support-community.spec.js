@@ -97,7 +97,7 @@ test("anonymous support page shows email help, login guidance, and searchable FA
   await expect(page.getByRole("link", { name: /fakeminjun7321@quilolab.com/ })).toHaveAttribute("href", "mailto:fakeminjun7321@quilolab.com");
   await expect(page.locator("#supportAuthNotice")).toBeVisible();
   await expect(page.locator("#supportForm")).toBeHidden();
-  await expect(page.locator("#supportLoginLink")).toHaveAttribute("href", /returnTo=/);
+  await expect(page.locator("#supportLoginLink")).toHaveAttribute("href", "/login.html?next=%2Fsupport.html");
   if (process.env.SUPPORT_QA_SCREEN) await page.screenshot({ path: process.env.SUPPORT_QA_SCREEN, fullPage: false });
 
   await page.locator("#faqSearch").fill("Dropbox");

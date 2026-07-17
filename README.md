@@ -203,6 +203,7 @@ Render Web Service 설정 예시:
 | `PYTHON_BIN` | HWPX·PDF 생성기가 쓸 Python 경로(미설정 시 `.venv` 우선) |
 | `PDF_AUTO_MATH_THRESHOLD` | PDF 통번역 자동 모드의 수식 밀도 임계값, 기본 `12` |
 | `PDF_TRANSLATE_MAX_PAGES` | PDF 통번역 전체 최대 페이지, 기본 `700` |
+| `PDF_TRANSLATE_LIBREOFFICE_ENABLED` | LibreOffice 재조판 렌더러 운영 플래그. 기본 비활성화이며 실행 파일과 전용 검증 준비가 끝난 환경에서만 `1` |
 | `PDF_OCR_MAX_PAGES` | 폐기된 호환 변수. 값이 남아 있어도 무시되며 스캔본은 전체 PDF 상한을 따름 |
 | `PDF_OCR_PROVIDER_BATCH_PAGES` | strict OCR 공급자 호출당 페이지, 기본 `50` |
 | `PDF_OCR_PROVIDER_CONCURRENCY` | 문서 내 strict OCR 동시 호출, 기본 `2`(최대 `4`) |

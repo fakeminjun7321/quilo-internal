@@ -215,6 +215,76 @@ class ChunkStructureTranslationTests(unittest.TestCase):
             reopened.save(source, garbage=3, deflate=True)
         return source
 
+    def make_sentence_boundary_document(self, texts, name="sentence-boundaries.pdf"):
+        path = self.root / name
+        document = fitz.open()
+        for text in texts:
+            page = document.new_page(width=612, height=792)
+            page.insert_textbox(
+                fitz.Rect(54, 72, 558, 220),
+                text,
+                fontsize=11,
+                fontname="helv",
+            )
+        document.save(path, garbage=3, deflate=True)
+        document.close()
+        return path
+
+    def test_split_moves_an_unsafe_nominal_cut_to_the_nearest_safe_page(self):
+        source = self.make_sentence_boundary_document(
+            [
+                "Page one contains a complete source sentence for boundary planning.",
+                "Page two also ends with a complete sentence and is a safe boundary.",
+                "This long sentence starts on page three and deliberately continues",
+                "across page four before it finally reaches a complete ending.",
+                "Page five contains another complete sentence for a stable cut.",
+                "Page six is a complete independent sentence for the final chunk.",
+                "Page seven is also complete and closes the synthetic document.",
+            ]
+        )
+        split = run_translator("split", source, self.root / "sentence-chunks", Path("3"))
+        ranges = [(item["start"], item["end"]) for item in split["chunks"]]
+        self.assertEqual(ranges, [(1, 2), (3, 5), (6, 7)])
+        self.assertTrue(all(end - start + 1 <= 3 for start, end in ranges))
+        self.assertEqual(
+            split["split_policy"],
+            {
+                "name": "sentence-safe-backtrack-v1",
+                "max_pages_per_chunk": 3,
+                "search_scope": "entire_current_chunk",
+                "adjusted_boundaries": [
+                    {"nominal_end": 3, "selected_end": 2}
+                ],
+                "unresolved_boundaries": [],
+            },
+        )
+        self.assertEqual(
+            [(item["start"], item["end"]) for item in split["part_manifest"]["chunks"]],
+            ranges,
+        )
+
+    def test_split_fails_closed_when_the_current_chunk_has_no_safe_cut(self):
+        source = self.make_sentence_boundary_document(
+            [
+                "This continuous passage starts on the first page without finishing",
+                "and keeps flowing through the second page without any sentence ending",
+                "while the third page still does not provide a safe stopping point",
+                "until the fourth page finally completes the one continuous sentence.",
+            ],
+            name="no-safe-boundary.pdf",
+        )
+        output_dir = self.root / "no-safe-chunks"
+        result = run_translator(
+            "split",
+            source,
+            output_dir,
+            Path("3"),
+            check=False,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("cannot find a sentence-safe PDF chunk boundary", result.stderr)
+        self.assertEqual(list(output_dir.glob("*.pdf")), [])
+
     def test_51_page_split_merge_translates_structure_once_and_preserves_semantics(self):
         source = self.make_document()
         chunks_dir = self.root / "chunks"
@@ -312,6 +382,7 @@ class ChunkStructureTranslationTests(unittest.TestCase):
         self.assertEqual(stats["outline_replaced"], 4)
         self.assertEqual(stats["metadata_replaced"], 3)
         self.assertEqual(stats["virtual_replaced"], 7)
+        self.assertEqual(stats["restored_links"], 1)
 
         self.assertEqual(outline_navigation(output), outline_navigation(source))
         output_outline = outline_signature(output)

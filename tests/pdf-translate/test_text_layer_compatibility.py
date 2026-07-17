@@ -27,6 +27,7 @@ from reportlab.pdfgen import canvas
 ROOT = Path(__file__).resolve().parents[2]
 TRANSLATOR = ROOT / "lib" / "pipelines" / "pdf-translate" / "translate_pdf.py"
 FONT = ROOT / "lib" / "fonts" / "Pretendard-Regular.ttf"
+MATH_FONT = ROOT / "lib" / "fonts" / "STIXTwoMath.otf"
 
 TRANSLATOR_SPEC = importlib.util.spec_from_file_location(
     "translate_pdf_for_text_layer_test", TRANSLATOR
@@ -241,6 +242,56 @@ class TextLayerCompatibilityTests(unittest.TestCase):
         self.assertEqual(warnings, "")
         self.assertIn("집합 기호 ∈ H₂O − 12.50 g", normalized(pypdf_text))
         self.assertIn("화학식 H2 O 와 x2 값 사이 공백", normalized(pypdf_text))
+
+    def test_source_math_symbols_inside_translated_prose_use_bundled_math_subset(self):
+        source = self.root / "inline-math-source.pdf"
+        output = self.root / "inline-math-output.pdf"
+        document = fitz.open()
+        page = document.new_page(width=595, height=240)
+        source_font = fitz.Font(fontfile=str(MATH_FONT))
+        writer = fitz.TextWriter(page.rect)
+        writer.fill_textbox(
+            fitz.Rect(42, 42, 553, 130),
+            "The time average ⟨x⟩ and the solar mass M⊙ remain inline.",
+            font=source_font,
+            fontsize=12,
+            align=fitz.TEXT_ALIGN_LEFT,
+        )
+        writer.write_text(page)
+        document.save(source)
+        document.close()
+
+        blocks = extracted_blocks(source)
+        self.assertEqual(len(blocks), 1, blocks)
+        self.assertIn("⟨x⟩", blocks[0]["text"])
+        self.assertIn("M⊙", blocks[0]["text"])
+        target = (
+            "시간 평균 ⟨x⟩와 태양질량 M<sub>⊙</sub>은 "
+            "번역된 문장 안에서도 각각의 물리적 의미를 유지한다."
+        )
+        stats = render_with_translations(
+            source,
+            output,
+            {str(blocks[0]["id"]): target},
+        )
+        self.assertTrue(stats["ok"], stats)
+        self.assertGreaterEqual(stats["validated_subset_fonts"], 2)
+
+        with fitz.open(output) as rendered:
+            text = normalized("\n".join(page.get_text() for page in rendered))
+            font_names = {font[3] for font in rendered[0].get_fonts(full=True)}
+            for stream in cmap_streams(rendered):
+                self.assertEqual(
+                    TRANSLATOR_MODULE._tounicode_stream_anomalies(stream), ()
+                )
+        self.assertIn("⟨x⟩", text)
+        self.assertIn("M⊙", text)
+        self.assertIn("STIX Two Math Regular", font_names)
+
+        _reader, pypdf_text, warnings = pypdf_text_without_warnings(output)
+        self.assertEqual(warnings, "")
+        self.assertIn("⟨x⟩", normalized(pypdf_text))
+        self.assertIn("M⊙", normalized(pypdf_text))
 
     def test_bold_subset_retains_weight_names_and_layout_tables(self):
         source = self.root / "bold-source.pdf"

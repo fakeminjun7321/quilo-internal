@@ -821,6 +821,15 @@ const productTelemetry = require("./lib/product-telemetry");
 const { translatePdf, makeGate } = require("./lib/pipelines/pdf-translate/translate");
 const { retypesetPdf } = require("./lib/pipelines/pdf-translate/latex-gen");
 const {
+  assertLibreOfficeRendererAvailable,
+  getPdfTranslationRendererCapabilities,
+  normalizeRequestedRenderer,
+  resolvePdfTranslationRenderer,
+} = require("./lib/pipelines/pdf-translate/renderer-contract");
+const {
+  findLibreOfficeBinary,
+} = require("./lib/pipelines/pdf-translate/libreoffice-pdf");
+const {
   assertCompleteRasterization,
   assertCompleteChunkResults,
   qualityFailure,
@@ -4813,6 +4822,47 @@ function estimatePdfTranslation(meta, mode, modelId, { unlimitedPages = false } 
   };
 }
 
+function getPdfRendererCapabilities() {
+  return getPdfTranslationRendererCapabilities({
+    env: process.env,
+    findLibreOfficeBinary,
+  });
+}
+
+function requestedRendererValues(body = {}) {
+  const values = [body.renderer];
+  try {
+    const perFile = JSON.parse(String(body.renderers || "null"));
+    if (Array.isArray(perFile)) values.push(...perFile);
+  } catch (_) {
+    // Malformed optional per-file input is ignored like the translation route.
+  }
+  return values;
+}
+
+function assertRequestedPdfRenderersAvailable(body = {}) {
+  if (!requestedRendererValues(body).some(
+    (value) => normalizeRequestedRenderer(value) === "libreoffice",
+  )) return;
+  assertLibreOfficeRendererAvailable({
+    env: process.env,
+    findLibreOfficeBinary,
+  });
+}
+
+function sendRendererUnavailable(res, error) {
+  return res.status(Number(error && error.statusCode) || 503).json({
+    error: error && error.message || "요청한 PDF 출력 엔진을 사용할 수 없습니다.",
+    code: error && error.code || "PDF_TRANSLATION_RENDERER_UNAVAILABLE",
+  });
+}
+
+// Public, read-only capability metadata. It intentionally exposes no binary
+// path or environment values; the UI only needs a fail-closed availability bit.
+app.get("/api/translate-pdf/capabilities", (_req, res) => {
+  res.json(getPdfRendererCapabilities());
+});
+
 // PDF 통번역 — 비용·시간 예측(파일 업로드 시 호출). analyze 만 돌려 빠르고 저렴.
 app.post(
   "/api/translate-pdf/estimate",
@@ -4820,6 +4870,11 @@ app.post(
   upload.single("pdf"),
   async (req, res) => {
     if (!req.file) return res.status(400).json({ error: "PDF 파일이 필요합니다." });
+    try {
+      assertRequestedPdfRenderersAvailable(req.body);
+    } catch (error) {
+      return sendRendererUnavailable(res, error);
+    }
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdfest-"));
     const pdfPath = path.join(tmpDir, "in.pdf");
     try {
@@ -4873,6 +4928,14 @@ app.post(
           error: `PDF 파일만 업로드 가능합니다: ${file.originalname || "(이름 없음)"}`,
         });
       }
+    }
+
+    // Reject an explicitly unavailable renderer before page analysis, quota
+    // accounting, job creation, or any provider/model request.
+    try {
+      assertRequestedPdfRenderersAvailable(req.body);
+    } catch (error) {
+      return sendRendererUnavailable(res, error);
     }
 
     const userInfo = getSessionUser(req);
@@ -5049,6 +5112,9 @@ app.post(
     // auto(기본) / inplace / retypeset 그대로 전달 — runPdfTranslation 이 auto 를
     // 분석으로 해석한다(여기서 inplace 로 뭉개면 auto 분기가 죽고 안내가 틀려진다).
     const mode = normalizeRequestedMode(req.body.mode);
+    // 번역 방식과 출력 엔진은 별도 축이다. auto는 재조판일 때 Tectonic을 쓰고,
+    // inplace는 어떤 요청값이 와도 PyMuPDF로 고정된다.
+    const renderer = normalizeRequestedRenderer(req.body.renderer);
     // 파일별 변환 방식(선택): 프런트가 파일 순서에 맞춘 JSON 배열('modes')을 보낼 수 있다
     // (예: 스캔본만 재조판, 나머지는 빠른 번역). 없거나 값이 이상하면 mode 를 적용.
     let reqModes = null;
@@ -5057,6 +5123,13 @@ app.post(
       if (Array.isArray(arr)) reqModes = arr;
     } catch (_) {
       /* modes 없음/파싱 실패 → 공통 mode 사용 */
+    }
+    let reqRenderers = null;
+    try {
+      const arr = JSON.parse(String(req.body.renderers || "null"));
+      if (Array.isArray(arr)) reqRenderers = arr;
+    } catch (_) {
+      /* renderers 없음/파싱 실패 → 공통 renderer 사용 */
     }
     // 복원만(번역 없이 재조판) / 그래프 벡터 재생성 옵션.
     const restoreOnly = ["1", "true", "on"].includes(
@@ -5068,10 +5141,12 @@ app.post(
 
     const fileItems = files.map((f, i) => {
       const m = reqModes && reqModes[i];
+      const r = reqRenderers && reqRenderers[i];
       return {
         buffer: f.buffer,
         originalName: f.originalname || "document.pdf",
         mode: normalizeRequestedMode(m, mode),
+        renderer: normalizeRequestedRenderer(r, renderer),
       };
     });
 
@@ -5079,6 +5154,7 @@ app.post(
       files: fileItems,
       model,
       mode,
+      renderer,
       restoreOnly,
       chartRedraw,
       adminPageLimitBypass: effectiveIsAdmin,
@@ -5249,6 +5325,7 @@ async function prepareScannedRouting(
     onProgress,
     ocrDependencies = {},
     adminPageLimitBypass = false,
+    beforeVisionModel = null,
   } = {},
 ) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdftr-"));
@@ -5316,6 +5393,9 @@ async function prepareScannedRouting(
         onProgress(`⚠ 숨은 OCR 텍스트층 auxiliary hash 생성 건너뜀: ${e.message}`);
       }
     }
+    // An explicit retypeset renderer must be usable before strict OCR/provider
+    // work spends model tokens. The caller supplies this only once it applies.
+    if (typeof beforeVisionModel === "function") beforeVisionModel();
     onProgress("🔎 strict OCR source evidence 생성·검증 중...");
     const strictOcr = await prepareStrictScanOcr({
       pdfBuffer,
@@ -5432,6 +5512,7 @@ async function translateLargeVisionPdf({
   pdfBuffer,
   pageCount,
   model,
+  effectiveRenderer,
   signal,
   onProgress,
   pageTexts = null,
@@ -5487,6 +5568,7 @@ async function translateLargeVisionPdf({
       restoreOnly,
       chartRedraw,
       model,
+      renderer: effectiveRenderer,
       cpuGate,
       signal,
       onProgress,
@@ -5569,6 +5651,7 @@ async function translateLargeVisionPdf({
               tiles: blocks.tileBuffers,
               figures: chunkFigs && chunkFigs.length ? chunkFigs : null,
               model,
+              renderer: effectiveRenderer,
               ocrHint: buildOcrHint(pageTexts, c.start, c.end), // 이 구간의 canonical OCR evidence 힌트
               ocrEvidence,
               ocrRenderManifest: blocks.ocrRenderManifest,
@@ -5745,6 +5828,7 @@ async function translateOnePdfCore({
   originalName,
   model,
   mode,
+  renderer = "auto",
   restoreOnly = false,
   chartRedraw = false,
   signal,
@@ -5756,6 +5840,22 @@ async function translateOnePdfCore({
   const sizeKB = Math.round(pdfBuffer.length / 1024);
   onProgress(`📥 PDF 수신 (${sizeKB}KB)`);
 
+  const requestedRenderer = normalizeRequestedRenderer(renderer);
+  let libreOfficeReady = false;
+  const preflightLibreOffice = () => {
+    if (requestedRenderer !== "libreoffice" || libreOfficeReady) return;
+    const binary = assertLibreOfficeRendererAvailable({
+      env: process.env,
+      findLibreOfficeBinary,
+    });
+    libreOfficeReady = true;
+    onProgress(`🖨️ LibreOffice 출력 엔진 확인 완료 (${path.basename(binary)})`);
+  };
+  // An explicit renderer choice is an operator-controlled capability, even if
+  // mode resolution would later choose in-place output. Reject it before scan
+  // routing or any translation/OCR provider can be invoked.
+  if (requestedRenderer === "libreoffice") preflightLibreOffice();
+
   // 스캔/이미지 PDF 라우팅: 텍스트 레이어가 없으면 in-place 든 retypeset 이든
   // 무조건 고해상도 OCR 재조판으로 처리한다(글자 교체는 텍스트 박스가 없어 불가).
   const routing = await prepareScannedRouting(pdfBuffer, {
@@ -5763,6 +5863,8 @@ async function translateOnePdfCore({
     onProgress,
     ocrDependencies,
     adminPageLimitBypass,
+    beforeVisionModel:
+      requestedRenderer === "libreoffice" ? preflightLibreOffice : null,
   });
   // 상한 이내면 in-place 경로가 자동으로 50쪽씩 구간 분할·병렬 번역 후 합친다
   // (translate.js translatePdf). 상한을 넘는 초대형 문서만 거부한다.
@@ -5789,6 +5891,17 @@ async function translateOnePdfCore({
   const isAuto = modeDecision.isAuto;
   const needsRetypeset = modeDecision.needsRetypeset;
   const resolvedMode = modeDecision.resolvedMode;
+  const rendererDecision = resolvePdfTranslationRenderer({
+    requestedRenderer,
+    effectiveMode: resolvedMode,
+  });
+  const effectiveRenderer = rendererDecision.effectiveRenderer;
+  if (rendererDecision.applies) {
+    if (requestedRenderer === "libreoffice") preflightLibreOffice();
+    onProgress(
+      `🖨️ 재조판 출력 엔진 → ${effectiveRenderer === "libreoffice" ? "LibreOffice" : "Tectonic"}`,
+    );
+  }
   if (normalizedMode === "inplace" && routing.scanned) {
     onProgress(
       routing.ocrLayer
@@ -5846,6 +5959,7 @@ async function translateOnePdfCore({
       pdfBuffer,
       pageCount: routing.pageCount,
       model,
+      effectiveRenderer,
       pageTexts: routing.pageTexts || null,
       ocrEvidence: routing.ocrEvidence,
       visualAdjudicationInputSha256:
@@ -5877,6 +5991,7 @@ async function translateOnePdfCore({
       restoreOnly,
       chartRedraw,
       model,
+      renderer: effectiveRenderer,
       signal,
       onProgress,
     });
@@ -5916,6 +6031,7 @@ async function translateOnePdfCore({
         restoreOnly,
         chartRedraw,
         model,
+        renderer: effectiveRenderer,
         signal,
         onProgress,
       });
@@ -5981,6 +6097,7 @@ async function translateOnePdfCore({
     buffer: terminal.buffer,
     filename,
     effectiveMode: terminal.effectiveMode,
+    effectiveRenderer,
     result,
     qualityReport: terminal.qualityReport,
   };
@@ -5992,6 +6109,7 @@ async function runPdfTranslation(
     files,
     model,
     mode,
+    renderer = "auto",
     restoreOnly = false,
     chartRedraw = false,
     adminPageLimitBypass = false,
@@ -6050,6 +6168,7 @@ async function runPdfTranslation(
         originalName: item.originalName,
         model,
         mode: item.mode || mode,
+        renderer: item.renderer || renderer,
         restoreOnly,
         chartRedraw,
         signal: ac.signal,
@@ -6063,6 +6182,7 @@ async function runPdfTranslation(
         buffer: out.buffer,
         fileId: null,
         effectiveMode: out.effectiveMode,
+        effectiveRenderer: out.effectiveRenderer,
       };
       const fileIndex = job.files.push(entry) - 1;
 
@@ -6099,6 +6219,7 @@ async function runPdfTranslation(
               reportLabel: "PDF 통번역",
               title: item.originalName,
               mode: out.effectiveMode,
+              effectiveRenderer: out.effectiveRenderer,
             },
           });
           if (savedFile?.id) {
@@ -6124,6 +6245,7 @@ async function runPdfTranslation(
             filename: entry.filename,
             fileId: entry.fileId,
             effectiveMode: entry.effectiveMode,
+            effectiveRenderer: entry.effectiveRenderer,
           }),
         );
       }
@@ -6148,6 +6270,8 @@ async function runPdfTranslation(
               cacheWriteTokens: result.cost?.cacheWriteTokens,
               pageCount: result.pageCount,
               blockCount: result.blockCount,
+              effectiveMode: out.effectiveMode,
+              effectiveRenderer: out.effectiveRenderer,
             },
           });
         } catch (e) {
@@ -6217,6 +6341,7 @@ async function runPdfTranslation(
       job.filename = entry.filename;
       job.fileId = entry.fileId;
       job.effectiveMode = entry.effectiveMode;
+      job.effectiveRenderer = entry.effectiveRenderer;
     }
     job.status = "done";
     emitJobWebhook(job, "job.completed");
@@ -6252,11 +6377,13 @@ async function runPdfTranslation(
       filename: job.filename,
       fileId: job.fileId,
       effectiveMode: job.effectiveMode || null,
+      effectiveRenderer: job.effectiveRenderer || null,
       files: job.files.map((f, i) => ({
         index: i,
         filename: f.filename,
         fileId: f.fileId,
         effectiveMode: f.effectiveMode,
+        effectiveRenderer: f.effectiveRenderer,
       })),
     });
     r.end();
@@ -7232,6 +7359,7 @@ app.get("/api/jobs/:id/stream", requireAuth, (req, res) => {
       fileId: job.fileId,
       googleDriveUrl: job.googleDriveUrl || "",
       effectiveMode: job.effectiveMode || null,
+      effectiveRenderer: job.effectiveRenderer || null,
       warnings: job.warnings || [],
       styleFont: job.styleFont || null,
       handoff: job.handoff || "",
@@ -7240,6 +7368,7 @@ app.get("/api/jobs/:id/stream", requireAuth, (req, res) => {
         filename: f.filename,
         fileId: f.fileId || null,
         effectiveMode: f.effectiveMode || null,
+        effectiveRenderer: f.effectiveRenderer || null,
       })),
     });
     return res.end();

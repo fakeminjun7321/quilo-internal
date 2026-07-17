@@ -8,6 +8,8 @@ REQUIRED_IMPORTS = (
     "fitz",
     "fontTools",
     "lxml.etree",
+    "pdf2docx",
+    "docx",
 )
 
 

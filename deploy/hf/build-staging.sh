@@ -22,7 +22,7 @@ cp "$ROOT/scripts/install-tectonic.sh" "$DEST/scripts/install-tectonic.sh"
 cp "$ROOT/deploy/hf/check-python-runtime.py" "$DEST/scripts/check-python-runtime.py"
 cp "$ROOT/scripts/verify_translation.py" "$DEST/scripts/verify_translation.py"
 
-for f in translate.js latex-gen.js latex-pdf.js pdf-tool.js postflight.js quality-gate.js resource-gate.js orchestration-contract.js translate_pdf.py mistral-ocr.js ocr-routing.js ocr-page-tool.py provenance.js invariants.js semantic-judge.js ocr-semantic-review.js; do
+for f in translate.js latex-gen.js latex-pdf.js pdf-tool.js postflight.js quality-gate.js resource-gate.js orchestration-contract.js renderer-contract.js libreoffice-pdf.js libreoffice-gen.js libreoffice-docx.py translate_pdf.py mistral-ocr.js ocr-routing.js ocr-page-tool.py provenance.js invariants.js semantic-judge.js ocr-semantic-review.js; do
   cp "$ROOT/lib/pipelines/pdf-translate/$f" "$DEST/lib/pipelines/pdf-translate/$f"
 done
 for f in chart-gen.js svg-chart-gen.js; do
@@ -36,6 +36,8 @@ cp "$ROOT/lib/output-validate.js" "$DEST/lib/output-validate.js"
 cp "$ROOT/lib/fonts/NanumGothic-Regular.ttf" "$DEST/lib/fonts/"
 cp "$ROOT/lib/fonts/Pretendard-Bold.ttf"     "$DEST/lib/fonts/" 2>/dev/null || true
 cp "$ROOT/lib/fonts/Pretendard-Regular.ttf"  "$DEST/lib/fonts/" 2>/dev/null || true
+cp "$ROOT/lib/fonts/STIXTwoMath.otf"          "$DEST/lib/fonts/"
+cp "$ROOT/lib/fonts/STIXTwoMath-LICENSE.txt"  "$DEST/lib/fonts/"
 
 cat > "$DEST/.gitignore" <<'EOF'
 node_modules/
@@ -50,6 +52,7 @@ grep -Eq '^lxml([<>=!~]|$)' "$DEST/requirements.txt"
 PYCACHE_DIR="$(mktemp -d)"
 trap 'rm -rf "$PYCACHE_DIR"' EXIT
 PYTHONPYCACHEPREFIX="$PYCACHE_DIR" python3 -m py_compile \
+  "$DEST/lib/pipelines/pdf-translate/libreoffice-docx.py" \
   "$DEST/lib/pipelines/pdf-translate/translate_pdf.py" \
   "$DEST/scripts/verify_translation.py" \
   "$DEST/scripts/check-python-runtime.py"

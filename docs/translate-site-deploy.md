@@ -41,6 +41,7 @@ PDF 통번역 전용 사이트다. 메인 사이트 코드는 건드리지 않�
 ## 튜닝 환경변수(선택, 메인과 공유)
 
 `PDF_TRANSLATE_TIMEOUT_MS`(기본 90분), `PDF_TRANSLATE_MAX_PAGES`(메인/독립 700, 관리자는 페이지 수 검사 면제),
+`PDF_TRANSLATE_LIBREOFFICE_ENABLED`(기본 비활성화; LibreOffice 실행 파일과 전용 reflow 검증이 준비된 환경에서만 `1`),
 `PDF_OCR_MAX_PAGES`(폐기됨·값이 남아 있어도 무시),
 `PDF_OCR_PROVIDER_BATCH_PAGES`(기본 50), `PDF_OCR_PROVIDER_CONCURRENCY`(기본 2),
 `PDF_OCR_RISK_VISUAL_BATCH_PAGES`(기본 4, 최대 8),

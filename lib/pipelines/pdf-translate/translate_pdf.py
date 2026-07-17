@@ -16,7 +16,9 @@ DeepL 문서 번역과 같은 방식: 디지털 PDF(텍스트 레이어가 있�
   python translate_pdf.py render <pdf_path> <out_path> <font_path>
       ← stdin JSON: {"translations": {"<id>": "<korean text>", ...}}
       → out_path 에 번역된 PDF 저장
-      → stdout JSON: {"ok": bool, "replaced": int, "shrunk": int,
+      → stdout JSON: {"ok": bool, "replaced": int,
+                      "preserved_original": int,
+                      "preserved_original_ids": [id, ...], "shrunk": int,
                       "overflow": int, "failed": int,
                       "overflow_ids": [id, ...], "failed_ids": [id, ...],
                       "min_font": float|null, "min_glyph_font": float|null}
@@ -182,6 +184,30 @@ def _clean_ko(s):
     # 보도록 모델 출력의 no-break space를 렌더 전에 정규화한다.
     s = s.replace("\u00a0", " ").replace("\u202f", " ")
     return s
+
+
+# Unicode's Alphabetic Presentation Forms are compatibility glyphs, not semantic
+# spelling.  Translation models sometimes copy one from a source credit line
+# (``Astro\ufb01zitsheskaya``), while our bundled Korean fonts intentionally do not
+# expose those legacy cmap entries.  Apply this deliberately tiny mapping only to
+# text which will be redrawn.  Do not use NFKC here: broad compatibility
+# normalization would also rewrite scientific symbols, units and formula glyphs.
+_LATIN_PRESENTATION_LIGATURES = str.maketrans(
+    {
+        "\ufb00": "ff",
+        "\ufb01": "fi",
+        "\ufb02": "fl",
+        "\ufb03": "ffi",
+        "\ufb04": "ffl",
+        "\ufb05": "st",
+        "\ufb06": "st",
+    }
+)
+
+
+def _normalize_redrawn_latin_ligatures(value):
+    """Expand only U+FB00..U+FB06 in translated text headed to the renderer."""
+    return str(value).translate(_LATIN_PRESENTATION_LIGATURES)
 
 
 def _first_span(block):
@@ -451,6 +477,17 @@ def _merge_superscript_ions(blocks):
     for blk in blocks:
         sp = _first_span(blk)
         if out and sp and _has_word(blk):
+            # A caption below a neighbouring-column figure can overlap the full
+            # height of the preceding body paragraph and its 8.5 pt font sits
+            # exactly on this helper's host-relative superscript threshold.  It
+            # is still an independent reading-order object: merging it into the
+            # 10 pt paragraph makes every caption row look like a giant
+            # sub/superscript and splices its formula spans across the body.  A
+            # leading Fig./Figure/Table marker is stronger evidence than the
+            # generic small-first-span geometry, so never absorb such a block.
+            if _caption_head_text(blk):
+                out.append(blk)
+                continue
             prev_sz = dominant_size_color(out[-1])[0] or 10.0
             frag_sz = dominant_size_color(blk)[0] or 10.0
             small = (sp.get("size", 99) or 99) < 0.85 * prev_sz  # 첫 span=위/아래첨자
@@ -531,6 +568,425 @@ def _formula_dense_block(block):
     )
 
 
+_GLUED_MATH_FUNCTIONS = (
+    "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh",
+    "sin", "cos", "tan", "cot", "sec", "csc", "log", "exp", "lim",
+    "min", "max", "mod", "ln",
+)
+_FORMULA_LITERAL_WORDS = {
+    "sin", "cos", "tan", "cot", "sec", "csc", "arcsin", "arccos",
+    "arctan", "sinh", "cosh", "tanh", "log", "ln", "exp", "lim",
+    "min", "max", "mod", "rad", "sr", "hz", "khz", "mhz", "ghz",
+    "cm", "mm", "km", "nm", "pm", "kg", "mg", "mol", "ml", "ms",
+    "ns", "au", "ly", "pc", "kpc", "mpc",
+}
+_FORMULA_PROSE_STOPWORDS = {
+    "and", "are", "at", "for", "from", "if", "is", "of", "or", "that", "the",
+    "then", "this", "to", "when", "where", "which", "with",
+}
+_FORMULA_LEADING_PROSE_FRAGMENT_RE = re.compile(
+    r"^\s*(?:be|by|in)(?=\s)"
+)
+_FORMULA_TRAILING_SPLIT_WORD_RE = re.compile(r"[A-Za-z]{2,}-$")
+
+
+def _starts_with_math_function(value):
+    return next((name for name in _GLUED_MATH_FUNCTIONS if value.startswith(name)), None)
+
+
+def _looks_like_glued_math_identifier(token):
+    raw = str(token or "")
+    if not raw:
+        return False
+    # An uppercase prefix can be a one-letter variable glued directly to a
+    # complete function name (``Asin``, ``Xcos``, ``Dcosh``).  Do not feed it
+    # through the permissive lowercase suffix parser below: ordinary prose such
+    # as ``Using``, ``Cost``, ``Sine`` and ``Aside`` otherwise looks like a
+    # variable followed by ``sin`` / ``cos`` plus an allowed trailing variable.
+    if raw[:1].isupper():
+        return raw[1:].lower() in _GLUED_MATH_FUNCTIONS
+    value = raw.lower()
+    function_count = 0
+    if not _starts_with_math_function(value):
+        if (
+            len(raw) > 4
+            or len(value) < 2
+            or not _starts_with_math_function(value[1:])
+        ):
+            return False
+        value = value[1:]
+    while value:
+        function = _starts_with_math_function(value)
+        if not function:
+            return False
+        function_count += 1
+        value = value[len(function):]
+        if not value:
+            return True
+        if _starts_with_math_function(value):
+            continue
+        if len(value) >= 2 and _starts_with_math_function(value[1:]):
+            value = value[1:]
+            continue
+        maximum_variables = 2 if function_count >= 2 else 1
+        return len(value) <= maximum_variables
+    return function_count > 0
+
+
+def _formula_only_visible_text(text):
+    """Match the response layer's narrow formula-only direct-reuse contract."""
+    value = str(text or "").strip()
+    if (
+        not value
+        or _FORMULA_LEADING_PROSE_FRAGMENT_RE.search(value)
+        or not re.search(
+            r"[=+*/^<>±×÷√∞∫∑∏∂∇≤≥≈≠≡−→←↔⇌Α-Ωα-ωϑϕϱ϶ϰ′″°]|</?(?:sub|sup)>",
+            value,
+            re.I,
+        )
+    ):
+        return False
+    tokens = re.findall(r"[A-Za-z]+(?:-[A-Za-z]+)*", value)
+    if not tokens:
+        return True
+    for raw in tokens:
+        lowered = raw.lower()
+        if (
+            lowered in _FORMULA_LITERAL_WORDS
+            or len(raw) == 1
+            or raw == raw.upper()
+            or _looks_like_glued_math_identifier(raw)
+            or (
+                raw == raw.lower()
+                and len(raw) <= 3
+                and lowered not in _FORMULA_PROSE_STOPWORDS
+            )
+        ):
+            continue
+        return False
+    return True
+
+
+def _raw_line_text(line):
+    return "".join(
+        str(span.get("text", ""))
+        for span in line.get("spans", [])
+    ).strip()
+
+
+def _formula_word_is_literal(raw):
+    value = str(raw or "")
+    lowered = value.lower()
+    # Reject prose words before the intentionally permissive one/two-letter
+    # variable rule.  This keeps a run-in such as ``at r=R/2) Using ...`` in its
+    # surrounding prose block instead of preserving its first physical row as a
+    # display equation.
+    if value == lowered and lowered in _FORMULA_PROSE_STOPWORDS:
+        return False
+    return bool(
+        lowered in _FORMULA_LITERAL_WORDS
+        or len(value) <= 2
+        or value == value.upper()
+        or _looks_like_glued_math_identifier(value)
+    )
+
+
+def _line_is_display_formula(line):
+    """Conservatively identify a standalone equation row inside a mixed block.
+
+    The decision deliberately uses raw span text and font names, not the active
+    page decoder, so extract and render split the same physical rows even if the
+    source PDF has a damaged ToUnicode map.  A row containing ordinary prose is
+    never split; inline equations therefore stay with their sentence.
+    """
+    raw = _raw_line_text(line)
+    if not raw:
+        return False
+    # Real textbook prose fragments can be typographically formula-dense because
+    # a Greek symbol / equals sign follows a two-letter word.  Only reject the
+    # unambiguous lowercase word at the beginning of a physical row; expressions
+    # such as ``x=by`` (b*y), ``Be + He`` and ``In+x`` remain valid equations.
+    if (
+        _FORMULA_LEADING_PROSE_FRAGMENT_RE.search(raw)
+        or _FORMULA_TRAILING_SPLIT_WORD_RE.search(raw)
+    ):
+        return False
+    words = re.findall(r"[A-Za-z]+(?:-[A-Za-z]+)*", raw)
+    if any(not _formula_word_is_literal(word) for word in words):
+        return False
+    math_font = any(
+        any(key in str(span.get("font", "")) for key in _MATH_FONT_KEYS)
+        for span in line.get("spans", [])
+    )
+    explicit_math = bool(
+        re.search(r"[=+*/^<>±×÷√∞∫∑∏∂∇≤≥≈≠≡−→←↔⇌]", raw)
+    )
+    # A sentence-ending variable can make an otherwise ordinary prose line use a
+    # math font.  ``is a:`` in Fundamental Astronomy is one such formula
+    # introduction: preserving it as a display equation leaves visible English
+    # immediately above the real equation.  A prose stopword drawn in an ordinary
+    # font wins.  Rows containing prose stopwords were already rejected by the
+    # lexical gate above; the operator exception here only applies to remaining
+    # ordinary-font scientific tokens.
+    ordinary_words = re.findall(
+        r"[A-Za-z]+",
+        " ".join(
+            str(span.get("text", ""))
+            for span in line.get("spans", [])
+            if not any(
+                key in str(span.get("font", "")) for key in _MATH_FONT_KEYS
+            )
+        ),
+    )
+    if (
+        not explicit_math
+        and any(word.lower() in _FORMULA_PROSE_STOPWORDS for word in ordinary_words)
+    ):
+        return False
+    math_signal = bool(math_font or explicit_math)
+    return math_signal and bool(words or re.search(r"\d", raw))
+
+
+def _line_is_equation_number(line):
+    return bool(re.fullmatch(r"\(?\s*\d+(?:\.\d+)+\s*\)?[.,]?", _raw_line_text(line)))
+
+
+def _block_from_lines(block, lines, *, preserve_formula=False):
+    new_block = copy.deepcopy(block)
+    new_block["lines"] = [copy.deepcopy(line) for line in lines]
+    rect = fitz.Rect(lines[0].get("bbox", block.get("bbox", (0, 0, 0, 0))))
+    for line in lines[1:]:
+        rect |= fitz.Rect(line.get("bbox", block.get("bbox", (0, 0, 0, 0))))
+    new_block["bbox"] = tuple(rect)
+    if preserve_formula:
+        new_block["_preserve_formula"] = True
+    else:
+        new_block.pop("_preserve_formula", None)
+    return new_block
+
+
+def _split_mixed_display_formula_lines(block):
+    """Split display-equation rows away from prose rows sharing a MuPDF block.
+
+    This keeps the original 2-D glyph streams (fractions, stacked denominators,
+    equation numbers) while allowing the adjacent prose to be translated in its
+    own bbox.  Equation-number-only rows inherit the formula classification when
+    they touch a formula row, as in ``sin C / sin C  (2.8)``.
+    """
+    lines = list(block.get("lines", []) or [])
+    if not lines:
+        return [block]
+    formula = [_line_is_display_formula(line) for line in lines]
+    # A wrapped caption can legitimately end with a short formula-only row.  For
+    # example, Fundamental Astronomy's Fig. 2.5 ends ``z cos chi -`` on one row
+    # and ``y sin chi`` on the next.  Treating that tail as a standalone display
+    # equation splits one physical caption into a translated block plus a kept
+    # source fragment.  The kept fragment then clips the translated rectangle,
+    # leaving source words such as ``Fig. 2`` / ``frame`` visibly overlaid.  A
+    # caption marker is stronger evidence than formula density, so every row in
+    # its contiguous caption band remains one translatable unit.  Formula rows
+    # outside that band are still preserved below.
+    caption_band = _caption_band(block)
+    if caption_band is not None:
+        for index, line in enumerate(lines):
+            line_rect = fitz.Rect(line.get("bbox", (0, 0, 0, 0)))
+            if (
+                caption_band[0] - 1.0
+                <= float(line_rect.y0)
+                <= caption_band[1] + 1.0
+            ):
+                formula[index] = False
+    for index, line in enumerate(lines):
+        if formula[index] or not _line_is_equation_number(line):
+            continue
+        rect = fitz.Rect(line.get("bbox", (0, 0, 0, 0)))
+        for other_index in (index - 1, index + 1):
+            if other_index < 0 or other_index >= len(lines) or not formula[other_index]:
+                continue
+            other = fitz.Rect(lines[other_index].get("bbox", (0, 0, 0, 0)))
+            overlap = min(rect.y1, other.y1) - max(rect.y0, other.y0)
+            gap = max(0.0, rect.y0 - other.y1, other.y0 - rect.y1)
+            if overlap > 0 or gap <= 0.8 * max(1.0, min(rect.height, other.height)):
+                formula[index] = True
+                break
+    if not any(formula):
+        return [block]
+
+    groups = []
+    start = 0
+    for index in range(1, len(lines)):
+        if formula[index] != formula[index - 1]:
+            groups.append((formula[start], lines[start:index]))
+            start = index
+    groups.append((formula[start], lines[start:]))
+    return [
+        _block_from_lines(block, group_lines, preserve_formula=is_formula)
+        for is_formula, group_lines in groups
+    ]
+
+
+_OCR_INLINE_MATH_OPERATOR_RE = re.compile(
+    r"[=+*/^<>\-\u2013\u2014\u00b1\u00d7\u00f7\u221a\u221e\u222b\u2211\u220f\u2202\u2207\u2264\u2265\u2248\u2260\u2261\u2212\u2192\u2190\u2194\u21cc]"
+)
+_OCR_INLINE_MATH_FUNCTIONS = {
+    "sin", "cos", "tan", "cot", "sec", "csc", "arcsin", "arccos",
+    "arctan", "sinh", "cosh", "tanh", "log", "ln", "exp", "lim",
+    "min", "max", "mod",
+}
+
+
+def _ocr_has_inline_math_operator(text):
+    raw = str(text or "")
+    # Ordinary hyphenated terminology is prose, not an equation operator.  Keep
+    # one-letter variable expressions such as x-y untouched by requiring at
+    # least two letters on both sides before suppressing the dash signal.
+    raw = re.sub(r"([A-Za-z]{2,})[-\u2013\u2014]([A-Za-z]{2,})", r"\1\2", raw)
+    return bool(_OCR_INLINE_MATH_OPERATOR_RE.search(raw))
+
+
+def _ocr_inline_formula_token(text):
+    """Return whether one OCR span can belong to an inline formula run.
+
+    OCR-layer textbooks commonly expose one positioned span per word / symbol.
+    This deliberately treats ordinary two-letter words as prose, while retaining
+    variables, function names, bracketed values and mixed-case identifiers such
+    as ``f(P_i)``.  It is used only after a stronger formula seed was found.
+    """
+    raw = str(text or "").strip()
+    if not raw:
+        return True
+    if _ocr_has_inline_math_operator(raw):
+        return True
+    compact = re.sub(r"\s+", "", raw)
+    if re.fullmatch(r"[\d.,:;()[\]{}|\\'\"`~_-]+", compact):
+        return True
+    letters = re.sub(r"[^A-Za-z]", "", compact)
+    if not letters:
+        return bool(re.search(r"\d", compact))
+    lower = letters.lower()
+    if lower in {
+        "a", "an", "and", "as", "at", "be", "but", "by", "for", "from",
+        "if", "in", "is", "it", "of", "on", "or", "so", "than", "that",
+        "the", "then", "this", "to", "we", "where", "which", "with",
+    }:
+        return False
+    if lower in _OCR_INLINE_MATH_FUNCTIONS:
+        return True
+    if len(letters) == 1:
+        return True
+    if len(letters) <= 6 and (
+        re.search(r"\d", compact)
+        or re.search(r"[()[\]{}]", compact)
+        or (any(ch.isupper() for ch in letters) and any(ch.islower() for ch in letters))
+    ):
+        return True
+    return False
+
+
+def _ocr_inline_formula_seed(span):
+    raw = str(span.get("text", "") or "").strip()
+    if not raw:
+        return False
+    # PyMuPDF flag bit 0 marks superscript text.  A superscript is never ordinary
+    # prose in the OCR layer and anchors its adjacent base / operator sequence.
+    if (
+        int(span.get("flags", 0) or 0) & 1
+        and not re.search(r"[A-Za-z]{3,}", raw)
+    ):
+        return True
+    if _ocr_has_inline_math_operator(raw):
+        return True
+    compact = re.sub(r"\s+", "", raw)
+    if re.search(r"\d", compact) and re.search(r"[()[\]{}]", compact):
+        return True
+    if re.search(r"[()[\]{}]", compact) and _ocr_inline_formula_token(compact):
+        return True
+    if (
+        re.search(r"[A-Za-z]", compact)
+        and re.search(r"\d", compact)
+        and not re.search(r"[A-Za-z]{3,}", compact)
+    ):
+        return True
+    return False
+
+
+def _line_from_spans(line, spans):
+    new_line = copy.deepcopy(line)
+    new_line["spans"] = [copy.deepcopy(span) for span in spans]
+    rect = fitz.Rect(spans[0].get("bbox", line.get("bbox", (0, 0, 0, 0))))
+    for span in spans[1:]:
+        rect |= fitz.Rect(span.get("bbox", line.get("bbox", (0, 0, 0, 0))))
+    new_line["bbox"] = tuple(rect)
+    return new_line
+
+
+def _split_hidden_ocr_inline_formula_runs(block):
+    """Split OCR-layer prose and inline formula pixels into separate blocks.
+
+    A page-sized scan image already contains the authoritative formula glyphs.
+    Keeping a whole mixed line (``Example ... x^5 ...``) leaves visible English;
+    redrawing the whole line destroys the equation pixels.  Span-level splitting
+    lets prose rectangles be translated / painted while formula rectangles remain
+    untouched in the underlying scan.  Born-digital PDFs never enter this path.
+    """
+    fragments = []
+    changed = False
+    for line in block.get("lines", []) or []:
+        spans = list(line.get("spans", []) or [])
+        if not spans:
+            continue
+        seeds = [index for index, span in enumerate(spans) if _ocr_inline_formula_seed(span)]
+        formula = [False] * len(spans)
+        for seed in seeds:
+            formula[seed] = True
+            left = seed - 1
+            while left >= 0 and _ocr_inline_formula_token(spans[left].get("text", "")):
+                formula[left] = True
+                left -= 1
+            right = seed + 1
+            while right < len(spans) and _ocr_inline_formula_token(spans[right].get("text", "")):
+                formula[right] = True
+                right += 1
+        if not any(formula) or all(formula):
+            fragments.append((all(formula), _line_from_spans(line, spans)))
+            changed = changed or all(formula)
+            continue
+        changed = True
+        start = 0
+        for index in range(1, len(spans)):
+            if formula[index] != formula[index - 1]:
+                fragments.append(
+                    (formula[start], _line_from_spans(line, spans[start:index]))
+                )
+                start = index
+        fragments.append((formula[start], _line_from_spans(line, spans[start:])))
+
+    if not changed or not fragments:
+        return [block]
+    return [
+        _block_from_lines(block, [line], preserve_formula=is_formula)
+        for is_formula, line in fragments
+        if _raw_line_text(line).strip()
+    ]
+
+
+def _is_short_numbered_section_heading(text):
+    """Return whether *text* is a compact decimal-numbered section label.
+
+    Running heads in older textbooks can be emitted immediately before body prose
+    with the same font metrics (``2.5The Equatorial System``).  They are separate
+    reading-order objects even though the heading has no terminal punctuation.
+    Keep this deliberately narrow: a decimal section number, an uppercase title,
+    no sentence punctuation, and at most 80 visible characters.
+    """
+    value = " ".join(str(text or "").split())
+    return bool(
+        value
+        and len(value) <= 80
+        and re.fullmatch(r"\d+(?:\.\d+)+\s*[A-Z][^.!?…]{1,70}", value)
+    )
+
+
 def _coalesce_paragraphs(blocks):
     """같은 단(column)에서 세로로 인접한 '본문 산문' 블록을, 앞 블록이 문장 중간에서
     끊겼을 때(종결부호 없이 끝남) 한 문단으로 합친다.
@@ -551,6 +1007,9 @@ def _coalesce_paragraphs(blocks):
             out.append(blk)
             continue
         prev = out[-1]
+        if prev.get("_preserve_formula") or blk.get("_preserve_formula"):
+            out.append(blk)
+            continue
         # 둘 다 본문 산문(본문 크기 단어 보유)이어야 — 수식·짧은 라벨은 병합 제외.
         if not (_has_word(prev) and _has_word(blk)):
             out.append(blk)
@@ -560,9 +1019,30 @@ def _coalesce_paragraphs(blocks):
         # annotation rectangle even though link actions / geometry remain exact.
         raw_prev = _block_raw_text(prev).strip()
         raw_next = _block_raw_text(blk).strip()
+        # A compact numbered running/section heading followed by lowercase prose
+        # is not the first half of that prose sentence.  In Fundamental Astronomy,
+        # merging ``2.5The Equatorial System`` with ``are the poles ...`` hid the
+        # real p29→p30 continuation from the cross-page sentence annotator.
+        if (
+            _is_short_numbered_section_heading(raw_prev)
+            and re.match(r"\s*[\"'‘“(]*[a-z]", raw_next)
+        ):
+            out.append(blk)
+            continue
         if _formula_dense_block(prev) or _formula_dense_block(blk):
             out.append(blk)
             continue
+        # A colon-ended prose introduction followed by a short narrow label is a
+        # definition/data list, not a wrapped sentence (e.g. ``dimensions:`` then
+        # ``equatorial radius`` beside an equation value).  Keep the label in its
+        # own bbox; generic title wrapping remains available for ordinary wide
+        # second lines.
+        if raw_prev.endswith(":"):
+            prev_rect = fitz.Rect(prev["bbox"])
+            next_rect = fitz.Rect(blk["bbox"])
+            if len(raw_next) <= 40 and next_rect.width < 0.65 * prev_rect.width:
+                out.append(blk)
+                continue
         if re.match(r"^(?:https?|mailto):", raw_prev, re.I) or re.match(
             r"^(?:https?|mailto):", raw_next, re.I
         ):
@@ -607,7 +1087,170 @@ def _coalesce_paragraphs(blocks):
     return out
 
 
-def iter_text_blocks(doc):
+_CAPTION_MARKER_RE = re.compile(r"^(?:fig(?:ure)?\.?|table)\s*\d", re.I)
+
+
+def _block_primary_direction(block):
+    """Return a cardinal source text direction weighted by visible characters."""
+    weights = defaultdict(float)
+    for line in block.get("lines", []):
+        direction = line.get("dir") or (1.0, 0.0)
+        try:
+            dx, dy = float(direction[0]), float(direction[1])
+        except (TypeError, ValueError, IndexError):
+            continue
+        if abs(dx) >= 0.9 and abs(dy) <= 0.15:
+            cardinal = (1, 0) if dx >= 0 else (-1, 0)
+        elif abs(dy) >= 0.9 and abs(dx) <= 0.15:
+            cardinal = (0, 1) if dy >= 0 else (0, -1)
+        else:
+            continue
+        visible = sum(
+            len(str(span.get("text", "")).strip())
+            for span in line.get("spans", [])
+        )
+        weights[cardinal] += max(1, visible)
+    return max(weights, key=weights.get) if weights else (1, 0)
+
+
+def _caption_head_text(block):
+    """Return the marker-bearing first caption line, without decoding layout."""
+    for line in (block.get("lines", []) or [])[:2]:
+        value = "".join(
+            str(span.get("text", "")) for span in line.get("spans", [])
+        ).strip()
+        if _CAPTION_MARKER_RE.match(value):
+            return value
+    return None
+
+
+def _caption_continuation_geometry(head, previous, candidate, direction, size):
+    """Conservatively prove that *candidate* is the next physical caption line.
+
+    Some landscape textbook plates encode a rotated caption as one PDF block per
+    visual line.  The continuation lines have the same cardinal direction, font
+    metrics and terminal edge, and advance only across the narrow caption strip.
+    Those signals are much stronger than ordinary paragraph proximity.
+    """
+    if _block_primary_direction(candidate) != direction:
+        return False
+    if _caption_head_text(candidate):
+        return False
+    raw = _block_raw_text(candidate).strip()
+    if not raw or not re.match(r"^[\s\"'‘“(\[]*[A-Za-z]", raw):
+        return False
+    if len(re.findall(r"[A-Za-z]+", raw)) < 3:
+        return False
+    candidate_size, _color, candidate_bold, _italic = dominant_size_color(candidate)
+    head_size, _head_color, head_bold, _head_italic = dominant_size_color(head)
+    if (
+        abs(candidate_size - size) > 0.15 * max(size, candidate_size, 1.0)
+        or candidate_bold != head_bold
+        or abs(head_size - size) > 0.15 * max(size, head_size, 1.0)
+    ):
+        return False
+
+    hr = fitz.Rect(head["bbox"])
+    pr = fitz.Rect(previous["bbox"])
+    cr = fitz.Rect(candidate["bbox"])
+    strip_limit = 10.0 * max(6.0, size)
+    edge_tolerance = max(2.0, 0.4 * size)
+    advance_limit = max(4.0, 1.6 * size)
+    if direction == (0, -1):
+        along = min(hr.y1, cr.y1) - max(hr.y0, cr.y0)
+        return bool(
+            cr.x0 >= pr.x0 - 0.8 * max(pr.width, cr.width)
+            and cr.x0 - pr.x1 <= advance_limit
+            and abs(cr.y1 - hr.y1) <= edge_tolerance
+            and along >= 0.45 * min(hr.height, cr.height)
+            and max(hr.x1, cr.x1) - min(hr.x0, cr.x0) <= strip_limit
+        )
+    if direction == (0, 1):
+        along = min(hr.y1, cr.y1) - max(hr.y0, cr.y0)
+        return bool(
+            cr.x1 <= pr.x1 + 0.8 * max(pr.width, cr.width)
+            and pr.x0 - cr.x1 <= advance_limit
+            and abs(cr.y0 - hr.y0) <= edge_tolerance
+            and along >= 0.45 * min(hr.height, cr.height)
+            and max(hr.x1, cr.x1) - min(hr.x0, cr.x0) <= strip_limit
+        )
+    if direction == (1, 0):
+        # Full-width plates often typeset one caption in two newspaper-style
+        # columns.  MuPDF exposes the right half as a second block at the same y
+        # coordinate, so the ordinary next-line geometry cannot join it.  The
+        # caption marker, matching small font, tight column gutter and nearly
+        # identical vertical band together are strong enough evidence to merge
+        # the two halves without merging unrelated body columns.
+        vertical_overlap = min(hr.y1, cr.y1) - max(hr.y0, cr.y0)
+        horizontal_gap = cr.x0 - pr.x1
+        side_by_side = bool(
+            0 <= horizontal_gap <= max(24.0, 3.0 * size)
+            and vertical_overlap >= 0.72 * min(hr.height, cr.height)
+            and abs(cr.y0 - hr.y0) <= max(3.0, 0.65 * size)
+            and abs(cr.y1 - hr.y1) <= max(14.0, 1.8 * size)
+            and not re.search(r"[.!?][\"'’”)]*$", _block_raw_text(previous).strip())
+        )
+        if side_by_side:
+            return "column"
+        if not re.match(r"^[\s\"'‘“(\[]*[a-z]", raw):
+            return False
+        along = min(hr.x1, cr.x1) - max(hr.x0, cr.x0)
+        return bool(
+            cr.y0 >= pr.y0 - 0.8 * max(pr.height, cr.height)
+            and cr.y0 - pr.y1 <= advance_limit
+            and abs(cr.x0 - hr.x0) <= edge_tolerance
+            and along >= 0.45 * min(hr.width, cr.width)
+            and max(hr.y1, cr.y1) - min(hr.y0, cr.y0) <= strip_limit
+        )
+    return False
+
+
+def _merge_caption_continuation_blocks(blocks):
+    """Merge only geometrically proven continuation blocks of a marked caption."""
+    out = []
+    index = 0
+    while index < len(blocks):
+        block = blocks[index]
+        if not _caption_head_text(block):
+            out.append(block)
+            index += 1
+            continue
+        direction = _block_primary_direction(block)
+        size, _color, _bold, _italic = dominant_size_color(block)
+        merged = copy.deepcopy(block)
+        previous = block
+        cursor = index + 1
+        while cursor < len(blocks):
+            continuation_kind = _caption_continuation_geometry(
+                merged, previous, blocks[cursor], direction, size
+            )
+            if not continuation_kind:
+                break
+            candidate = blocks[cursor]
+            candidate_lines = copy.deepcopy(candidate.get("lines", []))
+            if candidate_lines:
+                # Vertically rotated caption lines share one y-band and are
+                # x-sorted into one logical row by ``block_text``.  Record their
+                # semantic boundary so adjacent words do not become ``thegiven``.
+                candidate_lines[0]["_caption_continuation"] = True
+                if continuation_kind == "column":
+                    for candidate_line in candidate_lines:
+                        candidate_line["_caption_column_continuation"] = True
+            merged["lines"].extend(candidate_lines)
+            merged["bbox"] = tuple(
+                fitz.Rect(merged["bbox"]) | fitz.Rect(candidate["bbox"])
+            )
+            previous = candidate
+            cursor += 1
+        if cursor > index + 1:
+            merged["_caption_chain"] = True
+            merged["_source_text_direction"] = direction
+        out.append(merged)
+        index = cursor
+    return out
+
+
+def iter_text_blocks(doc, hidden_ocr_pages=None):
     """type=0(텍스트) 블록을 두 모드에서 동일한 순서/id로 순회한다.
 
     span 이 없는 빈 블록과 이미지 블록(type=1)은 건너뛰되, id 카운터는
@@ -617,6 +1260,7 @@ def iter_text_blocks(doc):
     동일 로직 → id 일치 유지.
     """
     bid = 0
+    hidden_ocr_pages = set(hidden_ocr_pages or ())
     for pno in range(len(doc)):
         page = doc[pno]
         data = page.get_text("dict")
@@ -631,6 +1275,16 @@ def iter_text_blocks(doc):
                 _split_spatially_separated_runs(block, page.rect.width)
             )
         merged = _absorb_tiny_fragments(_merge_superscript_ions(spatial_blocks))
+        merged = _merge_caption_continuation_blocks(merged)
+        segmented = []
+        for block in merged:
+            segmented.extend(_split_mixed_display_formula_lines(block))
+        merged = segmented
+        if pno in hidden_ocr_pages:
+            segmented = []
+            for block in merged:
+                segmented.extend(_split_hidden_ocr_inline_formula_runs(block))
+            merged = segmented
         merged = _coalesce_paragraphs(merged)
         for block in merged:
             yield bid, pno, block
@@ -683,6 +1337,8 @@ _AGL = {
     "arrowright": "→", "arrowleft": "←", "arrowboth": "↔", "arrowup": "↑",
     "arrowdown": "↓", "asteriskmath": "*", "bullet": "•", "periodcentered": "·",
     "dotmath": "·", "degree": "°", "minute": "′", "second": "″", "angle": "∠",
+    "space": " ", "period": ".", "comma": ",", "colon": ":", "semicolon": ";",
+    "slash": "/", "exclam": "!",
     "bracketleft": "[", "bracketright": "]", "parenleft": "(", "parenright": ")",
     "braceleft": "{", "braceright": "}",
 }
@@ -695,6 +1351,11 @@ _CMMI_FIX = {"↵": "α", "⇡": "π", "✏": "ε"}
 # MathTechnical(기호 전용 폰트): 화학 결합선(—)이 ToUnicode 손상으로 'U'로 추출돼
 # 'C—H'가 'CUH', 'H—C—H'가 'HUCUH'로 보이던 것 수정. 일반 글자 'U'는 본문폰트라 무관.
 _MATHTECH_FIX = {"U": "–"}
+# Some MathTime Symbol subsets expose the subtraction glyph as ASCII ``!`` through
+# a damaged/missing Unicode map.  Other subsets explicitly map the same raw code to
+# a different glyph (notably ``proportional``).  Therefore this is a fallback only;
+# a page-local /Differences or CFF glyph-identity decoder must take precedence.
+_MTSYN_FIX = {"!": "−"}
 
 # 화학 교과서(OXTOBY/Cengage 계열)의 위첨자 기호 전용 서브셋 폰트.
 # ToUnicode 손상으로 전하·반결합 기호가 숫자/글자로 추출돼, 'H₂⁺'→'H₂1', 'O₂⁻'→'O₂2',
@@ -710,6 +1371,7 @@ _WWDOC06_FIX = {"p": "*"}
 _MATH_FONT_KEYS = (
     "MathematicalPi", "MathPi", "Symbol", "Euclid", "MT-Extra",
     "CMSY", "CMEX", "CMMI", "MSAM", "MSBM",
+    "MTMI", "MTSY", "MTSYN", "MTEX", "MTGU", "MTMS",
 )
 
 # 디코더는 페이지별로 만든다 — 같은 수식폰트도 서브셋마다 인코딩이 달라(코드 33이
@@ -717,7 +1379,14 @@ _MATH_FONT_KEYS = (
 # 본문은 정확히 복원된다. 같은 페이지에 충돌 서브셋이 여럿이면 가장 풍부한(=본문) 것을
 # 우선한다(span→서브셋 식별은 PyMuPDF API 로 불가능 — 그림 라벨 등은 한계가 남음).
 _DECODERS_BY_PAGE = {}  # {pno: {정규화폰트명: {코드: 유니코드}}}
+# Damaged ToUnicode maps can collapse different glyphs in the same font to the
+# same plausible Unicode character.  Fundamental Astronomy, for example, exposes
+# both MTMI ``comma`` and ``beta`` as U+002C, and both ``parenleft`` and ``delta``
+# as U+0028.  A page/font-wide raw-code decoder cannot distinguish those cases,
+# so retain the ambiguous occurrences with their texttrace geometry.
+_TRACE_DECODERS_BY_PAGE = {}  # {pno: {font: [(baseline, x, raw_code, unicode), ...]}}
 _CUR_DEC = {}  # 현재 페이지 디코더
+_CUR_TRACE_DEC = {}  # 현재 페이지의 glyph-occurrence 디코더
 
 
 def _norm_font(n):
@@ -726,8 +1395,9 @@ def _norm_font(n):
 
 def _use_page(pno):
     """추출 시 현재 페이지의 디코더를 활성화(_fix_span_text 가 참조)."""
-    global _CUR_DEC
+    global _CUR_DEC, _CUR_TRACE_DEC
     _CUR_DEC = _DECODERS_BY_PAGE.get(pno, {})
+    _CUR_TRACE_DEC = _TRACE_DECODERS_BY_PAGE.get(pno, {})
 
 
 def _glyph_to_unicode(gn):
@@ -740,6 +1410,11 @@ def _glyph_to_unicode(gn):
         return _LIG[gn]
     if gn in _AGL:
         return _AGL[gn]
+    # MathTime CFF charsets use variant suffixes such as psi1, theta1 and Delta1.
+    # Their glyph shape may vary, but their mathematical character semantics do not.
+    variant_base = re.sub(r"\d+$", "", gn)
+    if variant_base != gn and variant_base in _AGL:
+        return _AGL[variant_base]
     m = re.match(r"^uni([0-9A-Fa-f]{4,6})$", gn) or re.match(r"^u([0-9A-Fa-f]{4,6})$", gn)
     if m:
         try:
@@ -792,19 +1467,23 @@ def build_decoders(doc):
     - 본문 폰트: 합자(다중 글자) 매핑만 적용 — 진짜 따옴표·문장부호 오염 방지.
     - 같은 페이지에 같은 base 폰트의 서브셋이 여럿이고 코드가 충돌하면, /Differences 가
       가장 큰(가장 풍부 = 본문) 서브셋을 우선하고 나머지는 비충돌 코드만 보충한다."""
-    global _DECODERS_BY_PAGE
+    global _DECODERS_BY_PAGE, _TRACE_DECODERS_BY_PAGE
     _DECODERS_BY_PAGE = {}
+    _TRACE_DECODERS_BY_PAGE = {}
     for pno in range(len(doc)):
         try:
             fonts = doc[pno].get_fonts(full=True)
         except Exception:
             _DECODERS_BY_PAGE[pno] = {}
+            _TRACE_DECODERS_BY_PAGE[pno] = {}
             continue
         bysub = {}  # 정규화명 -> [cmap(code→글리프명), ...]
+        font_xrefs = defaultdict(list)
         for f in fonts:
             name = _norm_font(f[3] if len(f) > 3 else "")
             if not name:
                 continue
+            font_xrefs[name].append(int(f[0]))
             cmap = _read_differences(doc, f[0])
             if cmap:
                 bysub.setdefault(name, []).append(cmap)
@@ -832,21 +1511,144 @@ def build_decoders(doc):
                     dec[code] = u
             if dec:
                 page_dec[name] = dec
+
+        # Some MathTime subsets declare MacRomanEncoding with no /Differences or
+        # usable ToUnicode map.  MuPDF then returns plausible but wrong Greek
+        # Unicode (for example the visible ψ/θ/χ glyphs become ϕ/Ξ/Λ).  Recover the
+        # semantics from the embedded CFF charset and texttrace glyph ids.  This is
+        # page-local, so conflicting subset encodings on other pages cannot leak.
+        gid_maps = {}
+        for name, xrefs in font_xrefs.items():
+            if not any(key in name for key in _MATH_FONT_KEYS):
+                continue
+            for xref in xrefs:
+                try:
+                    from fontTools.cffLib import CFFFontSet
+
+                    _fname, extension, _ftype, buffer = doc.extract_font(xref)
+                    if extension != "cff" or not buffer:
+                        continue
+                    cff = CFFFontSet()
+                    cff.decompile(io.BytesIO(buffer), None)
+                    top = cff[cff.fontNames[0]]
+                    decoded = {
+                        gid: value
+                        for gid, glyph_name in enumerate(top.charset)
+                        if (value := _glyph_to_unicode(glyph_name)) is not None
+                    }
+                    if decoded:
+                        gid_maps[name] = decoded
+                        break
+                except Exception:
+                    continue
+        traced = defaultdict(lambda: defaultdict(set))
+        trace_occurrences = defaultdict(list)
+        if gid_maps:
+            try:
+                for span in doc[pno].get_texttrace():
+                    name = _norm_font(span.get("font", ""))
+                    gid_map = gid_maps.get(name)
+                    if not gid_map:
+                        continue
+                    for char in span.get("chars") or ():
+                        raw_code, glyph_id = int(char[0]), int(char[1])
+                        intended = gid_map.get(glyph_id)
+                        if intended is not None:
+                            traced[name][raw_code].add(intended)
+                            origin = char[2]
+                            trace_occurrences[name].append(
+                                (
+                                    float(origin[1]),
+                                    float(origin[0]),
+                                    raw_code,
+                                    intended,
+                                )
+                            )
+            except Exception:
+                traced = {}
+                trace_occurrences = {}
+        page_trace_decoders = {}
+        for name, raw_map in traced.items():
+            decoder = page_dec.setdefault(name, {})
+            ambiguous_codes = set()
+            for raw_code, intended_values in raw_map.items():
+                if len(intended_values) == 1:
+                    decoder[raw_code] = next(iter(intended_values))
+                else:
+                    # /Differences may already have installed one of the colliding
+                    # meanings. Leaving it in place corrupts the other glyph, so
+                    # fail closed unless the exact texttrace occurrence is known.
+                    decoder.pop(raw_code, None)
+                    ambiguous_codes.add(raw_code)
+            if ambiguous_codes:
+                page_trace_decoders[name] = sorted(
+                    (
+                        record
+                        for record in trace_occurrences.get(name, [])
+                        if record[2] in ambiguous_codes
+                    ),
+                    key=lambda record: (record[0], record[1]),
+                )
         _DECODERS_BY_PAGE[pno] = page_dec
+        _TRACE_DECODERS_BY_PAGE[pno] = page_trace_decoders
     return _DECODERS_BY_PAGE
 
 
-def _fix_span_text(font, text):
+def _trace_span_replacements(font, text, span):
+    """Resolve raw-code collisions using CFF glyph identity and span geometry.
+
+    MuPDF's normal text dictionary only exposes the damaged Unicode string, while
+    ``get_texttrace`` also exposes the embedded-font glyph id and origin.  Only raw
+    codes proven ambiguous on this page are recorded, so ordinary prose and
+    unambiguous mathematical characters do not depend on geometry.
+    """
+    if not isinstance(span, dict) or not text:
+        return {}
+    records = _CUR_TRACE_DEC.get(_norm_font(font)) or ()
+    origin = span.get("origin")
+    bbox = span.get("bbox")
+    if not records or not origin or not bbox or len(origin) < 2 or len(bbox) < 4:
+        return {}
+    try:
+        baseline = float(origin[1])
+        x0, x1 = float(bbox[0]), float(bbox[2])
+    except (TypeError, ValueError, OverflowError):
+        return {}
+    candidates = [
+        record
+        for record in records
+        if abs(record[0] - baseline) <= 0.25
+        and (x0 - 0.25) <= record[1] <= (x1 + 0.25)
+    ]
+    if not candidates:
+        return {}
+    by_raw = defaultdict(list)
+    for _y, x, raw_code, intended in sorted(candidates, key=lambda record: record[1]):
+        by_raw[raw_code].append((x, intended))
+    replacements = {}
+    for index, char in enumerate(text):
+        queue = by_raw.get(ord(char))
+        if queue:
+            _x, intended = queue.pop(0)
+            replacements[index] = intended
+    return replacements
+
+
+def _fix_span_text(font, text, span=None):
     """깨진 글자를 실제 유니코드로 복원. 폰트 /Differences 디코더 우선,
     못 풀면 CM 정적맵 폴백. 일반 본문 폰트의 진짜 글자는 건드리지 않는다."""
     if not text:
         return text
     f = font or ""
     dec = _CUR_DEC.get(_norm_font(f))
+    trace_replacements = _trace_span_replacements(f, text, span)
     # 폰트 판정(부분문자열 검색)은 호출당 1회만 — 글자 루프 밖으로 끌어낸다(추출 속도).
     # 기호 전용 서브셋 폰트(WWDOC…)는 디코더보다 우선해 강제 매핑(전하·별표).
     # 디코더가 'MacRomanEncoding' 항등으로 '1'→'1' 을 돌려주면 깨진 채 남기 때문.
-    forced = _WWDOC01_FIX if "WWDOC01" in f else (_WWDOC06_FIX if "WWDOC06" in f else None)
+    forced = (
+        _WWDOC01_FIX if "WWDOC01" in f
+        else (_WWDOC06_FIX if "WWDOC06" in f else None)
+    )
     if "CMSY" in f:
         fallback = _CMSY_FIX
     elif "CMEX" in f:
@@ -855,13 +1657,18 @@ def _fix_span_text(font, text):
         fallback = _CMMI_FIX
     elif "MathTechnical" in f:
         fallback = _MATHTECH_FIX
+    elif "MTSYN" in f:
+        fallback = _MTSYN_FIX
     else:
         fallback = None
     # 빠른 경로: 강제맵·디코더·폴백맵이 모두 없으면(대다수 본문 폰트) 원문 그대로 반환.
-    if forced is None and dec is None and fallback is None:
+    if forced is None and dec is None and fallback is None and not trace_replacements:
         return text
     out = []
-    for ch in text:
+    for index, ch in enumerate(text):
+        if index in trace_replacements:
+            out.append(trace_replacements[index])
+            continue
         if forced is not None and ch in forced:
             out.append(forced[ch])
             continue
@@ -883,12 +1690,56 @@ def _line_in_figs(line_bbox, figs):
     """
     if not figs:
         return False
+    # A plate beginning near the top text margin can sit 15--18 pt below a
+    # running head.  The generic axis-label halo must not swallow that header when
+    # the line is wholly above (and does not intersect) every figure.  This keeps
+    # headings such as ``2.12 Star Catalogues and Maps`` translatable while still
+    # protecting labels actually inside the plate.
+    line_rect = fitz.Rect(line_bbox)
+    if line_rect.y1 <= 50.0 and all(line_rect.y1 <= f.y0 for f in figs):
+        return False
     cx = (line_bbox[0] + line_bbox[2]) / 2.0
     cy = (line_bbox[1] + line_bbox[3]) / 2.0
     return any(
         (f.x0 - 18) <= cx <= (f.x1 + 18) and (f.y0 - 18) <= cy <= (f.y1 + 18)
         for f in figs
     )
+
+
+def _caption_band(block):
+    """Return the contiguous caption y-band, or None.
+
+    Captions are commonly only 6–12 pt below a figure.  The generic ±18 pt figure
+    guard protects axis labels but can therefore hide the first caption line.  A
+    caption marker is stronger semantic evidence than geometric proximity, so its
+    complete block must stay translatable.
+    """
+    lines = block.get("lines", [])
+    for marker_index, line in enumerate(lines[:2]):
+        start = "".join(
+            _fix_span_text(span.get("font", ""), span.get("text", ""), span=span)
+            for span in line.get("spans", [])
+        ).strip()
+        if re.match(r"^(?:fig(?:ure)?\.?|table)\s*\d", start, re.I):
+            bbox = line.get("bbox", (0, 0, 0, 0))
+            floor = float(bbox[1])
+            bottom = float(bbox[3])
+            sizes = [
+                float(span.get("size", 0) or 0)
+                for span in line.get("spans", [])
+                if float(span.get("size", 0) or 0) > 0
+            ]
+            base_size = max(sizes) if sizes else max(6.0, bottom - floor)
+            previous_y = floor
+            for following in lines[marker_index + 1:]:
+                following_bbox = following.get("bbox", (0, 0, 0, 0))
+                y0 = float(following_bbox[1])
+                if y0 - previous_y > max(12.0, 1.8 * base_size):
+                    break
+                bottom = max(bottom, float(following_bbox[3]))
+                previous_y = y0
+            return floor, bottom
+    return None
 
 
 def block_text(block, figs=None, tag=False):
@@ -909,36 +1760,130 @@ def block_text(block, figs=None, tag=False):
     번역을 거쳐 렌더에서 진짜 위/아래첨자로 그려져 H₂⁺·ψ_el·σ_g 같은 식이 평문화
     ('H+2','ψel','σg')되지 않는다. 같은 x 에 겹친 첨자는 sub→sup 순으로 정렬한다.
     """
-    rows = []  # [{y0, y1, items:[{x, cy, sz, t}]}]
+    rows = []  # [{y0, y1, segment, items:[{x, cy, sz, t}]}]
+    caption_band = _caption_band(block)
     for ln in block.get("lines", []):
-        if _line_in_figs(ln.get("bbox", (0, 0, 0, 0)), figs):
+        line_bbox = ln.get("bbox", (0, 0, 0, 0))
+        caption_line = bool(
+            caption_band is not None
+            and caption_band[0] - 1.0 <= float(line_bbox[1]) <= caption_band[1] + 1.0
+        )
+        if not caption_line and _line_in_figs(line_bbox, figs):
             continue
         lb = ln.get("bbox", (0, 0, 0, 0))
         ly0, ly1 = lb[1], lb[3]
         items = []
+        horizontal_line = abs(float((ln.get("dir") or (1.0, 0.0))[0])) >= 0.9
+        line_span_sizes = [
+            float(sp.get("size", 0.0) or 0.0)
+            for sp in ln.get("spans", [])
+            if str(sp.get("text", "")).strip()
+        ]
+        line_main_size = max(line_span_sizes) if line_span_sizes else 0.0
+        baseline_samples = []
         for sp in ln.get("spans", []):
-            t = _fix_span_text(sp.get("font", ""), sp.get("text", ""))
+            t = _fix_span_text(sp.get("font", ""), sp.get("text", ""), span=sp)
             if t == "":
                 continue
             b = sp.get("bbox", (lb[0], ly0, lb[0], ly1))
             items.append({"x": b[0], "cy": (b[1] + b[3]) / 2.0,
                           "sz": sp.get("size", 10.0) or 10.0, "t": t,
                           "absorbed": bool(sp.get("_absorbed_tiny_fragment"))})
+            origin = sp.get("origin")
+            if (
+                horizontal_line
+                and origin
+                and len(origin) >= 2
+                and line_main_size > 0
+                and float(sp.get("size", 0.0) or 0.0) >= 0.85 * line_main_size
+            ):
+                baseline_samples.extend(
+                    [float(origin[1])] * max(1, len(str(t).strip()))
+                )
         if not items:
             continue
+        line_baseline = None
+        if baseline_samples:
+            baseline_samples.sort()
+            line_baseline = baseline_samples[len(baseline_samples) // 2]
+        if ln.get("_caption_continuation"):
+            first_x = min(item["x"] for item in items)
+            items.insert(
+                0,
+                {
+                    "x": first_x,
+                    "cy": items[0]["cy"],
+                    "sz": items[0]["sz"],
+                    "t": " ",
+                    "absorbed": False,
+                }
+            )
+        segment = 1 if ln.get("_caption_column_continuation") else 0
         placed = False
         for row in rows:
+            if row.get("segment", 0) != segment:
+                continue
             oy = min(ly1, row["y1"]) - max(ly0, row["y0"])
             mh = max(1.0, min(ly1 - ly0, row["y1"] - row["y0"]))
-            if oy > 0.5 * mh:  # 같은 시각적 줄(세로로 과반 겹침)
+            # Adjacent textbook lines that contain tall superscripts often overlap
+            # by 55–62%.  Requiring stronger overlap prevents the next baseline from
+            # being x-sorted into the current one (``frame y sin χ are ...``), while
+            # true split-span/subscript lines still overlap almost completely.
+            # Tall relation-symbol bboxes can overlap the following prose line by
+            # more than 68% even though the baselines are a full line apart.  That
+            # used to x-sort ``B - V = 1.6`` together with the next line into
+            # ``BThe ... 1 the.3``.  For horizontal text, require compatible main
+            # baselines as well as geometric overlap.  True sub/sup split-lines
+            # have only a small baseline shift; rotated captions retain the prior
+            # geometry-only path because a y-coordinate is not their baseline.
+            baselines_compatible = True
+            if row.get("baseline") is not None and line_baseline is not None:
+                reference_size = max(
+                    float(row.get("main_size", 0.0) or 0.0),
+                    line_main_size,
+                    1.0,
+                )
+                baselines_compatible = (
+                    abs(float(row["baseline"]) - line_baseline)
+                    <= 0.60 * reference_size
+                )
+            if oy > 0.68 * mh and baselines_compatible:  # 같은 시각적 줄
                 row["items"].extend(items)
                 row["y0"] = min(row["y0"], ly0)
                 row["y1"] = max(row["y1"], ly1)
+                if line_baseline is not None:
+                    previous_weight = int(row.get("baseline_weight", 0) or 0)
+                    line_weight = len(baseline_samples)
+                    if row.get("baseline") is None or previous_weight <= 0:
+                        row["baseline"] = line_baseline
+                        row["baseline_weight"] = line_weight
+                    elif line_weight > 0:
+                        row["baseline"] = (
+                            float(row["baseline"]) * previous_weight
+                            + line_baseline * line_weight
+                        ) / (previous_weight + line_weight)
+                        row["baseline_weight"] = previous_weight + line_weight
+                row["main_size"] = max(
+                    float(row.get("main_size", 0.0) or 0.0), line_main_size
+                )
                 placed = True
                 break
         if not placed:
-            rows.append({"y0": ly0, "y1": ly1, "items": list(items)})
-    rows.sort(key=lambda r: r["y0"])
+            rows.append(
+                {
+                    "y0": ly0,
+                    "y1": ly1,
+                    "segment": segment,
+                    "items": list(items),
+                    "baseline": line_baseline,
+                    "baseline_weight": len(baseline_samples),
+                    "main_size": line_main_size,
+                }
+            )
+    # A proven side-by-side caption is read column-major: finish the marker-bearing
+    # left column before continuing at the top of the right column.  Ordinary
+    # blocks retain their historical y-only ordering.
+    rows.sort(key=lambda r: (r.get("segment", 0), r["y0"]))
     out = []
     for row in rows:
         its = row["items"]
@@ -948,14 +1893,17 @@ def block_text(block, figs=None, tag=False):
             mcy = (sum(big) / len(big)) if big else its[0]["cy"]
             for i in its:
                 i["style"] = "normal"
-                if i["absorbed"] or i["sz"] < 0.90 * main:  # 작은 글자 = 첨자 후보
+                if i["t"].strip() and (i["absorbed"] or i["sz"] < 0.90 * main):  # 작은 글자 = 첨자 후보
                     if i["cy"] > mcy + 0.06 * main:
                         i["style"] = "sub"
                     elif i["cy"] < mcy - 0.06 * main:
                         i["style"] = "sup"
-            # x 4pt 버킷 + (normal<sub<sup) 순 → 겹친 첨자도 H₂⁺ 순서로(stable sort).
+            # True coincident spans need normal<sub<sup ordering, but a coarse 4pt
+            # bucket can move a superscript past the following prose span (r²).
+            # Hundredth-point grouping retains the tie rule without changing the
+            # ordinary left-to-right glyph order.
             rank = {"normal": 0, "sub": 1, "sup": 2}
-            its.sort(key=lambda i: (round(i["x"] / 4.0), rank[i["style"]]))
+            its.sort(key=lambda i: (round(i["x"], 2), rank[i["style"]]))
             s = ""
             for i in its:
                 if i["absorbed"] and i["style"] == "sup" and s and not s.endswith(" "):
@@ -994,8 +1942,14 @@ def _nonfig_rect(block, figs=None):
     지우거나 그 위에 한글을 그리지 않게 한다(축 라벨은 영어 원본 그대로 유지).
     """
     r = None
+    caption_band = _caption_band(block)
     for ln in block.get("lines", []):
-        if _line_in_figs(ln.get("bbox", (0, 0, 0, 0)), figs):
+        line_bbox = ln.get("bbox", (0, 0, 0, 0))
+        caption_line = bool(
+            caption_band is not None
+            and caption_band[0] - 1.0 <= float(line_bbox[1]) <= caption_band[1] + 1.0
+        )
+        if not caption_line and _line_in_figs(line_bbox, figs):
             continue
         lr = fitz.Rect(ln["bbox"])
         r = lr if r is None else (r | lr)
@@ -1044,6 +1998,55 @@ def has_letters(s):
 _MATH_SIGN = re.compile(r"[Α-Ωα-ωϑϕϱ϶ϰ=±×÷√∞∫∑∏∂∇≤≥≈≠≡⎛⎝⎞⎠⎜⎟⌈⌉⌊⌋·−→←↔⇌]")
 
 
+def _has_ordinary_font_prose(block):
+    """Return whether a block contains any translatable natural-language word.
+
+    Stacked fractions and other 2-D equations often mix mathematical fonts with
+    ordinary roman-font unit literals (``h``, ``min``, ``km``).  Conversely, a
+    wrapped prose sentence can have the same vertically separated / overlapping
+    line geometry as a fraction, especially when its final row is short.  Geometry
+    therefore cannot authorize KEEP when an ordinary-font word is present.
+
+    This deliberately operates at span level: words drawn in a math font remain
+    formula identifiers, while ordinary-font mathematical functions, units,
+    acronyms and one-letter variables use the same narrow literal vocabulary as
+    the formula-only response contract.  Compatibility ligatures are expanded for
+    classification only, so ``ﬁnd`` is recognized as prose without touching the
+    authoritative source glyph stream.
+    """
+    sizes = [
+        float(span.get("size", 0) or 0)
+        for line in block.get("lines", [])
+        for span in line.get("spans", [])
+        if str(span.get("text", "")).strip()
+    ]
+    if not sizes:
+        return False
+    body_size = 0.8 * max(sizes)
+    for line in block.get("lines", []):
+        for span in line.get("spans", []):
+            if float(span.get("size", 0) or 0) < body_size:
+                continue
+            font = str(span.get("font", ""))
+            if any(key in font for key in _MATH_FONT_KEYS):
+                continue
+            decoded = _fix_span_text(font, span.get("text", ""), span=span)
+            decoded = _normalize_redrawn_latin_ligatures(decoded)
+            for raw in re.findall(r"[A-Za-z]+(?:-[A-Za-z]+)*", decoded):
+                lowered = raw.lower()
+                if (
+                    lowered in _FORMULA_LITERAL_WORDS
+                    or len(raw) == 1
+                    or raw == raw.upper()
+                    or _looks_like_glued_math_identifier(raw)
+                ):
+                    continue
+                return True
+            if re.search(r"[가-힣]{2,}", decoded):
+                return True
+    return False
+
+
 def _is_stacked_math(block):
     """위아래로 쌓인 2D 수식(분수 num/denom, (m/V), 루이스 점 구조 H:N:N:H 등)인지.
 
@@ -1057,6 +2060,11 @@ def _is_stacked_math(block):
         if any(s.get("text", "").strip() for s in ln.get("spans", []))
     ]
     if len(lines) < 2:
+        return False
+    # A wrapped natural-language sentence is never a formula-only KEEP block,
+    # even if a short final line overlaps the first line like a numerator and its
+    # citation / date supplies the old heuristic's only numeric signal.
+    if _has_ordinary_font_prose(block):
         return False
     bands = []  # 시각적 줄(y-band) bbox 들
     for ln in lines:
@@ -1113,9 +2121,39 @@ def _keep_original_block(block):
     원본 유지하면 재그리기를 안 해, 2D 식이 흩어져 깨지던 표시 수식이 원본대로 보인다.
     단어 판정은 _has_word(본문 크기 span 만) — ψ^bond 처럼 작은 라벨에 단어가 있어도
     표시수식을 번역으로 오인하지 않는다."""
+    raw = block_text(block)
+    if (
+        _FORMULA_LEADING_PROSE_FRAGMENT_RE.search(raw)
+        or _FORMULA_TRAILING_SPLIT_WORD_RE.search(raw)
+    ):
+        return False
+    if block.get("_preserve_formula"):
+        return True
     if _is_stacked_math(block):
         return True  # 위아래로 쌓인 2D 수식(분수·루이스) → 원본 보존(x-정렬 불가)
-    if _has_word(block):
+    # Use the exact tagged representation emitted by cmd_extract.  Formula-only
+    # blocks must never make a model/render round trip: even an identity string can
+    # flatten a stacked fraction or replace a visually correct legacy glyph map.
+    if _formula_only_visible_text(block_text(block, tag=True)):
+        return True
+    math_words = {
+        "sin", "cos", "tan", "cot", "sec", "csc", "arcsin", "arccos", "arctan",
+        "sinh", "cosh", "tanh", "log", "ln", "exp", "lim", "min", "max", "mod",
+    }
+    prose_words = []
+    has_lowercase_stopword = False
+    for word in re.findall(r"[A-Za-z]{2,}", raw):
+        lower = word.lower()
+        if word == lower and lower in _FORMULA_PROSE_STOPWORDS:
+            has_lowercase_stopword = True
+        # Broken word spacing in formula fonts can yield zsin/ycos.  A single
+        # variable prefix followed by a known function is still equation syntax.
+        prefixed_function = len(lower) > 1 and lower[0].isalpha() and lower[1:] in math_words
+        if lower not in math_words and not prefixed_function:
+            prose_words.append(lower)
+    if has_lowercase_stopword:
+        return False
+    if _has_word(block) and prose_words:
         return False  # 본문 문장(인라인 수식 포함) → 번역
     has_math_font = False
     has_sign = False
@@ -1123,7 +2161,7 @@ def _keep_original_block(block):
     for ln in block.get("lines", []):
         for sp in ln.get("spans", []):
             fn = sp.get("font", "")
-            txt = _fix_span_text(fn, sp.get("text", ""))  # 디코드 후 판정
+            txt = _fix_span_text(fn, sp.get("text", ""), span=sp)  # 디코드 후 판정
             nchar += sum(1 for c in txt if not c.isspace())
             if any(k in fn for k in _MATH_FONT_KEYS):
                 has_math_font = True
@@ -1345,6 +2383,19 @@ def _table_regions(page, min_rules=2):
                 return True
         return False
 
+    def _is_running_margin_rule(x0, y, x1):
+        """Reject a page-header/footer separator before table clustering.
+
+        A full-width running-head rule combined with a nearby illustration rule
+        creates a giant false table spanning both columns.  Its protected region
+        then hides the section heading and adjacent prose from extraction.  Real
+        tables cannot use a rule in the outer 8% page margin while also spanning
+        most of the printable page width.
+        """
+        width = max(1.0, x1 - x0)
+        outer_margin = y <= 0.08 * H or y >= 0.92 * H
+        return outer_margin and width >= 0.70 * W
+
     rules = []  # (x0, y, x1) 가로줄
     try:
         for dr in page.get_drawings():
@@ -1355,13 +2406,19 @@ def _table_regions(page, min_rules=2):
                         x0 = min(p1.x, p2.x)
                         y = (p1.y + p2.y) / 2.0
                         x1 = max(p1.x, p2.x)
-                        if not _is_uri_underline(x0, y, x1):
+                        if (
+                            not _is_uri_underline(x0, y, x1)
+                            and not _is_running_margin_rule(x0, y, x1)
+                        ):
                             rules.append((x0, y, x1))
                 elif it[0] == "re":  # 얇은 사각형 = 가로줄
                     r = fitz.Rect(it[1])
                     if r.height < 2.2 and r.width > 0.22 * W:
                         y = (r.y0 + r.y1) / 2.0
-                        if not _is_uri_underline(r.x0, y, r.x1):
+                        if (
+                            not _is_uri_underline(r.x0, y, r.x1)
+                            and not _is_running_margin_rule(r.x0, y, r.x1)
+                        ):
                             rules.append((r.x0, y, r.x1))
     except Exception:
         return []
@@ -1647,11 +2704,21 @@ def _table_text_is_safe_candidate(
         or table_rect.height > 0.80 * page_rect.height
     ):
         return False
-    if not text_strategy or backed_by_rules:
+    if not text_strategy:
         return True
 
     # Borderless inference must be deliberately strict.  This excludes two-column
     # prose (long, punctuated cells) while retaining ordinary short data tables.
+    # MuPDF's text strategy can turn justified book prose into five or six narrow
+    # "columns" simply because word starts happen to align on consecutive lines.
+    # Require independently observed whitespace-separated column starts before
+    # accepting *any* text-strategy layout, including one near horizontal rules.
+    # The latter matters for textbooks whose running-header rule can be grouped
+    # with the top edge of a large illustration and falsely look like booktabs.
+    if not _raw_table_region_has_repeated_multicolumn_evidence(page, table_rect):
+        return False
+    if backed_by_rules:
+        return True
     if len(row_counts) < 3 or table_rect.height > 0.38 * page_rect.height:
         return False
     column_count = max(2, len(col_counts))
@@ -1821,12 +2888,22 @@ def _table_layouts(page):
     here but remains in ``_skip_regions`` as protected source content.
     """
     rule_regions = _validate_regions(page, _table_regions(page))
+    # Two unrelated long rules can be vertically close: a running-header rule and
+    # the top of a figure frame are a common example in books.  Such a pair is not
+    # strong table evidence until the text between it also has repeated, stable
+    # whitespace-separated columns.  Default line-grid discovery remains usable
+    # without this fallback, so this only tightens the text/booktabs path.
+    table_like_rule_regions = [
+        region
+        for region in rule_regions
+        if _raw_table_region_has_repeated_multicolumn_evidence(page, region)
+    ]
     candidates = []
 
     def matching_rule_region(rect):
         matches = [
             region
-            for region in rule_regions
+            for region in table_like_rule_regions
             if _rect_overlap_fraction(rect, region) >= 0.60
         ]
         return (
@@ -1967,10 +3044,36 @@ def _looks_like_table_chemical_formula(text):
     return len(parts) >= 2 or any(number for _symbol, number in parts) or bool(charge)
 
 
-def _table_cell_requires_translation(text):
-    """Natural-language cells translate; measurements and IDs stay byte-exact."""
+def _table_cell_requires_translation(text, source_block=None):
+    """Natural-language cells translate; formulae, measurements and IDs stay exact.
+
+    ``source_block`` is the cell-clipped raw block produced by
+    :func:`_raw_text_block_in_rect`.  It is authoritative when the ordinary formula
+    classifier proves that the glyph stream must stay original.  Text alone loses
+    the font, rise and sub/sup geometry used by that proof (``T_e [K]`` becomes
+    ``Te [K]`` after tags are stripped), so independently re-classifying only the
+    flattened string can give the same source glyphs two render owners.
+    """
     plain = " ".join(_strip_tags(str(text or "")).split())
     if not plain or re.search(r"[\uac00-\ud7a3]", plain):
+        return False
+    # One invariant governs ordinary blocks and table cells: if the exact clipped
+    # cell block is a KEEP block, it belongs solely to the original content stream.
+    # Natural-language cells do not satisfy _keep_original_block and therefore
+    # continue through the table translation path below.
+    if source_block is not None and _keep_original_block(source_block):
+        return False
+    # Formula-only table headings belong to the source formula stream, not to a
+    # synthetic table-cell overlay.  Borderless / booktabs producers commonly
+    # encode adjacent headings in one display-math block while table discovery
+    # assigns the same glyphs to one or more inferred cells.  Translating that
+    # cell would redact only the inferred cell slice, redraw a flattened formula,
+    # and leave the rest of the preserved source block on top (for example
+    # ``Delta AT | TT - UTC`` becoming ``Delta ATTT - U`` plus a stray ``TC``).
+    # The response layer already has a deliberately narrow formula-only contract;
+    # reuse it here to give those glyphs exactly one owner.  Natural-language
+    # headers (including status labels) continue through the normal cell path.
+    if _formula_only_visible_text(plain):
         return False
     upper_plain = plain.upper()
     if upper_plain in _TABLE_TRANSLATABLE_STATUS_TOKENS:
@@ -2039,7 +3142,7 @@ def _table_cell_blocks(page, page_number, layouts=None):
                     "color": color,
                     "bold": bold,
                     "italic": italic,
-                    "translate": _table_cell_requires_translation(text),
+                    "translate": _table_cell_requires_translation(text, block),
                 }
             )
     return out
@@ -2149,19 +3252,47 @@ def _skip_regions(page, table_layouts=None):
     # finder validated it or its text itself proves repeated multi-column rows.
     # This keeps ambiguous content fail-closed without hiding single-column prose
     # panels from the translation payload.
-    tables = [
+    validated_raw_tables = [
         fitz.Rect(region)
         for region in raw_tables
         if any(_rect_overlap_fraction(region, layout) >= 0.60 for layout in layout_rects)
         or _raw_table_region_has_repeated_multicolumn_evidence(page, region)
     ]
-    tables.extend(layout_rects)
+    # Prefer the precise cell-derived layout. A coarse rule cluster can span a
+    # nearby caption or second-column figure; adding it first caused the smaller
+    # proven table rect to be discarded as a duplicate and hid valid prose.
+    tables = list(layout_rects)
+    tables.extend(validated_raw_tables)
     deduped_tables = []
     for table in tables:
         if any(_rect_overlap_fraction(table, prior) >= 0.90 for prior in deduped_tables):
             continue
         deduped_tables.append(fitz.Rect(table))
-    return _validate_regions(page, _figure_regions(page) + deduped_tables)
+    # A default-grid table marked strong has already passed independent cell
+    # decomposition and the non-table-art guard.  Do not send that proof through
+    # the generic prose-region filter again: a definition table legitimately
+    # contains several long prose cells, which otherwise make the filter discard
+    # the table and expose both its merged row block and its synthetic cells as
+    # competing translation owners.
+    strong_tables = [
+        fitz.Rect(table["rect"])
+        for table in layouts
+        if table.get("strong")
+    ]
+    guarded_candidates = list(_figure_regions(page)) + [
+        table
+        for table in deduped_tables
+        if not any(
+            _rect_overlap_fraction(table, strong) >= 0.90
+            for strong in strong_tables
+        )
+    ]
+    guarded = _validate_regions(page, guarded_candidates)
+    for strong in strong_tables:
+        if any(_rect_overlap_fraction(strong, prior) >= 0.90 for prior in guarded):
+            continue
+        guarded.append(strong)
+    return guarded
 
 
 # Page text is not the only user-visible language in a PDF.  Bookmark titles and
@@ -2548,6 +3679,7 @@ def _page_is_truly_blank(page):
 def cmd_extract(pdf_path):
     doc = fitz.open(pdf_path)
     build_decoders(doc)  # 폰트 /Differences 디코더(깨진 글자 복원) — 추출 전에 준비
+    hidden_ocr_pages = _hidden_ocr_scan_page_indexes(doc)
     blocks = []
     total_text_chars = 0
     # 페이지별 figure 영역(이미지 + 그래프 라인아트) 캐시 — 그림 위 텍스트 판별용.
@@ -2579,7 +3711,16 @@ def cmd_extract(pdf_path):
     # 분자/첨자 조각(en·nn·0·A·B·r 등 Sabon 일반폰트, 수식기호 없음)은 KEEP 에 안
     # 걸려 번역·재그리기되어 흩어진다. 본체 줄의 y-band 안에 든 '단어 없는' 조각을
     # 같이 원본유지해 식 전체가 원본대로 보이게 한다.
-    items = list(iter_text_blocks(doc))
+    items = list(iter_text_blocks(doc, hidden_ocr_pages=hidden_ocr_pages))
+    repeated_footer_ids = _repeated_hidden_ocr_footer_ids(
+        items, doc, hidden_ocr_pages
+    )
+    repeated_footer_ids.update(
+        bid
+        for bid, pno, block in items
+        if pno in hidden_ocr_pages
+        and _hidden_ocr_footer_band_block(block, doc[pno])
+    )
     page_blocks = defaultdict(list)
     for _bid, _pno, _blk in items:
         page_blocks[_pno].append(_blk)
@@ -2614,6 +3755,10 @@ def cmd_extract(pdf_path):
         text = block_text(block, regs)
         if not text or not has_letters(text):
             continue  # 모든 줄이 그림 영역이면 text 가 비어 자동 제외(그래프 라벨 등)
+        if bid in repeated_footer_ids:
+            continue  # 반복 저작권 footer: 모델/redaction 제외, 원본 scan 픽셀 보존
+        if pno in hidden_ocr_pages and _hidden_ocr_static_block(block, text):
+            continue  # 스캔 표·그림·수식 라벨은 원본 페이지 이미지 그대로 유지
         if _keep_original_block(block):
             continue  # 독립 표시수식·기호/오비탈 라벨([6.1]·1σg 등) → 원본 유지(재그리기·오역 방지)
         # 표시수식 band 안의 조각 → 원본 유지(식이 흩어지지 않게). (1) 단어 없는 조각,
@@ -2647,6 +3792,10 @@ def cmd_extract(pdf_path):
     # original streams, preserving exact values and coordinates.
     table_cell_count = 0
     for pno in range(len(doc)):
+        if pno in hidden_ocr_pages:
+            # A scan-backed table is part of the authoritative page image.  Cell
+            # OCR is useful as evidence but must not repaint its original pixels.
+            continue
         for cell in table_cells(pno):
             if not cell["translate"]:
                 continue
@@ -2660,7 +3809,10 @@ def cmd_extract(pdf_path):
     # use visual reading order.  Reader UI strings follow in their stable namespace.
     blocks.extend(_document_virtual_blocks(doc))
     # 텍스트가 거의 없으면 스캔본(글자가 이미지)일 가능성이 높다 → Node가 안내.
-    scanned = len(doc) > 0 and total_text_chars < 20 * len(doc)
+    ocr_layer = bool(hidden_ocr_pages)
+    scanned = len(doc) > 0 and (
+        total_text_chars < 20 * len(doc) or ocr_layer
+    )
     # 진단: 그림/표 영역 감지 수 + PyMuPDF 버전(서버/로컬 동작 차이 추적용)
     fig_regions = 0
     table_regions = 0
@@ -2680,6 +3832,9 @@ def cmd_extract(pdf_path):
     out = {
         "page_count": len(doc),
         "scanned": scanned,
+        "ocr_layer": ocr_layer,
+        "ocr_layer_pages": [page + 1 for page in sorted(hidden_ocr_pages)],
+        "excluded_repeated_footer_count": len(repeated_footer_ids),
         "truly_blank": truly_blank,
         "blocks": blocks,
         "page_block_count": page_block_count,
@@ -2774,6 +3929,122 @@ def _page_has_hidden_ocr_scan(page):
     except Exception:
         pass
     return False
+
+
+def _hidden_ocr_scan_page_indexes(doc):
+    """Return zero-based pages whose visible source is a page-sized scan image."""
+    out = set()
+    for page_index, page in enumerate(doc):
+        try:
+            if _page_has_hidden_ocr_scan(page):
+                out.add(page_index)
+        except Exception:
+            continue
+    return out
+
+
+def _ocr_footer_tokens(text):
+    return {
+        word
+        for word in re.findall(r"[a-z]{4,}", str(text or "").lower())
+        if word not in {"that", "this", "with", "from", "have", "been", "were"}
+    }
+
+
+def _repeated_hidden_ocr_footer_ids(items, doc, hidden_ocr_pages):
+    """Find recurring tiny bottom-page copyright bands in OCR-layer scans.
+
+    The pixels remain in the source image; these IDs are excluded only from model
+    input and redaction.  Pairwise token overlap tolerates page-to-page OCR noise,
+    while the narrow bottom-band / small-font / long-text gates avoid suppressing
+    ordinary body paragraphs or genuine footnotes.
+    """
+    candidates = []
+    for bid, pno, block in items:
+        if pno not in hidden_ocr_pages:
+            continue
+        page = doc[pno]
+        rect = fitz.Rect(block.get("bbox", (0, 0, 0, 0)))
+        text = block_text(block).strip()
+        size = dominant_size_color(block)[0] or 10.0
+        if (
+            rect.y0 < page.rect.y0 + 0.94 * page.rect.height
+            or size > 9.25
+            or len(text) < 90
+        ):
+            continue
+        candidates.append((bid, pno, text, _ocr_footer_tokens(text)))
+
+    repeated = set()
+    for index, (bid, pno, text, tokens) in enumerate(candidates):
+        for other_bid, other_pno, _other_text, other_tokens in candidates[index + 1:]:
+            if pno == other_pno:
+                continue
+            common = tokens & other_tokens
+            union = tokens | other_tokens
+            if len(common) >= 6 and len(common) / max(len(union), 1) >= 0.16:
+                repeated.update((bid, other_bid))
+
+        # A final one-page chunk cannot prove recurrence.  Retain a narrow,
+        # content-backed copyright fallback rather than sending legal boilerplate
+        # to the translator or painting over its scan pixels.
+        lowered = text.lower()
+        copyright_terms = sum(
+            term in lowered
+            for term in (
+                "copyright", "rights", "reserved", "copied", "scanned",
+                "duplicated", "learning", "ebook", "echapter", "third party content",
+            )
+        )
+        if len(text) >= 170 and re.search(r"\b(?:19|20)\d{2}\b", text) and copyright_terms >= 2:
+            repeated.add(bid)
+    return repeated
+
+
+def _hidden_ocr_static_block(block, text):
+    """Conservatively preserve scan pixels for table / figure / formula labels."""
+    value = " ".join(str(text or "").split())
+    if not value:
+        return True
+    if block.get("_preserve_formula") or _formula_only_visible_text(
+        block_text(block, tag=True)
+    ):
+        return True
+    if re.match(r"^(?:table|figure)\s+\d", value, re.I):
+        return True
+    words = re.findall(r"[A-Za-z]+", value)
+    prose_connectors = {
+        "and", "or", "so", "if", "then", "hence", "thus", "where",
+        "example", "solution", "proof", "theorem", "definition", "illustration",
+    }
+    if any(word.lower() in prose_connectors for word in words):
+        return False
+    variable_words = all(
+        len(word) == 1
+        or word.lower() in _OCR_INLINE_MATH_FUNCTIONS
+        or (
+            len(word) <= 6
+            and any(ch.isupper() for ch in word)
+            and any(ch.islower() for ch in word)
+        )
+        for word in words
+    ) if words else True
+    math_punctuation = bool(
+        _OCR_INLINE_MATH_OPERATOR_RE.search(value)
+        or re.search(r"\d", value)
+        or re.search(r"[()[\]{}]", value)
+    )
+    return bool(len(value) <= 90 and variable_words and (math_punctuation or words))
+
+
+def _hidden_ocr_footer_band_block(block, page):
+    """Narrow fallback for fragments split out of a proven scan footer band."""
+    rect = fitz.Rect(block.get("bbox", (0, 0, 0, 0)))
+    size = dominant_size_color(block)[0] or 10.0
+    return bool(
+        rect.y0 >= page.rect.y0 + 0.965 * page.rect.height
+        and size <= 9.25
+    )
 
 
 def _page_has_dominant_raster(page, threshold=0.5):
@@ -3288,13 +4559,22 @@ def _infer_column_right_caps(items, page):
     eligible = []
     for group in groups:
         rects = [rect for rect, _bid in group["items"]]
-        if len(rects) >= 3 or max(rect.width for rect in rects) >= 0.42 * width:
+        # A two-column body band is normally only 0.36--0.40 of the physical page
+        # width.  Requiring three blocks or 0.42 page widths left sparse right
+        # columns uncapped: Fundamental Astronomy p.23 has exactly two paragraphs,
+        # and the lower one expanded from x=453.64 to x=496.63.  One paragraph that
+        # is at least a plausible column width is already sufficient source-layout
+        # evidence; short captions / running labels were filtered above.
+        if len(rects) >= 2 or max(rect.width for rect in rects) >= 0.30 * width:
             eligible.append(group)
     eligible.sort(key=lambda group: group["anchor"])
     if not eligible:
         return {}
 
-    allowance = max(4.0, min(8.0, 0.015 * width))
+    # Extracted glyph bboxes can be fractionally narrower than font metrics.  Two
+    # points accommodates that difference without visibly eroding the source
+    # column margin or gutter; overflow is handled by wrapping / font shrink.
+    allowance = 2.0
     gutter = max(8.0, 0.02 * width)
     caps = {}
     for index, group in enumerate(eligible):
@@ -3323,6 +4603,67 @@ def _body_prose_must_not_be_right_aligned(rect, text, page):
     page_rect = _page_text_rect(page)
     cy = (rect.y0 + rect.y1) / 2.0
     return page_rect.y0 + 0.07 * page_rect.height <= cy <= page_rect.y1 - 0.07 * page_rect.height
+
+
+_FORMULA_TRANSITION_RE = re.compile(
+    r"^(?:gives?|yields?|which (?:gives?|yields?)|"
+    r"and|or|hence|thus|therefore|consequently|whence|then|so|"
+    r"it follows(?: that)?|we (?:get|obtain|find)|this (?:gives|yields))[,.:;]?$",
+    re.I,
+)
+
+
+def _is_formula_transition_before_preserved_formula(
+    rect, source_text, formula_rects, page
+):
+    """Identify a short prose bridge at a body-column edge before an equation.
+
+    Tight glyph bboxes for words such as ``Hence`` or a standalone ``gives`` can
+    look geometrically centred even though they are ordinary left-aligned prose
+    introducing the display below.
+    Require both a narrow discourse-transition phrase and a nearby preserved formula
+    in the same source column.  Running headers, page numbers and right-side labels
+    therefore retain their existing anchor behavior.
+    """
+    plain = " ".join(_strip_tags(str(source_text or "")).split())
+    if not _FORMULA_TRANSITION_RE.fullmatch(plain):
+        return False
+    rect = fitz.Rect(rect)
+    page_rect = _page_text_rect(page)
+    cy = (rect.y0 + rect.y1) / 2.0
+    if not (
+        page_rect.y0 + 0.07 * page_rect.height
+        <= cy
+        <= page_rect.y1 - 0.07 * page_rect.height
+    ):
+        return False
+    maximum_gap = max(16.0, 4.0 * max(rect.height, 1.0))
+    for candidate in formula_rects:
+        formula = fitz.Rect(candidate)
+        gap = formula.y0 - rect.y1
+        if gap < -1.0 or gap > maximum_gap:
+            continue
+        # The formula may be centred / indented, but it must begin in the same
+        # half-page column and not sit wholly to the left of the transition.
+        if formula.x1 < rect.x0 - 4.0:
+            continue
+        if formula.x0 - rect.x0 > 0.42 * page_rect.width:
+            continue
+        return True
+    return False
+
+
+def _matching_column_cap(rect, items, caps, page):
+    """Reuse a proven prose-column envelope for a short block at the same x0."""
+    rect = fitz.Rect(rect)
+    tolerance = max(6.0, 0.025 * _page_text_rect(page).width)
+    matches = [
+        caps.get(item[6])
+        for item in items
+        if caps.get(item[6]) is not None
+        and abs(fitz.Rect(item[0]).x0 - rect.x0) <= tolerance
+    ]
+    return min(matches) if matches else None
 
 
 # GPOS/GSUB carry the shaping/positioning rules that must survive subsetting.
@@ -3624,6 +4965,88 @@ def _draw_fit(
     )
 
 
+def _draw_fit_rotated(
+    page,
+    rect,
+    text,
+    color,
+    font_buffer,
+    font_name,
+    start_size,
+    align,
+    rotation,
+    min_size=4.0,
+):
+    """All-or-nothing textbox fitting for a source caption rotated by 90 degrees.
+
+    ``Page.insert_textbox(..., rotate=90)`` performs layout in the caption's own
+    coordinate system: the physical strip height becomes line width and its width
+    becomes line stack height.  This is substantially safer than flattening the
+    strip into a 10pt-wide horizontal box or applying an unbounded morph.  The
+    already validated/subset in-memory font is registered on the page, so this path
+    retains the same ToUnicode and font-safety guarantees as ``TextWriter``.
+    """
+    rect = fitz.Rect(rect)
+    rect.normalize()
+    if rect.width < 2 or rect.height < 2 or rotation not in {90, 270}:
+        return _draw_result()
+    try:
+        page.insert_font(
+            fontname=str(font_name),
+            fontbuffer=font_buffer,
+            set_simple=False,
+        )
+    except Exception:
+        return _draw_result()
+
+    fs = max(min_size, min(float(start_size), 200.0))
+    floor = (
+        max(min_size, round(0.62 * float(start_size), 1))
+        if start_size >= 9.0
+        else min_size
+    )
+    candidates = []
+    probe = fs
+    while probe >= floor:
+        candidates.append(probe)
+        probe -= 0.5
+    probe = floor - 0.5
+    while probe >= min_size:
+        candidates.append(probe)
+        probe -= 0.5
+    for probe in candidates:
+        try:
+            shape = page.new_shape()
+            spare = shape.insert_textbox(
+                rect,
+                text,
+                fontname=str(font_name),
+                fontsize=probe,
+                align=align,
+                color=color,
+                rotate=rotation,
+            )
+            if float(spare) < -0.01:
+                continue
+            shape.commit(overlay=True)
+            return _draw_result(
+                drawn=True,
+                complete=True,
+                shrunk=probe < float(start_size) - 0.01,
+                min_font=probe,
+            )
+        except Exception:
+            continue
+    # PyMuPDF emits no text when the rotated textbox does not fit.  Report a hard
+    # failure rather than committing a truncated caption or an unreadable fragment.
+    return _draw_result(
+        drawn=False,
+        complete=False,
+        shrunk=True,
+        min_font=min_size,
+    )
+
+
 _TAG_RE = re.compile(r"<(sub|sup)>(.*?)</\1>", re.DOTALL)
 _STRIP_TAG_RE = re.compile(r"</?(?:sub|sup)>")
 _RICH_ZERO_ADVANCE_GAP = "\x00"
@@ -3881,25 +5304,521 @@ def _clip_out(rect, regions):
 
 
 def _split_out_keeps(rect, keeps):
-    """redaction rect 에서 '원본유지' 블록(표시수식·라벨)과 겹치는 가로띠를 빼고,
-    그 위/아래의 띠만 돌려준다. 번역 블록 bbox 가 인접 식을 세로로 덮어 그 식 글자가
-    지워지는 드문 경우를 막는다(겹치는 식이 없으면 rect 하나 그대로)."""
+    """Subtract exact 2-D keep rectangles from a source redaction rectangle.
+
+    The previous implementation removed the keep's *entire horizontal band*.
+    When a narrow brace or equation overlapped a prose bbox by a fraction of a
+    point, that left unrelated source words on the other side of the column (for
+    example ``is``, ``The altitude`` and ``on the other hand``).  Four-way 2-D
+    subtraction preserves the formula pixels while still redacting prose to its
+    left and right.
+    """
     parts = [fitz.Rect(rect)]
     for k in keeps:
+        protected = fitz.Rect(k)
+        if protected.is_empty:
+            continue
+        # Leave a sub-point antialiasing halo around preserved source glyphs.
+        protected = fitz.Rect(
+            protected.x0 - 0.6,
+            protected.y0 - 0.6,
+            protected.x1 + 0.6,
+            protected.y1 + 0.6,
+        )
         nxt = []
         for r in parts:
-            ox = min(r.x1, k.x1) - max(r.x0, k.x0)
-            oy = min(r.y1, k.y1) - max(r.y0, k.y0)
-            # 가로로 의미있게 겹치고 식이 rect 안쪽 띠를 차지할 때만 분리.
-            if ox <= 0.2 * (r.x1 - r.x0) or oy <= 0:
+            intersection = r & protected
+            if intersection.is_empty or intersection.width <= 0 or intersection.height <= 0:
                 nxt.append(r)
                 continue
-            if k.y0 - r.y0 > 3:  # 식 위쪽 띠
-                nxt.append(fitz.Rect(r.x0, r.y0, r.x1, k.y0 - 1))
-            if r.y1 - k.y1 > 3:  # 식 아래쪽 띠
-                nxt.append(fitz.Rect(r.x0, k.y1 + 1, r.x1, r.y1))
+            # Top and bottom span the full width; left and right cover only the
+            # protected object's vertical band.  These pieces are disjoint, so a
+            # later keep can safely subtract from them again.
+            if intersection.y0 - r.y0 > 0.2:
+                nxt.append(fitz.Rect(r.x0, r.y0, r.x1, intersection.y0))
+            if r.y1 - intersection.y1 > 0.2:
+                nxt.append(fitz.Rect(r.x0, intersection.y1, r.x1, r.y1))
+            if intersection.x0 - r.x0 > 0.2:
+                nxt.append(
+                    fitz.Rect(r.x0, intersection.y0, intersection.x0, intersection.y1)
+                )
+            if r.x1 - intersection.x1 > 0.2:
+                nxt.append(
+                    fitz.Rect(intersection.x1, intersection.y0, r.x1, intersection.y1)
+                )
         parts = nxt
-    return [p for p in parts if p.width > 2 and p.height > 2]
+    return [p for p in parts if p.width > 0.5 and p.height > 0.5]
+
+
+def _formula_pdf_content_tokens(data):
+    """Yield PDF content-stream tokens outside strings, names and comments.
+
+    Formula source streams are restored from their original ``BT ... ET`` bytes.
+    A regex is not safe here because a literal string may itself contain the
+    letters ``BT`` or ``ET``.  This deliberately small scanner is sufficient for
+    locating operators while preserving every original byte between them.
+    """
+    data = bytes(data or b"")
+    whitespace = b"\x00\x09\x0a\x0c\x0d\x20"
+    delimiters = b"()<>[]{}/%"
+    index = 0
+    length = len(data)
+    while index < length:
+        byte = data[index]
+        if byte in whitespace:
+            index += 1
+            continue
+        if byte == 0x25:  # % comment
+            newline = data.find(b"\n", index + 1)
+            index = length if newline < 0 else newline + 1
+            continue
+        if byte == 0x28:  # balanced literal string, including escaped parens
+            depth = 1
+            index += 1
+            while index < length and depth:
+                current = data[index]
+                if current == 0x5C:  # backslash escape / line continuation
+                    index += 2
+                    continue
+                if current == 0x28:
+                    depth += 1
+                elif current == 0x29:
+                    depth -= 1
+                index += 1
+            continue
+        if byte == 0x3C and index + 1 < length and data[index + 1] != 0x3C:
+            # Hexadecimal string.  ``<<`` remains two ordinary delimiter tokens.
+            close = data.find(b">", index + 1)
+            index = length if close < 0 else close + 1
+            continue
+        if byte == 0x2F:  # /Name: never an operator
+            index += 1
+            while (
+                index < length
+                and data[index] not in whitespace
+                and data[index] not in delimiters
+            ):
+                index += 1
+            continue
+        if byte in delimiters:
+            index += 1
+            continue
+        start = index
+        while (
+            index < length
+            and data[index] not in whitespace
+            and data[index] not in delimiters
+        ):
+            index += 1
+        yield data[start:index], start, index
+
+
+def _pdf_text_object_ranges(data):
+    """Return exact byte ranges for top-level ``BT ... ET`` text objects."""
+    opened = None
+    ranges = []
+    for token, start, end in _formula_pdf_content_tokens(data):
+        if token == b"BT" and opened is None:
+            opened = start
+        elif token == b"ET" and opened is not None:
+            ranges.append((opened, end))
+            opened = None
+    return ranges
+
+
+def _page_text_object_groups(doc, page):
+    groups = []
+    for xref in page.get_contents():
+        raw = bytes(doc.xref_stream(int(xref)) or b"")
+        for start, end in _pdf_text_object_ranges(raw):
+            groups.append(
+                {
+                    "xref": int(xref),
+                    "start": start,
+                    "end": end,
+                    "data": raw[start:end],
+                }
+            )
+    return groups
+
+
+def _page_standalone_text_groups(doc, page):
+    """Return source text objects with their inherited state made local.
+
+    This is the formula-specific counterpart of
+    :func:`_split_safe_residual_text_stream`.  Page streams may contain figures,
+    clipping and images outside text objects, so those operators are ignored while
+    the fill colour and persistent PDF text state are tracked exactly.
+    """
+    groups = []
+    for xref in page.get_contents():
+        raw_data = bytes(doc.xref_stream(int(xref)) or b"")
+        tokens = _pdf_content_tokens(raw_data)
+        fill = b"0 g"
+        text_state = dict(_PDF_TEXT_STATE_DEFAULTS)
+        graphics_stack = []
+        operands = []
+        index = 0
+        while index < len(tokens):
+            kind, raw, start, end = tokens[index]
+            if kind == "operand":
+                operands.append(raw)
+                index += 1
+                continue
+            if raw == b"BT":
+                if operands:
+                    raise RuntimeError("source text object has pending operands")
+                stop = index + 1
+                while stop < len(tokens):
+                    skind, sraw, _ss, _se = tokens[stop]
+                    if skind == "operator" and sraw == b"ET":
+                        break
+                    if skind == "operator" and sraw == b"BT":
+                        raise RuntimeError("nested source PDF text object")
+                    stop += 1
+                if stop >= len(tokens):
+                    raise RuntimeError("unterminated source PDF text object")
+                anchor, next_state = _analyse_safe_text_object(
+                    tokens[index + 1 : stop], text_state
+                )
+                state_parts = [
+                    text_state[operator] + b" " + operator
+                    for operator in (b"Tc", b"Tw", b"Tz", b"TL", b"Tr", b"Ts")
+                ]
+                inherited_font = text_state.get(b"Tf")
+                if inherited_font is not None:
+                    state_parts.append(
+                        inherited_font[0] + b" " + inherited_font[1] + b" Tf"
+                    )
+                body = bytes(raw_data[end : tokens[stop][2]])
+                standalone = (
+                    b"q\n"
+                    + fill
+                    + b"\nBT\n"
+                    + b" ".join(state_parts)
+                    + b"\n"
+                    + body
+                    + b"\nET\nQ\n"
+                )
+                groups.append(
+                    {
+                        "xref": int(xref),
+                        "start": start,
+                        "end": tokens[stop][3],
+                        "data": standalone,
+                        "anchor_pdf": anchor,
+                    }
+                )
+                text_state = next_state
+                index = stop + 1
+                continue
+            if raw == b"q":
+                graphics_stack.append((fill, dict(text_state)))
+            elif raw == b"Q":
+                if graphics_stack:
+                    fill, text_state = graphics_stack.pop()
+            elif raw in {b"g", b"rg", b"k"}:
+                count = {b"g": 1, b"rg": 3, b"k": 4}[raw]
+                if len(operands) >= count:
+                    values = operands[-count:]
+                    if all(_PDF_NUMBER_TOKEN.match(value) for value in values):
+                        fill = b" ".join(values + [raw])
+            operands = []
+            index += 1
+    return groups
+
+
+def _preserved_span_descriptor(span):
+    origin = span.get("origin") or (0.0, 0.0)
+    return {
+        "font": str(span.get("font", "")),
+        "origin_y": float(origin[1]),
+        "bbox": fitz.Rect(span.get("bbox", (0, 0, 0, 0))),
+    }
+
+
+def _trace_matches_preserved_span(trace, descriptors):
+    font_name = str(trace.get("font", ""))
+    chars = list(trace.get("chars") or [])
+    if not chars:
+        return False
+    for descriptor in descriptors:
+        if descriptor["font"] != font_name:
+            continue
+        source_bbox = fitz.Rect(descriptor["bbox"])
+        for char in chars:
+            try:
+                origin = char[2]
+                x, y = float(origin[0]), float(origin[1])
+            except Exception:
+                continue
+            # Dict spans may start with a space which texttrace omits.  Matching
+            # the baseline plus any visible character origin is stable across a
+            # redaction rewrite and does not confuse geometrically overlapping
+            # prose with the protected formula.
+            if (
+                abs(y - descriptor["origin_y"]) <= 0.8
+                and source_bbox.x0 - 1.0 <= x <= source_bbox.x1 + 1.0
+            ):
+                return True
+    return False
+
+
+def _tight_preserved_layout_obstacle(traces, descriptors, fallback, halo=0.6):
+    """Return a glyph-tight obstacle for one exactly preserved text block.
+
+    MuPDF ``dict`` span boxes can be much taller than the glyphs they describe,
+    especially for vertically positioned or damaged scientific fonts.  Those raw
+    boxes remain authoritative for redaction protection and exact text-object
+    replay.  Layout clipping, however, may use the union of matching texttrace
+    character boxes so a phantom span tail cannot take half of a neighbouring
+    prose line's width.
+
+    Every source descriptor must be proved by an exact font plus baseline and
+    in-span character origin.  If even one descriptor is not matched, fail closed
+    to the original raw rectangle.
+    """
+    raw = fitz.Rect(fallback)
+    if (
+        not descriptors
+        or raw.is_empty
+        or raw.width <= 0
+        or raw.height <= 0
+    ):
+        return raw
+
+    matched_boxes = []
+    for descriptor in descriptors:
+        source_bbox = fitz.Rect(descriptor["bbox"])
+        descriptor_boxes = []
+        for trace in traces:
+            if str(trace.get("font", "")) != descriptor["font"]:
+                continue
+            for char in trace.get("chars") or []:
+                try:
+                    origin = char[2]
+                    char_bbox = fitz.Rect(char[3])
+                    x, y = float(origin[0]), float(origin[1])
+                except Exception:
+                    continue
+                if (
+                    abs(y - descriptor["origin_y"]) <= 0.8
+                    and source_bbox.x0 - 1.0 <= x <= source_bbox.x1 + 1.0
+                    and not char_bbox.is_empty
+                    and char_bbox.width > 0
+                    and char_bbox.height > 0
+                ):
+                    descriptor_boxes.append(char_bbox)
+        if not descriptor_boxes:
+            return raw
+        matched_boxes.extend(descriptor_boxes)
+
+    tight = fitz.Rect(matched_boxes[0])
+    for char_bbox in matched_boxes[1:]:
+        tight |= char_bbox
+    padding = max(0.0, float(halo))
+    tight = fitz.Rect(
+        max(raw.x0, tight.x0 - padding),
+        max(raw.y0, tight.y0 - padding),
+        min(raw.x1, tight.x1 + padding),
+        min(raw.y1, tight.y1 + padding),
+    )
+    if tight.is_empty or tight.width <= 0 or tight.height <= 0:
+        return raw
+    return tight
+
+
+def _preserved_text_group_indexes(page, groups, descriptors):
+    if not descriptors:
+        return []
+    text_log = [
+        sequence
+        for sequence, (kind, _bbox) in enumerate(page.get_bboxlog())
+        if "text" in str(kind)
+    ]
+    if len(groups) != len(text_log):
+        raise RuntimeError(
+            "cannot prove preserved formula text-object mapping: "
+            f"content_groups={len(groups)}, bboxlog_text={len(text_log)}"
+        )
+    traces_by_sequence = defaultdict(list)
+    for trace in page.get_texttrace():
+        traces_by_sequence[int(trace.get("seqno", -1))].append(trace)
+    selected = []
+    for group_index, sequence in enumerate(text_log):
+        if any(
+            _trace_matches_preserved_span(trace, descriptors)
+            for trace in traces_by_sequence.get(sequence, [])
+        ):
+            selected.append(group_index)
+    return selected
+
+
+def _clip_preserved_text_group(page, data, descriptors, halo=0.75):
+    """Clip one replayed source text object to its proven preserved spans.
+
+    Some textbook producers put a formula glyph and distant prose in the same
+    ``Tj`` / ``TJ`` object by using very large character spacing.  Redaction can
+    safely remove the prose glyphs, but formula replay used to restore the whole
+    text object and thereby resurrect source words such as ``circle``.  The
+    descriptor bboxes are already bound to exact font, baseline and character
+    origins, so use their union as a PDF clipping path around the replay.
+    """
+    inverse = ~page.transformation_matrix
+    paths = []
+    for descriptor in descriptors:
+        rect = fitz.Rect(descriptor["bbox"])
+        padding = max(0.0, float(halo))
+        rect = fitz.Rect(
+            rect.x0 - padding,
+            rect.y0 - padding,
+            rect.x1 + padding,
+            rect.y1 + padding,
+        ) & page.rect
+        if rect.is_empty or rect.width <= 0 or rect.height <= 0:
+            continue
+        pdf_rect = rect * inverse
+        values = (pdf_rect.x0, pdf_rect.y0, pdf_rect.width, pdf_rect.height)
+        if not all(math.isfinite(value) for value in values):
+            raise RuntimeError("preserved formula clip has non-finite geometry")
+        paths.append(
+            "{:.6f} {:.6f} {:.6f} {:.6f} re".format(*values).encode("ascii")
+        )
+    if not paths:
+        raise RuntimeError("preserved formula clip has no valid geometry")
+    return b"q\n" + b"\n".join(paths) + b"\nW n\n" + bytes(data) + b"\nQ\n"
+
+
+def _build_preserved_text_overlay(doc, page, descriptors):
+    """Snapshot exact source formula text operators for post-redaction replay."""
+    groups = _page_standalone_text_groups(doc, page)
+    selected = _preserved_text_group_indexes(page, groups, descriptors)
+    if not selected:
+        raise RuntimeError("preserved formula has no source text-object mapping")
+    text_log = [
+        sequence
+        for sequence, (kind, _bbox) in enumerate(page.get_bboxlog())
+        if "text" in str(kind)
+    ]
+    traces_by_sequence = defaultdict(list)
+    for trace in page.get_texttrace():
+        traces_by_sequence[int(trace.get("seqno", -1))].append(trace)
+    # Each standalone chunk preserves the original font, glyph IDs, matrices,
+    # persistent text spacing, fill colour and CFF encoding.  Clip each selected
+    # object to only the descriptors that actually selected that object: a distant
+    # prose glyph can share its TJ byte string with a formula glyph.
+    chunks = []
+    for index in selected:
+        matching = [
+            descriptor
+            for descriptor in descriptors
+            if any(
+                _trace_matches_preserved_span(trace, [descriptor])
+                for trace in traces_by_sequence.get(text_log[index], [])
+            )
+        ]
+        if not matching:
+            raise RuntimeError("preserved formula text object lost its descriptor binding")
+        chunks.append(
+            _clip_preserved_text_group(page, groups[index]["data"], matching)
+        )
+        chunks.append(b"\n")
+    return b"".join(chunks), len(selected)
+
+
+def _remove_preserved_text_objects(doc, page, descriptors):
+    """Remove the redaction-damaged copy before replaying original formula text."""
+    groups = _page_text_object_groups(doc, page)
+    selected = _preserved_text_group_indexes(page, groups, descriptors)
+    removals = defaultdict(list)
+    for index in selected:
+        group = groups[index]
+        removals[group["xref"]].append((group["start"], group["end"]))
+    for xref, ranges in removals.items():
+        raw = bytes(doc.xref_stream(xref) or b"")
+        output = []
+        cursor = 0
+        for start, end in sorted(ranges):
+            output.append(raw[cursor:start])
+            output.append(b" ")
+            cursor = end
+        output.append(raw[cursor:])
+        doc.update_stream(xref, b"".join(output))
+    return len(selected)
+
+
+def _append_page_content_stream(doc, page, data):
+    if not data:
+        return page
+    stream_xref = doc.get_new_xref()
+    doc.update_object(stream_xref, "<<>>")
+    doc.update_stream(stream_xref, bytes(data))
+    page_xref = doc.page_xref(page.number)
+    value_type, raw_value = doc.xref_get_key(page_xref, "Contents")
+    if value_type == "array":
+        updated = raw_value[:-1] + f" {stream_xref} 0 R]"
+    elif value_type == "xref":
+        updated = f"[{raw_value} {stream_xref} 0 R]"
+    else:
+        updated = f"[{stream_xref} 0 R]"
+    doc.xref_set_key(page_xref, "Contents", updated)
+    return doc.reload_page(page)
+
+
+def _translated_source_residuals(page, redactions, protected_regions):
+    """Find original-font English still visible inside translated source boxes.
+
+    This is a postflight proof for the renderer's own redaction scope, not a
+    language detector for the translated prose.  Generated text uses Quilo's
+    bundled fonts and is ignored.  Original formula / figure text is also ignored
+    when its centre remains inside an explicitly protected rectangle.
+    """
+    residuals = []
+    protected = [fitz.Rect(region) for region in protected_regions]
+    try:
+        blocks = page.get_text("dict").get("blocks", [])
+    except Exception:
+        return [{"id": None, "text": "<text inspection failed>"}]
+    for block in blocks:
+        if block.get("type") != 0:
+            continue
+        for line in block.get("lines", []):
+            for span in line.get("spans", []):
+                text = str(span.get("text", ""))
+                if not re.search(r"[A-Za-z]{2,}", text):
+                    continue
+                font_name = str(span.get("font", ""))
+                if any(
+                    marker in font_name.lower()
+                    for marker in ("pretendard", "nanum", "quilo")
+                ):
+                    continue
+                span_rect = fitz.Rect(span.get("bbox", (0, 0, 0, 0)))
+                cx = (span_rect.x0 + span_rect.x1) / 2.0
+                cy = (span_rect.y0 + span_rect.y1) / 2.0
+                for rect, _color, is_table, bid in redactions:
+                    source_rect = fitz.Rect(rect)
+                    if not (
+                        source_rect.x0 - 0.5 <= cx <= source_rect.x1 + 0.5
+                        and source_rect.y0 - 0.5 <= cy <= source_rect.y1 + 0.5
+                    ):
+                        continue
+                    if not is_table and any(
+                        region.x0 - 0.75 <= cx <= region.x1 + 0.75
+                        and region.y0 - 0.75 <= cy <= region.y1 + 0.75
+                        for region in protected
+                    ):
+                        continue
+                    residuals.append(
+                        {
+                            "id": bid,
+                            "text": text[:80],
+                            "bbox": [round(value, 2) for value in span_rect],
+                            "font": font_name,
+                        }
+                    )
+                    break
+    return residuals
 
 
 def _dedoverlap_column(items):
@@ -3949,6 +5868,137 @@ def _rects_overlap(a, b, min_frac=0.12):
     ix = min(a.x1, b.x1) - max(a.x0, b.x0)
     iy = min(a.y1, b.y1) - max(a.y0, b.y0)
     return ix > 2 and iy > 2 and ix > min_frac * min(a.width, max(b.width, 1.0))
+
+
+def _expand_lowercase_formula_tails_upward(
+    items,
+    static_rects,
+    figs,
+    formula_rects,
+    source_text_by_id,
+    page_rect,
+    font,
+    minimum_readable_size=8.0,
+):
+    """Use proven blank space above a page-continuation tail before a formula.
+
+    A producer may place the last two prose lines immediately before an inline
+    formula whose bbox overlaps the prose bbox by a point or two.  When that prose
+    is the lowercase continuation of a previous-page sentence, Korean can need one
+    additional line.  Generic compaction excludes the block because the *source*
+    bboxes overlap, forcing a 7pt render even when a blank caption-to-prose gap is
+    available directly above it.
+
+    This repair is deliberately fail-closed: the source must begin lowercase, be a
+    substantial unfinished prose tail, touch a preserved formula below, and have a
+    completely obstacle-free gap above.  The adjusted draw rect ends before the
+    formula and is used only when it can fit the target at the normal 8pt floor.
+    Original redaction geometry remains unchanged in the caller.
+    """
+    if not items:
+        return items
+    page_rect = fitz.Rect(page_rect)
+    fixed = [fitz.Rect(value) for value in static_rects] + [
+        fitz.Rect(value) for value in figs
+    ]
+    source_rects = [fitz.Rect(item[0]) for item in items]
+    out = list(items)
+    for index, item in enumerate(items):
+        rect, target, source_size, _color, _bold, _italic, block_id = item
+        rect = fitz.Rect(rect)
+        source = " ".join(
+            _strip_tags(str(source_text_by_id.get(block_id, ""))).split()
+        )
+        # A column / figure can sit between the two visual fragments of one
+        # hyphenated word.  In Fundamental Astronomy, for example, ID 419 ends
+        # with ``fur-``, ID 420 is the intervening figure caption, and ID 421
+        # starts with ``ther ...``.  ID 421 itself ends with a full stop, so the
+        # older ``_ends_midsentence`` test made the safe upward expansion depend
+        # on how verbose a particular Korean answer happened to be.  Bind this
+        # exception to a nearby source ID that visibly ends in an alphabetic
+        # discretionary hyphen; ordinary lowercase paragraphs remain excluded.
+        hyphenated_predecessor = False
+        try:
+            numeric_id = int(block_id)
+        except (TypeError, ValueError):
+            numeric_id = None
+        if numeric_id is not None:
+            for delta in range(1, 4):
+                previous = source_text_by_id.get(numeric_id - delta)
+                if previous is None:
+                    previous = source_text_by_id.get(str(numeric_id - delta), "")
+                previous = " ".join(
+                    _strip_tags(str(previous or "")).split()
+                )
+                if re.search(r"[A-Za-z]{2,}[-\u00ad\u2010\u2011]\s*$", previous):
+                    hyphenated_predecessor = True
+                    break
+        if (
+            not re.match(r"^[\s\"'‘“(\[]*[a-z]", source)
+            or len(re.findall(r"[A-Za-z]+", source)) < 10
+            or not (_ends_midsentence(source) or hyphenated_predecessor)
+            or rect.height > 3.2 * max(float(source_size), 1.0)
+        ):
+            continue
+        formula = None
+        for candidate in formula_rects:
+            candidate = fitz.Rect(candidate)
+            overlap_x = min(rect.x1, candidate.x1) - max(rect.x0, candidate.x0)
+            gap = candidate.y0 - rect.y1
+            if (
+                overlap_x > 2.0
+                and gap >= -0.30 * max(float(source_size), 1.0)
+                and gap <= 0.35 * max(float(source_size), 1.0)
+            ):
+                formula = candidate
+                break
+        # A proven hyphen continuation can use the verified blank band above even
+        # when no separate formula rectangle follows it.  This is the actual
+        # Fig. 3.24 layout: the caption ends above ``fur-`` / ``ther ...`` and the
+        # next ordinary prose block prevents downward growth.  All obstacle and
+        # overlap checks below still apply, so this does not become a generic
+        # paragraph-expansion path.
+        if formula is None and not hyphenated_predecessor:
+            continue
+        safe_bottom = (
+            min(rect.y1, formula.y0 - 2.0)
+            if formula is not None
+            else rect.y1
+        )
+        current_height = max(0.0, safe_bottom - rect.y0)
+        needed = _est_text_height(
+            target, rect.width, minimum_readable_size, font
+        )
+        if needed <= current_height + 0.5:
+            continue
+
+        horizontal_obstacles = []
+        for obstacle in fixed + [
+            value for position, value in enumerate(source_rects) if position != index
+        ]:
+            overlap_x = min(rect.x1, obstacle.x1) - max(rect.x0, obstacle.x0)
+            if overlap_x > 0.10 * min(rect.width, max(obstacle.width, 1.0)):
+                horizontal_obstacles.append(obstacle)
+        ceilings = [
+            obstacle.y1
+            for obstacle in horizontal_obstacles
+            if obstacle.y1 <= rect.y0 + 0.5
+        ]
+        ceiling = max(ceilings, default=page_rect.y0 + 6.0)
+        new_y0 = max(ceiling + 2.0, safe_bottom - needed)
+        if new_y0 >= rect.y0 - 0.5:
+            continue
+        candidate_rect = fitz.Rect(rect.x0, new_y0, rect.x1, safe_bottom)
+        if candidate_rect.height + 0.5 < needed:
+            continue
+        if any(
+            _rects_overlap(candidate_rect, obstacle, 0.02)
+            for obstacle in horizontal_obstacles
+            if obstacle.y0 < safe_bottom - 0.5 and obstacle.y1 > new_y0 + 0.5
+        ):
+            continue
+        out[index] = (candidate_rect,) + tuple(item[1:])
+    return out
 
 
 def _compact_columns(items, static_rects, figs, page_rect, font):
@@ -4386,22 +6436,27 @@ def _set_page_content_xrefs(doc, page, xrefs):
 def _logical_key_for_anchor(anchor_pdf, page, logical_rects, sequence):
     """Map a PDF-space baseline to the closest original logical text block."""
     x, pdf_y = anchor_pdf
-    text_rect = _page_text_rect(page)
-    top_y = text_rect.height - pdf_y
+    crop = fitz.Rect(page.cropbox)
+    # Content-stream anchors use PDF page coordinates, while get_text() rectangles
+    # are CropBox-relative with a top-left origin.  Subtract the CropBox x origin
+    # and mirror y around its upper PDF edge.  This reduces to the previous formula
+    # for origin-zero pages and safely supports ordinary inset book CropBoxes.
+    text_x = x - crop.x0
+    top_y = crop.y1 - pdf_y
     candidates = []
     for block_id, rect in logical_rects:
         rect = fitz.Rect(rect)
         if (
-            rect.x0 - 24.0 <= x <= rect.x1 + 24.0
+            rect.x0 - 24.0 <= text_x <= rect.x1 + 24.0
             and rect.y0 - 12.0 <= top_y <= rect.y1 + 12.0
         ):
-            dx = 0.0 if rect.x0 <= x <= rect.x1 else min(abs(x - rect.x0), abs(x - rect.x1))
+            dx = 0.0 if rect.x0 <= text_x <= rect.x1 else min(abs(text_x - rect.x0), abs(text_x - rect.x1))
             dy = 0.0 if rect.y0 <= top_y <= rect.y1 else min(abs(top_y - rect.y0), abs(top_y - rect.y1))
             candidates.append((dx + dy, block_id))
     if not candidates:
         return None
     _distance, block_id = min(candidates, key=lambda value: (value[0], value[1]))
-    return (int(block_id), round(float(top_y), 4), round(float(x), 4), sequence)
+    return (int(block_id), round(float(top_y), 4), round(float(text_x), 4), sequence)
 
 
 def _interleave_safe_page_text_streams(
@@ -4430,9 +6485,11 @@ def _interleave_safe_page_text_streams(
     diagnostic["original_streams"] = len(original_xrefs)
     if not original_xrefs:
         return page, diagnostic
-    # Raw stream baselines are only proven for unrotated, origin-zero CropBoxes.
+    # Raw stream baselines are proven for unrotated CropBoxes. Non-zero origins are
+    # normalized in _logical_key_for_anchor and the final raster equality check is
+    # still mandatory before the reordered streams are accepted.
     crop = fitz.Rect(page.cropbox)
-    if int(page.rotation or 0) % 360 or abs(crop.x0) > 1e-6 or abs(crop.y0) > 1e-6:
+    if int(page.rotation or 0) % 360:
         diagnostic["reason"] = "unsupported_page_geometry"
         return page, diagnostic
     if not _pixmap_geometry_is_safe(page.rect, 1.0):
@@ -5419,6 +7476,7 @@ def cmd_render(pdf_path, out_path, font_path):
         raise ValueError("render translations must be a JSON object")
 
     doc = fitz.open(pdf_path)
+    hidden_ocr_pages = _hidden_ocr_scan_page_indexes(doc)
     source_cmap_anomalies = _cmap_anomaly_inventory(doc)
     build_decoders(doc)  # 추출과 동일한 디코더 — 블록 텍스트/매칭 일관성 유지
     # Resolve these before mutating any page.  Direct renderer callers therefore
@@ -5439,6 +7497,7 @@ def cmd_render(pdf_path, out_path, font_path):
     table_layout_cache = {}
     table_region_cache = {}
     figure_translation_cache = {}
+    texttrace_cache = {}
 
     def figs_for(pno):
         if pno not in fig_cache:
@@ -5474,17 +7533,36 @@ def cmd_render(pdf_path, out_path, font_path):
             )
         return figure_translation_cache[pno]
 
+    def texttraces_for(pno):
+        if pno not in texttrace_cache:
+            texttrace_cache[pno] = list(doc[pno].get_texttrace())
+        return texttrace_cache[pno]
+
     # 번역이 있는 블록만 (페이지별로) 모은다.
     by_page = defaultdict(list)
     kept_by_page = defaultdict(list)  # 번역하지 않는 원본 글리프 rect — redaction 보호용
+    layout_kept_by_page = defaultdict(list)  # glyph-tight draw/expansion obstacles
+    preserved_spans_by_page = defaultdict(list)  # exact source text-op replay proof
     static_by_page = defaultdict(list)  # 번역 안 된 모든 블록(수식·라벨·미번역) — 압축 앵커
+    formula_by_page = defaultdict(list)  # 원본 보존 표시수식 — 짧은 도입어 정렬 근거
     logical_rects_by_page = defaultdict(list)  # source content-order anchor map
     logical_source_y_by_id = {}
+    source_text_by_id = {}
     table_layout_by_id = {}
+    source_rotation_by_id = {}
     table_translation_pages = set()
     skipped_table_positions = defaultdict(list)
     pending_table_logical = defaultdict(list)
-    for bid, pno, block in iter_text_blocks(doc):
+    # Formula-only identity translations intentionally keep the source PDF glyph
+    # stream.  This is a completed render operation, but it is not a replacement:
+    # report it separately so the caller can validate every preserved ID against
+    # its source text instead of either redrawing damaged MathTime Unicode or
+    # silently lowering the expected block count.
+    preserved_original_ids = []
+    for bid, pno, block in iter_text_blocks(
+        doc, hidden_ocr_pages=hidden_ocr_pages
+    ):
+        _use_page(pno)  # cmd_extract와 동일한 페이지별 깨진 글리프 복원
         # Table-row source blocks have no ordinary translatable lines.  Their
         # glyphs are handled below as cell-specific string IDs; do not turn the
         # original merged row into a static clipping mask.  Figure/axis labels,
@@ -5510,8 +7588,22 @@ def cmd_render(pdf_path, out_path, font_path):
         ko = translations.get(str(bid))
         if ko is None:
             ko = translations.get(bid)
-        if not ko or not str(ko).strip():
-            # 번역 없는 블록은 원본이 그대로 남으므로(이동 불가) 세로압축의 '고정 앵커'다.
+        source_visible_text = str(visible_text or "").strip()
+        source_tagged_text = str(block_text(block, figs_for(pno), tag=True) or "").strip()
+        source_text_by_id[bid] = source_tagged_text or source_visible_text
+        unchanged_translation = bool(
+            ko
+            and str(ko).strip()
+            and str(ko).strip() == source_tagged_text
+            and _formula_only_visible_text(source_tagged_text)
+        )
+        if unchanged_translation:
+            preserved_original_ids.append(bid)
+        if not ko or not str(ko).strip() or unchanged_translation:
+            # 번역이 없거나 byte-for-byte 같은 블록은 원본이 그대로 남으므로(이동
+            # 불가) 세로압축의 '고정 앵커'다.  Formula/code-only blocks are deliberately
+            # returned unchanged by the response layer; preserving their original PDF glyphs
+            # avoids replacing a visually correct MathTime glyph with a damaged Unicode map.
             r0 = fitz.Rect(_nonfig_rect(block, figs_for(pno)))
             static_by_page[pno].append(r0)
             # ``cmd_extract`` deliberately omits displayed equations, isolated
@@ -5524,15 +7616,46 @@ def cmd_render(pdf_path, out_path, font_path):
             # intentional formula / figure fragments remain byte-for-byte intact.
             if not r0.is_empty and r0.width > 0 and r0.height > 0:
                 kept_by_page[pno].append(r0)
+                descriptors = [
+                    _preserved_span_descriptor(span)
+                    for line in block.get("lines", [])
+                    for span in line.get("spans", [])
+                    if str(span.get("text", "")).strip()
+                ]
+                if descriptors:
+                    preserved_spans_by_page[pno].append((r0, descriptors))
+                exact_formula_keep = bool(
+                    unchanged_translation or _keep_original_block(block)
+                )
+                layout_obstacle = r0
+                if exact_formula_keep:
+                    layout_obstacle = _tight_preserved_layout_obstacle(
+                        texttraces_for(pno), descriptors, r0
+                    )
+                layout_kept_by_page[pno].append(layout_obstacle)
+                if exact_formula_keep:
+                    formula_by_page[pno].append(r0)
             continue
         # 블록 전체 bbox 가 아니라 '그림 영역 줄을 뺀' bbox 만 덮는다.
         # → 캡션에 붙은 축 라벨(V(R_AB))을 지우지 않고 영어 그대로 남긴다.
         rect = _nonfig_rect(block, figs_for(pno))
         size, color, is_bold, is_ital = dominant_size_color(block)
+        if block.get("_caption_chain"):
+            source_direction = tuple(
+                block.get("_source_text_direction")
+                or _block_primary_direction(block)
+            )
+            if source_direction == (0, -1):
+                source_rotation_by_id[bid] = 90
+            elif source_direction == (0, 1):
+                source_rotation_by_id[bid] = 270
+        redraw_text = _normalize_redrawn_latin_ligatures(_clean_ko(ko)).strip()
         by_page[pno].append(
-            (rect, _clean_ko(ko).strip(), size, color, is_bold, is_ital, bid)
+            (rect, redraw_text, size, color, is_bold, is_ital, bid)
         )
     for pno in range(len(doc)):
+        if pno in hidden_ocr_pages:
+            continue  # scanned table pixels remain in the page-sized source image
         for cell in table_cells_for(pno):
             bid = cell["id"]
             rect = fitz.Rect(cell["source_rect"])
@@ -5557,6 +7680,7 @@ def cmd_render(pdf_path, out_path, font_path):
             if not cell["translate"]:
                 static_by_page[pno].append(rect)
                 kept_by_page[pno].append(rect)
+                layout_kept_by_page[pno].append(rect)
                 continue
             table_layout_by_id[bid] = cell
             ko = translations.get(str(bid))
@@ -5565,12 +7689,13 @@ def cmd_render(pdf_path, out_path, font_path):
             if not ko or not str(ko).strip():
                 static_by_page[pno].append(rect)
                 kept_by_page[pno].append(rect)
+                layout_kept_by_page[pno].append(rect)
                 continue
             table_translation_pages.add(pno)
             by_page[pno].append(
                 (
                     rect,
-                    _clean_ko(ko).strip(),
+                    _normalize_redrawn_latin_ligatures(_clean_ko(ko)).strip(),
                     cell["size"],
                     cell["color"],
                     cell["bold"],
@@ -5615,7 +7740,8 @@ def cmd_render(pdf_path, out_path, font_path):
             actual = min(len(logical_rects_by_page[pno]), insert_at + offset)
             logical_rects_by_page[pno][actual:actual] = entries
             offset += len(entries)
-    page_expected = sum(len(items) for items in by_page.values())
+    page_draw_expected = sum(len(items) for items in by_page.values())
+    page_expected = page_draw_expected + len(preserved_original_ids)
 
     # 번역 전체에서 실제로 그릴 문자만 fontTools로 먼저 subset한다. 이 단계가 없으면
     # Pretendard의 미사용 non-BMP cmap entry 때문에 MuPDF가 5자리 목적값을 가진 깨진
@@ -5633,7 +7759,23 @@ def cmd_render(pdf_path, out_path, font_path):
     fallback_bytes, fallback_coverage = _subset_font_bytes(
         fallback_path, translation_codepoints, "NanumGothic fallback"
     )
-    covered = regular_coverage | bold_coverage | fallback_coverage
+    # Scientific prose frequently keeps source-authored inline operators inside
+    # the translated sentence (for example M<sub>⊙</sub> and ⟨x⟩).  Those
+    # are not standalone display equations, so keeping their original page
+    # coordinates would separate the symbol from the reflowed Korean sentence.
+    # STIX Two Math is an OFL-licensed bundled font dedicated to this exact
+    # repertoire.  As with every other renderer font, subset it to the requested
+    # code points and keep the global coverage check fail-closed.
+    math_path = os.path.join(_fdir, "STIXTwoMath.otf")
+    math_bytes, math_coverage = _subset_font_bytes(
+        math_path, translation_codepoints, "STIX Two Math fallback"
+    )
+    covered = (
+        regular_coverage
+        | bold_coverage
+        | fallback_coverage
+        | math_coverage
+    )
     missing = translation_codepoints.difference(covered)
     if missing:
         preview = ", ".join(f"U+{cp:04X}" for cp in sorted(missing)[:12])
@@ -5645,6 +7787,7 @@ def cmd_render(pdf_path, out_path, font_path):
         "regular": regular_bytes,
         "bold": bold_bytes,
         "fallback": fallback_bytes,
+        "math": math_bytes,
     }
     subset_font_digests = {
         hashlib.sha256(data).hexdigest() for data in subset_font_buffers.values()
@@ -5652,6 +7795,7 @@ def cmd_render(pdf_path, out_path, font_path):
     font = fitz.Font(fontbuffer=subset_font_buffers["regular"])
     font_bold = fitz.Font(fontbuffer=subset_font_buffers["bold"])
     font_fb = fitz.Font(fontbuffer=subset_font_buffers["fallback"])
+    font_math = fitz.Font(fontbuffer=subset_font_buffers["math"])
 
     replaced = 0
     shrunk = 0
@@ -5674,8 +7818,17 @@ def cmd_render(pdf_path, out_path, font_path):
         # 그림 + '원본유지(수식·전자배치·라벨)' 블록 영역 밖으로 클리핑한다. 번역문이
         # 옆/위에 놓인 식·전자배치 위에 겹쳐 찍히던 것(답안 (d)(e), 논문 식 옆 본문 등)을
         # 막는다 — 번역문은 식과 안 겹치는 가장 큰 직사각형에만 그려진다.
-        kept_here = kept_by_page.get(pno, [])
+        kept_here = layout_kept_by_page.get(pno, [])
         clip_regions = list(figs) + list(kept_here)
+        # Drawing may use the largest safe rectangle after avoiding a neighbouring
+        # figure/equation, but source deletion must still cover every translated
+        # source glyph outside the *exact* protected geometry.  Keeping these
+        # original rectangles prevents the draw clipping decision from leaving an
+        # entire English strip behind.
+        source_redaction_by_id = {
+            bid: (fitz.Rect(rect), col, table_layout_by_id.get(bid) is not None)
+            for rect, _ko, _sz, col, _bd, _it, bid in items
+        }
         clipped_normal = []
         clipped_table = []
         for rect, ko, sz, col, bd, it, bid in items:
@@ -5711,14 +7864,53 @@ def cmd_render(pdf_path, out_path, font_path):
         # establish permission to consume the page-edge margin or a neighbouring
         # column.
         column_right_caps = _infer_column_right_caps(clipped_normal, page)
+        formula_transition_ids = set()
+        formula_transition_caps = {}
+        for transition_item in clipped_normal:
+            transition_rect = fitz.Rect(transition_item[0])
+            transition_id = transition_item[6]
+            if not _is_formula_transition_before_preserved_formula(
+                transition_rect,
+                source_text_by_id.get(transition_id, ""),
+                formula_by_page.get(pno, []),
+                page,
+            ):
+                continue
+            matching_cap = _matching_column_cap(
+                transition_rect,
+                clipped_normal,
+                column_right_caps,
+                page,
+            )
+            if matching_cap is None:
+                continue
+            formula_transition_ids.add(transition_id)
+            formula_transition_caps[transition_id] = matching_cap
         # redaction(원문 지우기)은 '겹침 분할 전' 각 블록의 제 bbox 전체로 한다.
         # dedoverlap 은 '번역문 그리기' 위치만 좁히는 용도 — 그 좁힌 rect 로 redaction 까지
         # 하면, 큰 문단 조각이 첫 줄로 잘려 뒷부분 원문(영어)이 안 지워지고 남는다
         # (인라인 수식이 한 줄을 쪼갠 문단에서 흔함). 그리기는 dedoverlap 결과를 쓴다.
-        redact_full = [
-            (fitz.Rect(c[0]), c[3]) for c in (clipped_normal + clipped_table)
-        ]  # (source glyph rect, color)
+        redact_full = []
+        for clipped_item in clipped_normal + clipped_table:
+            bid = clipped_item[6]
+            original = source_redaction_by_id.get(bid)
+            if original is None:
+                original = (
+                    fitz.Rect(clipped_item[0]),
+                    clipped_item[3],
+                    table_layout_by_id.get(bid) is not None,
+                )
+            redact_full.append((*original, bid))
         clipped_normal = _dedoverlap_column(clipped_normal)
+        clipped_normal = _expand_lowercase_formula_tails_upward(
+            clipped_normal,
+            static_by_page.get(pno, []),
+            figs,
+            formula_by_page.get(pno, []),
+            source_text_by_id,
+            page_text_rect,
+            font,
+        )
         # F1 세로압축: 한국어가 원문보다 짧아 생긴 문단 사이 빈칸을 없앤다(블록을 위로만
         # 끌어올림). redaction 은 위 redact_full(원위치)로 이미 잡아둬 영향 없다.
         # 앵커 = 번역 안 된 모든 블록(수식·라벨·미번역) + 그림 — 그 위로는 안 넘긴다.
@@ -5735,7 +7927,7 @@ def cmd_render(pdf_path, out_path, font_path):
         # 확장을 막는 '장애물' = 다른 번역 블록 + 원본유지(수식·표 셀·라벨) + 그림/표 영역.
         # 원본유지 블록과 영역을 포함해야, 표 헤딩 번역문이 아래 표 셀 위로 넘치거나
         # 본문이 인접 수식을 침범하지 않는다(TABLE 6.1 헤딩 겹침 수정).
-        kept = list(kept_by_page.get(pno, []))
+        kept = list(layout_kept_by_page.get(pno, []))
         obstacles = crects + kept + list(figs)
         bounds = []
         for i in range(nC):
@@ -5784,16 +7976,40 @@ def cmd_render(pdf_path, out_path, font_path):
             # 블록이 페이지 절반을 덮어 다른 글자 위로 흐르는 일 차단).
             by = min(by, ri.y1 + 3.0 * max(ri.height, 8.0))
             source_cap = column_right_caps.get(clipped[i][6])
+            if source_cap is None:
+                source_cap = formula_transition_caps.get(clipped[i][6])
             if source_cap is not None:
                 bx = min(bx, max(ri.x1, source_cap))
             bounds.append((min(lx, ri.x0), max(bx, ri.x1), max(by, ri.y1)))
         # 1) 원문 글자만 지운다. images=NONE 으로 그림은 보존.
         #    밝은(흰색 계열) 글자 → fill 생략. 그 외엔 '바로 바깥' 정확 배경색으로 덮어
         #    경계가 안 보이게(상자 느낌 제거).
-        for rect, _col in redact_full:
+        at_risk_preserved_descriptors = []
+        for protected_rect, descriptors in preserved_spans_by_page.get(pno, []):
+            if any(
+                not (fitz.Rect(source_rect) & fitz.Rect(protected_rect)).is_empty
+                for source_rect, _color, is_table_redaction, _bid in redact_full
+                if not is_table_redaction
+            ):
+                at_risk_preserved_descriptors.extend(descriptors)
+        preserved_text_overlay = None
+        if at_risk_preserved_descriptors:
+            preserved_text_overlay, _preserved_source_groups = (
+                _build_preserved_text_overlay(
+                    doc, page, at_risk_preserved_descriptors
+                )
+            )
+
+        for rect, _col, is_table_redaction, _bid in redact_full:
             # 원본유지(표시수식·라벨) 블록과 겹치면, 그 글자를 지우지 않도록 redaction
-            # 을 위/아래로 잘라 보호한다(번역 블록 bbox 가 인접 식을 덮는 드문 경우).
-            sub = _split_out_keeps(rect, kept_by_page.get(pno, []))
+            # 을 정확한 2-D 조각으로 잘라 보호한다.  일반 블록은 그림도 같은 방식으로
+            # 보호하되, 독립 표 셀은 이미 검증된 셀 glyph bbox 자체를 사용한다.
+            protected_regions = (
+                []
+                if is_table_redaction
+                else list(kept_by_page.get(pno, [])) + list(figs)
+            )
+            sub = _split_out_keeps(rect, protected_regions)
             for sr in sub:
                 r, g, b = _color01(_col)
                 if min(r, g, b) > 0.8:
@@ -5803,6 +8019,11 @@ def cmd_render(pdf_path, out_path, font_path):
                     fill = (bbg[0] / 255.0, bbg[1] / 255.0, bbg[2] / 255.0)
                 page.add_redact_annot(sr, fill=fill)
         page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
+        if preserved_text_overlay is not None:
+            _remove_preserved_text_objects(
+                doc, page, at_risk_preserved_descriptors
+            )
+            page = doc.reload_page(page)
         # Streams present at this exact point are the graphics/redaction residue and
         # any intentionally preserved source text.  Subsequent xref deltas belong to
         # one translated block and can be mapped back to its logical source id.
@@ -5818,7 +8039,9 @@ def cmd_render(pdf_path, out_path, font_path):
         for idx, (rect, ko, _size, color, is_bold, is_ital, bid) in enumerate(clipped):
             base = font_bold if is_bold else font  # 원문 굵게 → 번역본도 굵게
             fallback_fonts = (
-                (font, font_fb) if is_bold else (font_fb, font_bold)
+                (font, font_fb, font_math)
+                if is_bold
+                else (font_fb, font_bold, font_math)
             )
             plain_text = _strip_tags(ko)
             mnx, mx, my = bounds[idx]
@@ -5849,6 +8072,12 @@ def cmd_render(pdf_path, out_path, font_path):
                     rect, page_width, single_line=one_line, is_heading=is_heading
                 )
             )
+            if (
+                bid in formula_transition_ids
+                and table_layout is None
+                and align != fitz.TEXT_ALIGN_RIGHT
+            ):
+                align = fitz.TEXT_ALIGN_LEFT
             if (
                 table_layout is None
                 and
@@ -5892,7 +8121,30 @@ def cmd_render(pdf_path, out_path, font_path):
                 draw_max_x = rect.x1
             needs_mixed_writer = not _font_covers_text(base, plain_text)
             contents_before_draw = list(page.get_contents())
-            if _has_tags(ko) or needs_mixed_writer:
+            source_rotation = source_rotation_by_id.get(bid)
+            if (
+                source_rotation in {90, 270}
+                and not _has_tags(ko)
+                and not needs_mixed_writer
+                and table_layout is None
+            ):
+                draw_state = _draw_fit_rotated(
+                    page,
+                    draw_rect,
+                    ko,
+                    _color01(color),
+                    (
+                        subset_font_buffers["bold"]
+                        if is_bold
+                        else subset_font_buffers["regular"]
+                    ),
+                    "QuiloKoCaptionBold" if is_bold else "QuiloKoCaptionRegular",
+                    _size,
+                    align,
+                    source_rotation,
+                    min_size=4.0,
+                )
+            elif _has_tags(ko) or needs_mixed_writer:
                 # 위/아래첨자 또는 주 글꼴에 없는 기호(예: ∈)는 글자별 bundled
                 # subset font를 고르는 rich 드로어로 처리한다.
                 draw_state = _draw_rich(
@@ -5968,10 +8220,29 @@ def cmd_render(pdf_path, out_path, font_path):
             generated_content_order,
             logical_rects_by_page.get(pno, []),
         )
+        if preserved_text_overlay is not None:
+            page = _append_page_content_stream(
+                doc, page, preserved_text_overlay
+            )
         reading_order_diagnostics[str(pno + 1)] = reading_order_diagnostic
+        source_residuals = _translated_source_residuals(
+            page,
+            redact_full,
+            list(kept_by_page.get(pno, [])) + list(figs),
+        )
+        if source_residuals:
+            preview = ", ".join(
+                f"{item['id']}:{item['text']!r}" for item in source_residuals[:8]
+            )
+            doc.close()
+            raise RuntimeError(
+                f"residual source text remained after PDF redaction on page {pno + 1}: "
+                f"{preview}"
+            )
         if (
             pno in table_translation_pages
             and reading_order_diagnostic.get("reason") != "pixel_exact"
+            and os.environ.get("PDF_TRANSLATE_ALLOW_TABLE_OVERLAY", "").strip() != "1"
         ):
             reason = reading_order_diagnostic.get("reason", "unknown")
             doc.close()
@@ -5993,6 +8264,7 @@ def cmd_render(pdf_path, out_path, font_path):
     )
     replaced += virtual_replaced
     expected = page_expected + len(virtual_blocks)
+    completed = replaced + len(preserved_original_ids)
 
     restored_links = _restore_safe_links(doc, safe_links)
     if _page_geometry_signature(doc) != page_geometry:
@@ -6026,13 +8298,16 @@ def cmd_render(pdf_path, out_path, font_path):
         raise
     write_json_response(
         {
-            "ok": overflow == 0 and failed == 0,
+            "ok": overflow == 0 and failed == 0 and completed == expected,
             "replaced": replaced,
             "drawn": replaced,
+            "completed": completed,
             "expected": expected,
             "page_expected": page_expected,
             "page_drawn": page_replaced,
-            "font_expected": page_expected,
+            "font_expected": page_draw_expected,
+            "preserved_original": len(preserved_original_ids),
+            "preserved_original_ids": preserved_original_ids,
             "virtual_replaced": virtual_replaced,
             "outline_expected": sum(
                 1 for block in virtual_blocks if block.get("kind") == "outline"
@@ -6068,6 +8343,129 @@ _SPLIT_DOCUMENT_KEY = "QuiloSplitDocument"
 _SPLIT_PAGE_KEY = "QuiloSourcePage"
 _SPLIT_TOKEN_KEY = "QuiloPageToken"
 _SPLIT_TOKEN_RE = re.compile(r"[0-9a-f]{32}\Z")
+_SPLIT_BOUNDARY_POLICY = "sentence-safe-backtrack-v1"
+
+
+def _split_boundary_content(block, page):
+    """Return ``(kind, text)`` for significant content near a page boundary.
+
+    Running headers / footers, captions, URLs and short labels must not move a
+    chunk boundary. Formula-only blocks are retained as sentinels: when one is the
+    page's final significant block, it completes the same-page layout and prevents
+    an earlier formula introduction from being mistaken for a cross-page cut.
+    """
+    height = max(1.0, float(page.rect.height))
+    top_margin = float(page.rect.y0) + 0.08 * height
+    bottom_margin = float(page.rect.y1) - 0.08 * height
+    content_lines = []
+    for line in block.get("lines", []) or []:
+        rect = fitz.Rect(line.get("bbox", (0, 0, 0, 0)))
+        centre_y = (rect.y0 + rect.y1) / 2.0
+        if top_margin < centre_y < bottom_margin:
+            content_lines.append(line)
+    if not content_lines:
+        return None
+    content_block = _block_from_lines(block, content_lines)
+    text = block_text(content_block).strip()
+    if not text or not re.search(r"[A-Za-z]", text):
+        return None
+    if re.match(r"^(?:https?|mailto):", text, re.I):
+        return None
+    if re.match(
+        r"^(?:fig(?:ure)?\.?|table|scheme|box)\s*[\dIVX]",
+        text,
+        re.I,
+    ):
+        return None
+    if _keep_original_block(content_block) or _formula_only_visible_text(
+        block_text(content_block, tag=True)
+    ):
+        return "formula", text
+    if len(text) < 40 or not re.search(r"[A-Za-z]{3,}", text):
+        return None
+    return "prose", text
+
+
+def _cross_page_continuations(doc):
+    """Return zero-based page indexes whose following page continues a sentence.
+
+    A non-terminal final prose block is unsafe even when the next page begins with
+    a capital, citation, or section reference. Those are common continuation forms
+    in textbooks and were the source of the original boundary loss. Formula-only
+    final blocks are safe sentinels because they remain in the source PDF intact.
+    """
+    if len(doc) < 2:
+        return set()
+    build_decoders(doc)
+    content_by_page = defaultdict(list)
+    hidden_ocr_pages = _hidden_ocr_scan_page_indexes(doc)
+    for _bid, pno, block in iter_text_blocks(
+        doc, hidden_ocr_pages=hidden_ocr_pages
+    ):
+        _use_page(pno)
+        entry = _split_boundary_content(block, doc[pno])
+        if entry:
+            content_by_page[pno].append(entry)
+
+    continuations = set()
+    sentence_end = re.compile(r"[.!?。．？！…][\"'\u2019\u201d)\]]*$")
+    for pno in range(len(doc) - 1):
+        current = content_by_page.get(pno)
+        if not current:
+            continue
+        kind, head = current[-1]
+        if kind != "prose":
+            continue
+        head = head.rstrip()
+        if sentence_end.search(head):
+            continue
+        continuations.add(pno)
+    return continuations
+
+
+def _sentence_safe_chunk_ranges(doc, pages_per_chunk):
+    """Plan contiguous chunks without ever exceeding ``pages_per_chunk``.
+
+    Only an unsafe nominal boundary is moved, choosing the nearest safe boundary
+    earlier in the current chunk.  Searching backwards (never forwards) preserves
+    the concurrency / memory ceiling.  If the current chunk contains no safe cut,
+    fail closed instead of silently separating a continued sentence.
+    """
+    total = len(doc)
+    maximum = max(1, int(pages_per_chunk))
+    continuations = _cross_page_continuations(doc) if total > maximum else set()
+    ranges = []
+    adjusted = []
+    start = 0
+    while start < total:
+        nominal_end = min(start + maximum, total)
+        end = nominal_end
+        if nominal_end < total and (nominal_end - 1) in continuations:
+            lower = start + 1
+            for candidate in range(nominal_end - 1, lower - 1, -1):
+                if (candidate - 1) not in continuations:
+                    end = candidate
+                    adjusted.append(
+                        {
+                            "nominal_end": nominal_end,
+                            "selected_end": end,
+                        }
+                    )
+                    break
+            if end == nominal_end:
+                raise RuntimeError(
+                    "cannot find a sentence-safe PDF chunk boundary between "
+                    f"source pages {start + 1} and {nominal_end}"
+                )
+        ranges.append((start, end))
+        start = end
+    return ranges, {
+        "name": _SPLIT_BOUNDARY_POLICY,
+        "max_pages_per_chunk": maximum,
+        "search_scope": "entire_current_chunk",
+        "adjusted_boundaries": adjusted,
+        "unresolved_boundaries": [],
+    }
 
 
 def _set_split_page_provenance(doc, page, document_token, source_page, page_token):
@@ -6181,12 +8579,14 @@ def cmd_split(pdf_path, out_dir, pages_per_chunk=5):
     n = len(src)
     virtual_blocks = _document_virtual_blocks(src)
     outline_items = len(src.get_toc(simple=False) or [])
+    chunk_ranges, split_policy = _sentence_safe_chunk_ranges(
+        src, pages_per_chunk
+    )
     document_token = os.urandom(16).hex()
     chunks = []
     manifest_chunks = []
     ci = 0
-    for start in range(0, n, pages_per_chunk):
-        end = min(start + pages_per_chunk, n)
+    for start, end in chunk_ranges:
         sub = fitz.open()
         sub.insert_pdf(src, from_page=start, to_page=end - 1)
         page_tokens = []
@@ -6220,6 +8620,7 @@ def cmd_split(pdf_path, out_dir, pages_per_chunk=5):
         {
             "page_count": n,
             "chunks": chunks,
+            "split_policy": split_policy,
             "part_manifest": {
                 "version": _SPLIT_PROVENANCE_VERSION,
                 "document_token": document_token,
@@ -6938,6 +9339,7 @@ def cmd_merge(out_path, *parts):
             "metadata_expected": metadata_expected,
             "metadata_replaced": virtual_stats["metadata_replaced"],
             "virtual_replaced": virtual_replaced,
+            "restored_links": len(result["safe_links"]),
             "unsafe_links_removed": result["unsafe_links_removed"],
         }
     )

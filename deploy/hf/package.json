@@ -6,7 +6,7 @@
   "description": "독립 PDF 통번역 서버 (HF Spaces Docker)",
   "scripts": {
     "start": "node translate-server.js",
-    "postinstall": "python3 -m venv .venv && .venv/bin/pip install --upgrade pip && .venv/bin/pip install -r requirements.txt && .venv/bin/python scripts/check-python-runtime.py && (bash scripts/install-tectonic.sh || echo 'WARN: tectonic setup failed — 재조판(수식/스캔) 비활성, 빠른번역은 동작')"
+    "postinstall": "python3 -m venv .venv && .venv/bin/pip install --upgrade pip && .venv/bin/pip install -r requirements.txt && .venv/bin/python scripts/check-python-runtime.py && bash scripts/install-tectonic.sh && command -v tectonic >/dev/null && tectonic --version"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.1",

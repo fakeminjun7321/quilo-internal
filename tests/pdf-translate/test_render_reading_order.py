@@ -517,6 +517,48 @@ class RenderReadingOrderTests(unittest.TestCase):
                 TRANSLATOR_MODULE._table_cell_requires_translation(text), text
             )
 
+        # Table clipping must not give a source glyph stream a second owner.  The
+        # raw block predicate retains font / rise / subscript geometry which the
+        # flattened cell string cannot carry, so every proven KEEP block bypasses
+        # the synthetic cell overlay even when its text alone looks translatable.
+        kept_formula = {"_preserve_formula": True, "lines": []}
+        self.assertTrue(TRANSLATOR_MODULE._keep_original_block(kept_formula))
+        for text in (
+            "Te [K]", "Tc [10^6 K]", "Mci [M]", "Mce [M]",
+            "Te", "Tc", "Mbol", "100 K (H I), 10^4 K (H II), 50 K (H2)",
+            "(CH3)2O", "z [pc]", "= 299792458 m s-1", "me", "mp", "mn",
+            "mH", "mHe", "RH",
+        ):
+            self.assertFalse(
+                TRANSLATOR_MODULE._table_cell_requires_translation(
+                    text, kept_formula
+                ),
+                text,
+            )
+
+        ordinary_label = {
+            "bbox": (0, 0, 80, 12),
+            "lines": [
+                {
+                    "bbox": (0, 0, 80, 12),
+                    "spans": [
+                        {
+                            "text": "Temperature K",
+                            "font": "Helvetica",
+                            "size": 10.0,
+                            "bbox": (0, 0, 80, 12),
+                        }
+                    ],
+                }
+            ],
+        }
+        self.assertFalse(TRANSLATOR_MODULE._keep_original_block(ordinary_label))
+        self.assertTrue(
+            TRANSLATOR_MODULE._table_cell_requires_translation(
+                "Temperature K", ordinary_label
+            )
+        )
+
     def test_unsupported_content_state_rolls_back_and_strict_verifier_rejects_inversion(self):
         for data in (
             b"q /X0 Do Q BT /F1 10 Tf 1 0 0 1 20 80 Tm (x) Tj ET",

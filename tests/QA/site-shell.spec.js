@@ -196,7 +196,7 @@ test("guide desktop shell renders with real navigation destinations", async ({ p
   ]);
   await page.locator('[data-ui-menu-trigger="0"]').click();
   await expect(page.locator('#uiSiteMega [data-report="chem-pre"]')).toBeVisible();
-  await expect(page.locator('.ui-site-actions a[href="/?login=1"]')).toHaveText("로그인");
+  await expect(page.locator('.ui-site-actions a[href="/login.html?next=%2Fguide.html"]')).toHaveText("로그인");
   await expect(page.locator('.ui-site-actions .ui-site-cta[href="/signup.html"]')).toHaveText("무료로 시작하기");
 
   const placeholderLinks = page.locator('[data-ui-shell] a[href="#"], [data-ui-shell] a:not([href])');
@@ -229,7 +229,7 @@ test("pricing page explains plan differences without inventing a fixed price", a
   await expect(page).toHaveTitle("요금 및 플랜 — Quilo");
   await expect(page.locator("#main-content h1")).toHaveText("요금 및 플랜");
   await expect(page.locator("#main-content tbody th")).toHaveText(["Free", "Pro", "Max"]);
-  await expect(page.locator('#main-content a[href="/?login=1"]')).toHaveText("로그인하고 현재 플랜 확인");
+  await expect(page.locator('#main-content a[href="/login.html?next=%2Fpricing.html"]')).toHaveText("로그인하고 현재 플랜 확인");
   await expect(page.locator("#main-content")).toContainText("Max 가격·기간·입금 안내는 그 화면에 표시되는 현재 운영 설정을 기준으로 합니다.");
   const mainText = await page.locator("#main-content").innerText();
   expect(mainText).not.toMatch(/\d[\d,]*\s*원/);
@@ -274,11 +274,16 @@ test("every public pricing navigation points to the visible pricing page", () =>
 });
 
 test("every catalog feature exposes a real destination and an explicit audience", () => {
+  const serverSource = fs.readFileSync(path.join(process.cwd(), "server.js"), "utf8");
   expect(FEATURES.length).toBeGreaterThan(30);
   for (const feature of FEATURES) {
     expect(["public", "member", "pro", "max"], `${feature.id} audience`).toContain(feature.audience);
     expect(["active", "pro", "max", "paused", "beta"], `${feature.id} status`).toContain(feature.status);
     const pathname = new URL(feature.path, "http://quilo.local").pathname;
+    if (pathname === "/schedule/") {
+      expect(serverSource, `${feature.id} dynamic destination`).toMatch(/app\.use\(["']\/schedule["']/);
+      continue;
+    }
     const target = pathname === "/"
       ? path.join(PUBLIC_DIR, "index.html")
       : path.join(PUBLIC_DIR, pathname.replace(/^\/+/, ""));
@@ -362,11 +367,46 @@ test("guide mobile shell exposes the same real destinations", async ({ page }) =
   expect(mobileHrefs).toContain("/tools/index.html");
   expect(mobileHrefs).toContain("/developers.html#catalog");
   expect(mobileHrefs).toContain("/pricing.html");
-  expect(mobileHrefs).toContain("/?login=1");
+  expect(mobileHrefs).toContain("/login.html?next=%2Fguide.html");
   expect(mobileHrefs).toContain("/signup.html");
 
   const hasHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
   expect(hasHorizontalOverflow).toBe(false);
+});
+
+test("mobile login action opens the dedicated login page and preserves the current page", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${baseUrl}/guide.html`, { waitUntil: "domcontentloaded" });
+
+  await page.locator("[data-ui-mobile-trigger]").click();
+  await page.locator("#uiMobilePanel [data-ui-auth-action]").click();
+
+  await expect(page).toHaveURL(`${baseUrl}/login.html?next=%2Fguide.html`);
+  await expect(page.locator("#loginForm")).toBeVisible();
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+});
+
+test("mobile legacy login entry opens a visible login page and preserves returnTo", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${baseUrl}/?login=1&returnTo=${encodeURIComponent("/developer-notes.html")}`, {
+    waitUntil: "domcontentloaded",
+  });
+
+  await expect(page).toHaveURL(`${baseUrl}/login.html?next=%2Fdeveloper-notes.html`);
+  await expect(page.locator("#loginForm")).toBeVisible();
+});
+
+test("mobile logged-out report selection opens login and keeps the pending report", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${baseUrl}/`, { waitUntil: "domcontentloaded" });
+
+  await page.locator("[data-ui-mobile-trigger]").click();
+  await page.locator('#uiMobilePanel a[data-report="chem-pre"]').click();
+
+  await expect(page).toHaveURL(`${baseUrl}/login.html?next=%2F`);
+  await expect(page.locator("#loginForm")).toBeVisible();
+  expect(await page.evaluate(() => sessionStorage.getItem("pendingReportType"))).toBe("chem-pre");
 });
 
 test("login query opens the logged-out login dropdown without a write request", async ({ page }) => {

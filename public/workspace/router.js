@@ -1,6 +1,20 @@
 const PENDING_REPORT_KEY = "pendingReportType";
 
 export function createRouter({ state, hooks }) {
+  function writeReportUrl(type, mode = "push") {
+    const reportType = String(type || "");
+    if (!reportType) return;
+    state.set({ reportType });
+    const target = new URL("/", location.origin);
+    target.searchParams.set("report", reportType);
+    const next = `${target.pathname}${target.search}`;
+    const current = `${location.pathname}${location.search}${location.hash}`;
+    if (current === next || mode === false || mode === "none") return;
+    try {
+      history[mode === "replace" ? "replaceState" : "pushState"]({}, "", next);
+    } catch (_) {}
+  }
+
   function setPending(type) {
     try {
       if (type) sessionStorage.setItem(PENDING_REPORT_KEY, String(type));
@@ -20,7 +34,7 @@ export function createRouter({ state, hooks }) {
     const radio = document.querySelector(`input[name="reportType"][value="${CSS.escape(String(type || ""))}"]`);
     if (!radio || radio.disabled || radio.closest("label")?.hidden) return false;
     radio.checked = true;
-    state.set({ reportType: radio.value });
+    writeReportUrl(radio.value, options.history ?? "push");
     if (hooks.selectReport) hooks.selectReport(radio.value, options);
     else hooks.ensureReportRuntime?.().then(() => hooks.selectReport?.(radio.value, options));
     return true;
@@ -37,5 +51,5 @@ export function createRouter({ state, hooks }) {
     catch (_) { return ""; }
   }
 
-  return { setPending, takePending, consumePending, requestedReport, select };
+  return { setPending, takePending, consumePending, requestedReport, select, writeReportUrl };
 }

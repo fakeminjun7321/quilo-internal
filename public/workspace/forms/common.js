@@ -43,6 +43,7 @@ export function createCommonFormsController({
   setView,
   showTab,
   setPending,
+  navigateReport,
   openLogin,
   reportChecklistItems,
 }) {
@@ -411,6 +412,7 @@ export function createCommonFormsController({
         openLogin();
         return;
       }
+      navigateReport?.(radio.value, "push");
       updateReportTypeView({ scroll: true });
     }));
     updateReportTypeView();

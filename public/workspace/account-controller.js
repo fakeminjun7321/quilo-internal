@@ -25,6 +25,20 @@ function applyStyleNote(note) {
   });
 }
 
+function requestedReturnPath() {
+  const raw = new URLSearchParams(location.search).get("next")
+    || new URLSearchParams(location.search).get("returnTo")
+    || "";
+  if (!raw.startsWith("/") || raw.startsWith("//") || raw.includes("\\")) return "";
+  try {
+    const target = new URL(raw, location.origin);
+    if (target.origin !== location.origin || ["/login", "/login.html"].includes(target.pathname)) return "";
+    return `${target.pathname}${target.search}${target.hash}`;
+  } catch (_) {
+    return "";
+  }
+}
+
 function profileRoleLabel(user = {}) {
   const labels = [];
   if (user.isAdmin) labels.push("관리자");
@@ -294,7 +308,6 @@ export function createAccountController({ state, router, hooks }) {
       hooks.shell?.setView("landing");
       return;
     }
-    if (byId("user")) byId("user").textContent = `${user.user} 님`;
     if (byId("accountMenuName")) byId("accountMenuName").textContent = user.user;
     if (byId("settingsUserName")) byId("settingsUserName").textContent = user.user;
     applyProfilePresentation(user);
@@ -422,7 +435,9 @@ export function createAccountController({ state, router, hooks }) {
       try {
         const data = await requestJson("/api/login", jsonOptions("POST", { username, password: byId("li_password").value, remember }));
         try { remember ? localStorage.setItem("lastUsername", username) : localStorage.removeItem("lastUsername"); } catch (_) {}
+        window.QuiloShellAuth?.notify?.("login");
         if (data.redirect && String(data.redirect).startsWith("/oauth/authorize?")) location.assign(data.redirect);
+        else if (requestedReturnPath()) location.assign(requestedReturnPath());
         else location.reload();
       } catch (exception) {
         if (error) { error.hidden = false; error.textContent = exception.message; }
@@ -432,7 +447,9 @@ export function createAccountController({ state, router, hooks }) {
     });
     byId("logout")?.addEventListener("click", async (event) => {
       event.preventDefault();
-      await fetch("/api/logout", { method: "POST" });
+      const response = await fetch("/api/logout", { method: "POST" });
+      if (!response.ok) return;
+      window.QuiloShellAuth?.notify?.("logout");
       location.href = "/";
     });
     byId("profileForm")?.addEventListener("submit", async (event) => {
@@ -490,19 +507,28 @@ export function createAccountController({ state, router, hooks }) {
     bindForms();
     bindAccountNavigation();
     initDefaultReportPreferences();
+    const applyShellSession = (shellSession) => {
+      if (shellSession?.state === "authenticated") applyAuth(true, shellSession.user);
+      else if (shellSession?.state === "anonymous") applyAuth(false);
+      // unknown은 로그아웃이 아니다. 네트워크/서버가 회복될 때까지 현재 화면과
+      // 마지막으로 확인된 사용자 상태를 그대로 유지한다.
+    };
+    document.addEventListener("quilo:auth-state", (event) => applyShellSession(event.detail));
     try {
       const saved = localStorage.getItem("lastUsername");
       if (saved && byId("li_username") && !byId("li_username").value) byId("li_username").value = saved;
     } catch (_) {}
+    let shellSession;
     try {
-      const shellSession = window.QuiloShellAuth?.ready
+      shellSession = window.QuiloShellAuth?.ready
         ? await window.QuiloShellAuth.ready
         : { state: "authenticated", user: await requestJson("/api/me") };
-      if (shellSession.state !== "authenticated") throw new Error("anonymous");
-      applyAuth(true, shellSession.user);
     } catch (_) {
-      applyAuth(false);
-      if (new URLSearchParams(location.search).get("login") === "1") hooks.shell?.openLogin();
+      shellSession = { state: "unknown", user: null };
+    }
+    applyShellSession(shellSession);
+    if (shellSession.state === "anonymous" && new URLSearchParams(location.search).get("login") === "1") {
+      hooks.shell?.openLogin();
     }
   }
 

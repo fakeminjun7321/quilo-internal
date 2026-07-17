@@ -249,3 +249,21 @@
   .fc-workspace { grid-template-columns: 240px minmax(0, 1fr); }
   .fc-chat { padding-inline: 32px; }
 }
+
+@media (max-width: 760px) {
+  .app-shell--filechat #main-content { min-height: 0; }
+  .fc-workspace {
+    grid-template-rows: minmax(250px, 40%) minmax(0, 1fr);
+    grid-template-columns: 1fr;
+  }
+  .fc-sidebar { border-right: 0; border-bottom: 1px solid var(--app-line); overflow-y: auto; }
+  .fc-sidebar__head { padding: 16px 14px 12px; }
+  .fc-sidebar__body { padding: 12px 14px; }
+  .fc-files { min-height: 48px; }
+  .fc-main__topbar { min-height: 44px; padding-inline: 14px; }
+  .fc-chat { gap: 16px; padding: 20px 14px; }
+  .fc-msg { max-width: 94%; font-size: 13px; }
+  .fc-msg.ai { padding-left: 40px; }
+  .fc-composer { width: calc(100% - 24px); padding-bottom: 10px; }
+  .fc-row .btn { width: 64px; }
+}

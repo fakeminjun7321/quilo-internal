@@ -237,3 +237,33 @@
   .app-shell--study .study-workbench { grid-template-columns: 320px minmax(0, 1fr); }
   .app-shell--create .gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+@media (max-width: 760px) {
+  .landing-shell, .epwrap, .container { width: calc(100% - 28px); }
+
+  .app-shell--study #main-content { padding-top: 14px; }
+  .app-shell--study .study-top { flex-direction: column; }
+  .app-shell--study .study-workbench { display: block; min-height: 0; }
+  .app-shell--study .study-controls { border-right: 0; border-bottom: 1px solid var(--app-line); overflow: visible; }
+  .app-shell--study .study-output { padding: 14px; }
+  .app-shell--study .study-canvas-wrap,
+  .app-shell--study canvas { min-height: 360px; }
+
+  .app-shell--editor .qt-titlebar { flex-wrap: wrap; }
+  .app-shell--editor .qt-body { grid-template-columns: 44px minmax(0, 1fr); }
+  .app-shell--editor .ide-activity button { width: 44px; }
+  .app-shell--editor .ide-side { display: none; }
+  .app-shell--editor .ide-statusbar { gap: 8px; overflow-x: auto; white-space: nowrap; }
+  .app-shell--editor .ide-panel { height: 160px; }
+
+  .app-shell--create .launch { align-items: flex-start; flex-direction: column; gap: 12px; padding: 18px; }
+  .app-shell--create .gallery { grid-template-columns: 1fr; }
+  .app-shell--create #cmtModal > .card { width: calc(100% - 28px); padding: 16px; }
+
+  .app-shell--exam-prep .eptabs { overflow-x: auto; }
+  .app-shell--exam-prep .eptabs button { flex: 0 0 auto; }
+  .app-shell--exam-prep .pi-card { padding: 18px; }
+  .app-shell--exam-prep .ct { grid-template-columns: 1fr; min-height: 0; }
+  .app-shell--exam-prep .ct-list { max-height: 240px; border-right: 0; border-bottom: 1px solid var(--app-line); }
+  .app-shell--exam-prep .ct-detail { padding: 16px; }
+}

@@ -27,8 +27,17 @@ export function createShellController({ state, router, hooks }) {
     if (summary) summary.hidden = !(authenticated && next === "workspace");
   }
 
-  function showTab(tabName) {
+  function writeWorkspaceUrl(tabName, mode = "push") {
+    const next = tabName ? `/#${encodeURIComponent(tabName)}` : "/";
+    if (`${location.pathname}${location.search}${location.hash}` === next) return;
+    try {
+      history[mode === "replace" ? "replaceState" : "pushState"]({}, "", next);
+    } catch (_) {}
+  }
+
+  function showTab(tabName, options = {}) {
     if (state.get().auth === "in") setView("workspace");
+    if (options.history) writeWorkspaceUrl(tabName, options.history);
     const title = byId("workspaceTitle");
     if (title) title.textContent = TAB_TITLES[tabName] || "Quilo 작업 공간";
     document.querySelectorAll(".page-tabs [data-tab]").forEach((button) => {
@@ -146,20 +155,35 @@ export function createShellController({ state, router, hooks }) {
       await hooks.ensureReportRuntime?.();
       anchor.removeAttribute("aria-busy");
       showTab("reports");
-      router.select(anchor.dataset.report, { scroll: true });
+      router.select(anchor.dataset.report, { scroll: true, history: "push" });
     });
     document.querySelectorAll("[data-ui-shell] a[data-tab], .page-tabs [data-tab]").forEach((anchor) => {
       anchor.addEventListener("click", (event) => {
         event.preventDefault();
-        showTab(anchor.dataset.tab);
+        showTab(anchor.dataset.tab, { history: "push" });
         closeDropdowns();
       });
     });
-    byId("workspaceFilesBtn")?.addEventListener("click", () => showTab("files"));
+    byId("workspaceFilesBtn")?.addEventListener("click", () => showTab("files", { history: "push" }));
     byId("workspaceHomeBtn")?.addEventListener("click", () => {
       setView("landing");
-      try { history.replaceState({}, "", location.pathname); } catch (_) {}
+      writeWorkspaceUrl("", "push");
       window.scrollTo({ top: 0, behavior: "auto" });
+    });
+    window.addEventListener("popstate", async () => {
+      if (state.get().auth !== "in") return;
+      const report = router.requestedReport();
+      if (report) {
+        await hooks.ensureReportRuntime?.();
+        showTab("reports");
+        router.select(report, { history: false });
+        return;
+      }
+      const tab = ["files", "integrations", "settings", "feedback"].includes(location.hash.slice(1))
+        ? location.hash.slice(1)
+        : "";
+      if (tab) showTab(tab);
+      else setView("landing");
     });
   }
 

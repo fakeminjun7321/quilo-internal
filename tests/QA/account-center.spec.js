@@ -146,6 +146,36 @@ test("account center uses continuous sections and preserves account contracts", 
   }
 });
 
+test("mobile account center opens from a report and back restores the report route", async ({ page }) => {
+  const consoleErrors = [];
+  page.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text()); });
+  page.on("pageerror", (error) => consoleErrors.push(error.message));
+  await mockAccountApis(page, { role: "max" });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${BASE_URL}/?report=chem-pre`, { waitUntil: "networkidle" });
+  await expect(page.locator('input[name="reportType"][value="chem-pre"]')).toBeChecked();
+
+  await page.locator("[data-ui-mobile-trigger]").click();
+  await page.locator("#uiMobilePanel [data-ui-auth-action]").click();
+  await expect(page).toHaveURL(`${BASE_URL}/#settings`);
+  await expect(page.locator("#settingsPanel")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Account Center" })).toBeVisible();
+  await expect(page.locator("#settingsUserName")).toHaveText("구민준");
+  const accountMetrics = await page.evaluate(() => ({
+    overflow: document.documentElement.scrollWidth - window.innerWidth,
+    display: getComputedStyle(document.querySelector(".account-center-shell")).display,
+    navOverflow: document.querySelector(".account-local-nav").scrollWidth - document.querySelector(".account-local-nav").clientWidth,
+  }));
+  expect(accountMetrics.overflow).toBeLessThanOrEqual(1);
+  expect(accountMetrics.display).toBe("block");
+  expect(accountMetrics.navOverflow).toBeGreaterThanOrEqual(0);
+
+  await page.goBack({ waitUntil: "domcontentloaded" });
+  await expect(page).toHaveURL(`${BASE_URL}/?report=chem-pre`);
+  await expect(page.locator('input[name="reportType"][value="chem-pre"]')).toBeChecked();
+  expect(consoleErrors).toEqual([]);
+});
+
 test("account center keeps profile, preferences, BYOK and password actions working", async ({ page }) => {
   const calls = [];
   await mockAccountApis(page, { calls });

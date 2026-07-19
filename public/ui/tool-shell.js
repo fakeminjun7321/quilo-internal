@@ -19,6 +19,7 @@
     { group: "PDF", href: "/tools/pdf-watermark.html", label: "워터마크", icon: "type" },
     { group: "PDF", href: "/tools/pdf-crop.html", label: "여백 자르기", icon: "crop" },
     { group: "PDF", href: "/tools/pdf-compress.html", label: "PDF 압축", icon: "compress" },
+    { group: "PDF", href: "/tools/pdf-analysis.html", label: "PDF 분석", icon: "inspect" },
     { group: "문서", href: "/equation/index.html", label: "한글 수식 변환", icon: "formula" }
   ];
 
@@ -37,6 +38,7 @@
     type: '<path d="M5 6V4h14v2M9 20h6M12 4v16"/>',
     crop: '<path d="M6 3v15a3 3 0 0 0 3 3h12M3 6h15a3 3 0 0 1 3 3v12"/>',
     compress: '<path d="m8 3-5 5M3 3v5h5M16 3l5 5M21 3v5h-5M8 21l-5-5M3 21v-5h5M16 21l5-5M21 21v-5h-5"/>',
+    inspect: '<path d="M6 3h8l4 4v5"/><path d="M14 3v5h5"/><circle cx="14" cy="16" r="4"/><path d="m17 19 3 3"/><path d="M9 12h2M9 16h1"/>',
     formula: '<path d="M18 5H9l-4 7 4 7h9"/><path d="m14 9 5 6M19 9l-5 6"/>'
   };
 
@@ -153,7 +155,12 @@
   }
 
   function buildResultRail() {
-    var remote = normalizedPath() === "/tools/image-ocr.html";
+    var path = normalizedPath();
+    var privacy = path === "/tools/image-ocr.html"
+      ? "암호화 전송 후 OCR 처리"
+      : path === "/tools/pdf-analysis.html"
+        ? "암호화 전송 후 서버 분석"
+        : "브라우저 안에서 안전하게 처리";
     var rail = document.createElement("aside");
     rail.className = "q-tool-result-rail";
     rail.setAttribute("aria-label", "작업 결과");
@@ -162,7 +169,7 @@
       '<div class="q-tool-result-rail__empty" data-tool-result-empty>' +
         '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h4"/></svg>' +
         '<span>왼쪽에서 파일을 선택하고 작업을 실행하세요.</span>' +
-        '<span class="q-tool-result-rail__privacy">' + (remote ? "암호화 전송 후 OCR 처리" : "브라우저 안에서 안전하게 처리") + '</span>' +
+        '<span class="q-tool-result-rail__privacy">' + privacy + '</span>' +
       '</div>' +
       '<div class="q-tool-result-rail__host" data-tool-result-host></div>' +
       '<div class="q-tool-asset-status" aria-hidden="true" data-tool-asset-status>작업 엔진을 불러오는 중…</div>';

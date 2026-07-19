@@ -30,6 +30,7 @@ test("catalog represents the broad Quilo product, not only reports", () => {
   assert.equal(features.find((feature) => feature.id === "phys-inquiry").execution, "paused");
   assert.equal(features.find((feature) => feature.id === "vibe-coding").execution, "remote");
   assert.equal(features.find((feature) => feature.id === "file-chat").execution, "remote");
+  assert.equal(features.find((feature) => feature.id === "pdf-analysis").path, "/tools/pdf-analysis.html");
   assert.equal(features.find((feature) => feature.id === "quilo-schedule").path, "/schedule/");
   assert.equal(features.find((feature) => feature.id === "community").execution, "remote");
   assert.equal(features.find((feature) => feature.id === "cap-translate").status, "pro");
@@ -37,6 +38,16 @@ test("catalog represents the broad Quilo product, not only reports", () => {
   for (const id of ["dropbox", "google-drive", "google-docs", "notion"]) {
     assert.equal(features.find((feature) => feature.id === id).path, "/#integrations");
   }
+});
+
+test("PDF analysis is exposed as a real browser workspace instead of a catalog-only link", () => {
+  const page = fs.readFileSync(path.join(__dirname, "../public/tools/pdf-analysis.html"), "utf8");
+  const runtime = fs.readFileSync(path.join(__dirname, "../public/ui/pdf-analysis.js"), "utf8");
+  const shell = fs.readFileSync(path.join(__dirname, "../public/ui/shell.js"), "utf8");
+  assert.match(page, /id="pdfAnalysisFile"/);
+  assert.match(page, /id="pdfAnalysisResult"/);
+  assert.match(runtime, /fetch\("\/api\/tools\/pdf\/analyze"/);
+  assert.match(shell, /"pdf-analysis"[^\n]+"\/tools\/pdf-analysis\.html"/);
 });
 
 test("Quilo schedule stays available by direct URL but is hidden from the Quilo site shell", () => {

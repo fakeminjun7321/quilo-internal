@@ -41,6 +41,7 @@ const CONTENT_TYPES = {
 
 const TOOL_ROUTES = Object.freeze([
   "/tools/convert.html",
+  "/tools/pdf-analysis.html",
   "/tools/image.html",
   "/tools/index.html",
   "/tools/pdf-compress.html",
@@ -361,10 +362,10 @@ test.afterEach(async ({ page }) => {
 });
 
 test("shell matrix inventory is explicit and excludes specialized chrome", () => {
-  expect(TOOL_ROUTES).toHaveLength(13);
+  expect(TOOL_ROUTES).toHaveLength(14);
   expect(GENERAL_PUBLIC_ROUTES).toHaveLength(13);
   expect(APP_ROUTES).toHaveLength(2);
-  expect(COMMON_SHELL_ROUTES).toHaveLength(28);
+  expect(COMMON_SHELL_ROUTES).toHaveLength(29);
   expect(APP_SHELL_ROUTES).toHaveLength(8);
   expect(new Set(COMMON_SHELL_ROUTES).size).toBe(COMMON_SHELL_ROUTES.length);
 

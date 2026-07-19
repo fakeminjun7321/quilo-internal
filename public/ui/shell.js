@@ -14,6 +14,7 @@
     ["problem-set", "문제집 메이커", "교재에서 문제지와 해설지 세트를 만듭니다.", "/?report=problem-set", "pro", "pro"],
     ["vocabulary-book", "단어장 메이커", "영어교재·기존 단어장·엑셀표에서 영한 단어장을 만듭니다.", "/?report=vocabulary-book", "pro", "pro"],
     ["form-maker", "양식 메이커", "설명이나 사진에서 편집 가능한 양식을 만듭니다.", "/?report=form-maker", "pro", "pro"],
+    ["print-pdf-restore", "프린트 PDF 복원", "종이 사진을 의미가 보존된 벡터 PDF로 복원하고 300dpi로 검증합니다.", "/?report=print-pdf-restore", "admin", "beta"],
     ["phys-inquiry", "물리 수행평가", "탐구와 사고 과정을 보고서로 구조화합니다.", "/exam-prep.html", "pro", "paused"],
     ["math-inquiry", "수학 수행평가", "필기와 탐구 주제로 수학 보고서를 작성합니다.", "/exam-prep.html", "pro", "paused"],
     ["eng-exam-prep", "영어 시험대비 세트", "지문에서 시험과 학습 자료를 만듭니다.", "/exam-prep.html", "pro", "paused"],
@@ -68,6 +69,7 @@
     "problem-set": ["문제지", "시험지", "문제 생성", "워크북", "학습지"],
     "vocabulary-book": ["단어장", "단어짱", "영단어", "영어 단어", "어휘", "보카", "vocabulary", "vocab", "영어교재", "엑셀 단어장"],
     "form-maker": ["서식", "템플릿", "양식 복원", "문서 사진"],
+    "print-pdf-restore": ["프린트 복원", "사진 pdf 복원", "벡터 pdf", "수식 복원", "도해 복원", "ocr 검증"],
     "pdf-translate": ["번역", "통역", "translate", "영문 번역", "pdf 번역"],
     "cap-translate": ["cap 번역", "캡스톤 번역", "pasco 번역"],
     "file-convert": ["변환", "pdf 합치기", "이미지 변환", "엑셀 csv"],
@@ -87,6 +89,7 @@
 
   const SEARCH_PINNED = ["vocabulary-book", "problem-set", "phys-result", "chem-pre", "pdf-translate", "file-convert"];
   const HIDDEN_FEATURE_IDS = new Set(["quilo-schedule"]);
+  let adminViewer = false;
 
   const escapeHtml = (value) => String(value == null ? "" : value)
     .replaceAll("&", "&amp;")
@@ -98,7 +101,9 @@
 
   function feature(id) {
     if (HIDDEN_FEATURE_IDS.has(id)) return null;
-    return featureMap.get(id) || null;
+    const item = featureMap.get(id) || null;
+    if (item?.audience === "admin" && !adminViewer) return null;
+    return item;
   }
 
   function tierLabel(item) {
@@ -108,6 +113,7 @@
     if (item.audience === "member") return "Free";
     if (item.audience === "pro") return "Pro";
     if (item.audience === "max") return "Max";
+    if (item.audience === "admin") return "Admin";
     return "";
   }
 
@@ -123,7 +129,7 @@
         label: "제품",
         sections: [
           { title: "보고서", items: items(["chem-pre", "chem-result", "phys-result", "free", "reading-log"]) },
-          { title: "문서 제작", items: items(["reading-log-bulk", "form-maker", "problem-set"]) },
+          { title: "문서 제작", items: items(["reading-log-bulk", "form-maker", "print-pdf-restore", "problem-set"]) },
           { title: "추천 작업", items: items(["pdf-translate", "file-convert", "create"]) },
         ],
         all: { title: "전체 기능 보기", path: "/developers.html#catalog" },
@@ -448,6 +454,7 @@
     if (!normalizeSearch(query)) return SEARCH_PINNED.map(feature).filter(Boolean);
     return [...featureMap.values()]
       .filter((item) => !HIDDEN_FEATURE_IDS.has(item.id))
+      .filter((item) => item.audience !== "admin" || adminViewer)
       .map((item) => ({ item, score: searchScore(item, query) }))
       .filter(({ score }) => score >= 38)
       .sort((a, b) => b.score - a.score || a.item.title.localeCompare(b.item.title, "ko"))
@@ -651,6 +658,17 @@
   function renderAuthState(result) {
     const previousState = currentAuthState.state;
     currentAuthState = result;
+    const nextAdminViewer = result.state === "authenticated" && result.user?.isAdmin === true;
+    if (adminViewer !== nextAdminViewer) {
+      adminViewer = nextAdminViewer;
+      groups = groupModel();
+      closeMega();
+      const nav = header.querySelector("[data-ui-nav-groups]");
+      const mobile = header.querySelector("[data-ui-mobile-content]");
+      if (nav) nav.innerHTML = navTriggersMarkup(groups);
+      if (mobile) mobile.innerHTML = mobileMarkup(groups);
+      searchRoots.forEach((root) => root._refreshFeatureSearch?.());
+    }
     header.dataset.uiAuthState = result.state;
     header.setAttribute("aria-busy", "false");
     document.body.dataset.sessionState = result.state;

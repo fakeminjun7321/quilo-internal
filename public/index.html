@@ -269,6 +269,12 @@
           <span class="rt-title">양식 메이커 <span class="beta-pill">Pro</span></span>
           <span class="rt-tag">말로 양식 생성 · 종이 사진 → 한글 복원</span>
         </label>
+        <label id="rtPrintPdfRestore" hidden>
+          <input type="radio" name="reportType" value="print-pdf-restore" />
+          <span class="rt-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3h11l5 5v13H4z"/><path d="M14 3v6h6M8 13h8M8 17h5"/><path d="m18.5 12 .5 1.2 1.2.5-1.2.5-.5 1.2-.5-1.2-1.2-.5 1.2-.5z"/></svg></span>
+          <span class="rt-title">프린트 PDF 복원 <span class="beta-pill">Admin Beta</span></span>
+          <span class="rt-tag">종이 사진 → 의미가 보존된 벡터 PDF</span>
+        </label>
         <label id="rtEngExam" hidden>
           <input type="radio" name="reportType" value="eng-exam-prep" />
           <span class="rt-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v14H4z"/><path d="M4 9h16"/><path d="M8 13h8M8 16h5"/></svg></span>
@@ -1553,6 +1559,95 @@
       <div class="form-actions">
         <span class="hint">생성에는 보통 1~3분 걸립니다. Pro 기능이라 크레딧이 차감되지 않습니다.</span>
         <button type="submit" id="fmBtn">양식 만들기</button>
+      </div>
+    </form>
+
+    <!-- ── 프린트 PDF 복원 (관리자 베타) ─────────────────────────────── -->
+    <form id="printPdfRestoreForm" class="report-form" data-report-form="print-pdf-restore" hidden>
+      <div class="notice">
+        <strong>관리자 베타 · 고정밀 프린트 복원</strong><br>
+        종이 프린트 사진의 <strong>원문·수식·표·레이아웃을 편집 가능한 벡터 요소로 재구성</strong>합니다.
+        그래프와 도해는 겉모양을 베끼는 방식이 아니라 <strong>맥락·축·라벨·물리적 의미를 분석해 다시 그리며</strong>,
+        완성 PDF는 300dpi로 렌더링해 OCR 대조와 시각 QA를 거칩니다.
+        <br><small>흐릿하거나 가려져 확인할 수 없는 글자·수치·관계는 임의로 만들지 않습니다. 픽셀 복사나 단순 사진 PDF가 아닙니다.</small>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head">
+          <span class="form-section-title">복원할 프린트 사진</span>
+        </div>
+        <div class="field">
+          <span class="field-label">페이지 사진 <span class="req">*</span> (여러 장 가능)</span>
+          <div class="dropzone">
+            <input id="pprPhotos" name="photos" type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" multiple required aria-label="복원할 프린트 페이지 사진" />
+            <span class="dropzone-icon" aria-hidden="true"></span>
+            <span class="dropzone-title">원본 해상도의 페이지 사진을 순서대로 선택</span>
+            <span class="dropzone-sub">PNG · JPG · WebP · 여러 장 지원</span>
+            <span class="dropzone-file" data-dz-file></span>
+          </div>
+          <small>사진은 브라우저에서 축소하지 않고 원본 품질로 업로드합니다. 가능한 한 페이지 전체와 네 모서리가 보이게 촬영하세요.</small>
+        </div>
+        <div class="field">
+          <span class="field-label">원본·참고 PDF (선택)</span>
+          <div class="dropzone">
+            <input id="pprReference" name="reference" type="file" accept="application/pdf,.pdf" aria-label="원본 또는 양식 참고 PDF" />
+            <span class="dropzone-icon" aria-hidden="true"></span>
+            <span class="dropzone-title">같은 교재·학교 양식 PDF가 있으면 첨부</span>
+            <span class="dropzone-sub">글꼴·여백·머리말·워터마크·공통 도형 기준으로만 사용</span>
+            <span class="dropzone-file" data-dz-file></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head">
+          <span class="form-section-title">페이지 순서 · 복원 지시</span>
+        </div>
+        <div class="field">
+          <label><span class="field-label">페이지 순서 (선택)</span>
+            <input id="pprPageOrder" name="pageOrder" type="text" maxlength="1000" inputmode="numeric" placeholder="예: 사진 3장을 3→1→2 순서로 만들려면 3,1,2 / 비우면 선택한 파일 순서" />
+          </label>
+          <small>파일명과 다른 순서가 필요할 때만 사진 번호를 쉼표로 적으세요. 모든 사진 번호를 중복 없이 한 번씩 포함해야 합니다.</small>
+        </div>
+        <div class="field">
+          <label><span class="field-label">복원 지시 (선택)</span>
+            <textarea id="pprInstructions" name="promptText" rows="4" maxlength="12000" placeholder="예: 원래 학교 프린트의 2단 구성과 글꼴 비율 유지. 배경 로고 복원. 산란 도해는 충돌 매개변수 b가 입사 점근선에 수직이고 산란각 θ가 두 점근선 사이 각이 되도록 의미를 확인해 다시 그릴 것."></textarea>
+          </label>
+          <small>문서의 과목·단원·그림이 설명하는 관계를 알려주면 도해의 의미 검증에 사용합니다.</small>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head">
+          <span class="form-section-title">복원 원칙</span>
+        </div>
+        <div class="vocab-option-grid">
+          <label class="check-row">
+            <input id="pprPreserveLayout" type="checkbox" checked />
+            <span><strong>원본 양식·레이아웃 유지</strong><small>페이지 크기, 여백, 단·표·머리말, 글자 크기 비율과 배경 요소를 원본에 맞춥니다.</small></span>
+          </label>
+          <label class="check-row">
+            <input id="pprSemanticRedraw" name="semanticRedraw" type="checkbox" value="true" checked />
+            <span><strong>그래프·도해 의미 기반 재작성</strong><small>축·단위·라벨·방향·수학적/물리적 관계를 먼저 분석한 뒤 벡터로 다시 그립니다.</small></span>
+          </label>
+        </div>
+        <div class="notice space-top-3">
+          <strong>출력: PDF 고정</strong> · 벡터 텍스트·수식·표·도형 · 300dpi OCR 대조 · 페이지별 시각 QA
+          <input type="hidden" name="format" value="pdf" />
+          <input type="hidden" name="qualityGate" value="ocr-visual-300dpi" />
+        </div>
+      </div>
+
+      <div class="policy-check">
+        <label>
+          <input type="checkbox" required />
+          본인이 복원·이용할 권한을 가진 문서만 업로드하며, 결과 PDF의 원문·수식·수치·도해 의미를 직접 최종 확인합니다.
+        </label>
+      </div>
+
+      <div class="form-actions">
+        <span class="hint">고정밀 분석·재조판·300dpi 검증 때문에 페이지 수에 따라 수 분 이상 걸릴 수 있습니다.</span>
+        <button type="submit" id="pprBtn">벡터 PDF 복원</button>
       </div>
     </form>
 

@@ -52,6 +52,7 @@ const reportChecklistItems = {
   "problem-set": { title: "문제집 메이커", items: ["문제 PDF/사진", "페이지당 문제 수", "교차검증 선택", "만들기 버튼"] },
   "vocabulary-book": { title: "단어장 메이커", items: ["영어교재·단어장·표", "PDF 페이지 범위", "묶음·어휘 수", "단어장 만들기 버튼"] },
   "form-maker": { title: "양식 메이커", items: ["양식 설명 또는 문서 사진", "출력 형식·글꼴", "만들기 버튼"] },
+  "print-pdf-restore": { title: "프린트 PDF 복원", items: ["원본 페이지 사진", "페이지 순서 확인", "의미 기반 도해 복원", "300dpi 검증 PDF 생성"] },
   "reading-log": { title: "독서록", items: ["도서명", "영역·기록 구분 선택", "감상 메모(선택)", "생성 버튼"] },
 };
 
@@ -103,6 +104,8 @@ const elements = {
   vbBtn: document.getElementById("vbBtn"),
   fmForm: document.getElementById("formMakerForm"),
   fmBtn: document.getElementById("fmBtn"),
+  pprForm: document.getElementById("printPdfRestoreForm"),
+  pprBtn: document.getElementById("pprBtn"),
   rlForm: document.getElementById("readingLogForm"),
   rlBtn: document.getElementById("rlBtn"),
 };
@@ -117,6 +120,7 @@ const formTelemetryTypes = new Map([
   [elements.psForm, "problem-set"],
   [elements.vbForm, "vocabulary-book"],
   [elements.fmForm, "form-maker"],
+  [elements.pprForm, "print-pdf-restore"],
   [elements.rlForm, "reading-log"],
 ].filter(([form]) => !!form));
 const startedTelemetryForms = new WeakSet();
@@ -206,6 +210,7 @@ function resetForm() {
     [elements.vbBtn, "단어장 만들기"],
     [elements.frBtn, "자유 보고서 생성"],
     [elements.fmBtn, "양식 만들기"],
+    [elements.pprBtn, "벡터 PDF 복원"],
   ]);
   labels.forEach((label, button) => { if (button) button.textContent = label; });
   elements.stopBtn.textContent = "중지";
@@ -271,6 +276,7 @@ installReportFormControllers({
   runtime: {
     get currentJobId() { return currentJobId; },
     get studentId() { return currentStudentId; },
+    get isAdmin() { return runtime.state.get().user?.isAdmin === true; },
   },
   elements,
   getSelectedModel,

@@ -1,6 +1,6 @@
 "use strict";
 
-const state = { catalog: null, loggedIn: false, sessionState: "pending" };
+const state = { catalog: null, loggedIn: false, isAdmin: false, sessionState: "pending" };
 const $ = (id) => document.getElementById(id);
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -55,16 +55,20 @@ async function loadAccount() {
   if (session.state === "authenticated") {
     const data = session.user || {};
     state.loggedIn = true;
+    state.isAdmin = data.isAdmin === true;
     $("accountStatus").textContent = `${data.name || data.user || data.username || "사용자"} 계정으로 로그인됨`;
     $("loginLink").textContent = "Quilo로 돌아가기";
     $("loginLink").href = "/";
     $("createTokenBtn").disabled = false;
     await loadTokens();
     await loadApiRequests();
+    updateCatalogSummary();
+    renderCatalog();
     return;
   }
 
   state.loggedIn = false;
+  state.isAdmin = false;
   $("createTokenBtn").disabled = true;
   if (session.state === "anonymous") {
     $("accountStatus").textContent = "토큰을 만들려면 Quilo 로그인이 필요합니다.";
@@ -85,21 +89,32 @@ async function loadAccount() {
 async function loadCatalog() {
   try {
     state.catalog = await api("/api/catalog");
-    const modes = state.catalog.features.reduce((counts, item) => {
-      counts[item.execution] = (counts[item.execution] || 0) + 1;
-      return counts;
-    }, {});
-    $("catalogSummary").textContent = `${state.catalog.total}개 기능 · API ${modes.remote || 0} · 로컬 ${modes.local || 0} · 읽기 ${modes["read-only"] || 0} · 웹 연결 ${modes.handoff || 0} · 중단 ${modes.paused || 0}`;
+    updateCatalogSummary();
     renderCatalog();
   } catch (error) {
     $("catalogSummary").textContent = `카탈로그를 불러오지 못했습니다: ${error.message}`;
   }
 }
 
+function catalogFeatures() {
+  if (!state.catalog?.features) return [];
+  return state.catalog.features.filter((item) => item.audience !== "admin" || state.isAdmin);
+}
+
+function updateCatalogSummary() {
+  if (!state.catalog) return;
+  const visibleFeatures = catalogFeatures();
+  const modes = visibleFeatures.reduce((counts, item) => {
+    counts[item.execution] = (counts[item.execution] || 0) + 1;
+    return counts;
+  }, {});
+  $("catalogSummary").textContent = `${visibleFeatures.length}개 기능 · API ${modes.remote || 0} · 로컬 ${modes.local || 0} · 읽기 ${modes["read-only"] || 0} · 웹 연결 ${modes.handoff || 0} · 중단 ${modes.paused || 0}`;
+}
+
 function renderCatalog() {
   if (!state.catalog) return;
   const q = $("catalogSearch").value.trim().toLowerCase();
-  const items = state.catalog.features.filter((item) => !q || [item.title, item.summary, item.id, item.category].join(" ").toLowerCase().includes(q));
+  const items = catalogFeatures().filter((item) => !q || [item.title, item.summary, item.id, item.category].join(" ").toLowerCase().includes(q));
   const html = Object.entries(state.catalog.categories).map(([id, category]) => {
     const features = items.filter((item) => item.category === id);
     if (!features.length) return "";

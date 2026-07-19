@@ -17,6 +17,7 @@ const {
 const styleRef = require("./lib/style-ref");
 const {
   assertGeneratedOutputMagic,
+  normalizeGeneratedArtifact,
   validateReportArtifact,
   ENFORCEABLE_RULES: OUTPUT_VALIDATE_ENFORCEABLE_RULES,
 } = require("./lib/output-validate");
@@ -657,6 +658,39 @@ const PIPELINES = {
     generateHwpx: require("./lib/pipelines/form-maker/hwpx-gen").generateHwpx,
   },
 
+  // 프린트 사진 → 원본급 벡터 PDF 복원 (관리자 전용 베타).
+  // 페이지를 구조화해 다시 조판하고, 300dpi OCR·시각 검증을 통과한 PDF만 반환한다.
+  "print-pdf-restore": {
+    label: "프린트 PDF 복원",
+    filenamePrefix: "프린트복원",
+    filenameSourceField: "photos",
+    creditField: "result",
+    outputKind: "pdf",
+    adminOnly: true,
+    requireArtifactQa: true,
+    prepareInput(filesByField, body) {
+      const restore = require("./lib/pipelines/print-pdf-restore");
+      return restore.prepareInput(
+        {
+          ...filesByField,
+          reference: filesByField.reference || filesByField.referencePdf || [],
+        },
+        {
+          ...body,
+          format: "pdf",
+          qualityGate: "ocr-visual-300dpi",
+        },
+      );
+    },
+    buildFilename(content) {
+      const title = sanitizeForFilename(content.title || "복원본");
+      return `프린트복원_${title || "복원본"}.pdf`;
+    },
+    generateContent: require("./lib/pipelines/print-pdf-restore")
+      .generateReportContent,
+    generatePdf: require("./lib/pipelines/print-pdf-restore").generatePdf,
+  },
+
   // 영어 시험대비 자료 3종 세트 (베타) — 영어 지문/학습지 → 모의고사+개념정리+빈칸학습지 PDF 3종 ZIP.
   "eng-exam-prep": {
     label: "영어 시험대비 자료 3종 세트",
@@ -729,6 +763,9 @@ const FREE_BETA_TYPES = new Set([
   "cap-translate",
   "phys-mock-exam",
 ]);
+// 관리자만 볼 수 있는 실험 기능. Pro 베타 배정·임시 공개와 분리한다.
+// 외부 API 토큰은 refreshSessionUser에서 항상 isAdmin=false이므로 접근할 수 없다.
+const ADMIN_ONLY_REPORT_TYPES = new Set(["print-pdf-restore"]);
 // 독서록(단일·대량) — 정상 크레딧 과금 보고서. 예약은 '권수 × 모델단가'(최악치)로 선차감하고,
 // 생성 후 실제 소비 토큰(content.__usage)으로 정산해 차액을 환불한다(reserve→settle).
 const READING_LOG_TYPES = new Set(["reading-log", "reading-log-bulk"]);
@@ -931,7 +968,13 @@ const JOB_TIMEOUT_PROBLEMSET_MS = parseInt(
   process.env.JOB_TIMEOUT_PROBLEMSET_MS || String(40 * 60 * 1000),
   10,
 );
+// 다중 페이지 복원은 페이지별 OCR·벡터 조판·300dpi 재검증까지 수행한다.
+const JOB_TIMEOUT_PRINT_PDF_RESTORE_MS = parseInt(
+  process.env.JOB_TIMEOUT_PRINT_PDF_RESTORE_MS || String(90 * 60 * 1000),
+  10,
+);
 function jobTimeoutForModel(model, reportType) {
+  if (reportType === "print-pdf-restore") return JOB_TIMEOUT_PRINT_PDF_RESTORE_MS;
   if (/^claude-fable/.test(String(model || ""))) return JOB_TIMEOUT_FABLE_MS;
   if (reportType === "problem-set") return JOB_TIMEOUT_PROBLEMSET_MS;
   return JOB_TIMEOUT_MS;
@@ -2125,6 +2168,8 @@ app.get("/api/me", requireAuth, async (req, res) => {
   let pendingEmail = "";
   let emailVerified = !!u.emailVerified;
   let approved = !!u.approved;
+  // 관리자 표시는 세션의 오래된 복사본이 아니라 fresh profile 결과를 우선한다.
+  let isAdmin = !!u.isAdmin;
   let isStaff = !!u.isStaff;
   let isDeveloper = !!u.isDeveloper;
   let avatarUrl = u.avatarUrl || null;
@@ -2148,6 +2193,7 @@ app.get("/api/me", requireAuth, async (req, res) => {
         pendingEmail = String(freshUser.email_verify_email || "");
         emailVerified = !!freshUser.email_verified;
         approved = !!freshUser.approved;
+        isAdmin = !!freshUser.is_admin;
         isStaff = !!freshUser.is_staff;
         isDeveloper = !!freshUser.is_developer;
         avatarUrl = freshUser.avatar_url || null;
@@ -2157,6 +2203,7 @@ app.get("/api/me", requireAuth, async (req, res) => {
         // 세션에도 최신 인증 상태 반영(이후 게이트 판단의 stale 방지).
         req.session.userInfo.emailVerified = emailVerified;
         req.session.userInfo.approved = approved;
+        req.session.userInfo.isAdmin = isAdmin;
         req.session.userInfo.isStaff = isStaff;
         req.session.userInfo.isDeveloper = isDeveloper;
         req.session.userInfo.avatarUrl = avatarUrl;
@@ -2168,11 +2215,11 @@ app.get("/api/me", requireAuth, async (req, res) => {
       console.warn("[me] profile lookup failed:", e.message);
     }
   }
-  const reportEligible = !!u.isAdmin || (emailVerified && approved);
+  const reportEligible = isAdmin || (emailVerified && approved);
   return res.json({
     user: u.name,
     username,
-    isAdmin: !!u.isAdmin,
+    isAdmin,
     isStaff,
     isDeveloper,
     avatarUrl,
@@ -3844,6 +3891,22 @@ app.post(
       });
     }
 
+    // 관리자 전용 기능은 업로드 파싱보다 먼저 fresh 권한으로 fail-closed 차단한다.
+    // UI 숨김은 보안 경계가 아니며, scoped API 토큰은 관리자 권한을 갖지 않는다.
+    let userInfo = null;
+    if (ADMIN_ONLY_REPORT_TYPES.has(reportType) || pipeline.adminOnly === true) {
+      try {
+        userInfo = await refreshSessionUser(req, { failClosed: true });
+      } catch (e) {
+        console.warn("[generate] admin privilege refresh failed:", e.message);
+        return res.status(503).json({ error: "권한 확인 중 오류가 발생했습니다." });
+      }
+      if (!userInfo) return res.status(401).json({ error: "로그인이 필요합니다." });
+      if (!userInfo.isAdmin) {
+        return res.status(403).json({ error: "이 기능은 관리자 전용입니다." });
+      }
+    }
+
     const copyrightAccepted = isTruthyPolicyFlag(req.body.copyrightAccepted);
     const academicIntegrityAccepted = isTruthyPolicyFlag(
       req.body.academicIntegrityAccepted,
@@ -3885,9 +3948,8 @@ app.post(
       return res.status(400).json({ error: e.message });
     }
 
-    let userInfo;
     try {
-      userInfo = await refreshSessionUser(req, { failClosed: true });
+      userInfo = userInfo || await refreshSessionUser(req, { failClosed: true });
     } catch (e) {
       console.warn("[generate] privilege refresh failed:", e.message);
       return res.status(503).json({ error: "권한 확인 중 오류가 발생했습니다." });
@@ -3993,6 +4055,14 @@ app.post(
       } catch (e) {
         console.warn("[generate] profile lookup failed:", e.message);
       }
+    }
+
+    // 위 재조회 사이에 권한이 회수된 경우에도 같은 요청에서 즉시 차단한다.
+    if (
+      (ADMIN_ONLY_REPORT_TYPES.has(reportType) || pipeline.adminOnly === true) &&
+      !effectiveIsAdmin
+    ) {
+      return res.status(403).json({ error: "이 기능은 관리자 전용입니다." });
     }
 
     // ── 학생 인증 게이트(2단계) ───────────────────────────────────────────────
@@ -4302,12 +4372,14 @@ app.post(
     }
 
     const date = (req.body.date || "").trim();
-    // 출력 형식: docx (default) 또는 hwpx — pipeline이 hwpx generator를 가진 경우에만 hwpx 허용
+    // 출력 형식: 단일 PDF/ZIP 파이프라인은 서버가 고정하고, 일반 보고서만 docx/hwpx 선택.
     const requestedFormat = String(req.body.format || "docx").trim().toLowerCase();
     const format =
       pipeline.outputKind === "zip"
         ? "zip"
-        : requestedFormat === "hwpx" &&
+        : pipeline.outputKind === "pdf"
+          ? "pdf"
+          : requestedFormat === "hwpx" &&
             typeof pipeline.generateHwpx === "function"
           ? "hwpx"
           : "docx";
@@ -6532,6 +6604,33 @@ function normalizeWarnings(raw) {
   return out;
 }
 
+// 프린트 PDF 복원 QA는 SSE·파일 metadata에 필요한 작은 수치와 요약만 보관한다.
+// OCR 원문이나 렌더 이미지 같은 대형/민감 데이터는 job payload에 넣지 않는다.
+function normalizeRestoreQa(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const finite = (value, min, max) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : null;
+  };
+  const pageCount = finite(raw.pageCount ?? raw.pages, 0, 500);
+  const renderedDpi = finite(raw.renderedDpi ?? raw.dpi, 0, 1200);
+  const ocrCoverage = finite(
+    raw.ocrCoverage ?? raw.ocrSimilarity ?? raw.ocrScore,
+    0,
+    1,
+  );
+  return {
+    ok: raw.ok === true,
+    qualityGate: String(raw.qualityGate || "ocr-visual-300dpi").slice(0, 80),
+    pageCount,
+    renderedDpi,
+    ocrCoverage,
+    visualPassed: raw.visualPassed === true,
+    summary: String(raw.summary || raw.error || "").replace(/\s+/g, " ").trim().slice(0, 500),
+    warnings: normalizeWarnings(raw.warnings),
+  };
+}
+
 // ── 백그라운드 작업: Supabase 영속화 + 완료 이메일 ────────────────────────────
 // 백그라운드 모드 작업만 report_jobs 에 저장한다(일반 작업은 탭을 유지하므로 불필요).
 // 재배포/재시작에도 '내 작업'에서 추적 가능하게 하고, 부팅 시 ghost 작업을 정리한다.
@@ -6765,7 +6864,10 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
       }),
     );
     job.telemetryTimings.generation_ms = Math.max(0, Date.now() - tGenerationStart);
-    stripAiDashes(content); // 긴 하이픈 최종 제거(전 보고서 종류·docx/hwpx/zip 공통)
+    // 복원 기능은 원문의 문장부호도 출처 일부이므로 일반 보고서용 문장 정리를 적용하지 않는다.
+    if (job.reportType !== "print-pdf-restore") {
+      stripAiDashes(content);
+    }
     content.__allowHighlights = !!pipelineInput.allowHighlights;
 
     // AI 개념도 실제 생성분 추가 과금 (장당 1크레딧 — 위 잔액 예약치와 동기화).
@@ -6885,7 +6987,61 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
     job.telemetryPhase = "build";
     const tBuildStart = Date.now();
     let buffer;
-    if (typeof pipeline.generateBundle === "function") {
+    if (pipeline.outputKind === "pdf") {
+      if (typeof pipeline.generatePdf !== "function") {
+        throw new Error("PDF 생성기가 서버에 연결되지 않았습니다.");
+      }
+      pushProgress(job, pipeline.pdfProgress || "📄 벡터 PDF 빌드 + 300dpi 검증 중...");
+      const proposedFilename =
+        typeof pipeline.buildFilename === "function"
+          ? pipeline.buildFilename(content, {
+              studentId,
+              userName: renderedStudentName,
+              sourceFilename,
+            })
+          : `${pipeline.filenamePrefix || "result"}.pdf`;
+      const generated = await pipeline.generatePdf(content, {
+        studentId,
+        userName: renderedStudentName,
+        sourceFilename,
+        signal: ac.signal,
+        onProgress: (msg) => pushProgress(job, msg),
+      });
+      const artifact = normalizeGeneratedArtifact(generated, {
+        kind: "pdf",
+        fallbackFilename: proposedFilename,
+        label: "restored PDF",
+      });
+      const restoreQa = normalizeRestoreQa(artifact.qa);
+      const expectedRestorePages = Array.isArray(pipelineInput.photos)
+        ? pipelineInput.photos.length
+        : 0;
+      const restoreQaPassed =
+        !!restoreQa &&
+        restoreQa.ok === true &&
+        restoreQa.visualPassed === true &&
+        restoreQa.renderedDpi === 300 &&
+        Number.isInteger(restoreQa.pageCount) &&
+        restoreQa.pageCount > 0 &&
+        (!expectedRestorePages || restoreQa.pageCount === expectedRestorePages) &&
+        Number.isFinite(restoreQa.ocrCoverage);
+      if (pipeline.requireArtifactQa && !restoreQaPassed) {
+        const reason = restoreQa && restoreQa.summary;
+        throw new Error(
+          `PDF OCR·시각 품질 검증을 통과하지 못했습니다${reason ? `: ${String(reason).slice(0, 240)}` : "."}`,
+        );
+      }
+      buffer = artifact.buffer;
+      job.result = buffer;
+      job.mimeType = artifact.mimeType;
+      job.filename = artifact.filename;
+      job.restoreQa = restoreQa;
+      const buildSec = Math.floor((Date.now() - tBuildStart) / 1000);
+      pushProgress(
+        job,
+        `✓ PDF 빌드·검증 완료 (${Math.round(buffer.length / 1024)}KB, ${buildSec}초)`,
+      );
+    } else if (typeof pipeline.generateBundle === "function") {
       // 다중 PDF → ZIP 출력 파이프라인(문제집 메이커 등). generateDocx/Hwpx 대신 사용.
       pushProgress(job, pipeline.bundleProgress || "📦 결과 파일 빌드 + ZIP 중...");
       const bundle = await pipeline.generateBundle(content, {
@@ -6943,7 +7099,7 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
     job.telemetryTimings.build_ms = Math.max(0, Date.now() - tBuildStart);
 
     // 산출물 자동검사(W2-C/DEF-011): 저장·전달 직전에 최종 버퍼를 스캔한다.
-    // (수식 raw 마커 잔존, 긴 대시, U+FFFD, HWPX BinData 누락. zip 번들·pdf는 검사 밖)
+    // (수식 raw 마커 잔존, 긴 대시, U+FFFD, HWPX BinData 누락, PDF 구조)
     // 기본은 경고만 남기고, OUTPUT_VALIDATE_ENFORCE=1 이면 raw 수식 마커(M1급)에
     // 한해 생성 실패로 처리한다("HWPX 수식 postprocess 실패는 fatal" 원칙과 동일 선상).
     // 긴 대시·U+FFFD는 상류 스크럽(stripAiDashes 등)이 1차 방어라 enforce에서도 경고 유지.
@@ -6951,7 +7107,9 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
       job.telemetryPhase = "validation";
       const tValidationStart = Date.now();
       const artifactFormat =
-        typeof pipeline.generateBundle === "function"
+        pipeline.outputKind === "pdf"
+          ? "pdf"
+          : typeof pipeline.generateBundle === "function"
           ? "zip"
           : format === "hwpx"
             ? "hwpx"
@@ -7059,6 +7217,7 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
               reportLabel: pipeline.label,
               format,
               policyAcknowledgement,
+              restoreQa: job.restoreQa || undefined,
             },
           });
           if (savedFile?.id) {
@@ -7244,7 +7403,15 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
   }
 
   job.listeners.forEach((r) => {
-    sendSse(r, "done", { filename: job.filename, fileId: job.fileId, googleDriveUrl: job.googleDriveUrl || "", warnings: job.warnings || [], styleFont: job.styleFont || null, handoff: job.handoff || "" });
+    sendSse(r, "done", {
+      filename: job.filename,
+      fileId: job.fileId,
+      googleDriveUrl: job.googleDriveUrl || "",
+      warnings: job.warnings || [],
+      styleFont: job.styleFont || null,
+      handoff: job.handoff || "",
+      restoreQa: job.restoreQa || null,
+    });
     r.end();
   });
   job.listeners = [];
@@ -7363,6 +7530,7 @@ app.get("/api/jobs/:id/stream", requireAuth, (req, res) => {
       warnings: job.warnings || [],
       styleFont: job.styleFont || null,
       handoff: job.handoff || "",
+      restoreQa: job.restoreQa || null,
       files: (job.files || []).map((f, i) => ({
         index: i,
         filename: f.filename,

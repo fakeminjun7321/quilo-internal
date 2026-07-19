@@ -77,6 +77,11 @@ export function createShellController({ state, router, hooks }) {
   }
 
   async function loadEntitlements() {
+    // 이 기능은 구독 entitlement가 아니라 방금 /api/me에서 받은 실제 관리자
+    // 플래그로만 공개한다. 직접 URL도 pending report를 소비하기 전에 동기적으로
+    // 라디오를 열어 두어야 관리자 폼을 정상 선택할 수 있다.
+    const isAdmin = state.get().user?.isAdmin === true;
+    if (isAdmin) reveal("rtPrintPdfRestore");
     loadEntitlementsSnapshot()
       .then(({ subscription, beta }) => {
         if (subscription?.active) reveal("navBetaTranslate");
@@ -107,9 +112,10 @@ export function createShellController({ state, router, hooks }) {
           "problem-set": ["problem-set", "rtProblemSet"],
           "vocabulary-book": ["vocabulary-book", "rtVocabularyBook"],
           "form-maker": ["form-maker", "rtFormMaker"],
+          ...(isAdmin ? { "print-pdf-restore": ["print-pdf-restore", "rtPrintPdfRestore"] } : {}),
           "reading-log": ["reading-log", "rtReadingLog"],
         }[requested];
-        if (gated && has(gated[0])) reveal(gated[1]);
+        if (gated && (gated[0] === "print-pdf-restore" ? isAdmin : has(gated[0]))) reveal(gated[1]);
         refreshDropdownVisibility();
       })
       .catch(refreshDropdownVisibility);

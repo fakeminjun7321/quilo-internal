@@ -185,6 +185,25 @@ export const REPORT_WORKFLOWS = Object.freeze({
       checked("AI 모델", 'input[name="fmModel"]'),
     ],
   },
+  "print-pdf-restore": {
+    title: "프린트 PDF 복원",
+    description: "종이 프린트 사진을 의미가 보존된 벡터 PDF로 재구성하고 300dpi OCR·시각 QA로 검증합니다.",
+    time: "페이지별 수 분",
+    cost: "관리자 베타",
+    steps: {
+      upload: step("#pprPhotos", "1. 자료", "원본 페이지 사진 업로드"),
+      info: step("#pprPageOrder", "2. 정보", "페이지 순서·복원 지시"),
+      settings: step("#pprPreserveLayout", "3. 복원 원칙", "양식·도해 복원 원칙 확인"),
+      generate: step("#pprBtn", "4. 생성", "검증된 벡터 PDF 생성"),
+    },
+    requirements: [
+      file("페이지 사진", "#pprPhotos"),
+      file("원본·참고 PDF", "#pprReference", "upload", { required: false }),
+      value("페이지 순서", "#pprPageOrder", "info", { required: false }),
+      value("복원 지시", "#pprInstructions", "info", { required: false }),
+      value("출력 형식", '#printPdfRestoreForm input[name="format"]'),
+    ],
+  },
   "eng-exam-prep": {
     title: "영어 시험대비 3종",
     description: "영어 지문을 모의고사·개념 정리·빈칸 자료로 구성합니다.",

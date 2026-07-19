@@ -124,12 +124,13 @@ export function createAccountController({ state, router, hooks }) {
     hooks.studentIdChanged?.(studentId);
   }
 
-  function applyReportAccess(blocked) {
+  function applyReportAccess(blocked, isAdmin = false) {
     const denied = new Set(Array.isArray(blocked) ? blocked : []);
     document.querySelectorAll('input[name="reportType"]').forEach((radio) => {
       const label = radio.closest("label");
       if (!label) return;
-      label.hidden = denied.has(radio.value);
+      const adminOnly = radio.value === "print-pdf-restore";
+      label.hidden = denied.has(radio.value) || (adminOnly && !isAdmin);
       if (label.hidden && radio.checked) radio.checked = false;
     });
   }
@@ -301,7 +302,7 @@ export function createAccountController({ state, router, hooks }) {
     if (!loggedIn) {
       setTelemetryConsent(false, "");
       if (byId("analyticsConsentNotice")) byId("analyticsConsentNotice").hidden = true;
-      applyReportAccess([]);
+      applyReportAccess([], false);
       applyVerification(null);
       const requested = router.requestedReport();
       if (requested) { router.setPending(requested); hooks.shell?.openLogin(); }
@@ -324,7 +325,7 @@ export function createAccountController({ state, router, hooks }) {
       if (!user.fableDisabled) document.querySelectorAll("label.fable-model").forEach((node) => { node.hidden = false; });
       document.querySelectorAll("label.beta-model").forEach((node) => { node.hidden = false; });
     }
-    applyReportAccess(user.isAdmin ? [] : user.blockedReportTypes);
+    applyReportAccess(user.isAdmin ? [] : user.blockedReportTypes, user.isAdmin === true);
     applyVerification(user);
     if (!user.isAdmin) loadBalance();
     hooks.filesController?.loadFiles();

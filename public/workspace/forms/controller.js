@@ -18,7 +18,8 @@ export function installReportFormControllers(deps) {
   } = deps;
   const USE_POLICY_NOTE = usePolicyNote;
   const { form, btn, crForm, crBtn, prForm, prBtn, piForm, piBtn, miForm, miBtn,
-    frForm, frBtn, psForm, psBtn, vbForm, vbBtn, fmForm, fmBtn, rlForm, rlBtn } = elements;
+    frForm, frBtn, psForm, psBtn, vbForm, vbBtn, fmForm, fmBtn, pprForm, pprBtn,
+    rlForm, rlBtn } = elements;
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     if (runtime.currentJobId) return; // 안전장치: 진행 중이면 무시
@@ -792,6 +793,74 @@ export function installReportFormControllers(deps) {
       appendPolicyAcknowledgements(fd);
 
       await submitReport({ formEl: fmForm, buttonEl: fmBtn, formData: fd, estimate: estimateGenSeconds("free", fmModel, photos.length * 1500) });
+    });
+  }
+
+  // ── 프린트 PDF 복원 (관리자 전용 베타) ─────────────────────────────
+  if (pprForm) {
+    pprForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (runtime.currentJobId) return;
+      // 숨겨진 폼을 DOM에서 강제로 연 일반 계정도 제출할 수 없게 막는다.
+      // 최종 권한 경계는 서버가 독립적으로 다시 검사한다.
+      if (!runtime.isAdmin) {
+        alert("프린트 PDF 복원은 현재 관리자 전용 베타입니다.");
+        return;
+      }
+
+      const photosInput = document.getElementById("pprPhotos");
+      const photos = Array.from(photosInput?.files || []);
+      if (!photos.length) {
+        alert("복원할 프린트 페이지 사진을 한 장 이상 올리세요.");
+        photosInput?.focus();
+        return;
+      }
+      const reference = document.getElementById("pprReference")?.files?.[0] || null;
+      const pageOrder = document.getElementById("pprPageOrder")?.value.trim() || "";
+      const promptText = document.getElementById("pprInstructions")?.value.trim() || "";
+      const preserveLayout = document.getElementById("pprPreserveLayout")?.checked !== false;
+      const semanticRedraw = document.getElementById("pprSemanticRedraw")?.checked !== false;
+      const estimateSeconds = Math.max(
+        180,
+        estimateGenSeconds("free", "claude-opus-4-8", photos.length * 2200),
+      );
+
+      const ok = await showConfirmDialog({
+        title: "프린트 PDF 복원 · 관리자 베타",
+        background: pprForm,
+        rows: [
+          ["입력", `페이지 사진 ${photos.length}장${reference ? ", 참고 PDF 1개" : ""}`],
+          ["페이지 순서", pageOrder || "선택한 파일 순서"],
+          ["양식", preserveLayout ? "원본 페이지·여백·단·표 구조 유지" : "내용 중심으로 정리"],
+          ["그래프·도해", semanticRedraw ? "맥락·수학적/물리적 의미를 검증해 벡터 재작성" : "원본 도형을 보존해 배치"],
+          ["출력", "벡터 PDF"],
+          ["품질 검사", "300dpi 렌더 · OCR 대조 · 페이지별 시각 QA"],
+          ["공개 범위", "관리자 전용 베타"],
+          ["예상 시간", formatDuration(estimateSeconds)],
+        ],
+        note: `사진을 단순히 PDF에 넣지 않고 원문·수식·표·레이아웃을 다시 구성합니다. 확인할 수 없는 값은 만들지 않습니다. ${USE_POLICY_NOTE}`,
+      });
+      if (!ok) return;
+
+      const formData = new FormData();
+      formData.append("type", "print-pdf-restore");
+      photos.forEach((photo) => formData.append("photos", photo, photo.name));
+      if (reference) formData.append("reference", reference, reference.name);
+      if (pageOrder) formData.append("pageOrder", pageOrder);
+      if (promptText) formData.append("promptText", promptText);
+      formData.append("layoutMode", preserveLayout ? "source" : "clean");
+      formData.append("semanticRedraw", semanticRedraw ? "true" : "false");
+      formData.append("qualityGate", "ocr-visual-300dpi");
+      formData.append("format", "pdf");
+      if (runtime.studentId) formData.append("studentId", runtime.studentId);
+      appendPolicyAcknowledgements(formData);
+
+      await submitReport({
+        formEl: pprForm,
+        buttonEl: pprBtn,
+        formData,
+        estimate: estimateSeconds,
+      });
     });
   }
 

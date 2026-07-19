@@ -12,13 +12,13 @@ const legacy = require("../lib/lab-content.json");
 const createLabRouter = require("../lib/lab-routes");
 
 test("development history is factual, unique, and ships its local cover images", () => {
-  assert.ok(history.length >= 4);
+  assert.ok(history.length >= 11);
   const entries = [...history, ...legacy];
   const ids = entries.map((entry) => entry.id);
   assert.equal(new Set(ids).size, ids.length);
 
-  for (const entry of history) {
-    assert.equal(entry.archive_kind, "development_history");
+  for (const entry of entries) {
+    if (history.includes(entry)) assert.equal(entry.archive_kind, "development_history");
     assert.match(entry.date, /^2026-\d{2}-\d{2}$/);
     assert.ok(entry.title.length >= 12);
     assert.ok(entry.summary.length >= 40);
@@ -49,5 +49,5 @@ test("lab API exposes migrated Lab posts and new history cover metadata", async 
   assert.equal(detailResponse.status, 200);
   const detail = await detailResponse.json();
   assert.equal(detail.coverImage, history[0].cover_image);
-  assert.match(detail.body_markdown, /\/assets\/developer-notes\/quilo-history-cover\.webp/);
+  assert.match(detail.body_markdown, new RegExp(history[0].cover_image.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 });

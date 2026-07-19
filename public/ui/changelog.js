@@ -18,6 +18,33 @@
   let releases = [];
   let activeFilter = "all";
 
+  function humanizeReleaseText(value, { title = false } = {}) {
+    let text = String(value || "")
+      .replace(/[\p{Extended_Pictographic}\uFE0F]/gu, "")
+      .replace(/대폭/g, "크게")
+      .replace(/전면 점검[·ㆍ]개선/g, "전체 점검과 개선")
+      .replace(/전면 개선/g, "전반 개선")
+      .replace(/대개편/g, "개편")
+      .replace(/근본 수정/g, "원인 수정")
+      .replace(/비용 폭주 차단/g, "과도한 비용 사용 제한")
+      .replace(/자동 검증기/g, "자동 검증 추가")
+      .replace(/정밀화/g, "정확도 개선")
+      .replace(/완벽하게/g, "안정적으로")
+      .replace(/완벽한/g, "안정적인")
+      .replace(/\s+[—–]\s+/g, title ? ": " : ". ")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+    if (title) {
+      text = text
+        .replace(/^[\u2190-\u2BFF∑]+\s*/u, "")
+        .replace(/\s*\+\s*/g, ", ")
+        .replace(/\s*→\s*/g, "에서 ")
+        .replace(/\s{2,}/g, " ")
+        .trim();
+    }
+    return text;
+  }
+
   function formatVersion(value) {
     const version = String(value || "").trim().replace(/^v/i, "");
     return version ? `v${version}` : "버전 확인 지연";
@@ -57,7 +84,7 @@
   }
 
   function appendRichText(target, value) {
-    const text = String(value || "");
+    const text = humanizeReleaseText(value);
     const chunks = text.split("**");
     chunks.forEach((chunk, index) => {
       if (!chunk) return;
@@ -108,6 +135,7 @@
     article.dataset.search = [note.title, note.type, note.date, ...(Array.isArray(note.items) ? note.items : [])]
       .join(" ")
       .replaceAll("**", "")
+      .replace(/[\p{Extended_Pictographic}\uFE0F]/gu, "")
       .toLocaleLowerCase("ko-KR");
 
     const head = document.createElement("header");
@@ -127,7 +155,7 @@
     meta.append(releaseLabel, date);
     if (version.textContent) meta.appendChild(version);
     const title = document.createElement("h2");
-    title.textContent = String(note.title || "업데이트");
+    title.textContent = humanizeReleaseText(note.title || "업데이트", { title: true });
     headingBlock.append(meta, title);
 
     const copy = document.createElement("button");
@@ -176,7 +204,7 @@
     link.href = `#${articleId}`;
     if (index === 0) link.classList.add("is-current");
     const title = document.createElement("span");
-    title.textContent = note.version ? formatVersion(note.version) : index === 0 ? currentVersion : String(note.title || "업데이트");
+    title.textContent = note.version ? formatVersion(note.version) : index === 0 ? currentVersion : humanizeReleaseText(note.title || "업데이트", { title: true });
     const time = document.createElement("time");
     time.dateTime = parseDate(note.date)?.toISOString().slice(0, 10) || "";
     time.textContent = formatDate(note.date, true);

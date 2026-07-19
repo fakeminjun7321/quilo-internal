@@ -232,8 +232,21 @@
       .replaceAll('"', "&quot;");
   }
 
+  function humanizeEditorialText(value) {
+    return String(value == null ? "" : value)
+      .replace(/[\p{Extended_Pictographic}\uFE0F]/gu, "")
+      .replace(/대폭/g, "크게")
+      .replace(/완벽하게/g, "안정적으로")
+      .replace(/완벽한/g, "안정적인")
+      .replace(/박멸/g, "방지")
+      .replace(/LLM이 뱉는/g, "생성 모델이 반환하는")
+      .replace(/\s+[—–]\s+/g, ": ")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+  }
+
   function legacyInlineMarkdown(value) {
-    return escapeMarkup(value)
+    return escapeMarkup(humanizeEditorialText(value))
       .replace(/`([^`\n]+)`/g, "<code>$1</code>")
       .replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
   }
@@ -303,8 +316,8 @@
       id: `legacy:${legacyId}`,
       slug: legacyId,
       kind: "developer",
-      title: cleanText(raw.title, "제목 없음"),
-      summary: cleanText(raw.summary),
+      title: humanizeEditorialText(cleanText(raw.title, "제목 없음")),
+      summary: humanizeEditorialText(cleanText(raw.summary)),
       richHtml: detail ? legacyMarkdownToHtml(raw.body_markdown) : "",
       coverUrl,
       category: legacyCategory(tag),

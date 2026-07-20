@@ -40,6 +40,20 @@ test("catalog represents the broad Quilo product, not only reports", () => {
   }
 });
 
+test("background jobs panel labels every pipeline feature in Korean", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../public/workspace/background-jobs.js"), "utf8");
+  const literal = source.match(/const TYPE_LABELS = (\{[\s\S]*?\});/)?.[1];
+  assert.ok(literal, "TYPE_LABELS object not found in background-jobs.js");
+  const TYPE_LABELS = new Function(`return ${literal};`)();
+  const pipelines = listFeatures().filter((feature) => feature.kind === "pipeline");
+  assert.ok(pipelines.length >= 16);
+  for (const feature of pipelines) {
+    const label = TYPE_LABELS[feature.id];
+    assert.ok(typeof label === "string" && label.trim() && label !== feature.id,
+      `TYPE_LABELS missing "${feature.id}" (${feature.title}) — 백그라운드 작업 목록에 raw id가 노출된다`);
+  }
+});
+
 test("PDF analysis is exposed as a real browser workspace instead of a catalog-only link", () => {
   const page = fs.readFileSync(path.join(__dirname, "../public/tools/pdf-analysis.html"), "utf8");
   const runtime = fs.readFileSync(path.join(__dirname, "../public/ui/pdf-analysis.js"), "utf8");

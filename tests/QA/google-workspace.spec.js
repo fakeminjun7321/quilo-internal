@@ -1,5 +1,5 @@
 const path = require("path");
-const { spawn } = require("child_process");
+const { startQaServer } = require("./helpers/qa-server");
 
 function loadPlaywrightTest() {
   try { return require("@playwright/test"); }
@@ -14,30 +14,15 @@ function loadPlaywrightTest() {
 }
 
 const { test, expect } = loadPlaywrightTest();
-const BASE_URL = process.env.QA_BASE_URL || "http://127.0.0.1:3000";
-let serverProcess = null;
-
-async function serverIsUp() {
-  try { const response = await fetch(BASE_URL); return response.ok || response.status < 500; }
-  catch (_) { return false; }
-}
-
-async function waitForServer() {
-  const deadline = Date.now() + 15000;
-  while (Date.now() < deadline) {
-    if (await serverIsUp()) return;
-    await new Promise((resolve) => setTimeout(resolve, 200));
-  }
-  throw new Error("Quilo QA server did not start");
-}
+let qaServer = null;
+let BASE_URL = "";
 
 test.beforeAll(async () => {
-  if (await serverIsUp()) return;
-  serverProcess = spawn("node", ["server.js"], { cwd: process.cwd(), env: { ...process.env, PORT: "3000" }, stdio: "pipe" });
-  await waitForServer();
+  qaServer = await startQaServer();
+  BASE_URL = qaServer.baseUrl;
 });
 
-test.afterAll(() => { if (serverProcess) serverProcess.kill(); });
+test.afterAll(async () => { if (qaServer) await qaServer.stop(); });
 
 test("Google Workspace UI exposes real Drive, Docs, comments, save, disconnect, and reconnect flows", async ({ page }) => {
   let googleConnected = true;

@@ -277,7 +277,7 @@ test("every catalog feature exposes a real destination and an explicit audience"
   const serverSource = fs.readFileSync(path.join(process.cwd(), "server.js"), "utf8");
   expect(FEATURES.length).toBeGreaterThan(30);
   for (const feature of FEATURES) {
-    expect(["public", "member", "pro", "max"], `${feature.id} audience`).toContain(feature.audience);
+    expect(["public", "member", "pro", "max", "admin"], `${feature.id} audience`).toContain(feature.audience);
     expect(["active", "pro", "max", "paused", "beta"], `${feature.id} status`).toContain(feature.status);
     const pathname = new URL(feature.path, "http://quilo.local").pathname;
     if (pathname === "/schedule/") {

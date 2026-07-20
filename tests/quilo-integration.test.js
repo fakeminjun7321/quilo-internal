@@ -25,7 +25,7 @@ test("catalog represents the broad Quilo product, not only reports", () => {
   assert.ok(new Set(features.map((feature) => feature.category)).size >= 6);
   assert.equal(features.find((feature) => feature.id === "chem-pre").execution, "remote");
   assert.equal(features.find((feature) => feature.id === "pdf-translate").execution, "remote");
-  assert.equal(features.find((feature) => feature.id === "word-count").execution, "hybrid");
+  assert.equal(features.find((feature) => feature.id === "word-count").execution, "remote");
   assert.equal(features.find((feature) => feature.id === "lab").execution, "read-only");
   assert.equal(features.find((feature) => feature.id === "phys-inquiry").execution, "paused");
   assert.equal(features.find((feature) => feature.id === "vibe-coding").execution, "remote");
@@ -51,6 +51,38 @@ test("background jobs panel labels every pipeline feature in Korean", () => {
     const label = TYPE_LABELS[feature.id];
     assert.ok(typeof label === "string" && label.trim() && label !== feature.id,
       `TYPE_LABELS missing "${feature.id}" (${feature.title}) — 백그라운드 작업 목록에 raw id가 노출된다`);
+  }
+});
+
+test("every /?report= link resolves to a reportType radio or a registered alias", async () => {
+  const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+  const radios = new Set(
+    [...html.matchAll(/<input[^>]*name="reportType"[^>]*value="([^"]+)"/g)].map((m) => m[1]),
+  );
+  assert.ok(radios.size >= 15, "reportType radios missing from index.html");
+
+  // report-registry.js는 자급자족 ESM(import문·최상위 DOM 접근 없음)이라 실제 export를
+  // 그대로 검증한다. 패키지가 "type":"commonjs"라 파일 경로 import는 CJS로 파싱되므로
+  // data: URL로 ESM 강제 로드한다.
+  const registrySource = fs.readFileSync(path.join(__dirname, "../public/workspace/report-registry.js"), "utf8");
+  const { REPORT_ALIASES } = await import(`data:text/javascript,${encodeURIComponent(registrySource)}`);
+  for (const [id, alias] of Object.entries(REPORT_ALIASES)) {
+    assert.ok(!radios.has(id), `${id} must not be both an alias and a radio`);
+    assert.ok(radios.has(alias.base), `alias ${id} points at missing radio "${alias.base}"`);
+  }
+  assert.equal(REPORT_ALIASES["reading-log-bulk"]?.base, "reading-log");
+
+  const resolvable = (id) => radios.has(id) || Object.prototype.hasOwnProperty.call(REPORT_ALIASES, id);
+  const catalogIds = listFeatures()
+    .map((feature) => String(feature.path || ""))
+    .filter((featurePath) => featurePath.startsWith("/?report="))
+    .map((featurePath) => featurePath.slice("/?report=".length));
+  assert.ok(catalogIds.includes("reading-log-bulk"));
+  for (const id of catalogIds) assert.ok(resolvable(id), `catalog link /?report=${id} is dead`);
+
+  const shell = fs.readFileSync(path.join(__dirname, "../public/ui/shell.js"), "utf8");
+  for (const [, id] of shell.matchAll(/\/\?report=([a-z0-9-]+)/g)) {
+    assert.ok(resolvable(id), `shell nav link /?report=${id} is dead`);
   }
 });
 

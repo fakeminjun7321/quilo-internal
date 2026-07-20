@@ -1,5 +1,5 @@
 const path = require("path");
-const { spawn } = require("child_process");
+const { startQaServer } = require("./helpers/qa-server");
 
 function loadPlaywrightTest() {
   try { return require("@playwright/test"); }
@@ -13,26 +13,15 @@ function loadPlaywrightTest() {
 }
 
 const { test, expect } = loadPlaywrightTest();
-const BASE_URL = process.env.QA_BASE_URL || "http://127.0.0.1:3000";
-let serverProcess = null;
-
-async function serverIsUp() {
-  try { const response = await fetch(BASE_URL); return response.ok || response.status < 500; }
-  catch { return false; }
-}
+let qaServer = null;
+let BASE_URL = "";
 
 test.beforeAll(async () => {
-  if (await serverIsUp()) return;
-  serverProcess = spawn("node", ["server.js"], { cwd: process.cwd(), env: { ...process.env, PORT: "3000" }, stdio: "pipe" });
-  const deadline = Date.now() + 15_000;
-  while (Date.now() < deadline) {
-    if (await serverIsUp()) return;
-    await new Promise((resolve) => setTimeout(resolve, 200));
-  }
-  throw new Error("Quilo QA server did not start");
+  qaServer = await startQaServer();
+  BASE_URL = qaServer.baseUrl;
 });
 
-test.afterAll(() => { if (serverProcess) serverProcess.kill(); });
+test.afterAll(async () => { if (qaServer) await qaServer.stop(); });
 
 test("highest-accuracy OCR renders spatial preview and downloads editable reconstructed documents", async ({ page }) => {
   const consoleErrors = [];

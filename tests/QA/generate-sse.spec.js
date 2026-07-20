@@ -1,5 +1,5 @@
 const path = require("path");
-const { spawn } = require("child_process");
+const { startQaServer } = require("./helpers/qa-server");
 
 function loadPlaywrightTest() {
   try {
@@ -19,39 +19,16 @@ function loadPlaywrightTest() {
 
 const { test, expect } = loadPlaywrightTest();
 
-const BASE_URL = process.env.QA_BASE_URL || "http://127.0.0.1:3000";
-let serverProcess = null;
-
-async function serverIsUp() {
-  try {
-    const res = await fetch(BASE_URL);
-    return res.ok || res.status < 500;
-  } catch (_) {
-    return false;
-  }
-}
-
-async function waitForServer() {
-  const deadline = Date.now() + 15000;
-  while (Date.now() < deadline) {
-    if (await serverIsUp()) return;
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-  throw new Error(`Server did not start at ${BASE_URL}`);
-}
+let qaServer = null;
+let BASE_URL = "";
 
 test.beforeAll(async () => {
-  if (await serverIsUp()) return;
-  serverProcess = spawn("node", ["server.js"], {
-    cwd: process.cwd(),
-    env: { ...process.env, PORT: "3000" },
-    stdio: "pipe",
-  });
-  await waitForServer();
+  qaServer = await startQaServer();
+  BASE_URL = qaServer.baseUrl;
 });
 
 test.afterAll(async () => {
-  if (serverProcess) serverProcess.kill();
+  if (qaServer) await qaServer.stop();
 });
 
 async function mockFrontendApis(page) {

@@ -137,14 +137,16 @@
 - 로컬의 동일 staging 환경은 공개 경로 64개를 1440px/390px에서 `128/128` 통과했고,
   `/schedule/`과 공개 editorial API도 200을 반환했다. Render 서비스도 build, health check,
   시작까지 성공했으며 재배포 직후 동일 경로 30회는 모두 200이었다.
-- 그러나 실제 Chromium 전수 검사에서는 2개 병렬 페이지일 때 문서 404가 `10/128`, 완전
-  순차일 때도 `21/128` 재현됐다. 404 응답에는 `x-render-routing: no-server`가 있었고
-  `x-request-id`, `rndr-id`, 애플리케이션 보안 헤더가 없었으며 해당 요청은 앱 로그에도
-  도달하지 않았다. 동일 커밋의 로컬 검사가 전부 통과하므로 코드/Express 404가 아니라
-  신규 Free 인스턴스의 Render 외부 라우팅 문제로 분류한다.
-- Render [공식 Free 인스턴스 안내](https://render.com/docs/free)도 Free 인스턴스를 운영
-  용도로 사용하지 말라고 명시한다. 현재 무료 스테이징은 기능 미리보기 링크로만 유지하고
-  출시 판정에는 사용하지 않는다. paid staging
-  인스턴스에서 전수 검사를 다시 통과하고, 별도 Supabase와 실제 공급자 key로 생성 canary를
-  마치기 전에는 운영에 배포하지 않는다. HWPX/DOCX의 macOS 한글 및 Windows 한컴 교차
-  열기 또한 출시 차단 조건으로 유지한다.
+- 서비스 생성 직후 첫 Chromium 전수 검사에서는 일부 edge가 `x-render-routing: no-server`
+  404를 반환했다. 이 응답에는 `x-request-id`, `rndr-id`, 애플리케이션 보안 헤더가 없었고
+  앱 로그에도 도달하지 않아 코드/Express 404가 아닌 신규 서비스 라우팅 전파 상태로
+  분류했다.
+- 전파 안정화 뒤 `/healthz` 20회 연속 200을 확인하고 같은 Chromium 전수 검사를 다시
+  실행했다. 공개 경로 64개의 1440px/390px 상태가 `128/128` 통과했으며 문서 4xx/5xx,
+  page error, 예상 밖 console/response 오류, 깨진 이미지, overflow, 이름 없는 가시 control은
+  모두 0이었다. 현재 스테이징의 간헐적 404는 재현되지 않는다.
+- Render [공식 Free 인스턴스 안내](https://render.com/docs/free)는 Free 인스턴스가 15분
+  유휴 후 sleep하고 운영 용도가 아니라고 명시한다. 따라서 현재 무료 스테이징은 기능
+  미리보기와 공개 경로 회귀용으로만 유지한다. 별도 Supabase와 실제 공급자 key로 생성
+  canary를 마치기 전에는 운영에 배포하지 않는다. HWPX/DOCX의 macOS 한글 및 Windows
+  한컴 교차 열기 또한 출시 차단 조건으로 유지한다.

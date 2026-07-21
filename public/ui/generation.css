@@ -10,6 +10,7 @@
   box-shadow: 0 12px 34px rgba(15, 23, 42, .04);
   scroll-margin-top: calc(var(--q-shell-height) + 24px);
 }
+[data-retired-report] { display: none !important; }
 #reportsPanel.workspace-mode > #progressArea {
   grid-column: 1;
   grid-row: auto;
@@ -82,6 +83,67 @@ body[data-report-eligible="yes"] #reportsPanel.workspace-mode > #progressArea { 
   font: 11px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
   white-space: pre-wrap;
 }
+
+body.modal-open { overflow: hidden; }
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  min-height: 100dvh;
+  padding: 24px;
+  overflow-y: auto;
+  background: rgba(8, 18, 35, .58);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+.confirm-card {
+  box-sizing: border-box;
+  width: min(620px, 100%);
+  max-height: calc(100dvh - 48px);
+  padding: 26px;
+  overflow-y: auto;
+  border: 1px solid var(--q-line);
+  border-radius: 14px;
+  color: var(--q-ink);
+  background: var(--q-paper);
+  box-shadow: 0 24px 70px rgba(8, 18, 35, .25);
+}
+.confirm-card h2 { margin: 0 0 18px; font-size: 21px; line-height: 1.3; }
+.confirm-list {
+  display: grid;
+  grid-template-columns: minmax(92px, .35fr) minmax(0, 1fr);
+  gap: 11px 18px;
+  margin: 0;
+  padding: 17px 0;
+  border-top: 1px solid var(--q-line);
+  border-bottom: 1px solid var(--q-line);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.confirm-list dt { color: var(--q-muted); font-weight: 700; }
+.confirm-list dd { min-width: 0; margin: 0; overflow-wrap: anywhere; color: var(--q-ink); font-weight: 650; }
+.confirm-note { margin: 16px 0 0; color: var(--q-muted); font-size: 12px; line-height: 1.65; }
+.confirm-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 22px; }
+.confirm-actions button {
+  min-width: 96px;
+  min-height: 42px;
+  padding: 0 16px;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+}
+.confirm-actions .secondary { border: 1px solid var(--q-line); color: var(--q-ink); background: var(--q-paper); }
+.confirm-actions .primary { border: 1px solid var(--q-blue); color: #fff; background: var(--q-blue); }
+.confirm-actions button:focus-visible,
+.confirm-card a:focus-visible,
+.confirm-card input:focus-visible,
+.confirm-card textarea:focus-visible { outline: 3px solid rgba(37, 99, 235, .3); outline-offset: 2px; }
+.confirm-actions button:disabled { cursor: not-allowed; opacity: .55; }
 #resultArea { display: grid; gap: 10px; margin-top: 12px; }
 .generation-result-actions {
   display: grid;
@@ -187,6 +249,21 @@ body[data-report-eligible="yes"] #reportsPanel.workspace-mode > #progressArea { 
 @media (max-width: 560px) {
   .generation-result-actions { grid-template-columns: 1fr; }
   .generation-preview-dialog__head a { display: none; }
+  .confirm-overlay {
+    place-items: end center;
+    padding: 12px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  }
+  .confirm-card {
+    width: 100%;
+    max-height: calc(100dvh - 24px - env(safe-area-inset-bottom, 0px));
+    padding: 20px;
+    border-radius: 14px 14px 10px 10px;
+  }
+  .confirm-list { grid-template-columns: 1fr; gap: 3px; }
+  .confirm-list dd { margin-bottom: 8px; }
+  .confirm-actions { position: sticky; bottom: -20px; margin: 18px -20px -20px; padding: 14px 20px calc(14px + env(safe-area-inset-bottom, 0px)); background: var(--q-paper); }
+  .confirm-actions button { min-height: 44px; flex: 1; }
 }
 .progress-latest-copy { min-height: 1.2em; margin: 8px 0 4px; color: var(--text-muted); font-size: 13px; }
 

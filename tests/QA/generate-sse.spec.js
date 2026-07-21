@@ -197,9 +197,28 @@ async function confirmGeneration(page, summaryText) {
   await expect(page.locator(".confirm-card .background-choice")).toHaveCount(0);
   await expect(page.locator(".confirm-card")).toContainText("실행 방식");
   await expect(page.locator(".confirm-card")).toContainText(summaryText);
+  const modalLayout = await page.locator(".confirm-card").evaluate((card) => {
+    const overlay = card.closest(".confirm-overlay");
+    const cardStyle = getComputedStyle(card);
+    const overlayStyle = getComputedStyle(overlay);
+    return {
+      width: card.getBoundingClientRect().width,
+      background: cardStyle.backgroundColor,
+      padding: parseFloat(cardStyle.paddingTop),
+      overlayPosition: overlayStyle.position,
+    };
+  });
+  expect(modalLayout.overlayPosition).toBe("fixed");
+  expect(modalLayout.width).toBeGreaterThan(300);
+  expect(modalLayout.width).toBeLessThanOrEqual(620);
+  expect(modalLayout.background).not.toBe("rgba(0, 0, 0, 0)");
+  expect(modalLayout.padding).toBeGreaterThanOrEqual(20);
   await page.locator(".confirm-card button.primary").click();
   await expect(page.locator("#statusTitle")).toHaveText("완료", { timeout: 7000 });
   await expect(page.locator('#progressSteps [data-progress-step="ready"]')).toHaveClass(/is-active/);
+  await expect(page.locator(".progress-details")).toBeHidden();
+  await expect(page.locator("#progress")).toBeHidden();
+  await expect(page.locator("#progressLatest")).not.toContainText("업로드 확인");
   await expect(page.locator("#resultArea a")).toHaveAttribute("href", /\/api\/jobs\/qa-\d+\/download/);
 }
 
@@ -217,6 +236,23 @@ async function startChemPreGeneration(page) {
   await expect(page.locator(".confirm-card")).toBeVisible();
   await page.locator(".confirm-card button.primary").click();
 }
+
+test("real report log phrases keep the progress step truthful until terminal completion", async ({ page }) => {
+  await mockFrontendApis(page);
+  await page.goto(BASE_URL);
+  const stages = await page.evaluate(async () => {
+    const { createProgressView } = await import("/workspace/progress-view.js");
+    const { inferStep } = createProgressView();
+    return [
+      "[12:00:00] 📦 .cap 파일 파싱 중...",
+      "[12:00:01] ✓ 응답 완료 (총 18.2초) — JSON 파싱 중",
+      "[12:00:02] ✓ 차트 2/2개 PNG 생성 완료",
+      "[12:00:03] 📄 .docx 파일 빌드 중...",
+      "완료",
+    ].map((line) => inferStep(line)?.step || null);
+  });
+  expect(stages).toEqual(["analysis", "analysis", "document", "document", "ready"]);
+});
 
 test("mocked SSE report generation smoke: chem-pre, chem-result, phys-result", async ({ page }) => {
   const { generationRequests } = await mockFrontendApis(page);
@@ -285,6 +321,8 @@ test("a transient SSE disconnect with a running 409 job reconnects and reaches d
   await expect(page.locator("#manual")).toBeDisabled();
   await expect.poll(() => headRequests.length).toBe(1);
   await expect(page.locator("#progress")).toContainText("서버에서 보고서를 계속 생성");
+  await expect(page.locator("#progress")).toBeHidden();
+  await expect(page.locator("#progressLatest")).toHaveText("연결 상태를 확인하며 계속 처리하고 있습니다.");
   await expect(page.locator("#statusTitle")).toHaveText("완료", { timeout: 3000 });
   await expect(page.locator("#progress")).toContainText("서버 연결이 복구되었습니다");
   await expect(page.locator("#resultArea a")).toHaveAttribute("href", "/api/jobs/qa-1/download");

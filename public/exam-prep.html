@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <link rel="canonical" href="https://quilolab.com/exam-prep.html" />
-    <meta name="description" content="수행평가 도움 — 물리·수학 수행평가 보고서 초안과 독서활동 기록지(독서록)를 학교 양식(.hwpx)으로 한곳에서 만듭니다." />
+    <meta name="description" content="읽은 책의 정보와 감상 메모를 학교 독서활동 기록지(.hwpx) 양식으로 정리합니다." />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="/ui/foundation.css" />
     <link rel="stylesheet" href="/ui/shell.css" />
@@ -14,7 +14,7 @@
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <title>수행평가 도움 — Quilo</title>
+    <title>독서활동 기록지 — Quilo</title>
     <script>
       // 다크모드 깜빡임 방지(다른 페이지와 동일 패턴)
       try {
@@ -26,16 +26,12 @@
   <body id="appShell" class="app-shell app-shell--exam-prep" data-app-shell>
     <header class="ui-site-header" data-ui-shell data-shell-mode="fixed"></header>
     <script src="/ui/shell.js"></script>
-<main class="epwrap" id="main-content" aria-label="수행평가 도움">
+<main class="epwrap" id="main-content" aria-label="독서활동 기록지">
 
-      <div class="eptabs" role="tablist" aria-label="수행평가 도움 탭">
+      <div class="eptabs" role="tablist" aria-label="독서활동 기록지">
         <!-- 코딩 테스트 탭 — 비활성화(노출 제거). JS·#paneCoding 코드는 보존하되 화면에 나오지 않는다.
              .eptabs button 규칙(display:inline-flex)이 [hidden]을 덮으므로 인라인 display:none 으로 확실히 숨긴다. -->
         <button id="tabCoding" role="tab" aria-selected="false" aria-controls="paneCoding" hidden class="app-inline-exam-prep-1">코딩 테스트 <span class="muted app-inline-exam-prep-2">(정보)</span><span id="badgeCoding" class="ep-tabbadge" hidden></span></button>
-        <!-- 물리·수학 수행평가 탭 — 일시 중단(2026-07-03, 서버 RETIRED_TYPES 동기).
-             JS·pane 코드는 보존, 재공개 시 hidden 제거 + 서버 집합에서 빼면 된다. -->
-        <button id="tabPhys" role="tab" aria-selected="false" aria-controls="panePhys" hidden class="app-inline-exam-prep-1">물리 수행평가<span id="badgePhys" class="ep-tabbadge" hidden></span></button>
-        <button id="tabMath" role="tab" aria-selected="false" aria-controls="paneMath" hidden class="app-inline-exam-prep-1">수학 수행평가<span id="badgeMath" class="ep-tabbadge" hidden></span></button>
         <button id="tabReading" class="active" role="tab" aria-selected="true" aria-controls="paneReading">독서록<span id="badgeReading" class="ep-tabbadge" hidden></span></button>
       </div>
 
@@ -53,58 +49,6 @@
               <div class="ct-empty">← 왼쪽에서 문제를 선택하세요.</div>
             </div>
           </div>
-        </div>
-      </section>
-
-      <!-- ── 물리 수행평가 ── -->
-      <section id="panePhys" role="tabpanel" aria-labelledby="tabPhys" hidden>
-        <!-- 고급 물리 문제 스튜디오 카드 — 노출 제거(코드는 보존). 진입은 /physics-studio.html 직접.
-        <div class="pi-card app-inline-exam-prep-6">
-          <h2>고급 물리 문제 스튜디오</h2>
-          <p>
-            주제·난이도·출제 스타일을 고르면 AI가 풀이·힌트·검산이 함께 있는 <b>새로운</b> 심화 물리 문제를
-            만들어 줍니다. 해석역학·전자기학·상대론 등 대학·올림피아드 수준 주제를 지원합니다.
-          </p>
-          <ul>
-            <li>입력: 주제 한 줄 + 난이도 + 문항 수 + 출제 스타일</li>
-            <li>출력: LaTeX 수식이 렌더링된 문제·풀이·힌트·검산 (마크다운 복사·다운로드)</li>
-          </ul>
-          <p class="muted">로그인 사용자 이용 · 모델별 크레딧 차감</p>
-          <a class="qbtn primary" href="/physics-studio.html">고급 물리 문제 만들기 →</a>
-        </div>
-        -->
-        <div id="physGate" class="locked" hidden></div>
-        <div id="physMain" class="pi-card" hidden>
-          <h2>물리 수행평가 「일반물리학 탐구 및 사고 과정 성찰 보고서」</h2>
-          <p>
-            탐구 주제와 필기 노트(PDF)를 올리면 AI가 오개념 → 해결 과정 → 성찰 흐름의
-            성찰 보고서 초안을 만들어 줍니다. (Pro·무료)
-          </p>
-          <ul>
-            <li>입력: 탐구 주제 + 손필기/노트 PDF</li>
-            <li>출력: 학교 양식 <b>.docx / .hwpx</b> 초안</li>
-          </ul>
-          <p class="muted">보고서 생성은 홈 화면의 생성기에서 이어집니다.</p>
-          <a class="qbtn primary" href="/?report=phys-inquiry">물리 수행평가 보고서 만들기 →</a>
-        </div>
-      </section>
-
-      <!-- ── 수학 수행평가 ── -->
-      <section id="paneMath" role="tabpanel" aria-labelledby="tabMath" hidden>
-        <div id="mathGate" class="locked" hidden></div>
-        <div id="mathMain" class="pi-card" hidden>
-          <h2>수학 수행평가 「수학Ⅲ 급수 탐구보고서」</h2>
-          <p>
-            급수(수열의 극한·무한급수) 관련 탐구 주제만 입력하면 AI가 정확한 수학 전개와
-            웹 검색(선행연구)으로 학교 양식(Ⅰ.탐구 주제 ~ Ⅴ.결과 정리 및 반성)에 맞춰
-            채점 기준 만점을 노린 탐구보고서 초안을 만들어 줍니다. (Pro·무료)
-          </p>
-          <ul>
-            <li>입력: 급수 탐구 주제 한 줄 (+ 선택: AI 참고 메모)</li>
-            <li>출력: 학교 양식 <b>.docx / .hwpx</b> 초안 (부분합 표·수렴 그래프·수식 풀유도 포함)</li>
-          </ul>
-          <p class="muted">보고서 생성은 홈 화면의 생성기에서 이어집니다.</p>
-          <a class="qbtn primary" href="/?report=math-inquiry">수학 수행평가 보고서 만들기 →</a>
         </div>
       </section>
 
@@ -130,7 +74,7 @@
     <footer class="app-statusbar" aria-label="앱 상태">
       <span class="app-statusbar__dot" aria-hidden="true"></span>
       <span>준비됨</span>
-      <span class="app-statusbar__meta">수행평가 도움 · Quilo</span>
+      <span class="app-statusbar__meta">독서활동 기록지 · Quilo</span>
     </footer>
 
     <script>
@@ -143,20 +87,14 @@
       }
       function showTab(t) {
         document.getElementById("paneCoding").hidden = t !== "coding";
-        document.getElementById("panePhys").hidden = t !== "phys";
-        document.getElementById("paneMath").hidden = t !== "math";
         document.getElementById("paneReading").hidden = t !== "reading";
         document.getElementById("tabCoding").classList.toggle("active", t === "coding");
-        document.getElementById("tabPhys").classList.toggle("active", t === "phys");
-        document.getElementById("tabMath").classList.toggle("active", t === "math");
         document.getElementById("tabReading").classList.toggle("active", t === "reading");
         document.getElementById("tabCoding").setAttribute("aria-selected", t === "coding" ? "true" : "false");
-        document.getElementById("tabPhys").setAttribute("aria-selected", t === "phys" ? "true" : "false");
-        document.getElementById("tabMath").setAttribute("aria-selected", t === "math" ? "true" : "false");
         document.getElementById("tabReading").setAttribute("aria-selected", t === "reading" ? "true" : "false");
         if (t === "coding") initCoding();
       }
-      [["tabCoding", "coding"], ["tabPhys", "phys"], ["tabMath", "math"], ["tabReading", "reading"]]
+      [["tabCoding", "coding"], ["tabReading", "reading"]]
         .forEach(function (entry) {
           document.getElementById(entry[0]).addEventListener("click", function () { showTab(entry[1]); });
         });
@@ -172,9 +110,9 @@
 
       // 각 탭이 어떤 베타 키로 열리는지 (클릭 전에 잠금/베타 상태를 배지로 노출).
       // coding 은 노출하지 않지만(탭 hidden) 키 매핑은 코드 보존 차원에서 남겨 둔다.
-      var TAB_KEYS = { coding: "coding-test", phys: "phys-inquiry", math: "math-inquiry", reading: "reading-log" };
-      var TAB_BADGE = { coding: "badgeCoding", phys: "badgePhys", math: "badgeMath", reading: "badgeReading" };
-      // 권한 있는 첫 탭. 물리/수학 수행평가는 일시 중단(2026-07-03) — order에서 제외(코드 보존).
+      var TAB_KEYS = { coding: "coding-test", reading: "reading-log" };
+      var TAB_BADGE = { coding: "badgeCoding", reading: "badgeReading" };
+      // 현재 공개된 첫 탭을 고른다.
       function firstUnlockedTab() {
         var order = ["reading"];
         for (var i = 0; i < order.length; i++) {
@@ -184,7 +122,7 @@
       }
       // 잠긴 탭엔 🔒, 열렸지만 베타인 탭엔 '베타' 배지. (관리자는 배지 없음)
       function decorateTabs() {
-        ["phys", "math", "reading"].forEach(function (t) {
+        ["reading"].forEach(function (t) {
           var el = document.getElementById(TAB_BADGE[t]);
           if (!el) return;
           // 독서록은 전 사용자 공개(크레딧 과금) — 잠금/Pro 배지 없음.
@@ -655,28 +593,6 @@
           });
       }
 
-      // ───────────────────────── 물리 수행평가 ─────────────────────────
-      function initPhys() {
-        if (hasBeta("phys-inquiry")) {
-          document.getElementById("physMain").hidden = false;
-          document.getElementById("physGate").hidden = true;
-        } else {
-          document.getElementById("physGate").hidden = false;
-          document.getElementById("physGate").innerHTML = lockedHtml("물리 수행평가");
-        }
-      }
-
-      // ───────────────────────── 수학 수행평가 ─────────────────────────
-      function initMath() {
-        if (hasBeta("math-inquiry")) {
-          document.getElementById("mathMain").hidden = false;
-          document.getElementById("mathGate").hidden = true;
-        } else {
-          document.getElementById("mathGate").hidden = false;
-          document.getElementById("mathGate").innerHTML = lockedHtml("수학 수행평가");
-        }
-      }
-
       // ───────────────────────── 독서록 ─────────────────────────
       // 독서록은 전 사용자 공개(크레딧 과금). 잠금 없이 항상 안내를 보여 준다.
       // 로그인·크레딧 검증은 실제 생성 시점(/api/generate)에서 처리된다.
@@ -694,15 +610,9 @@
           .then(function (b) { beta = b || { features: [], admin: false }; })
           .catch(function () {})
           .finally(function () {
-            initPhys();
-            initMath();
             initReading();
             decorateTabs(); // 클릭 전에 잠금/베타 상태를 탭에 표시
-            // 해시(#phys/#math/#reading)로 들어오면 해당 탭부터, 아니면 권한 있는 첫 탭
-            // phys/math 해시는 중단 기간 동안 reading 으로 보낸다(코드 보존).
-            if (location.hash === "#reading" || location.hash === "#phys" || location.hash === "#math")
-              showTab("reading");
-            else showTab(firstUnlockedTab());
+            showTab(firstUnlockedTab());
           });
       })();
     </script>

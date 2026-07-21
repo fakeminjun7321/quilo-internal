@@ -250,8 +250,8 @@ async function reportModelState(page) {
 }
 
 const REPORT_MODEL_GROUPS = [
-  "model", "crModel", "prModel", "piModel", "miModel", "rlModel", "psModel",
-  "vbModel", "fmModel", "engModel", "klModel", "capModel", "pmModel", "frModel",
+  "model", "crModel", "prModel", "rlModel", "psModel",
+  "vbModel", "fmModel", "capModel", "frModel",
 ];
 
 test("a comma-separated model restriction keeps every allowed model selectable in every report", async ({ page }) => {
@@ -446,7 +446,7 @@ test("Gemini choices and confirmation metadata remain administrator-only", async
 test("report access keeps initial, entitlement, retired, blocked and admin-only visibility separate", async ({ page }) => {
   await mockAccountApis(page, {
     role: "pro",
-    features: ["form-maker", "phys-inquiry"],
+    features: ["form-maker"],
     blockedReportTypes: ["chem-result", "form-maker"],
   });
   await page.goto(`${BASE_URL}/#settings`, { waitUntil: "networkidle" });
@@ -459,7 +459,7 @@ test("report access keeps initial, entitlement, retired, blocked and admin-only 
   await expect.poll(() => labelHidden("chem-pre")).toBe(false);
   await expect.poll(() => labelHidden("chem-result")).toBe(true);
   await expect.poll(() => labelHidden("form-maker")).toBe(true);
-  await expect.poll(() => labelHidden("phys-inquiry")).toBe(true);
+  await expect(page.locator('input[name="reportType"][value="phys-inquiry"]')).toHaveCount(0);
   await expect.poll(() => labelHidden("print-pdf-restore")).toBe(true);
 });
 

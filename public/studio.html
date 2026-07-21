@@ -259,7 +259,7 @@
         const tpls = TEMPLATES.map((x, i) => `<button data-tpl="${i}"><b>${esc(x.t)}</b><span>${esc(x.p.slice(0, 38))}…</span></button>`).join("");
         $("msgs").innerHTML =
           `<div class="empty"><h3>파일을 올리고 무엇이든 요청하세요</h3>` +
-          `<div>📎 로 PDF·이미지·데이터·.cap 을 올리고 말하면 AI가 알아서 처리해요 — <b>분석·대화</b>, <b>웹앱·위젯</b>, <b>이미지</b>. 물리 모의고사는 기출 시험지 PDF와 교과서 단원 PDF를 모두 첨부해 주세요. 아래는 앱 만들기 예시예요:</div>` +
+          `<div>📎 로 PDF·이미지·데이터·.cap 을 올리고 말하면 AI가 알아서 처리해요 — <b>분석·대화</b>, <b>웹앱·위젯</b>, <b>이미지</b>. 아래는 앱 만들기 예시예요:</div>` +
           `<div class="tpl">${tpls}</div></div>`;
         $("msgs").querySelectorAll("[data-tpl]").forEach((b) => b.onclick = () => { const x = TEMPLATES[+b.dataset.tpl]; $("prompt").value = x.p; send(); });
       }
@@ -718,13 +718,70 @@
       }
 
       // 📄 문서 생성 — /api/generate(jobId) → SSE 진행 → 다운로드 카드
-      // phys-mock-exam needs route.fileRoles for both required files: exam and textbook.
-      const GEN_DEFAULT_FIELD = { "eng-exam-prep": "source", "korean-lit-exam": "source", "cap-translate": "cap", "phys-mock-exam": "exam" };
+      const GEN_DEFAULT_FIELD = { "cap-translate": "cap" };
+      function studioFriendlyProgress(text) {
+        const raw = String(text || "").replace(/^\[\d{2}:\d{2}:\d{2}\]\s*/, "").trim();
+        if (/오류|실패|error|fail/i.test(raw)) return ["확인 필요", "문서를 마치지 못했습니다. 잠시 후 다시 시도해 주세요."];
+        if (/연결|재연결|stream|network/i.test(raw)) return ["연결 확인", "작업 상태를 다시 확인하고 있습니다."];
+        if (/^(?:완료|다운로드 (?:파일 )?준비 완료|파일 준비 완료)[.!…]*$/i.test(raw)) return ["파일 준비", "다운로드 파일을 준비하고 있습니다."];
+        if (/분석|모델|ai|응답|json|파싱|보정|자료|데이터|이미지|업로드|첨부/i.test(raw)) return ["자료 분석", "AI가 첨부 자료를 분석하고 있습니다."];
+        if (/문서.*(?:생성|작성|빌드)|(?:docx|hwpx|pdf|zip).*?(?:생성|빌드|렌더|render|조판)|차트|그래프.*(?:생성|렌더|render)|파일.*(?:빌드|조판)|표.*(?:생성|삽입)|수식.*(?:변환|삽입)/i.test(raw)) return ["문서 생성", "분석 결과를 문서 파일로 정리하고 있습니다."];
+        return ["처리 중", "요청한 문서를 안전하게 만들고 있습니다."];
+      }
+
+      function createStudioGenerationStatus() {
+        const root = document.createElement("section");
+        root.className = "studio-generation-status";
+        root.setAttribute("aria-label", "문서 생성 진행");
+        const head = document.createElement("div");
+        head.className = "studio-generation-status__head";
+        const stage = document.createElement("strong");
+        stage.textContent = "준비";
+        const stop = document.createElement("button");
+        stop.type = "button";
+        stop.className = "studio-generation-status__stop";
+        stop.textContent = "중지";
+        head.append(stage, stop);
+        const message = document.createElement("p");
+        message.className = "studio-generation-status__message";
+        message.setAttribute("role", "status");
+        message.setAttribute("aria-live", "polite");
+        message.textContent = "문서 생성 요청을 준비하고 있습니다.";
+        const elapsed = document.createElement("span");
+        elapsed.className = "studio-generation-status__elapsed";
+        elapsed.textContent = "경과 0:00";
+        root.append(head, message, elapsed);
+        const startedAt = Date.now();
+        const format = () => {
+          const seconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+          return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+        };
+        const timer = window.setInterval(() => { elapsed.textContent = `경과 ${format()}`; }, 1000);
+        return {
+          root,
+          stop,
+          update(raw) {
+            const [nextStage, nextMessage] = studioFriendlyProgress(raw);
+            stage.textContent = nextStage;
+            message.textContent = nextMessage;
+          },
+          finish(nextStage, nextMessage, tone) {
+            clearInterval(timer);
+            elapsed.textContent = `경과 ${format()}`;
+            stage.textContent = nextStage;
+            message.textContent = nextMessage;
+            stop.hidden = true;
+            if (tone) root.dataset.tone = tone;
+          },
+        };
+      }
+
       async function runGenerate(route, prompt) {
         busy = true; updateSendUI();
         const bubble = addMsg("ai", `<span class="spin"></span> ${esc(route.reply || "문서 만드는 중…")}`, true);
-        const log = document.createElement("div");
-        log.style.cssText = "margin-top:6px;font-size:11px;color:var(--mut);max-height:130px;overflow:auto;white-space:pre-wrap;line-height:1.5";
+        const progress = createStudioGenerationStatus();
+        let jobId = "";
+        let stopRequested = false;
         try {
           const fd = new FormData();
           fd.append("type", route.reportType);
@@ -740,33 +797,53 @@
           if (!start.ok) throw new Error(sj.error || "생성 시작 실패");
           bubble.dataset.thinking = "";
           bubble.innerHTML = esc(route.reply || "문서를 만들고 있어요…");
-          bubble.appendChild(log);
-          const jobId = sj.jobId;
+          bubble.appendChild(progress.root);
+          jobId = sj.jobId;
+          progress.stop.addEventListener("click", async () => {
+            if (!jobId || stopRequested) return;
+            stopRequested = true;
+            progress.stop.disabled = true;
+            progress.stop.textContent = "중지 중...";
+            progress.finish("중지 요청", "안전하게 작업을 중지하고 있습니다.", "warning");
+            try { await fetch(`/api/jobs/${jobId}/abort`, { method: "POST", credentials: "same-origin" }); } catch (_) {}
+          });
           await new Promise((resolve) => {
             let done = false;
             const es = new EventSource(`/api/jobs/${jobId}/stream`);
-            es.addEventListener("progress", (e) => { try { log.textContent += JSON.parse(e.data) + "\n"; log.scrollTop = log.scrollHeight; $("msgs").scrollTop = $("msgs").scrollHeight; } catch (_) {} });
+            es.addEventListener("progress", (e) => { try { progress.update(JSON.parse(e.data)); $("msgs").scrollTop = $("msgs").scrollHeight; } catch (_) {} });
             es.addEventListener("done", (e) => {
               if (done) return; done = true; es.close();
               let d = {}; try { d = JSON.parse(e.data); } catch (_) {}
               const fn = d.filename || "결과파일";
-              bubble.innerHTML = "✅ " + esc(route.reply || "완성했어요!") +
-                `<div class="app-runtime-download-row"><a class="btn app-runtime-download" href="/api/jobs/${jobId}/download" download>⬇ ${esc(fn)} 다운로드</a></div>`;
-              bubble.appendChild(log);
+              bubble.textContent = "✅ " + (route.reply || "완성했어요!");
+              progress.finish("완료", "문서가 완성되었습니다. 아래에서 파일을 받을 수 있습니다.", "success");
+              bubble.appendChild(progress.root);
+              const downloadRow = document.createElement("div");
+              downloadRow.className = "app-runtime-download-row";
+              const download = document.createElement("a");
+              download.className = "btn app-runtime-download";
+              download.href = `/api/jobs/${jobId}/download`;
+              download.download = fn;
+              download.textContent = `⬇ ${fn} 다운로드`;
+              downloadRow.appendChild(download);
+              bubble.appendChild(downloadRow);
               chatTurns.push({ role: "user", content: prompt }, { role: "assistant", content: `(${fn} 생성 완료)` });
               attached = []; renderThumbs(); syncAttachStatus(); $("msgs").scrollTop = $("msgs").scrollHeight; resolve();
             });
             es.addEventListener("error", (e) => {
               if (done) return; done = true; es.close();
-              let m = ""; try { m = JSON.parse(e.data); } catch (_) {}
               busy = false; updateSendUI();
-              showErrorBubble(bubble, { message: m }, "생성 중 오류가 발생했어요. 잠시 후 다시 시도해 주세요.", () => runGenerate(route, prompt));
-              bubble.appendChild(log); resolve();
+              const fallback = stopRequested ? "문서 생성을 중지했습니다." : "생성 중 오류가 발생했어요. 잠시 후 다시 시도해 주세요.";
+              showErrorBubble(bubble, {}, fallback, () => runGenerate(route, prompt));
+              progress.finish(stopRequested ? "중지됨" : "확인 필요", fallback, stopRequested ? "warning" : "danger");
+              bubble.appendChild(progress.root); resolve();
             });
           });
         } catch (e) {
           busy = false; updateSendUI();
           showErrorBubble(bubble, e, "생성 실패", () => runGenerate(route, prompt));
+          progress.finish("확인 필요", "문서 생성을 시작하지 못했습니다. 잠시 후 다시 시도해 주세요.", "danger");
+          bubble.appendChild(progress.root);
         } finally { busy = false; updateSendUI(); }
       }
 

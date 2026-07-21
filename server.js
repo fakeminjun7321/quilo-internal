@@ -833,6 +833,61 @@ const RETIRED_TYPES = new Set([
   "phys-inquiry",
   "math-inquiry",
 ]);
+function isRetiredType(key) {
+  return RETIRED_TYPES.has(String(key || "").trim().toLowerCase());
+}
+function visibleBetaFeatures(features) {
+  return (Array.isArray(features) ? features : []).filter(
+    (feature) => !isRetiredType(feature?.key),
+  );
+}
+function visibleBetaKeys(keys) {
+  return (Array.isArray(keys) ? keys : []).filter((key) => !isRetiredType(key));
+}
+function reportTypeOf(record) {
+  if (!record || typeof record !== "object") return "";
+  return String(
+    record.reportType ||
+      record.report_type ||
+      record.type ||
+      record.meta?.reportType ||
+      record.meta?.report_type ||
+      "",
+  )
+    .trim()
+    .toLowerCase();
+}
+const RETIRED_ARTIFACT_NAME_PATTERNS = [
+  /(?:^|_)일반물리학탐구성찰\.(?:docx|hwpx)$/i,
+  /(?:^|_)급수탐구보고서\.(?:docx|hwpx)$/i,
+  /_시험대비_3종세트\.zip$/i,
+  /_시험지·답안·해설\.zip$/i,
+  /_모의고사\.zip$/i,
+];
+function isRetiredArtifactName(value) {
+  const name = String(value || "")
+    .split(/[\\/]/)
+    .pop();
+  return RETIRED_ARTIFACT_NAME_PATTERNS.some((pattern) => pattern.test(name));
+}
+function visibleReportRecords(records) {
+  return (Array.isArray(records) ? records : []).filter(
+    (record) =>
+      !isRetiredType(reportTypeOf(record)) &&
+      !isRetiredArtifactName(record?.filename || record?.name),
+  );
+}
+function isHiddenCloudArtifact(file) {
+  return (
+    isRetiredType(file?.appProperties?.quiloReportType) ||
+    isRetiredArtifactName(file?.name || file?.path || file?.path_lower)
+  );
+}
+function rejectRetiredBetaKey(res, key) {
+  if (!isRetiredType(key)) return false;
+  res.status(404).json({ error: "베타 기능을 찾을 수 없습니다." });
+  return true;
+}
 // GPT-5.4-mini 무료 경로 일일 한도(2026-07-02 결정): 일 N건까지 0크레딧, 초과분 1크레딧.
 const MINI_FREE_DAILY = Math.max(
   0,
@@ -847,11 +902,13 @@ const MINI_FREE_DAILY = Math.max(
 const featureOpenUntil = new Map();
 const OPEN_AUDIENCES = new Set(["all", "pro", "max"]);
 function openMeta(key) {
+  if (isRetiredType(key)) return null;
   const m = featureOpenUntil.get(String(key));
   return m && Number(m.until) > Date.now() ? m : null;
 }
 // 이 사용자에게 임시 공개가 적용되는지 (u = 세션 사용자, 로그인 전제).
 async function isFeatureOpenFor(key, u) {
+  if (isRetiredType(key)) return false;
   const meta = openMeta(key);
   if (!meta) return false;
   const aud = meta.audience || "all";
@@ -860,7 +917,7 @@ async function isFeatureOpenFor(key, u) {
   try {
     if (aud === "pro") {
       // Pro 취급 = 'pro' 우산 또는 기능별 지정 보유(등급 탭 합집합과 동일 기준).
-      const feats = await supa.getUserBetaFeatures(u.id);
+      const feats = visibleBetaKeys(await supa.getUserBetaFeatures(u.id));
       return feats.length > 0;
     }
     if (aud === "max") return !!(await supa.getActiveBackgroundSub(u.id));
@@ -1213,6 +1270,9 @@ if (
         isAdmin: true,
         isDeveloper: true,
         isStaff: true,
+        // DEV 가짜 세션도 markerless 예외로 만들지 않는다. 테스트가 Supabase를
+        // 켜는 경우 아래 로컬 전용 sentinel hash와 같은 marker를 반환해야 한다.
+        pwMark: pwMarkOf("dev-fake-auth-local-only"),
       };
     }
     next();
@@ -1487,8 +1547,9 @@ async function refreshSessionUser(req, { failClosed = false } = {}) {
       }
       // L12: marker 없는 레거시 브라우저 세션은 한 번 로그아웃시킨다. 현재 hash로
       // marker를 뒤늦게 채우면 비밀번호 재설정 전에 탈취된 세션까지 살려둘 수 있다.
-      if (!req.apiUser && fresh.password_hash) {
-        if (!u.pwMark || pwMarkOf(fresh.password_hash) !== u.pwMark) {
+      if (!req.apiUser) {
+        const freshPwMark = pwMarkOf(fresh.password_hash);
+        if (!freshPwMark || !u.pwMark || freshPwMark !== u.pwMark) {
           req.session = null;
           return null;
         }
@@ -1763,7 +1824,7 @@ async function requireProMember(req, res, next) {
       supa.getUserBetaFeatures(u.id),
       supa.getActiveBackgroundSub(u.id),
     ]);
-    if ((Array.isArray(features) && features.length > 0) || maxSub) return next();
+    if (visibleBetaKeys(features).length > 0 || maxSub) return next();
   } catch (_) {
     // 권한 저장소가 불확실할 때 유료 제공자 호출을 허용하지 않는다.
   }
@@ -2817,9 +2878,11 @@ app.get("/api/me", requireAuth, async (req, res) => {
         // style_note 컬럼이 없으면 undefined → 빈 문자열로 graceful 처리
         styleNote = String(freshUser.style_note || "");
         // 기존 freshUser 조회 재사용 — 추가 쿼리 없이 차단 목록도 같이 반영
-        blockedReportTypes = supa.normalizeBlockedTypes
-          ? supa.normalizeBlockedTypes(freshUser.blocked_report_types)
-          : [];
+        blockedReportTypes = visibleBetaKeys(
+          supa.normalizeBlockedTypes
+            ? supa.normalizeBlockedTypes(freshUser.blocked_report_types)
+            : [],
+        );
         username = freshUser.username || freshUser.name || username;
         email = String(freshUser.recovery_email || freshUser.email || "");
         pendingEmail = String(freshUser.email_verify_email || "");
@@ -3005,8 +3068,14 @@ function writeAssistModelsFor(req) {
   }).filter((m) => m.available);
 }
 
-app.get("/api/write-assist/models", (req, res) => {
-  const u = getSessionUser(req);
+app.get("/api/write-assist/models", async (req, res) => {
+  let u = null;
+  try {
+    u = await refreshSessionUser(req, { failClosed: true });
+  } catch (error) {
+    console.error("[write-assist/models] session refresh failed:", error.message);
+    return res.status(503).json({ error: "로그인 상태를 확인하지 못했습니다." });
+  }
   const models = writeAssistModelsFor(req);
   res.json({ loggedIn: !!u, enabled: models.length > 0, models });
 });
@@ -3016,12 +3085,28 @@ app.get("/api/chat/status", (req, res) => {
 });
 
 app.post("/api/chat", async (req, res) => {
-  const sessionUser = getSessionUser(req);
   const reqModel = String((req.body && req.body.model) || "").trim();
   const waEntry = WRITE_ASSIST_MODELS.find((m) => m.id === reqModel);
   const waProv = waEntry ? CODE_ASSIST_PROVIDERS[waEntry.provider] : null;
-  // 유료 글쓰기 도우미(Sonnet/GPT)는 로그인 사용자 + provider 키가 있을 때만 라우팅.
-  const usePaid = !!(waEntry && sessionUser && waProv && waProv.key());
+  let sessionUser = null;
+  let usePaid = false;
+  // 유료 모델을 명시적으로 선택한 요청은 서명 쿠키의 오래된 role/password snapshot을
+  // 신뢰하지 않는다. provider 호출 전에 DB의 현재 보안 상태로 세션을 검증한다.
+  if (waEntry) {
+    if (!waProv || !waProv.key()) {
+      return res.status(503).json({ error: "선택한 AI 모델이 아직 준비 중입니다." });
+    }
+    try {
+      sessionUser = await refreshSessionUser(req, { failClosed: true });
+    } catch (error) {
+      console.error("[chat] paid session refresh failed:", error.message);
+      return res.status(503).json({ error: "로그인 상태를 확인하지 못했습니다." });
+    }
+    if (!sessionUser) {
+      return res.status(401).json({ error: "유료 글쓰기 도우미는 로그인이 필요합니다." });
+    }
+    usePaid = true;
+  }
   if (!CHAT_API_KEY && !usePaid) {
     return res.status(503).json({ error: "AI 도우미가 아직 준비 중입니다." });
   }
@@ -3078,7 +3163,12 @@ app.post("/api/chat", async (req, res) => {
       ? req.body.context.slice(0, 300).replace(/[\r\n]+/g, " ").trim()
       : "";
   // 보고서 종류(메모를 어느 폼에서 열었는지) — 종류별 안내를 메모 프롬프트에 덧붙임.
-  const reportTypeHint = String((req.body && req.body.reportType) || "").trim();
+  const requestedReportTypeHint = String(
+    (req.body && req.body.reportType) || "",
+  ).trim();
+  const reportTypeHint = isRetiredType(requestedReportTypeHint)
+    ? ""
+    : requestedReportTypeHint;
   const memoSystem =
     CHAT_MEMO_SYSTEM + (CHAT_MEMO_TYPE_GUIDES[reportTypeHint] || "");
   const sysPrompt =
@@ -3526,6 +3616,7 @@ async function runAdminTool(name, args, ctx) {
       let rows = supa.isEnabled()
         ? await supa.listUsageLogs(Math.min(Number(args.limit) || 60, 200))
         : [];
+      rows = visibleReportRecords(rows);
       if (args.user_name)
         rows = rows.filter((r) => has(r.user_name).includes(has(args.user_name)));
       return rows.slice(0, 120).map((r) => ({
@@ -3549,8 +3640,8 @@ async function runAdminTool(name, args, ctx) {
     // ── 추가 읽기/통계 ──
     if (name === "get_beta_status") {
       if (!supa.isEnabled()) return { error: "Supabase 미설정" };
-      const features = await supa.listBetaFeatures();
-      return (features || []).map((f) => ({
+      const features = visibleBetaFeatures(await supa.listBetaFeatures());
+      return features.map((f) => ({
         key: f.key,
         label: f.label,
         enabled: !!f.enabled,
@@ -3573,7 +3664,7 @@ async function runAdminTool(name, args, ctx) {
     if (name === "get_usage_summary") {
       if (!supa.isEnabled()) return { error: "Supabase 미설정" };
       const days = Math.min(Math.max(Number(args.days) || 7, 1), 60);
-      const rows = await supa.listUsageLogs(500);
+      const rows = visibleReportRecords(await supa.listUsageLogs(500));
       const cutoff = Date.now() - days * 86400000;
       const recent = (rows || []).filter((r) => {
         const t = Date.parse(r.created_at);
@@ -3609,7 +3700,7 @@ async function runAdminTool(name, args, ctx) {
       const r = await resolveUserForAction(args.user_name);
       if (r.error) return { error: r.error };
       const files = await supa.listReportFiles(r.user.id).catch(() => []);
-      return { user: r.user.name, files: files || [] };
+      return { user: r.user.name, files: visibleReportRecords(files) };
     }
     // ── 작업 제안(쓰기) ──
     if (name === "propose_topup_credits") {
@@ -3646,6 +3737,7 @@ async function runAdminTool(name, args, ctx) {
     if (name === "propose_set_beta") {
       const key = String(args.key || "").trim().toLowerCase();
       if (!key) return { error: "베타 key가 필요합니다." };
+      if (isRetiredType(key)) return { error: "베타 기능을 찾을 수 없습니다." };
       const enabled = !!args.enabled;
       return propose({
         action: "set_beta",
@@ -3656,6 +3748,7 @@ async function runAdminTool(name, args, ctx) {
     if (name === "propose_add_beta_tester") {
       const key = String(args.key || "").trim().toLowerCase();
       if (!key) return { error: "베타 key가 필요합니다." };
+      if (isRetiredType(key)) return { error: "베타 기능을 찾을 수 없습니다." };
       const r = await resolveUserForAction(args.user_name);
       if (r.error) return { error: r.error };
       return propose({
@@ -3926,6 +4019,7 @@ app.post("/api/admin/action/execute", requireAdmin, async (req, res) => {
     if (action === "set_beta") {
       const key = String(p.key || "").trim().toLowerCase();
       if (!key) return res.status(400).json({ error: "key 필요." });
+      if (rejectRetiredBetaKey(res, key)) return;
       await supa.setBetaFeatureEnabled(key, !!p.enabled);
       return res.json({
         ok: true,
@@ -3936,6 +4030,7 @@ app.post("/api/admin/action/execute", requireAdmin, async (req, res) => {
       const key = String(p.key || "").trim().toLowerCase();
       if (!key || !p.userId)
         return res.status(400).json({ error: "key·userId 필요." });
+      if (rejectRetiredBetaKey(res, key)) return;
       await supa.addBetaTester(key, p.userId);
       return res.json({
         ok: true,
@@ -5238,7 +5333,7 @@ app.get("/api/me/beta", requireAuth, async (req, res) => {
   }
   try {
     if (u.isAdmin) {
-      const all = await supa.listBetaFeatures();
+      const all = visibleBetaFeatures(await supa.listBetaFeatures());
       return res.json({
         features: all.filter((f) => f.enabled).map((f) => f.key),
         admin: true, // 관리자는 한도 면제
@@ -5249,13 +5344,13 @@ app.get("/api/me/beta", requireAuth, async (req, res) => {
       supa.getUserBetaFeatures(u.id),
       supa.getActiveBackgroundSub(u.id),
     ]);
-    let keys = [...assignedKeys];
-    const tier = maxSubscription ? "max" : assignedKeys.length ? "pro" : "free";
+    let keys = visibleBetaKeys(assignedKeys);
+    const tier = maxSubscription ? "max" : keys.length ? "pro" : "free";
     // 'pro' 우산 회원: 모든 활성 Pro 기능을 노출(메뉴·허브 표시용 — 게이트는 userHasBeta가 처리).
     // Max는 Pro의 상위 등급이므로 같은 기능을 모두 노출하고 서버 게이트도 동일하게 허용한다.
     if (keys.includes("pro") || tier === "max") {
       try {
-        const all = await supa.listBetaFeatures();
+        const all = visibleBetaFeatures(await supa.listBetaFeatures());
         keys = all
           .filter((f) => f.enabled && f.key !== "pro")
           .map((f) => f.key);
@@ -5268,6 +5363,7 @@ app.get("/api/me/beta", requireAuth, async (req, res) => {
     const isProUser = tier === "pro" || tier === "max";
     let isMaxUser = tier === "max";
     for (const [k, meta] of featureOpenUntil) {
+      if (isRetiredType(k)) continue;
       if (!(meta && Number(meta.until) > Date.now()) || keys.includes(k)) continue;
       const aud = meta.audience || "all";
       let ok = aud === "all" || (aud === "pro" && isProUser);
@@ -5321,6 +5417,7 @@ app.post("/api/admin/problemset-limit", requireAdmin, async (req, res) => {
 app.post("/api/admin/beta/:key/open", requireAdmin, async (req, res) => {
   const key = String(req.params.key || "").trim();
   if (!key) return res.status(400).json({ error: "key 필수" });
+  if (rejectRetiredBetaKey(res, key)) return;
   const hours = Math.max(0, Math.min(24 * 30, Number(req.body.hours) || 0));
   const audience = OPEN_AUDIENCES.has(String(req.body.audience || "").trim())
     ? String(req.body.audience).trim()
@@ -5366,7 +5463,7 @@ app.get("/api/admin/beta", requireAdmin, async (req, res) => {
   if (!supa.isEnabled())
     return res.status(503).json({ error: "Supabase 미설정" });
   try {
-    const features = await supa.listBetaFeatures();
+    const features = visibleBetaFeatures(await supa.listBetaFeatures());
     res.json({
       features: features.map((f) => {
         const m = openMeta(f.key);
@@ -5396,6 +5493,7 @@ app.post("/api/admin/beta", requireAdmin, async (req, res) => {
   const label = String(req.body.label || "").trim();
   if (!key)
     return res.status(400).json({ error: "기능 key(영문/숫자/하이픈) 필수" });
+  if (rejectRetiredBetaKey(res, key)) return;
   try {
     await supa.createBetaFeature(key, label || key);
     res.json({ ok: true });
@@ -5407,6 +5505,7 @@ app.post("/api/admin/beta", requireAdmin, async (req, res) => {
 app.patch("/api/admin/beta/:key", requireAdmin, async (req, res) => {
   if (!supa.isEnabled())
     return res.status(503).json({ error: "Supabase 미설정" });
+  if (rejectRetiredBetaKey(res, req.params.key)) return;
   try {
     if (req.body.enabled !== undefined) {
       await supa.setBetaFeatureEnabled(req.params.key, !!req.body.enabled);
@@ -5425,6 +5524,7 @@ app.patch("/api/admin/beta/:key", requireAdmin, async (req, res) => {
 app.delete("/api/admin/beta/:key", requireAdmin, async (req, res) => {
   if (!supa.isEnabled())
     return res.status(503).json({ error: "Supabase 미설정" });
+  if (rejectRetiredBetaKey(res, req.params.key)) return;
   try {
     await supa.deleteBetaFeature(req.params.key);
     res.json({ ok: true });
@@ -5436,6 +5536,7 @@ app.delete("/api/admin/beta/:key", requireAdmin, async (req, res) => {
 app.post("/api/admin/beta/:key/testers", requireAdmin, async (req, res) => {
   if (!supa.isEnabled())
     return res.status(503).json({ error: "Supabase 미설정" });
+  if (rejectRetiredBetaKey(res, req.params.key)) return;
   const name = String(req.body.name || "").trim();
   if (!name) return res.status(400).json({ error: "사용자 이름 필수" });
   try {
@@ -5457,6 +5558,7 @@ app.delete(
   async (req, res) => {
     if (!supa.isEnabled())
       return res.status(503).json({ error: "Supabase 미설정" });
+    if (rejectRetiredBetaKey(res, req.params.key)) return;
     try {
       await supa.removeBetaTester(req.params.key, req.params.userId);
       res.json({ ok: true });
@@ -8259,6 +8361,9 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
 app.post("/api/jobs/:id/abort", requireAuth, (req, res) => {
   const job = jobs.get(req.params.id);
   if (!job) return res.status(404).json({ error: "작업을 찾을 수 없습니다." });
+  if (isRetiredType(job.reportType)) {
+    return res.status(404).json({ error: "작업을 찾을 수 없습니다." });
+  }
   const u = getSessionUser(req);
   // id 기반 권한 체크 (admin이 사용자 이름 변경 시에도 안전)
   if (!u.id || job.userInfo?.id !== u.id) {
@@ -8289,6 +8394,9 @@ app.post("/api/jobs/:id/quality-feedback", requireAuth, async (req, res) => {
   }
 
   const runtimeJob = jobs.get(req.params.id) || null;
+  if (runtimeJob && isRetiredType(runtimeJob.reportType)) {
+    return res.status(404).json({ error: "작업을 찾을 수 없습니다." });
+  }
   let reportType = runtimeJob?.reportType || "unknown";
   if (runtimeJob && runtimeJob.userInfo?.id !== user.id) {
     return res.status(404).json({ error: "작업을 찾을 수 없습니다." });
@@ -8300,6 +8408,9 @@ app.post("/api/jobs/:id/quality-feedback", requireAuth, async (req, res) => {
     try {
       const stored = await supa.getGenerationRunForUser(req.params.id, user.id);
       if (!stored) return res.status(404).json({ error: "작업을 찾을 수 없습니다." });
+      if (isRetiredType(stored.report_type)) {
+        return res.status(404).json({ error: "작업을 찾을 수 없습니다." });
+      }
       if (stored.status !== "done") {
         return res.status(409).json({ error: "완료된 작업만 평가할 수 있습니다." });
       }
@@ -8334,6 +8445,9 @@ app.post("/api/jobs/:id/email", requireAuth, async (req, res) => {
     if (stored) job = { ...stored, userInfo: user, progress: stored.progress || [], background: true, notifyEmail: true };
   }
   if (!job) return res.status(404).json({ error: "작업을 찾을 수 없습니다." });
+  if (isRetiredType(job.reportType)) {
+    return res.status(404).json({ error: "작업을 찾을 수 없습니다." });
+  }
   if (!new Set(["done", "completed"]).has(job.status)) return res.status(409).json({ error: "완료된 작업만 이메일로 보낼 수 있습니다." });
   if (!job.fileId && !job.cloudProvider) return res.status(409).json({ error: "파일함 또는 클라우드에 저장된 결과가 없습니다." });
   if (job.notified) return res.json({ ok: true, alreadySent: true });
@@ -8348,6 +8462,7 @@ app.post("/api/jobs/:id/email", requireAuth, async (req, res) => {
 app.get("/api/jobs/:id/stream", requireAuth, (req, res) => {
   const job = jobs.get(req.params.id);
   if (!job) return res.status(404).end();
+  if (isRetiredType(job.reportType)) return res.status(404).end();
   const u = getSessionUser(req);
   if (!u.id || job.userInfo?.id !== u.id) return res.status(403).end();
 
@@ -8407,6 +8522,9 @@ app.get("/api/jobs/:id/stream", requireAuth, (req, res) => {
 app.get("/api/jobs/:id/download", requireAuth, async (req, res) => {
   const job = jobs.get(req.params.id);
   if (!job) return res.status(404).send("작업을 찾을 수 없습니다.");
+  if (isRetiredType(job.reportType)) {
+    return res.status(404).send("작업을 찾을 수 없습니다.");
+  }
   const u = getSessionUser(req);
   if (!u.id || job.userInfo?.id !== u.id) return res.status(403).send("권한 없음");
 
@@ -8484,6 +8602,9 @@ app.get("/api/jobs/:id/download", requireAuth, async (req, res) => {
 app.get("/api/jobs/:id/preview", requireAuth, async (req, res) => {
   const job = jobs.get(req.params.id);
   if (!job) return res.status(404).send("작업을 찾을 수 없습니다.");
+  if (isRetiredType(job.reportType)) {
+    return res.status(404).send("작업을 찾을 수 없습니다.");
+  }
   const u = getSessionUser(req);
   if (!u.id || job.userInfo?.id !== u.id) return res.status(403).send("권한 없음");
 
@@ -8564,7 +8685,14 @@ const dropboxRedirectUri = (req) => `${appBaseUrl(req)}/api/cloud/dropbox/callba
 app.use(
   require("./lib/mcp/oauth").createMcpOAuthRouter({ supa, getSessionUser, baseUrl: appBaseUrl }),
 );
-app.use("/mcp", require("./lib/mcp/server").createMcpRouter({ baseUrl: appBaseUrl, supa }));
+app.use(
+  "/mcp",
+  require("./lib/mcp/server").createMcpRouter({
+    baseUrl: appBaseUrl,
+    supa,
+    excludeFeatureIds: RETIRED_TYPES,
+  }),
+);
 
 app.use(
   "/api/cloud",
@@ -8573,12 +8701,16 @@ app.use(
     getSessionUser,
     supa,
     baseUrl: appBaseUrl,
+    isHiddenFile: isHiddenCloudArtifact,
   }),
 );
 
 // Quilo 전체 기능 카탈로그(공개) + 외부 API 토큰 관리(브라우저 로그인) +
 // 범위 제한 Bearer API. 플러그인은 하드코딩 대신 이 카탈로그를 원본으로 사용한다.
-app.use("/api/catalog", externalApi.createCatalogRouter());
+app.use(
+  "/api/catalog",
+  externalApi.createCatalogRouter({ excludeFeatureIds: RETIRED_TYPES }),
+);
 app.use("/api/openapi.json", externalApi.createOpenApiRouter());
 app.use(
   "/api/integrations",
@@ -8590,7 +8722,11 @@ app.use(
 );
 app.use(
   "/api/v1",
-  externalApi.createV1Router({ supa, getRuntimeJob: (jobId) => jobs.get(jobId) || null }),
+  externalApi.createV1Router({
+    supa,
+    getRuntimeJob: (jobId) => jobs.get(jobId) || null,
+    excludeReportTypes: RETIRED_TYPES,
+  }),
 );
 app.use(
   "/api/tools",
@@ -9083,6 +9219,9 @@ app.get("/api/cloud/dropbox/link", requireAuth, async (req, res) => {
   const u = getSessionUser(req);
   const p = String(req.query.path || "");
   if (!p) return res.status(400).json({ error: "path가 필요합니다." });
+  if (isRetiredArtifactName(p)) {
+    return res.status(404).json({ error: "파일을 찾을 수 없습니다." });
+  }
   if (!dbx.isConfigured() || !supa.isEnabled() || !u.id) {
     return res.status(503).json({ error: "클라우드 연동을 사용할 수 없습니다." });
   }
@@ -9125,6 +9264,7 @@ app.get("/api/me/files", requireAuth, async (req, res) => {
         );
         const entries = await dbx.listFolder({ accessToken: access_token });
         const sorted = entries
+          .filter((entry) => !isHiddenCloudArtifact(entry))
           .sort(
             (a, b) =>
               new Date(b.client_modified || 0) -
@@ -9176,7 +9316,7 @@ app.get("/api/me/files", requireAuth, async (req, res) => {
   if (!u.id) return res.status(403).json({ error: "권한 없음" });
   try {
     const cfg = supa.reportStorageConfig();
-    const files = await supa.listReportFiles(u.id);
+    const files = visibleReportRecords(await supa.listReportFiles(u.id));
     res.json({
       files,
       retentionHours: cfg.retentionHours,
@@ -9195,7 +9335,7 @@ app.get("/api/me/jobs", requireAuth, async (req, res) => {
   if (!supa.isEnabled() || !u || !u.id) return res.json({ jobs: [] });
   try {
     const list = await supa.listReportJobs(u.id, { limit: 20 });
-    res.json({ jobs: list });
+    res.json({ jobs: visibleReportRecords(list) });
   } catch (e) {
     console.error("[me/jobs]", e.message);
     res.json({ jobs: [] });
@@ -9211,6 +9351,12 @@ app.get("/api/me/files/:id/download", requireAuth, async (req, res) => {
   try {
     const saved = await supa.downloadReportFile(u.id, req.params.id);
     if (!saved) return res.status(404).send("파일이 없거나 만료되었습니다.");
+    if (
+      isRetiredType(saved.row?.report_type) ||
+      isRetiredArtifactName(saved.row?.filename)
+    ) {
+      return res.status(404).send("파일이 없거나 만료되었습니다.");
+    }
     res.set({
       "Content-Type": saved.row.mime_type || "application/octet-stream",
       "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(saved.row.filename)}`,
@@ -9233,6 +9379,12 @@ app.get("/api/me/files/:id/preview", requireAuth, async (req, res) => {
   try {
     const saved = await supa.downloadReportFile(u.id, req.params.id);
     if (!saved) return res.status(404).send("파일이 없거나 만료되었습니다.");
+    if (
+      isRetiredType(saved.row?.report_type) ||
+      isRetiredArtifactName(saved.row?.filename)
+    ) {
+      return res.status(404).send("파일이 없거나 만료되었습니다.");
+    }
     const preview = await createFilePreview(saved.buffer, {
       filename: saved.row.filename || "파일",
       mimeType: saved.row.mime_type || "",
@@ -9292,7 +9444,7 @@ app.get("/api/admin/users", requireAdmin, async (req, res) => {
       ...u,
       recent_gen_count: rateLimit.getUserGenCount(u.id),
       recent_gen_limit: rateLimit.GEN_LIMIT,
-      blocked_report_types: blockedMap[u.id] || [],
+      blocked_report_types: visibleBetaKeys(blockedMap[u.id] || []),
     }));
     const rate = await getKrwPerUsd();
     res.json({ users: usersWithRate, krwPerUsd: rate });
@@ -9453,7 +9605,7 @@ app.patch("/api/admin/users/:id", requireAdmin, async (req, res) => {
   // 보고서 종류 접근 제한: 허용된 종류 key 배열만
   let normalizedBlocked;
   if (blockedReportTypes !== undefined) {
-    const VALID = ["chem-pre", "chem-result", "phys-result", "phys-inquiry", "math-inquiry"];
+    const VALID = ["chem-pre", "chem-result", "phys-result"];
     if (!Array.isArray(blockedReportTypes)) {
       return res
         .status(400)
@@ -9670,7 +9822,7 @@ app.get("/api/me/usage", requireAuth, async (req, res) => {
   const REAL = new Set(["chem-pre", "chem-result", "phys-result"]);
   try {
     const user = await supa.findUserById(u.id);
-    const logs = await supa.listUsageLogsForUser(u.id, 20);
+    const logs = visibleReportRecords(await supa.listUsageLogsForUser(u.id, 20));
     const recent = logs.map((l) => {
       const model = l.meta?.model || null;
       const rt = l.meta?.reportType || null;
@@ -9713,7 +9865,7 @@ app.get("/api/admin/usage-logs", requireAdmin, async (req, res) => {
     return res.status(503).json({ error: "Supabase 미설정" });
   const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
   try {
-    const logs = await supa.listUsageLogs(limit);
+    const logs = visibleReportRecords(await supa.listUsageLogs(limit));
     const rate = await getKrwPerUsd();
     res.json({ logs, krwPerUsd: rate });
   } catch (e) {
@@ -9726,7 +9878,9 @@ app.get("/api/admin/analytics-summary", requireAdmin, async (req, res) => {
   if (!supa.isEnabled()) return res.status(503).json({ error: "Supabase 미설정" });
   const days = Math.min(90, Math.max(1, parseInt(req.query.days, 10) || 30));
   try {
-    const summary = await supa.getAnalyticsSummary(days);
+    const summary = await supa.getAnalyticsSummary(days, {
+      excludeReportTypes: RETIRED_TYPES,
+    });
     return res.json(summary);
   } catch (error) {
     console.error("[admin] analytics summary:", error.message);
@@ -10138,19 +10292,6 @@ const httpServer = JOB_MEMORY_TEST_HOOKS_ENABLED
     console.warn("⚠ ANTHROPIC_API_KEY가 없습니다.");
   }
   if (supa.isEnabled()) {
-    // 코드 내장 베타(물리 수행평가)를 관리자 베타 패널에 자동 등록 → 테스터 지정 가능.
-    try {
-      const seeded = await supa.ensureBetaFeature("phys-inquiry", "물리 수행평가");
-      if (seeded) console.log("  ✓ 베타 기능 등록: 물리 수행평가(phys-inquiry)");
-    } catch (e) {
-      console.warn(`  ⚠ 베타 기능 등록 실패: ${e.message}`);
-    }
-    try {
-      const seeded = await supa.ensureBetaFeature("math-inquiry", "수학 수행평가");
-      if (seeded) console.log("  ✓ 베타 기능 등록: 수학 수행평가(math-inquiry)");
-    } catch (e) {
-      console.warn(`  ⚠ 베타 기능 등록 실패(math-inquiry): ${e.message}`);
-    }
     try {
       const seeded = await supa.ensureBetaFeature("create", "창작(만들기)");
       if (seeded) console.log("  ✓ 베타 기능 등록: 창작(create)");
@@ -10181,15 +10322,12 @@ const httpServer = JOB_MEMORY_TEST_HOOKS_ENABLED
     } catch (e) {
       console.warn(`  ⚠ 베타 기능 등록 실패(file-chat): ${e.message}`);
     }
-    // 'pro' 우산 회원권 + 스튜디오 도구 2종 + 스킬 스튜디오 4종(RETIRED — 키는 유지).
+    // 'pro' 우산 회원권 + 현재 운영 중인 스튜디오/Pro 도구만 등록한다.
     for (const [k, label] of [
       ["pro", "Pro 회원"],
       ["vibe-coding", "바이브 코딩 생성기"],
       ["physics-studio", "고급 물리 문제 스튜디오"],
-      ["eng-exam-prep", "영어 시험대비 3종"],
-      ["korean-lit-exam", "국어 문학 시험"],
       ["cap-translate", "Capstone 번역"],
-      ["phys-mock-exam", "물리 모의고사"],
     ]) {
       try {
         const seeded = await supa.ensureBetaFeature(k, label);
@@ -10228,7 +10366,7 @@ const httpServer = JOB_MEMORY_TEST_HOOKS_ENABLED
           const meta =
             typeof t === "number" ? { until: t, audience: "all" } : t || {};
           const until = Number(meta.until);
-          if (until > Date.now()) {
+          if (until > Date.now() && !isRetiredType(k)) {
             featureOpenUntil.set(k, {
               until,
               audience: OPEN_AUDIENCES.has(meta.audience)
@@ -10327,6 +10465,12 @@ if (JOB_MEMORY_TEST_HOOKS_ENABLED) {
   module.exports = {
     app,
     httpServer,
+    retiredVisibilityTestHooks: {
+      isRetiredType,
+      isRetiredArtifactName,
+      visibleReportRecords,
+      isHiddenCloudArtifact,
+    },
     jobArtifactMemoryTestHooks: {
       jobs,
       jobArtifactMemoryBytes,

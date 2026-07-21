@@ -103,11 +103,9 @@ export function createShellController({ state, router, hooks }) {
         if (has("problem-set")) reveal("navBetaProblemSet");
         if (has("vocabulary-book")) reveal("rtVocabularyBook");
         if (has("form-maker")) { reveal("navBetaFormMaker"); reveal("rtFormMaker"); }
-        if (["coding-test", "phys-inquiry", "math-inquiry", "reading-log"].some(has)) reveal("navExamPrep");
+        if (["coding-test", "reading-log"].some(has)) reveal("navExamPrep");
         const requested = router.requestedReport();
         const gated = {
-          "phys-inquiry": ["phys-inquiry", "rtPhysInquiry"],
-          "math-inquiry": ["math-inquiry", "rtMathInquiry"],
           "problem-set": ["problem-set", "rtProblemSet"],
           "vocabulary-book": ["vocabulary-book", "rtVocabularyBook"],
           "form-maker": ["form-maker", "rtFormMaker"],

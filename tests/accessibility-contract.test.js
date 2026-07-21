@@ -38,7 +38,9 @@ test("core AI textareas expose stable accessible names", () => {
 
   const index = readPublic("index.html");
   const memoPrompts = index.match(/<textarea\b[^>]*class="memo-guide-prompt"[^>]*>/g) || [];
-  assert.equal(memoPrompts.length, 5);
+  // 퇴역한 보고서 폼은 공개 HTML에서 완전히 제거한다. 현재 공개 폼의
+  // 메모 가이드만 접근 가능한 이름을 가져야 한다.
+  assert.equal(memoPrompts.length, 3);
   for (const prompt of memoPrompts) {
     assert.match(prompt, /\baria-label="[^"]+"/);
   }

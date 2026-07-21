@@ -36,6 +36,45 @@ test("MCP initializes, lists annotated tools, and exposes public catalog search"
   assert.ok(searched.result.structuredContent.results.every((item) => item.title && item.text));
 });
 
+test("MCP catalog search and fetch hide server-retired features", async (t) => {
+  const retired = new Set([
+    "phys-inquiry",
+    "math-inquiry",
+    "eng-exam-prep",
+    "korean-lit-exam",
+    "phys-mock-exam",
+  ]);
+  const app = express();
+  app.use(express.json());
+  const origin = await listen(app, t);
+  app.use(
+    "/mcp",
+    createMcpRouter({ baseUrl: () => origin, supa: null, excludeFeatureIds: retired }),
+  );
+  const rpc = async (name, args, id) => {
+    const response = await fetch(`${origin}/mcp`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id,
+        method: "tools/call",
+        params: { name, arguments: args },
+      }),
+    });
+    return response.json();
+  };
+
+  const searched = await rpc("search", { query: "수행평가 시험" }, 10);
+  assert.equal(
+    searched.result.structuredContent.results.some((feature) => retired.has(feature.id)),
+    false,
+  );
+  const fetched = await rpc("fetch", { id: "phys-inquiry" }, 11);
+  assert.equal(fetched.result.isError, true);
+  assert.match(fetched.result.structuredContent.error, /찾을 수 없습니다/);
+});
+
 test("MCP protected tools return OAuth challenge and accept audience-bound tokens", async (t) => {
   const raw = `quilo_live_deadbeef_${"x".repeat(43)}`;
   const chain = {

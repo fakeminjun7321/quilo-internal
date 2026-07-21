@@ -15,7 +15,18 @@ export const REPORT_ALIASES = Object.freeze({
   }),
 });
 
+export const RETIRED_REPORT_TYPES = Object.freeze([
+  "eng-exam-prep",
+  "korean-lit-exam",
+  "phys-inquiry",
+  "math-inquiry",
+  "phys-mock-exam",
+]);
+
+export function isRetiredReport(type) {
+  return RETIRED_REPORT_TYPES.includes(String(type || ""));
+}
+
 export function reportExists(type) {
   return !!document.querySelector(`input[name="reportType"][value="${CSS.escape(String(type || ""))}"]`);
 }
-

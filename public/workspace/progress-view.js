@@ -15,11 +15,26 @@ export function createProgressView({ onClearRetry } = {}) {
     return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, "0")}`;
   }
 
+  function normalizeEstimate(value) {
+    if (Number.isFinite(value) && value > 0) return { lo: value, hi: value };
+    if (!value || typeof value !== "object") return null;
+    const lo = Number(value.lo);
+    const hi = Number(value.hi);
+    const safeLo = Number.isFinite(lo) && lo > 0 ? lo : null;
+    const safeHi = Number.isFinite(hi) && hi > 0 ? hi : null;
+    if (safeLo == null && safeHi == null) return null;
+    return {
+      lo: safeLo ?? safeHi,
+      hi: Math.max(safeHi ?? safeLo, safeLo ?? safeHi),
+    };
+  }
+
   function etaPhrase(value) {
-    if (!value) return "";
+    const range = normalizeEstimate(value);
+    if (!range) return "";
     const format = (seconds) => seconds < 90 ? `${Math.round(seconds)}초` : `${Math.round(seconds / 60)}분`;
-    if (Math.abs((value.hi || 0) - (value.lo || 0)) < 8) return `예상 ${format(value.hi || value.lo)}`;
-    return `예상 ${format(value.lo)}~${format(value.hi)}`;
+    if (Math.abs(range.hi - range.lo) < 8) return `예상 ${format(range.hi)}`;
+    return `예상 ${format(range.lo)}~${format(range.hi)}`;
   }
 
   function renderTimer() {
@@ -37,7 +52,7 @@ export function createProgressView({ onClearRetry } = {}) {
     stopTimer();
     startedAt = Date.now();
     lastProgressAt = startedAt;
-    estimate = value && (value.lo != null || value.hi != null) ? value : null;
+    estimate = normalizeEstimate(value);
     const node = document.getElementById("genTimer");
     if (node) node.hidden = false;
     renderTimer();
@@ -69,13 +84,25 @@ export function createProgressView({ onClearRetry } = {}) {
   }
 
   function inferStep(text) {
-    const value = String(text || "");
+    const value = String(text || "").replace(/^\[\d{2}:\d{2}:\d{2}\]\s*/, "").trim();
     if (/오류|실패|중단|취소/.test(value)) return { step: "document", state: "error" };
-    if (/완료|다운로드|저장|파일 준비/.test(value)) return { step: "ready", state: "active" };
-    if (/문서|DOCX|HWPX|차트|그래프|렌더|생성/.test(value)) return { step: "document", state: "active" };
-    if (/AI|분석|모델|응답|작성|파싱|보정/.test(value)) return { step: "analysis", state: "active" };
-    if (/업로드|파일|입력|확인|검증/.test(value)) return { step: "upload", state: "active" };
+    if (/^(?:완료|다운로드 (?:파일 )?준비 완료|파일 준비 완료)[.!…]*$/.test(value)) return { step: "ready", state: "active" };
+    if (/AI|분석|모델|응답|JSON|파싱|보정|자료.*(?:읽|확인)|데이터.*(?:읽|확인)/i.test(value)) return { step: "analysis", state: "active" };
+    if (/문서.*(?:생성|작성|빌드)|(?:DOCX|HWPX|PDF|ZIP).*?(?:생성|빌드|렌더|조판)|차트|그래프.*(?:생성|렌더)|파일.*(?:빌드|조판)/i.test(value)) return { step: "document", state: "active" };
+    if (/업로드|첨부|입력.*(?:확인|검증)|파일.*(?:확인|검증|전송)/.test(value)) return { step: "upload", state: "active" };
     return null;
+  }
+
+  function conciseStatus(text, inferred) {
+    const value = String(text || "");
+    if (/재시도|재연결|연결.*복구|연결.*확인/.test(value)) return "연결 상태를 확인하며 계속 처리하고 있습니다.";
+    if (/오류|실패/.test(value)) return "생성 중 문제가 발생했습니다. 아래 안내를 확인해 주세요.";
+    if (/중단|취소|중지/.test(value)) return "생성을 중지하고 있습니다.";
+    if (inferred?.step === "ready") return "다운로드 파일을 준비했습니다.";
+    if (inferred?.step === "document") return "보고서 파일을 만들고 있습니다.";
+    if (inferred?.step === "analysis") return "AI가 업로드한 자료를 분석하고 있습니다.";
+    if (inferred?.step === "upload") return "업로드한 자료를 확인하고 있습니다.";
+    return "요청을 안전하게 처리하고 있습니다.";
   }
 
   function begin(nextTitle, nextEstimate) {
@@ -98,9 +125,9 @@ export function createProgressView({ onClearRetry } = {}) {
     progress.append(document.createTextNode(`${line}\n`));
     progress.scrollTop = progress.scrollHeight;
     const latest = document.getElementById("progressLatest");
-    if (latest && line.trim()) latest.textContent = line.trim();
-    if (line.trim()) noteProgress();
     const next = inferStep(line);
+    if (latest && line.trim()) latest.textContent = conciseStatus(line, next);
+    if (line.trim()) noteProgress();
     if (next) setStep(next.step, next.state);
   }
 
@@ -115,4 +142,3 @@ export function createProgressView({ onClearRetry } = {}) {
     noteProgress,
   };
 }
-

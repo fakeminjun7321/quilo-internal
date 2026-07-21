@@ -41,3 +41,21 @@ test("version API and changelog keep patch notes behind the includeNotes opt-in"
   );
   assert.match(changelog, /fetch\("\/api\/version\?includeNotes=1"/);
 });
+
+test("public patch notes do not re-expose retired feature names or ids", () => {
+  const notes = JSON.stringify(getVersionInfo({ includeNotes: true }).patchNotes);
+  for (const term of [
+    "phys-inquiry",
+    "math-inquiry",
+    "eng-exam-prep",
+    "korean-lit-exam",
+    "phys-mock-exam",
+    "물리 수행평가",
+    "수학 수행평가",
+    "영어 시험대비",
+    "국어 문학 시험",
+    "물리 모의고사",
+  ]) {
+    assert.equal(notes.includes(term), false, `retired term leaked: ${term}`);
+  }
+});

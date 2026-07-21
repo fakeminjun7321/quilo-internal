@@ -7,7 +7,7 @@ const express = require("express");
 const providers = require("../lib/cloud/oauth-providers");
 const { createCloudIntegrationRouter } = require("../lib/cloud/integration-routes");
 
-async function startRouter(t, supa) {
+async function startRouter(t, supa, options = {}) {
   const app = express();
   app.use(express.json({ limit: "2mb" }));
   app.use("/api/cloud", createCloudIntegrationRouter({
@@ -15,6 +15,7 @@ async function startRouter(t, supa) {
     getSessionUser: () => ({ id: "user-1", name: "민준" }),
     supa,
     baseUrl: () => "https://quilolab.com",
+    isHiddenFile: options.isHiddenFile,
   }));
   const server = http.createServer(app);
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -72,6 +73,11 @@ test("Google integration routes support status, report conversion, import, comme
     mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     buffer: Buffer.from("drive-file"),
     file: { id: "drive-file-1" },
+  }));
+  replace("getDriveFile", async (_token, fileId) => ({
+    id: fileId,
+    name: "가져온 문서.docx",
+    appProperties: {},
   }));
   replace("listDriveComments", async () => [{ id: "comment-1", content: "검토 의견", replies: [] }]);
   replace("createDriveComment", async (_token, _fileId, body) => ({ id: "comment-2", content: body.content }));
@@ -141,4 +147,88 @@ test("Google integration routes support status, report conversion, import, comme
   assert.equal(disconnected.reconnectUrl, "/api/cloud/google/connect?reconnect=1");
   assert.equal(revokedToken, "refresh-token");
   assert.equal(deletedProvider, "google");
+});
+
+test("hidden historical Drive files cannot be imported, copied, or commented on", async (t) => {
+  const previous = {
+    clientId: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    tokenSecret: process.env.CLOUD_TOKEN_SECRET,
+  };
+  process.env.GOOGLE_CLIENT_ID = "client.apps.googleusercontent.com";
+  process.env.GOOGLE_CLIENT_SECRET = "client-secret";
+  process.env.CLOUD_TOKEN_SECRET = "cloud-test-secret";
+  t.after(() => {
+    for (const [key, value] of Object.entries({
+      GOOGLE_CLIENT_ID: previous.clientId,
+      GOOGLE_CLIENT_SECRET: previous.clientSecret,
+      CLOUD_TOKEN_SECRET: previous.tokenSecret,
+    })) {
+      if (value == null) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+
+  const originals = {};
+  const replace = (name, value) => {
+    originals[name] = providers[name];
+    providers[name] = value;
+  };
+  t.after(() => Object.entries(originals).forEach(([name, value]) => { providers[name] = value; }));
+
+  replace("googleAccessToken", async () => "access-token");
+  replace("getDriveFile", async (_token, fileId) => ({
+    id: fileId,
+    name: "retired-output.docx",
+    appProperties: { quiloReportType: "retired-type" },
+  }));
+  let downloaded = false;
+  let copied = false;
+  let commentsListed = false;
+  let commentCreated = false;
+  let replyCreated = false;
+  replace("downloadDriveFile", async () => { downloaded = true; throw new Error("must not download"); });
+  replace("copyDriveFile", async () => { copied = true; throw new Error("must not copy"); });
+  replace("listDriveComments", async () => { commentsListed = true; throw new Error("must not list comments"); });
+  replace("createDriveComment", async () => { commentCreated = true; throw new Error("must not create comment"); });
+  replace("replyDriveComment", async () => { replyCreated = true; throw new Error("must not create reply"); });
+
+  const encrypted = providers.encryptToken("refresh-token");
+  const supa = {
+    isEnabled: () => true,
+    getCloudConnection: async () => ({ refresh_token: encrypted }),
+    saveReportFile: async () => { throw new Error("must not save"); },
+  };
+  const origin = await startRouter(t, supa, {
+    isHiddenFile: (file) => file?.appProperties?.quiloReportType === "retired-type",
+  });
+
+  for (const operation of ["import", "copy"]) {
+    const response = await fetch(`${origin}/api/cloud/google/drive/files/hidden-file/${operation}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    assert.equal(response.status, 404);
+  }
+  const commentRequests = [
+    ["GET", `${origin}/api/cloud/google/drive/files/hidden-file/comments`, undefined],
+    ["POST", `${origin}/api/cloud/google/drive/files/hidden-file/comments`, { content: "blocked" }],
+    ["POST", `${origin}/api/cloud/google/drive/files/hidden-file/comments/comment-1/replies`, { content: "blocked" }],
+  ];
+  for (const [method, url, body] of commentRequests) {
+    const response = await fetch(url, {
+      method,
+      ...(body ? {
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      } : {}),
+    });
+    assert.equal(response.status, 404);
+  }
+  assert.equal(downloaded, false);
+  assert.equal(copied, false);
+  assert.equal(commentsListed, false);
+  assert.equal(commentCreated, false);
+  assert.equal(replyCreated, false);
 });

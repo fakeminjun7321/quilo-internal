@@ -1,3 +1,5 @@
+import { isRetiredReport } from "./report-registry.js";
+
 const TYPE_LABELS = {
   "chem-pre": "화학 사전보고서",
   "chem-result": "화학 결과보고서",
@@ -33,7 +35,8 @@ export function createBackgroundJobsController({ onReopen }) {
       const response = await fetch("/api/me/jobs");
       if (response.ok) data = await response.json();
     } catch (_) { return; }
-    const jobs = (data.jobs || []).filter((job) => ["running", "interrupted", "error"].includes(job.status));
+    const jobs = (data.jobs || []).filter((job) =>
+      !isRetiredReport(job.reportType) && ["running", "interrupted", "error"].includes(job.status));
     let block = document.getElementById("bgJobsBlock");
     if (!block) {
       block = document.createElement("div");

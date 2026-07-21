@@ -1,11 +1,11 @@
-import { REPORT_ALIASES } from "./report-registry.js";
+import { REPORT_ALIASES, isRetiredReport } from "./report-registry.js";
 
 const PENDING_REPORT_KEY = "pendingReportType";
 
 export function createRouter({ state, hooks }) {
   function writeReportUrl(type, mode = "push") {
     const reportType = String(type || "");
-    if (!reportType) return;
+    if (!reportType || isRetiredReport(reportType)) return;
     state.set({ reportType });
     const target = new URL("/", location.origin);
     target.searchParams.set("report", reportType);
@@ -19,7 +19,8 @@ export function createRouter({ state, hooks }) {
 
   function setPending(type) {
     try {
-      if (type) sessionStorage.setItem(PENDING_REPORT_KEY, String(type));
+      if (type && !isRetiredReport(type)) sessionStorage.setItem(PENDING_REPORT_KEY, String(type));
+      else sessionStorage.removeItem(PENDING_REPORT_KEY);
     } catch (_) {}
   }
 
@@ -34,6 +35,7 @@ export function createRouter({ state, hooks }) {
 
   function select(type, options = {}) {
     const key = String(type || "");
+    if (isRetiredReport(key)) return false;
     const alias = Object.prototype.hasOwnProperty.call(REPORT_ALIASES, key) ? REPORT_ALIASES[key] : null;
     const radio = document.querySelector(`input[name="reportType"][value="${CSS.escape(alias ? alias.base : key)}"]`);
     if (!radio || radio.disabled || radio.closest("label")?.hidden) return false;
@@ -64,7 +66,10 @@ export function createRouter({ state, hooks }) {
   }
 
   function requestedReport() {
-    try { return new URLSearchParams(location.search).get("report") || ""; }
+    try {
+      const type = new URLSearchParams(location.search).get("report") || "";
+      return isRetiredReport(type) ? "" : type;
+    }
     catch (_) { return ""; }
   }
 

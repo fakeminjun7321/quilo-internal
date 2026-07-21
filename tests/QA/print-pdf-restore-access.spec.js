@@ -72,6 +72,81 @@ test("admin direct URL opens the restoration workspace and form", async ({ page 
   expect(errors).toEqual([]);
 });
 
+test("restoration confirmation and numeric ETA use the shared styled generation UI", async ({ page }) => {
+  const errors = [];
+  page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
+  page.on("pageerror", (error) => errors.push(error.message));
+  await mockApis(page, true);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(`${BASE_URL}/?report=print-pdf-restore`, { waitUntil: "networkidle" });
+  await page.setInputFiles("#pprPhotos", {
+    name: "print-page.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("print restore QA"),
+  });
+  await page.locator('#reportWorkflowNav button[data-flow-jump="generate"]').click();
+  await page.locator("#printPdfRestoreForm .policy-check input").check({ force: true });
+  await page.locator("#pprBtn").click();
+
+  const dialog = page.locator(".confirm-card");
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("프린트 PDF 복원 · 관리자 베타");
+  await expect(dialog).toContainText("예상 시간");
+  await expect(dialog).not.toContainText("NaN");
+  const geometry = await dialog.evaluate((card) => ({
+    card: card.getBoundingClientRect().toJSON(),
+    background: getComputedStyle(card).backgroundColor,
+    overlayPosition: getComputedStyle(card.closest(".confirm-overlay")).position,
+    overflow: document.documentElement.scrollWidth - innerWidth,
+  }));
+  expect(geometry.overlayPosition).toBe("fixed");
+  expect(geometry.background).not.toBe("rgba(0, 0, 0, 0)");
+  expect(geometry.card.width).toBeLessThanOrEqual(620);
+  expect(geometry.overflow).toBe(0);
+  await expect(page.locator(".confirm-card button.primary")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(page.locator("#pprBtn")).toBeFocused();
+
+  await page.evaluate(async () => {
+    const { createProgressView } = await import("/workspace/progress-view.js");
+    window.__qaProgressView = createProgressView();
+    window.__qaProgressView.begin("복원 중...", 180);
+  });
+  await expect(page.locator("#genTimer")).toContainText("예상 3분 · 경과");
+  await expect(page.locator("#genTimer")).not.toContainText("NaN");
+  await expect(page.locator(".progress-details")).toBeHidden();
+  await expect(page.locator("#progress")).toBeHidden();
+  await page.evaluate(() => window.__qaProgressView.stopTimer());
+  expect(errors).toEqual([]);
+});
+
+test("restoration confirmation remains usable at 390px", async ({ page }) => {
+  await mockApis(page, true);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${BASE_URL}/?report=print-pdf-restore`, { waitUntil: "networkidle" });
+  await page.setInputFiles("#pprPhotos", {
+    name: "print-page.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("print restore QA"),
+  });
+  await page.locator('#reportWorkflowNav button[data-flow-jump="generate"]').click();
+  await page.locator("#printPdfRestoreForm .policy-check input").check({ force: true });
+  await page.locator("#pprBtn").click();
+
+  const geometry = await page.locator(".confirm-card").evaluate((card) => {
+    const rect = card.getBoundingClientRect();
+    const buttons = [...card.querySelectorAll(".confirm-actions button")].map((button) => button.getBoundingClientRect().height);
+    return { left: rect.left, right: rect.right, bottom: rect.bottom, viewport: innerHeight, buttons, overflow: document.documentElement.scrollWidth - innerWidth };
+  });
+  expect(geometry.left).toBeGreaterThanOrEqual(0);
+  expect(geometry.right).toBeLessThanOrEqual(390);
+  expect(geometry.bottom).toBeLessThanOrEqual(geometry.viewport);
+  expect(Math.min(...geometry.buttons)).toBeGreaterThanOrEqual(44);
+  expect(geometry.overflow).toBe(0);
+  await page.screenshot({ path: "/tmp/quilo-print-pdf-restore-confirm-mobile.png", fullPage: false });
+});
+
 test("non-admin direct URL cannot reveal the restoration entry or form", async ({ page }) => {
   await mockApis(page, false);
   await page.goto(`${BASE_URL}/?report=print-pdf-restore`, { waitUntil: "networkidle" });

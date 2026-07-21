@@ -305,6 +305,7 @@ test("job download는 메모리 eviction 뒤 소유자 storage로 fallback하고
     is_admin: true,
     is_staff: true,
     is_developer: true,
+    password_hash: "dev-fake-auth-local-only",
   });
   supa.downloadReportFile = async (userId, fileId) => {
     ownershipChecks.push([userId, fileId]);

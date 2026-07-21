@@ -820,10 +820,11 @@ export function installReportFormControllers(deps) {
       const promptText = document.getElementById("pprInstructions")?.value.trim() || "";
       const preserveLayout = document.getElementById("pprPreserveLayout")?.checked !== false;
       const semanticRedraw = document.getElementById("pprSemanticRedraw")?.checked !== false;
-      const estimateSeconds = Math.max(
-        180,
-        estimateGenSeconds("free", "claude-opus-4-8", photos.length * 2200),
-      );
+      const baseEstimate = estimateGenSeconds("free", "claude-opus-4-8", photos.length * 2200);
+      const estimateSeconds = {
+        lo: Math.max(180, Number(baseEstimate?.lo) || 0),
+        hi: Math.max(180, Number(baseEstimate?.hi) || 0),
+      };
 
       const ok = await showConfirmDialog({
         title: "프린트 PDF 복원 · 관리자 베타",

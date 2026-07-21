@@ -167,7 +167,46 @@ test("the rewritten workspace keeps the upload-to-result controller contract", a
   await expect(page.locator("#trBtn")).toBeEnabled();
   await page.locator("#trBtn").click();
   await expect(page.locator("#statusTitle")).toHaveText("완료");
+  await expect(page.locator("#progress")).toBeHidden();
+  await expect(page.locator("#progressLatest")).toHaveText("번역이 완료되었습니다. 아래에서 파일을 받을 수 있습니다.");
+  await expect(page.locator("#progressStage")).toHaveText("완료");
+  await expect(page.locator("#progressElapsed")).toHaveText(/^경과 \d+:\d{2}$/);
+  const visibleProgressText = await page.locator("#progressArea").evaluate((node) => node.innerText);
+  expect(visibleProgressText).not.toContain("문서를 분석했습니다.");
   const download = page.locator('#resultArea a[href="/api/jobs/qa-pdf-job/download"]');
   await expect(download).toHaveText("research-paper_KO.pdf 다운로드");
   await expect(page.locator("#trBtn")).toHaveText("번역 시작");
+});
+
+test("translation progress does not report completion while pages or the PDF are still being built", async ({ page }) => {
+  await page.addInitScript(() => {
+    class QaEventSource extends EventTarget {
+      constructor() {
+        super();
+        window.__qaTranslateSource = this;
+      }
+      close() {}
+    }
+    window.EventSource = QaEventSource;
+    window.__qaTranslateEvent = (type, data) => window.__qaTranslateSource?.dispatchEvent(new MessageEvent(type, {
+      data: JSON.stringify(data),
+    }));
+  });
+  await page.goto(`${baseUrl}/translate.html`, { waitUntil: "networkidle" });
+  await page.locator("#trPdf").setInputFiles({
+    name: "research-paper.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("%PDF-1.4\n% QA fixture"),
+  });
+  await page.locator("#trBtn").click();
+  await expect(page.locator("#progressStage")).toHaveText("준비");
+  await expect.poll(() => page.evaluate(() => Boolean(window.__qaTranslateSource))).toBe(true);
+
+  await page.evaluate(() => window.__qaTranslateEvent("progress", "PDF 3/10 페이지 번역 중..."));
+  await expect(page.locator("#progressStage")).toHaveText("본문 번역");
+  await page.evaluate(() => window.__qaTranslateEvent("progress", "번역 응답 완료 — 후처리 중"));
+  await expect(page.locator("#progressStage")).toHaveText("본문 번역");
+  await page.evaluate(() => window.__qaTranslateEvent("progress", "PDF 파일 생성 중..."));
+  await expect(page.locator("#progressStage")).toHaveText("파일 생성");
+  await expect(page.locator("#progressStage")).not.toHaveText("파일 준비");
 });

@@ -89,7 +89,9 @@
           <div id="trEstimate" class="pdf-analysis" hidden aria-live="polite"></div>
           <div id="progressArea" class="pdf-progress" hidden>
             <div class="status-head"><span class="spinner" id="genSpinner" aria-hidden="true"></span><h2 id="statusTitle">번역 중...</h2><button type="button" id="stopBtn" class="pdf-stop" hidden>중지</button></div>
-            <pre id="progress" role="log" aria-live="polite" aria-label="번역 진행 로그"></pre>
+            <p id="progressLatest" class="pdf-progress-latest" role="status" aria-live="polite">번역 요청을 준비하고 있습니다.</p>
+            <div class="pdf-progress-meta" aria-label="번역 진행 정보"><span id="progressStage">준비</span><span id="progressElapsed">경과 0:00</span></div>
+            <pre id="progress" hidden aria-hidden="true"></pre>
           </div>
           <details class="pdf-support-note"><summary>지원 범위와 제한 확인</summary><div><p>일반 문서는 레이아웃을 유지하고, 수식 문서와 스캔본은 재조판합니다. 여러 PDF는 최대 10개까지 순서대로 처리합니다.</p><p>3단 이상 불규칙 레이아웃, 손글씨, 암호 PDF는 제한될 수 있습니다. 결과물은 24시간 보관됩니다.</p></div></details>
         </section>
@@ -253,6 +255,9 @@
         const errEl = document.getElementById("trError");
         const progressArea = document.getElementById("progressArea");
         const progressEl = document.getElementById("progress");
+        const progressLatest = document.getElementById("progressLatest");
+        const progressStage = document.getElementById("progressStage");
+        const progressElapsed = document.getElementById("progressElapsed");
         const resultArea = document.getElementById("resultArea");
         const statusTitle = document.getElementById("statusTitle");
         const genSpinner = document.getElementById("genSpinner");
@@ -270,6 +275,8 @@
         // 마지막 번역 제출을 보관해 스트림 끊김 시 파일을 다시 고르지 않고 재시도한다.
         let _lastTranslate = null; // { fd, isBg }
         let selectedFilesValid = false;
+        let progressStartedAt = 0;
+        let progressTimer = null;
 
         // 드롭존: 파일명 표시 + 드래그 하이라이트 (index.html 과 동일 동작)
         document.querySelectorAll(".dropzone").forEach((dz) => {
@@ -655,9 +662,46 @@
           .getElementById("trModel")
           .addEventListener("change", updateEstimate);
 
+        function formatElapsed(ms) {
+          const seconds = Math.max(0, Math.floor(ms / 1000));
+          return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+        }
+
+        function setProgressMessage(stage, message) {
+          progressStage.textContent = stage;
+          progressLatest.textContent = message;
+        }
+
+        function friendlyProgress(text) {
+          const raw = String(text || "").replace(/^\[\d{2}:\d{2}:\d{2}\]\s*/, "").trim();
+          if (/오류|실패|error|fail/i.test(raw)) return ["확인 필요", "번역을 마치지 못했습니다. 안내를 확인한 뒤 다시 시도해 주세요."];
+          if (/연결|재연결|stream|network/i.test(raw)) return ["연결 확인", "작업은 계속될 수 있습니다. 진행 상태를 다시 확인하고 있습니다."];
+          if (/^(?:완료|다운로드 (?:파일 )?준비 완료|파일 준비 완료)[.!…]*$/i.test(raw)) return ["파일 준비", "완료된 번역 파일을 준비하고 있습니다."];
+          if (/조판|렌더|render|package|파일.*(?:생성|저장|패키지)|pdf.*(?:생성|빌드|저장)/i.test(raw)) return ["파일 생성", "번역 내용을 PDF 파일로 정리하고 있습니다."];
+          if (/번역|translate|ocr|페이지.*(?:처리|번역)/i.test(raw)) return ["본문 번역", "문서 내용을 한국어로 옮기고 있습니다."];
+          if (/분석|확인|scan|업로드|구조|메타/i.test(raw)) return ["자료 분석", "문서 구조와 번역 방식을 확인하고 있습니다."];
+          return ["처리 중", "문서를 안전하게 처리하고 있습니다."];
+        }
+
         function appendLine(text) {
-          progressEl.textContent += text + "\n";
-          progressEl.scrollTop = progressEl.scrollHeight;
+          progressEl.textContent += String(text || "") + "\n";
+          const [stage, message] = friendlyProgress(text);
+          setProgressMessage(stage, message);
+        }
+
+        function startProgressTimer() {
+          clearInterval(progressTimer);
+          progressStartedAt = Date.now();
+          progressElapsed.textContent = "경과 0:00";
+          progressTimer = window.setInterval(() => {
+            progressElapsed.textContent = `경과 ${formatElapsed(Date.now() - progressStartedAt)}`;
+          }, 1000);
+        }
+
+        function stopProgressTimer() {
+          clearInterval(progressTimer);
+          progressTimer = null;
+          if (progressStartedAt) progressElapsed.textContent = `경과 ${formatElapsed(Date.now() - progressStartedAt)}`;
         }
 
         function setBusy(busy) {
@@ -666,6 +710,7 @@
           btn.textContent = busy ? "번역 중..." : "번역 시작";
           genSpinner.hidden = !busy;
           stopBtn.hidden = !busy;
+          if (!busy) stopProgressTimer();
         }
 
         // 재조판 권유 확인창. 사용자가 '재조판'을 명시하지 않았는데 문서가 재조판을
@@ -924,6 +969,8 @@
           progressEl.textContent = "";
           resultArea.innerHTML = "";
           statusTitle.textContent = "번역 중...";
+          setProgressMessage("준비", "번역 요청을 준비하고 있습니다.");
+          startProgressTimer();
           setBusy(true);
 
           try {
@@ -988,6 +1035,7 @@
         stopBtn.addEventListener("click", async () => {
           if (!currentJobId) return;
           stopBtn.textContent = "중지 중...";
+          setProgressMessage("중지 요청", "안전하게 작업을 중지하고 있습니다.");
           try {
             await fetch(`/api/jobs/${currentJobId}/abort`, { method: "POST" });
           } catch (e) {}
@@ -1028,6 +1076,7 @@
           es.addEventListener("done", (e) => {
             const data = JSON.parse(e.data);
             statusTitle.textContent = "완료";
+            setProgressMessage("완료", "번역이 완료되었습니다. 아래에서 파일을 받을 수 있습니다.");
             if (data.files && data.files.length > 1) {
               data.files.forEach(addFileLink);
             } else {

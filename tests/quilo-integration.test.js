@@ -62,7 +62,8 @@ test("every /?report= link resolves to a reportType radio or a registered alias"
   const radios = new Set(
     [...html.matchAll(/<input[^>]*name="reportType"[^>]*value="([^"]+)"/g)].map((m) => m[1]),
   );
-  assert.ok(radios.size >= 15, "reportType radios missing from index.html");
+  // 퇴역한 다섯 파이프라인은 숨김 라디오로도 공개 HTML에 남기지 않는다.
+  assert.ok(radios.size >= 10, "active reportType radios missing from index.html");
 
   // report-registry.js는 자급자족 ESM(import문·최상위 DOM 접근 없음)이라 실제 export를
   // 그대로 검증한다. 패키지가 "type":"commonjs"라 파일 경로 import는 CJS로 파싱되므로
@@ -127,6 +128,36 @@ test("public catalog API supports search", async (t) => {
   );
   const body = await response.json();
   assert.ok(body.features.some((feature) => feature.id === "pdf-translate"));
+});
+
+test("the deployed catalog can hide retired features without deleting catalog data", async (t) => {
+  const retired = new Set([
+    "phys-inquiry",
+    "math-inquiry",
+    "eng-exam-prep",
+    "korean-lit-exam",
+    "phys-mock-exam",
+  ]);
+  const app = express();
+  app.use("/api/catalog", createCatalogRouter({ excludeFeatureIds: retired }));
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => server.close());
+  const origin = `http://127.0.0.1:${server.address().port}`;
+
+  const listResponse = await fetch(`${origin}/api/catalog`);
+  assert.equal(listResponse.status, 200);
+  const body = await listResponse.json();
+  assert.equal(body.features.some((feature) => retired.has(feature.id)), false);
+  assert.equal(body.total, body.features.length);
+
+  for (const id of retired) {
+    const detailResponse = await fetch(`${origin}/api/catalog/${id}`);
+    assert.equal(detailResponse.status, 404, `${id} detail leaked from catalog`);
+  }
+
+  // 원본 카탈로그는 삭제하지 않아 재개 시 단일 필터만 해제하면 된다.
+  assert.ok(listFeatures().some((feature) => feature.id === "phys-inquiry"));
 });
 
 test("v1 middleware requires bearer auth and rewrites an allowed job route", async (t) => {
@@ -195,10 +226,18 @@ test("v1 job detail returns only the authenticated user's runtime job", async (t
   const jobs = new Map([
     ["mine", { id: "mine", userInfo: { id: "user-1" }, status: "running", progress: ["준비 중"], createdAt: Date.now() }],
     ["other", { id: "other", userInfo: { id: "user-2" }, status: "running", progress: [] }],
+    ["retired", { id: "retired", userInfo: { id: "user-1" }, reportType: "phys-inquiry", status: "done", progress: [] }],
   ]);
   const app = express();
   app.use(createExternalApiMiddleware({ supa }));
-  app.use("/api/v1", createV1Router({ supa, getRuntimeJob: (id) => jobs.get(id) || null }));
+  app.use(
+    "/api/v1",
+    createV1Router({
+      supa,
+      getRuntimeJob: (id) => jobs.get(id) || null,
+      excludeReportTypes: new Set(["phys-inquiry"]),
+    }),
+  );
   const server = http.createServer(app);
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   t.after(() => server.close());
@@ -215,6 +254,56 @@ test("v1 job detail returns only the authenticated user's runtime job", async (t
   const other = await fetch(`http://127.0.0.1:${port}/api/v1/jobs/other`, { headers });
   assert.equal(other.status, 404);
   assert.equal((await other.json()).code, "JOB_NOT_FOUND");
+
+  const retiredJob = await fetch(`http://127.0.0.1:${port}/api/v1/jobs/retired`, { headers });
+  assert.equal(retiredJob.status, 404);
+  assert.equal((await retiredJob.json()).code, "JOB_NOT_FOUND");
+});
+
+test("v1 account does not treat a retired-only beta grant as Pro", async (t) => {
+  const rawToken = `quilo_deadbeef_${"C".repeat(43)}`;
+  const tokenRow = {
+    id: "token-account",
+    user_id: "user-1",
+    name: "account-reader",
+    token_prefix: "deadbeef",
+    scopes: ["account:read"],
+    expires_at: new Date(Date.now() + 60000).toISOString(),
+  };
+  const chain = {
+    select() { return this; }, eq() { return this; }, is() { return this; }, gt() { return this; },
+    update() { return this; },
+    maybeSingle() { return Promise.resolve({ data: tokenRow, error: null }); },
+    then(resolve) { return Promise.resolve(resolve({ data: null, error: null })); },
+  };
+  let featureKeys = ["phys-inquiry"];
+  const supa = {
+    getClient: () => ({ from: () => Object.create(chain) }),
+    findUserById: async () => ({ id: "user-1", name: "민준", approved: true, email_verified: true }),
+    getCredits: async () => 7,
+    getUserBetaFeatures: async () => featureKeys,
+    getActiveBackgroundSub: async () => null,
+  };
+  const app = express();
+  app.use(createExternalApiMiddleware({ supa }));
+  app.use("/api/v1", createV1Router({
+    supa,
+    excludeReportTypes: new Set(["phys-inquiry"]),
+  }));
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  t.after(() => server.close());
+  const endpoint = `http://127.0.0.1:${server.address().port}/api/v1/account`;
+  const headers = { authorization: `Bearer ${rawToken}` };
+
+  const retiredOnly = await fetch(endpoint, { headers });
+  assert.equal(retiredOnly.status, 200);
+  assert.equal((await retiredOnly.json()).plan, "free");
+
+  featureKeys = ["phys-inquiry", "pro"];
+  const active = await fetch(endpoint, { headers });
+  assert.equal(active.status, 200);
+  assert.equal((await active.json()).plan, "pro");
 });
 
 test("OpenAPI document is public and generated from the v1 route registry", async (t) => {

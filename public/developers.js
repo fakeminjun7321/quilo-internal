@@ -153,7 +153,9 @@ async function loadCatalog() {
 
 function catalogFeatures() {
   if (!state.catalog?.features) return [];
-  return state.catalog.features.filter((item) => item.audience !== "admin" || state.isAdmin);
+  const retired = new Set(["eng-exam-prep", "korean-lit-exam", "phys-inquiry", "math-inquiry", "phys-mock-exam"]);
+  return state.catalog.features.filter((item) =>
+    !retired.has(item.id) && (item.audience !== "admin" || state.isAdmin));
 }
 
 function matchesCatalogAccess(item, access) {

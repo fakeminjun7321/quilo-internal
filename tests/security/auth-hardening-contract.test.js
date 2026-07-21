@@ -39,7 +39,30 @@ test("server startup cannot create, promote, or re-password an administrator fro
 });
 
 test("password changes invalidate markerless legacy browser sessions", () => {
-  assert.match(source, /if \(!u\.pwMark \|\| pwMarkOf\(fresh\.password_hash\) !== u\.pwMark\)/);
+  assert.match(
+    source,
+    /if \(!freshPwMark \|\| !u\.pwMark \|\| freshPwMark !== u\.pwMark\)/,
+  );
+});
+
+test("paid write assist refreshes browser security state before provider routing", () => {
+  const chat = source.slice(
+    source.indexOf('app.post("/api/chat"'),
+    source.indexOf('app.post("/api/chat/feedback"'),
+  );
+  assert.match(chat, /await refreshSessionUser\(req, \{ failClosed: true \}\)/);
+  assert.match(chat, /if \(!sessionUser\)[\s\S]*?status\(401\)/);
+  assert.ok(
+    chat.indexOf("refreshSessionUser") < chat.indexOf("checkPaidLlmLimit"),
+    "session freshness must be checked before paid usage/provider work",
+  );
+
+  const models = source.slice(
+    source.indexOf('app.get("/api/write-assist/models"'),
+    source.indexOf('app.get("/api/chat/status"'),
+  );
+  assert.match(models, /await refreshSessionUser\(req, \{ failClosed: true \}\)/);
+  assert.match(models, /loggedIn: !!u/);
 });
 
 test("administrator self-demotion cannot bypass boolean validation", () => {

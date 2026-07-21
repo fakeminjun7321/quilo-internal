@@ -40,14 +40,32 @@ test("lab API exposes migrated Lab posts and new history cover metadata", async 
   const listResponse = await fetch(`${base}/api/lab/entries`);
   assert.equal(listResponse.status, 200);
   const list = await listResponse.json();
-  assert.equal(list.entries.length, history.length + legacy.length);
+  assert.equal(list.entries.length, createLabRouter.publicEntries.length);
   assert.equal(list.entries[0].id, history[0].id);
   assert.equal(list.entries[0].coverImage, history[0].cover_image);
-  assert.ok(list.entries.some((entry) => entry.id === legacy[0].id));
+  const visibleLegacy = legacy.find((entry) => !createLabRouter.isRetiredLabEntry(entry));
+  assert.ok(visibleLegacy);
+  assert.ok(list.entries.some((entry) => entry.id === visibleLegacy.id));
 
   const detailResponse = await fetch(`${base}/api/lab/entry/${history[0].id}`);
   assert.equal(detailResponse.status, 200);
   const detail = await detailResponse.json();
   assert.equal(detail.coverImage, history[0].cover_image);
   assert.match(detail.body_markdown, new RegExp(history[0].cover_image.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+
+  for (const hidden of [...history, ...legacy].filter(createLabRouter.isRetiredLabEntry)) {
+    assert.equal(list.entries.some((entry) => entry.id === hidden.id), false);
+    const hiddenDetail = await fetch(`${base}/api/lab/entry/${hidden.id}`);
+    assert.equal(hiddenDetail.status, 404);
+  }
+
+  const legacyFile = await fetch(
+    `${base}/api/lab/file?path=${encodeURIComponent("lib/lab-content.json")}`,
+  );
+  assert.equal(legacyFile.status, 404);
+
+  const serverFile = await fetch(
+    `${base}/api/lab/file?path=${encodeURIComponent("server.js")}`,
+  );
+  assert.equal(serverFile.status, 404);
 });

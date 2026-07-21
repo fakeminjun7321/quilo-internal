@@ -361,7 +361,9 @@ body.pdf-translate-page {
 .pdf-progress { margin-top: 18px; border-top: 1px solid var(--ui-line); padding-top: 18px; }
 .status-head h2 { flex: 1; margin: 0; font-size: 15px; }
 .pdf-stop { min-height: 36px; padding: 0 12px; border: 1px solid #e29b95; border-radius: 6px; background: var(--ui-danger-soft); color: var(--ui-danger); font-size: 12px; font-weight: 730; }
-#progress { max-height: 170px; padding: 12px; overflow: auto; border: 1px solid var(--ui-line); border-radius: 7px; background: var(--ui-surface-subtle); color: var(--ui-muted); font: 11px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; }
+.pdf-progress-latest { min-height: 42px; margin: 12px 0 8px; padding: 11px 12px; border: 1px solid var(--ui-line); border-radius: 7px; background: var(--ui-surface-subtle); color: var(--ui-text); font-size: 12px; line-height: 1.55; }
+.pdf-progress-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; color: var(--ui-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+#progress[hidden] { display: none !important; }
 
 .pdf-support-note { margin-top: 18px; }
 .pdf-support-note div { padding: 0 0 18px; color: var(--ui-muted); font-size: 12px; line-height: 1.6; }

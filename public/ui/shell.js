@@ -90,11 +90,6 @@
     ["vocabulary-book", "단어장 메이커", "영어교재·기존 단어장·엑셀표에서 영한 단어장을 만듭니다.", "/?report=vocabulary-book", "pro", "pro"],
     ["form-maker", "양식 메이커", "설명이나 사진에서 편집 가능한 양식을 만듭니다.", "/?report=form-maker", "pro", "pro"],
     ["print-pdf-restore", "프린트 PDF 복원", "종이 사진을 의미가 보존된 벡터 PDF로 복원하고 300dpi로 검증합니다.", "/?report=print-pdf-restore", "admin", "beta"],
-    ["phys-inquiry", "물리 수행평가", "탐구와 사고 과정을 보고서로 구조화합니다.", "/exam-prep.html", "pro", "paused"],
-    ["math-inquiry", "수학 수행평가", "필기와 탐구 주제로 수학 보고서를 작성합니다.", "/exam-prep.html", "pro", "paused"],
-    ["eng-exam-prep", "영어 시험대비 세트", "지문에서 시험과 학습 자료를 만듭니다.", "/exam-prep.html", "pro", "paused"],
-    ["korean-lit-exam", "국어 문학 시험 세트", "시험지와 답안, 해설을 만듭니다.", "/exam-prep.html", "pro", "paused"],
-    ["phys-mock-exam", "물리 모의고사", "기출과 단원에서 새 문제와 풀이를 만듭니다.", "/exam-prep.html", "pro", "paused"],
     ["physics-studio", "고급 물리 문제 스튜디오", "심화 물리 문제와 풀이를 생성합니다.", "/physics-studio.html", "pro", "pro"],
     ["coding-test", "코딩 수행평가 대비", "브라우저 채점과 튜터로 코딩을 연습합니다.", "/exam-prep.html", "pro", "pro"],
     ["relativity-study", "상대론 학습", "민코프스키 평면으로 상대론을 학습합니다.", "/study.html", "pro", "pro"],
@@ -212,8 +207,8 @@
       {
         label: "학습",
         sections: [
-          { title: "수행평가", items: items(["phys-inquiry", "math-inquiry", "coding-test"]) },
-          { title: "시험 대비", items: items(["problem-set", "vocabulary-book", "eng-exam-prep", "korean-lit-exam", "phys-mock-exam"]) },
+          { title: "연습", items: items(["coding-test"]) },
+          { title: "시험 대비", items: items(["problem-set", "vocabulary-book"]) },
           { title: "심화 학습", items: items(["physics-studio", "relativity-study", "file-chat"]) },
           { title: "학급", items: items(["quilo-schedule"]) },
         ],
@@ -851,7 +846,10 @@
     .then((response) => response.ok ? response.json() : null)
     .then((data) => {
       if (!Array.isArray(data?.features) || !data.features.length) return;
-      data.features.forEach((item) => featureMap.set(item.id, item));
+      const retired = new Set(["eng-exam-prep", "korean-lit-exam", "phys-inquiry", "math-inquiry", "phys-mock-exam"]);
+      data.features.forEach((item) => {
+        if (!retired.has(item.id)) featureMap.set(item.id, item);
+      });
       groups = groupModel();
       closeMega();
       const nav = header.querySelector("[data-ui-nav-groups]");
@@ -939,7 +937,7 @@
       <section class="ui-site-footer__brand"><a href="/" class="ui-site-footer__logo">Quilo</a><p>학습과 연구의 전 과정을 연결하는 AI Workspace.</p><nav aria-label="Quilo 외부 채널"><a href="https://www.instagram.com/quilo._.official/" target="_blank" rel="noopener">Instagram ↗</a><a href="https://github.com/fakeminjun7321/lab-report-generator-web" target="_blank" rel="noopener">GitHub ↗</a><a href="https://blog.naver.com/physicjun1905" target="_blank" rel="noopener">블로그 ↗</a></nav></section>
       <nav class="ui-site-footer__nav" aria-label="푸터 메뉴">
         <section><h2>제품</h2><a href="/?report=chem-pre">화학 사전보고서</a><a href="/?report=phys-result">물리 결과보고서</a><a href="/?report=free">자유 보고서</a><a href="/translate.html">PDF 통번역</a></section>
-        <section><h2>학습 및 창작</h2><a href="/?report=problem-set">문제집 메이커</a><a href="/exam-prep.html">물리 수행평가</a><a href="/create.html">창작 스튜디오</a><a href="/editor.html">Quilo Code</a></section>
+        <section><h2>학습 및 창작</h2><a href="/?report=problem-set">문제집 메이커</a><a href="/?report=reading-log">독서활동 기록지</a><a href="/create.html">창작 스튜디오</a><a href="/editor.html">Quilo Code</a></section>
         <section><h2>개발자</h2><a href="/developers.html">개발자 플랫폼</a><a href="/developers.html#api">API 문서</a><a href="/developers.html#catalog">기능 카탈로그</a></section>
         <section><h2>리소스</h2><a href="/developer-notes.html">개발 노트</a><a href="/resources.html">자료실</a><a href="/guide.html">이용 가이드</a><a href="/community.html">커뮤니티</a><a href="/support.html">고객센터</a><a href="/changelog.html">업데이트</a><a href="/school-apply.html">학교 도입</a></section>
       </nav>

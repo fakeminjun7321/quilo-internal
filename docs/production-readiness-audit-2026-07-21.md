@@ -172,3 +172,9 @@
   미리보기와 공개 경로 회귀용으로만 유지한다. 별도 Supabase와 실제 공급자 key로 생성
   canary를 마치기 전에는 운영에 배포하지 않는다. HWPX/DOCX의 macOS 한글 및 Windows
   한컴 교차 열기 또한 출시 차단 조건으로 유지한다.
+- origin/main 통합과 보안 보강을 포함한 commit `53cb168002a35db6b3f42975cef3862ac959dda4`를
+  스테이징에 최종 배포했다. Render 빌드·health check가 성공했고 `.node-version`의
+  Node `24.18.0`을 사용한 사실을 배포 로그에서 확인했다. `/healthz` 20회 연속 200 뒤
+  공개 64개 경로를 1440px/390px에서 재검사해 `128/128`을 통과했다. 문서 4xx/5xx,
+  page error, 예상 밖 failed response, 깨진 이미지, overflow, 이름 없는 가시 control은
+  모두 0이었다.

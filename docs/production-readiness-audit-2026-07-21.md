@@ -15,8 +15,8 @@
    설정하고 시작 실패가 없는지 확인한다.
 3. Supabase 파일함 장애 시 생성 작업이 `done` 또는 크레딧 정산으로 넘어가지 않고
    환불되는지 스테이징에서 확인한다.
-4. 실제 생성한 DOCX/HWPX를 macOS 한글과 Windows 한컴에서 각각 열어 표·수식·이미지와
-   첫 페이지 제목 박스를 확인한다.
+4. 실제 생성한 DOCX/HWPX의 macOS 한글 검증은 완료했다. 동일 파일을 Windows 한컴에서
+   열어 표·수식·이미지와 첫 페이지 제목 박스를 최종 확인한다.
 
 ## 완료된 보강
 
@@ -98,6 +98,14 @@
   PyMuPDF/fontTools/lxml, Tectonic을 확인했고 SDK wheel/sdist도 실제 빌드했다.
 - 실제 OpenAI `gpt-5.4-mini`를 사용해 화학 사전·화학 결과·물리 결과의 DOCX/HWPX
   6개 canary를 생성했고 구조 검증을 통과했다. 이 점검 비용은 약 USD 0.143이었다.
+- 실제 `.cap + CSV + 이미지` 물리 입력으로 DOCX/HWPX를 추가 생성하고, `.cap`의 8개
+  페이지·1개 센서·6개 dataset·3개 graph definition과 내장 이미지 6개가 파서와 vision
+  경로를 통과하는 것을 확인했다. 같은 실험의 graph PNG canary도 별도로 생성했으며
+  추가 공급자 비용은 약 USD 0.071이었다.
+- 추가 생성한 DOCX는 호환 Fontconfig를 적용한 LibreOffice PDF 렌더에서 3쪽 전체의
+  한글·표·그래프·페이지 나눔을 확인했다. HWPX는 ZIP/BinData 무결성과 raw 수식 marker·
+  Markdown table pipe 부재를 검사한 뒤 macOS 한컴에서 직접 열어 3쪽 전체의 제목 박스,
+  표, 그래프, 실제 수식 객체와 페이지 나눔을 확인했다.
 - Codex Security diff scan은 변경 파일 worklist `99/99`에 완료 receipt를 남겼고,
   최종 medium/P2 2건(공유 업로드 lease 미반납, MCP access sibling 폐기 누락)을
   수정했다. 나머지 후보 5건은 attack-path 기준으로 rejected/not-applicable 처리했지만
@@ -107,10 +115,12 @@
 
 ## 남은 수동·외부 검증
 
-- 실제 AI 공급자 키를 사용하는 `.cap`, `.cap + Excel`, 이미지 포함 DOCX/HWPX
-  스테이징 생성
-- 생성 파일의 원본 데이터 일치와 raw `{{EQ...}}`, Markdown pipe 잔존 여부 확인
+- 별도 Supabase와 실제 AI 공급자 키를 주입한 Render 스테이징에서 `.cap`,
+  `.cap + Excel`, 이미지 포함 DOCX/HWPX 생성과 파일함 연동 확인
+- 위 Render 스테이징 생성 파일의 원본 데이터 일치와 raw `{{EQ...}}`, Markdown pipe
+  잔존 여부 확인. 동일 입력의 로컬 실제 공급자 canary는 이 검증을 통과했다.
 - Render 환경의 큐 포화, 업로드 메모리 한도, 파일함 장애, 프로세스 재시작 시나리오
+- 로컬에서 검증한 동일 HWPX를 Windows 한컴에서 교차 열기
 - 공개 저장소에 포함하지 않는 학교 템플릿의 사용 권한과 배포 경로 확인
 
 ## 점검 도구 제약
@@ -170,8 +180,8 @@
 - Render [공식 Free 인스턴스 안내](https://render.com/docs/free)는 Free 인스턴스가 15분
   유휴 후 sleep하고 운영 용도가 아니라고 명시한다. 따라서 현재 무료 스테이징은 기능
   미리보기와 공개 경로 회귀용으로만 유지한다. 별도 Supabase와 실제 공급자 key로 생성
-  canary를 마치기 전에는 운영에 배포하지 않는다. HWPX/DOCX의 macOS 한글 및 Windows
-  한컴 교차 열기 또한 출시 차단 조건으로 유지한다.
+  canary를 마치기 전에는 운영에 배포하지 않는다. HWPX/DOCX의 macOS 한글 직접 열기는
+  통과했으며, Windows 한컴 교차 열기는 출시 차단 조건으로 유지한다.
 - origin/main 통합과 보안 보강을 포함한 commit `53cb168002a35db6b3f42975cef3862ac959dda4`를
   스테이징에 최종 배포했다. Render 빌드·health check가 성공했고 `.node-version`의
   Node `24.18.0`을 사용한 사실을 배포 로그에서 확인했다. `/healthz` 20회 연속 200 뒤

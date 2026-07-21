@@ -71,7 +71,7 @@
   브라우저 저장소 격리, Worker 격리 테스트를 추가했다.
 - Root Node 테스트 `511/511`, PDF Python `155/155`, SDK Python `9/9`, Classbot
   `114/114`, 문법 검사 `20/20`이 통과했다.
-- Playwright QA `416/416`이 안정적인 단일 worker 실행에서 통과했다. 48개 공개 route,
+- Playwright QA `417/417`이 안정적인 단일 worker 실행에서 통과했다. 48개 공개 route,
   1440/933/390px shell, 보고서 모델 선택, mocked 생성/SSE 재연결, 인증, 관리자,
   PDF·OCR, 외부 연동 흐름을 실제 Chromium으로 확인했다.
 - 홈과 화학 사전보고서의 데스크톱·모바일 화면을 같은 뷰포트에서 전후 비교했고,
@@ -127,10 +127,24 @@
 
 ## Render 스테이징 판정
 
-- 저장소에는 `render.yaml`, Render CLI 로그인, 서비스 ID, 스테이징 GitHub environment가
-  없어 기존 스테이징 대상을 안전하게 식별할 수 없었다.
-- `chem-pre-lab-web.onrender.com`은 운영으로 redirect되어 스테이징으로 사용할 수 없다.
-- 운영 `/api/version`은 점검 시 release `1.0.57`, commit `ed657879…`였고 GitHub main과
-  일치했지만, 현재 로컬 작업 트리는 별도 dirty 상태이므로 운영에 배포하지 않았다.
-- 따라서 실제 공급자 key를 쓰는 canary와 HWPX/DOCX OS 교차 열기는 아직 출시 차단
-  조건이다. 정확한 Render 스테이징 서비스가 준비되기 전에는 운영 배포를 하지 않는다.
+- Render CLI 인증 후 운영 서비스 `srv-d7m9t4gsfn5c73de7tu0`을 읽기 전용으로 확인했고,
+  운영과 분리된 `quilo-launch-audit-0721` 스테이징 서비스를 만들었다. 스테이징은
+  `codex/launch-audit-staging`의 commit `e02f61e625edc46a6f62622a6807aa7bf86addec`, Singapore,
+  auto-deploy off, `/healthz`, 별도 64자 `SESSION_SECRET`으로 구성했다.
+- 스테이징에는 운영 Supabase/AI 공급자 key를 복사하지 않았다. `QUILO_STAGING=1`은
+  내장 일정 서비스를 메모리 저장소와 파생 비밀값으로 격리하며, 공개 편집 콘텐츠 저장소가
+  비활성인 경우 익명 조회는 빈 목록으로 안전하게 fallback한다.
+- 로컬의 동일 staging 환경은 공개 경로 64개를 1440px/390px에서 `128/128` 통과했고,
+  `/schedule/`과 공개 editorial API도 200을 반환했다. Render 서비스도 build, health check,
+  시작까지 성공했으며 재배포 직후 동일 경로 30회는 모두 200이었다.
+- 그러나 실제 Chromium 전수 검사에서는 2개 병렬 페이지일 때 문서 404가 `10/128`, 완전
+  순차일 때도 `21/128` 재현됐다. 404 응답에는 `x-render-routing: no-server`가 있었고
+  `x-request-id`, `rndr-id`, 애플리케이션 보안 헤더가 없었으며 해당 요청은 앱 로그에도
+  도달하지 않았다. 동일 커밋의 로컬 검사가 전부 통과하므로 코드/Express 404가 아니라
+  신규 Free 인스턴스의 Render 외부 라우팅 문제로 분류한다.
+- Render [공식 Free 인스턴스 안내](https://render.com/docs/free)도 Free 인스턴스를 운영
+  용도로 사용하지 말라고 명시한다. 현재 무료 스테이징은 기능 미리보기 링크로만 유지하고
+  출시 판정에는 사용하지 않는다. paid staging
+  인스턴스에서 전수 검사를 다시 통과하고, 별도 Supabase와 실제 공급자 key로 생성 canary를
+  마치기 전에는 운영에 배포하지 않는다. HWPX/DOCX의 macOS 한글 및 Windows 한컴 교차
+  열기 또한 출시 차단 조건으로 유지한다.

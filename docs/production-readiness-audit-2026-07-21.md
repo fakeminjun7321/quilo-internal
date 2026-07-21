@@ -9,14 +9,16 @@
 코드 기준의 주요 보안·신뢰성 위험은 보강했지만, 아래 **배포 차단 조건**을 운영에서
 확인하기 전에는 정식 출시 완료로 판정하지 않는다.
 
-1. Supabase에 `20260705_add_artifact_owner_id.sql`과
-   `20260721_add_credit_reservation_ledger.sql`을 적용한다.
-2. Render에 32자 이상의 별도 `SESSION_SECRET`, Supabase service key, AI 공급자 키를
+1. Render에 32자 이상의 별도 `SESSION_SECRET`, Supabase service key, AI 공급자 키를
    설정하고 시작 실패가 없는지 확인한다.
-3. Supabase 파일함 장애 시 생성 작업이 `done` 또는 크레딧 정산으로 넘어가지 않고
+2. Supabase 파일함 장애 시 생성 작업이 `done` 또는 크레딧 정산으로 넘어가지 않고
    환불되는지 스테이징에서 확인한다.
-4. 실제 생성한 DOCX/HWPX의 macOS 한글 검증은 완료했다. 동일 파일을 Windows 한컴에서
+3. 실제 생성한 DOCX/HWPX의 macOS 한글 검증은 완료했다. 동일 파일을 Windows 한컴에서
    열어 표·수식·이미지와 첫 페이지 제목 박스를 최종 확인한다.
+
+`20260705_add_artifact_owner_id.sql`과 `20260721_add_credit_reservation_ledger.sql`은
+운영 Supabase에 적용됐으며, `artifacts.owner_id`, `credit_reservations`, 예약·갱신·정산·
+환불 RPC 5개가 운영 service-role의 실제 PostgREST schema에 노출되는 것을 확인했다.
 
 ## 완료된 보강
 
@@ -39,6 +41,10 @@
 ### 인증·권한·외부 연동
 
 - 운영 세션 비밀값 누락·짧은 값은 서버 시작 단계에서 거부한다.
+- 관리자 부트스트랩은 `ADMIN_NAME`을 username 우선으로 찾고, 기존 비밀번호는 기본 보존한다.
+  운영 복구는 `ADMIN_SYNC_PASSWORD=1`로 명시한 경우에만 동기화하며 일반 사용자 승격은
+  `ADMIN_ALLOW_EXISTING_PROMOTION=1`까지 함께 있어야 한다. 손상된 password hash는 500이
+  아니라 인증 실패로 안전하게 처리한다.
 - 로그인 요청에 동일 출처 검사를 적용하고, 운영 권한 조회 실패는 허용하지 않는다.
 - `/api/me`와 로그인 응답은 표시 이름이 아닌 불변 사용자 ID를 제공한다.
 - 레거시 `owner_id=null` 산출물은 이름 일치만으로 일반 사용자에게 공개하지 않는다.
@@ -106,6 +112,9 @@
   한글·표·그래프·페이지 나눔을 확인했다. HWPX는 ZIP/BinData 무결성과 raw 수식 marker·
   Markdown table pipe 부재를 검사한 뒤 macOS 한컴에서 직접 열어 3쪽 전체의 제목 박스,
   표, 그래프, 실제 수식 객체와 페이지 나눔을 확인했다.
+- 운영 Render one-off job에서 환경변수 값을 출력하지 않고 대상 관리자 한 행만
+  `is_admin=true`와 새 scrypt hash로 복구했다. 동일 환경변수 자격증명의 실제 운영
+  `/api/login` 요청이 이후 200과 `admin=true` 로그를 남기는 것을 확인했다.
 - Codex Security diff scan은 변경 파일 worklist `99/99`에 완료 receipt를 남겼고,
   최종 medium/P2 2건(공유 업로드 lease 미반납, MCP access sibling 폐기 누락)을
   수정했다. 나머지 후보 5건은 attack-path 기준으로 rejected/not-applicable 처리했지만

@@ -141,21 +141,37 @@ function validateState(state) {
   const required = [
     "version", "runId", "tool", "objective", "acceptanceCriteria", "allowedPaths",
     "baseRevision", "dirtyBaseline", "iteration", "hypothesis", "changedFiles", "commands",
-    "openRisks", "blockers", "status", "nextAction", "createdAt", "updatedAt",
+    "openRisks", "blockers", "status", "nextAction", "ruleReview", "promotedRules", "createdAt", "updatedAt",
   ];
   for (const key of required) {
     if (!(key in state)) fail(`Checkpoint is missing ${key}`);
   }
-  if (state.version !== 1) fail("Checkpoint version must be 1");
+  if (state.version !== 2) fail("Checkpoint version must be 2");
   safeRunId(state.runId);
   if (!["codex", "claude-code", "other"].includes(state.tool)) fail(`Unsupported tool: ${state.tool}`);
   if (typeof state.objective !== "string" || !state.objective.trim()) fail("Checkpoint objective is empty");
-  for (const key of ["acceptanceCriteria", "allowedPaths", "dirtyBaseline", "changedFiles", "commands", "openRisks", "blockers"]) {
+  for (const key of ["acceptanceCriteria", "allowedPaths", "dirtyBaseline", "changedFiles", "commands", "openRisks", "blockers", "promotedRules"]) {
     if (!Array.isArray(state[key])) fail(`Checkpoint ${key} must be an array`);
   }
   if (!Number.isInteger(state.iteration) || state.iteration < 0) fail("Checkpoint iteration must be a non-negative integer");
   if (!VALID_STATUS.has(state.status)) fail(`Unsupported checkpoint status: ${state.status}`);
+  if (typeof state.ruleReview !== "string") fail("Checkpoint ruleReview must be a string");
   return state;
+}
+
+function migrateState(state) {
+  if (state.version !== 1) return { state, migrated: false };
+  return {
+    migrated: true,
+    state: {
+      ...state,
+      version: 2,
+      ruleReview: state.status === "complete"
+        ? "Legacy checkpoint completed before the continuous rule-review gate existed."
+        : "",
+      promotedRules: [],
+    },
+  };
 }
 
 async function initRun(config, parsed) {
@@ -178,7 +194,7 @@ async function initRun(config, parsed) {
   const now = new Date().toISOString();
   const dirty = await git(["status", "--short"]);
   const state = {
-    version: 1,
+    version: 2,
     runId,
     tool,
     objective: objective.trim(),
@@ -194,6 +210,8 @@ async function initRun(config, parsed) {
     blockers: [],
     status: "in_progress",
     nextAction: "Define the first reproducible failure or baseline observation.",
+    ruleReview: "",
+    promotedRules: [],
     notes: [],
     createdAt: now,
     updatedAt: now,
@@ -230,7 +248,10 @@ async function findLatestRun(config) {
 async function readState(config, runId) {
   const resolvedRunId = runId ? safeRunId(runId) : await findLatestRun(config);
   const statePath = path.join(runDirectory(config, resolvedRunId), "state.json");
-  return { statePath, state: validateState(await loadJson(statePath)) };
+  const migrated = migrateState(await loadJson(statePath));
+  const state = validateState(migrated.state);
+  if (migrated.migrated) await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
+  return { statePath, state };
 }
 
 async function resumeRun(config, parsed) {
@@ -249,6 +270,10 @@ async function checkpointRun(config, parsed) {
   if (typeof next === "string") state.nextAction = next;
   const hypothesis = parsed.flags.get("hypothesis");
   if (typeof hypothesis === "string") state.hypothesis = hypothesis;
+  const ruleReview = parsed.flags.get("rule-review");
+  if (typeof ruleReview === "string") state.ruleReview = ruleReview.trim();
+  const promotedRules = flagValues(parsed.flags, "promoted-rule").map((value) => value.trim()).filter(Boolean);
+  if (promotedRules.length) state.promotedRules = [...new Set([...state.promotedRules, ...promotedRules])];
   const changed = flagValues(parsed.flags, "changed").flatMap((value) => value.split(",")).map((value) => value.trim()).filter(Boolean);
   if (changed.length) state.changedFiles = [...new Set([...state.changedFiles, ...changed])].sort();
   const notes = flagValues(parsed.flags, "note");
@@ -257,6 +282,15 @@ async function checkpointRun(config, parsed) {
   state.iteration = iteration == null ? state.iteration + 1 : Number.parseInt(iteration, 10);
   state.updatedAt = new Date().toISOString();
   validateState(state);
+  if (state.status === "complete" && config.learning?.reviewRequiredOnComplete && !state.ruleReview) {
+    fail("complete requires --rule-review with the durable-rule review result");
+  }
+  if (state.status === "complete" && state.promotedRules.length > 0) {
+    const durableSources = new Set(config.learning?.durableSources || []);
+    if (!state.changedFiles.some((file) => durableSources.has(file))) {
+      fail("--promoted-rule requires a durable rule source in --changed");
+    }
+  }
   await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
   process.stdout.write(`${path.relative(repoRoot, statePath)}\n`);
 }
@@ -382,6 +416,7 @@ function help() {
     `  doctor\n` +
     `  init <run-id> --objective "..." [--tool codex|claude-code] [--acceptance "..."] [--path "..."]\n` +
     `  checkpoint <run-id> [--status ...] [--next "..."] [--hypothesis "..."] [--changed path] [--note "..."]\n` +
+    `    completion: --rule-review "..." [--promoted-rule "..." --changed <durable-source>]\n` +
     `  resume [run-id]\n` +
     `  validate [run-id]\n` +
     `  verify quick|core|release [--run <run-id>]\n`);

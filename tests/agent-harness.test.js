@@ -1,6 +1,7 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const { spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
@@ -43,10 +44,52 @@ test("checkpoint runs and transient evidence remain gitignored", () => {
   for (const field of [
     "runId", "objective", "acceptanceCriteria", "allowedPaths", "baseRevision",
     "dirtyBaseline", "iteration", "changedFiles", "commands", "openRisks",
-    "blockers", "status", "nextAction", "updatedAt",
+    "blockers", "status", "nextAction", "ruleReview", "promotedRules", "updatedAt",
   ]) {
     assert.ok(schema.required.includes(field), `schema must require ${field}`);
   }
+});
+
+test("complete checkpoints require a durable-rule review", (t) => {
+  const runId = `test-rule-review-${process.pid}`;
+  const runDir = path.join(ROOT, ".harness", "runs", runId);
+  fs.rmSync(runDir, { recursive: true, force: true });
+  t.after(() => fs.rmSync(runDir, { recursive: true, force: true }));
+
+  const runHarness = (...args) => spawnSync(
+    process.execPath,
+    [path.join(ROOT, "scripts", "agent-harness.mjs"), ...args],
+    { cwd: ROOT, encoding: "utf8" },
+  );
+
+  const initialized = runHarness("init", runId, "--objective", "test rule review gate", "--tool", "codex");
+  assert.equal(initialized.status, 0, initialized.stderr);
+
+  const missingReview = runHarness("checkpoint", runId, "--status", "complete");
+  assert.equal(missingReview.status, 1);
+  assert.match(missingReview.stderr, /complete requires --rule-review/);
+
+  const promotedWithoutSource = runHarness(
+    "checkpoint", runId,
+    "--status", "complete",
+    "--rule-review", "new stable lesson",
+    "--promoted-rule", "rule promotion contract",
+  );
+  assert.equal(promotedWithoutSource.status, 1);
+  assert.match(promotedWithoutSource.stderr, /durable rule source/);
+
+  const completed = runHarness(
+    "checkpoint", runId,
+    "--status", "complete",
+    "--rule-review", "new stable lesson promoted",
+    "--promoted-rule", "rule promotion contract",
+    "--changed", "docs/engineering/agent-memory.md",
+  );
+  assert.equal(completed.status, 0, completed.stderr);
+  const state = JSON.parse(read(path.relative(ROOT, path.join(runDir, "state.json"))));
+  assert.equal(state.status, "complete");
+  assert.equal(state.ruleReview, "new stable lesson promoted");
+  assert.deepEqual(state.promotedRules, ["rule promotion contract"]);
 });
 
 test("package scripts expose the shared verification tiers", () => {

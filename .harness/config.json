@@ -10,6 +10,21 @@
     "docs/engineering/agent-memory.md",
     ".harness/state.schema.json"
   ],
+  "learning": {
+    "reviewRequiredOnComplete": true,
+    "durableSources": [
+      "AGENTS.md",
+      "docs/engineering/agent-harness.md",
+      "docs/engineering/agent-memory.md",
+      ".harness/config.json",
+      "tests/agent-harness.test.js"
+    ],
+    "promotionCriteria": [
+      "reusable across future Quilo tasks",
+      "supported by observed evidence or a regression test",
+      "free of secrets, personal data, transient ids, and raw conversation text"
+    ]
+  },
   "tiers": {
     "quick": [
       {

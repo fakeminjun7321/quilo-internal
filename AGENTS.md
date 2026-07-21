@@ -9,11 +9,12 @@
 모든 코드 변경·장기 점검·배포 작업은 먼저 `docs/engineering/agent-harness.md`와 `docs/engineering/agent-memory.md`를 읽고 아래 순서를 따른다.
 
 1. `npm run harness:doctor`로 저장소, Node 버전, 규칙 연결, 비밀 파일 추적 여부를 확인한다.
-2. 장기·병렬·배포 작업은 `npm run harness:init -- <run-id> --objective "<목표>" --tool <codex|claude-code>`로 체크포인트를 만든다.
+2. 모든 Quilo 저장소 작업은 `npm run harness:init -- <run-id> --objective "<목표>" --tool <codex|claude-code>`로 작업별 체크포인트를 만든다. 단순 질의처럼 저장소를 읽거나 바꾸지 않는 대화만 제외한다.
 3. 실패 재현과 완료 조건을 먼저 기록하고, 한 반복에는 하나의 가설과 최소 변경만 둔다.
 4. 반복 중에는 관련 focused test와 `npm run verify:quick`, 통합 전에는 `npm run verify:core`, 운영 배포 전에는 `npm run verify:release`를 실행한다.
 5. 실제 UI·생성 기능은 코드 존재만 보고 완료하지 않는다. 로컬 격리 실행과 실제 브라우저 경로를 확인하고, 배포 요청이면 운영 URL·로그·버전까지 읽기 전용으로 확인한다.
 6. 컨텍스트 또는 토큰 잔여율을 런타임이 실제 제공하고 5% 이하이면 새 작업을 시작하지 말고 체크포인트를 남긴 뒤 중단한다. 잔여율을 알 수 없으면 숫자를 추측하지 않는다.
+7. 완료 직전에는 이번 작업의 새 교훈이 공통 규칙에 재사용 가능한지 반드시 검토한다. 새 안정 교훈은 `AGENTS.md`, `docs/engineering/agent-harness.md`, `docs/engineering/agent-memory.md`, `.harness/config.json` 또는 관련 계약 테스트에 반영하고 `--promoted-rule`로 기록한다. 새 교훈이 없으면 `--rule-review`에 이유를 남긴다. 이 검토가 없으면 하네스가 `complete`를 거부한다.
 
 하네스는 자동으로 commit, push, deploy, 운영 SQL, 결제, 이메일, 토큰 발급, 권한 변경을 실행하지 않는다. 그런 작업은 사용자의 요청 범위와 별도 권한 경계를 따른다.
 

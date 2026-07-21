@@ -34,7 +34,7 @@
 5. 사용자·다른 에이전트의 기존 변경을 보존한다.
 6. 목표, 완료 조건, 허용 경로, 외부 mutation 여부를 먼저 적는다.
 
-### 장기·병렬·배포 작업
+### 모든 저장소 작업
 
 ```bash
 npm run harness:init -- release-audit \
@@ -43,6 +43,8 @@ npm run harness:init -- release-audit \
 ```
 
 생성되는 `.harness/runs/<run-id>/state.json`은 로컬 체크포인트다. 원문 업로드, 비밀번호, 이메일, 토큰, 쿠키, 키, 보고서 본문은 기록하지 않는다.
+
+저장소를 읽거나 수정하는 Quilo 작업은 크기와 관계없이 작업별 run을 만든다. 단순 사용법 답변처럼 저장소를 전혀 읽거나 바꾸지 않는 대화만 생략할 수 있다. 이 규칙은 작은 작업에서 발견한 교훈도 다음 작업에 전달하기 위한 것이다.
 
 재개할 때는 다음을 먼저 실행한다.
 
@@ -90,7 +92,8 @@ git log -5 --oneline
 8. **실제 실행**: 실제 프론트 모듈·CSS·브라우저 경로와, 필요 시 사용자가 지정한 실입력을 실행한다.
 9. **독립 평가**: 구현 에이전트와 다른 관점에서 결과를 원본·완료 조건과 대조한다.
 10. **broader gate**: `verify:quick` → 도메인 테스트 → `verify:core` → 필요 시 `verify:release` 순서로 넓힌다.
-11. **체크포인트**: 새 증거, 변경 파일, 명령·exit code, 위험, 다음 행동을 기록한다.
+11. **규칙 검토**: 이번 작업에서 반복 가능한 새 교훈이 생겼는지 확인하고 공통 규칙·메모리·설정·계약 테스트 중 알맞은 위치에 승격한다.
+12. **체크포인트**: 새 증거, 변경 파일, 명령·exit code, 위험, 다음 행동, 규칙 검토 결과를 기록한다.
 
 반복마다 최소 하나가 새로 생겨야 한다.
 
@@ -229,6 +232,30 @@ npm run harness:checkpoint -- <run-id> \
   --note "실패 재현 fixture 추가"
 ```
 
+작업 완료 시에는 규칙 검토가 필수다.
+
+```bash
+# 재사용 가능한 새 교훈을 공통 메모리에 반영한 경우
+npm run harness:checkpoint -- <run-id> \
+  --status complete \
+  --rule-review "운영 404와 앱 404를 로그 도달 여부로 구분해야 함" \
+  --promoted-rule "404 경계 판별 절차" \
+  --changed docs/engineering/agent-memory.md
+
+# 새 공통 교훈이 없는 경우에도 근거를 기록
+npm run harness:checkpoint -- <run-id> \
+  --status complete \
+  --rule-review "기존 인증 세션 규칙이 이번 사례를 이미 완전히 포함함"
+```
+
+공통 규칙은 작업 일지가 아니다. 다음 조건을 모두 만족하는 교훈만 승격한다.
+
+- 이후 Quilo 작업에서도 재사용할 수 있다.
+- 관찰 증거나 회귀 테스트가 있다.
+- 비밀정보, 개인정보, 원문 대화, 임시 commit·deploy·job·PID를 포함하지 않는다.
+
+`complete`에는 비어 있지 않은 `ruleReview`가 필요하다. `promotedRules`가 있으면 `.harness/config.json`의 `learning.durableSources` 중 하나가 변경 파일에 포함되어야 한다. 따라서 에이전트가 규칙 검토를 생략하거나 “나중에 메모하겠다”고 하고 종료할 수 없다.
+
 필수 상태는 `.harness/state.schema.json`에 정의한다.
 
 완료 조건:
@@ -237,6 +264,7 @@ npm run harness:checkpoint -- <run-id> \
 - 필수 focused/domain/broader gate 통과
 - 실제 UI·산출물 확인
 - diff와 보안 경계 검토
+- 공통 규칙 검토와 필요한 승격 완료
 - 배포 요청이면 라이브 확인
 
 중단 조건:

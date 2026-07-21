@@ -235,6 +235,45 @@ test("app entitlement gate distinguishes logged-out, forbidden, and Max access",
   await expect(page.locator("#gate")).toBeHidden();
 });
 
+test("app entitlement gate follows login and logout changes from another tab", async ({ page, context }) => {
+  let loggedIn = false;
+  await page.route("**/api/me", (route) =>
+    route.fulfill({
+      status: loggedIn ? 200 : 401,
+      contentType: "application/json",
+      body: JSON.stringify(loggedIn ? { user: "모바일 QA", isAdmin: false } : { error: "login" }),
+    }),
+  );
+  await page.route("**/api/me/beta", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ admin: false, tier: "max", features: [] }),
+    }),
+  );
+
+  await page.goto(`${baseUrl}/physics-studio.html`, { waitUntil: "networkidle" });
+  await expect(page.locator("#gate")).toContainText("로그인이 필요합니다");
+  await expect(page.locator("#app")).toBeHidden();
+
+  const peer = await context.newPage();
+  await peer.goto(`${baseUrl}/guide.html`, { waitUntil: "domcontentloaded" });
+  loggedIn = true;
+  await peer.evaluate(() => localStorage.setItem("quilo:auth-sync", JSON.stringify({ action: "login", at: Date.now() })));
+
+  await expect(page.locator("[data-ui-shell]")).toHaveAttribute("data-ui-auth-state", "authenticated");
+  await expect(page.locator("#app")).toBeVisible();
+  await expect(page.locator("#gate")).toBeHidden();
+
+  loggedIn = false;
+  await peer.evaluate(() => localStorage.setItem("quilo:auth-sync", JSON.stringify({ action: "logout", at: Date.now() })));
+
+  await expect(page.locator("[data-ui-shell]")).toHaveAttribute("data-ui-auth-state", "anonymous");
+  await expect(page.locator("#gate")).toContainText("로그인이 필요합니다");
+  await expect(page.locator("#app")).toBeHidden();
+  await peer.close();
+});
+
 test("heavy app engines are loaded only after permission or the matching action", () => {
   const editor = fs.readFileSync(path.join(PUBLIC_DIR, "editor.html"), "utf8");
   const exam = fs.readFileSync(path.join(PUBLIC_DIR, "exam-prep.html"), "utf8");
@@ -472,6 +511,49 @@ test("all work surfaces reflow and respond at the 933px compact desktop width", 
       });
     }
     expect(errors.slice(errorCount), `${pageName} console health`).toEqual([]);
+  }
+  expect(errors).toEqual([]);
+});
+
+test("all work surfaces reflow and keep core controls usable at 390px", async ({ page }) => {
+  const errors = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(`console: ${message.text()}`);
+  });
+  page.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));
+  await installNetworkFixtures(page, []);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  for (const pageName of PAGES) {
+    const errorCount = errors.length;
+    await page.goto(`${baseUrl}/${pageName}`, { waitUntil: "networkidle" });
+    await expect(page.locator("[data-ui-mobile-trigger]"), `${pageName} mobile menu`).toBeVisible();
+    await expect(page.locator("#main-content"), `${pageName} mobile content`).toBeVisible();
+    if (pageName === "studio.html") {
+      await expect(page.locator("#app")).toBeVisible();
+      await page.locator('[data-mode="image"]').click();
+      await expect(page.locator('[data-mode="image"]')).toHaveClass(/on/);
+    } else {
+      await exerciseCoreInteraction(page, pageName);
+    }
+    const geometry = await shellGeometry(page);
+    expect(geometry, pageName).toEqual({
+      overflow: 0,
+      headerPosition: "fixed",
+      headerTop: 0,
+      headerToken: 68,
+      statusPosition: "fixed",
+      statusBottom: 0,
+      headerOffenders: [],
+    });
+    await verifyPinnedChrome(page, pageName);
+    if (["editor.html", "filechat.html", "physics-studio.html"].includes(pageName)) {
+      await page.screenshot({
+        path: `/tmp/quilo-${pageName.replace(".html", "")}-app-shell-390.png`,
+        fullPage: false,
+      });
+    }
+    expect(errors.slice(errorCount), `${pageName} mobile console health`).toEqual([]);
   }
   expect(errors).toEqual([]);
 });

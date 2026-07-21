@@ -31,7 +31,7 @@ test("QA server processes always use the isolated external-service environment",
     const source = fs.readFileSync(file, "utf8");
     assert.match(
       source,
-      /require\(["']\.\/support\/isolated-server-env["']\)/u,
+      /require\(["'](?:\.\/|\.\.\/)support\/isolated-server-env["']\)/u,
       `${path.relative(qaRoot, file)} must import isolatedServerEnv`,
     );
     assert.match(

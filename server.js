@@ -724,16 +724,17 @@ const PIPELINES = {
     defaultModel: require("./lib/pipelines/print-pdf-restore").getDefaultModel,
     prepareInput(filesByField, body) {
       const restore = require("./lib/pipelines/print-pdf-restore");
-      // 초기 UI 빌드에서 사용한 referencePdf도 받아 reference 하나로 정규화한다.
-      const normalizedFiles = {
-        ...filesByField,
-        reference: filesByField.reference || filesByField.referencePdf || [],
-      };
-      return restore.prepareInput(normalizedFiles, {
-        ...body,
-        format: "pdf",
-        qualityGate: "ocr-visual-300dpi",
-      });
+      return restore.prepareInput(
+        {
+          ...filesByField,
+          reference: filesByField.reference || filesByField.referencePdf || [],
+        },
+        {
+          ...body,
+          format: "pdf",
+          qualityGate: "ocr-visual-300dpi",
+        },
+      );
     },
     buildFilename(content) {
       const title = sanitizeForFilename(content.title || "복원본");
@@ -911,6 +912,15 @@ const productTelemetry = require("./lib/product-telemetry");
 const { translatePdf, makeGate } = require("./lib/pipelines/pdf-translate/translate");
 const { retypesetPdf } = require("./lib/pipelines/pdf-translate/latex-gen");
 const {
+  assertLibreOfficeRendererAvailable,
+  getPdfTranslationRendererCapabilities,
+  normalizeRequestedRenderer,
+  resolvePdfTranslationRenderer,
+} = require("./lib/pipelines/pdf-translate/renderer-contract");
+const {
+  findLibreOfficeBinary,
+} = require("./lib/pipelines/pdf-translate/libreoffice-pdf");
+const {
   assertCompleteRasterization,
   assertCompleteChunkResults,
   qualityFailure,
@@ -950,6 +960,24 @@ const os = require("os");
 const app = express();
 app.disable("x-powered-by");
 const PORT = process.env.PORT || 3000;
+const AUTH_SESSION_DEFAULT_MAX_AGE_MS = 1000 * 60 * 60 * 12;
+const AUTH_SESSION_REMEMBER_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 30;
+const CANONICAL_WEB_ORIGIN = (() => {
+  const configured = String(
+    process.env.PUBLIC_BASE_URL ||
+      process.env.APP_BASE_URL ||
+      (process.env.NODE_ENV === "production" ? "https://quilolab.com" : ""),
+  )
+    .trim()
+    .replace(/\/+$/, "");
+  if (!configured) return "";
+  try {
+    return new URL(configured).origin;
+  } catch {
+    console.warn(`⚠ PUBLIC_BASE_URL/APP_BASE_URL 형식 오류: ${configured}`);
+    return "";
+  }
+})();
 // Full-site closure. Revert this commit or set this to false to reopen.
 const SITE_CLOSED = false;
 // 세션 쿠키 서명 키. 재시작마다 바뀌면 기존 로그인 쿠키가 모두 무효화돼 '자동 로그아웃'
@@ -1097,6 +1125,27 @@ app.use((req, res, next) => {
   next();
 });
 
+// 운영 웹은 한 origin 으로만 진입시킨다. cookie-session 쿠키는 의도적으로
+// host-only 이므로 Render 원본/별도 호스트에서 앱을 그대로 열면 공식 도메인과
+// 로그인 상태가 둘로 갈라진다. healthz 는 Render 자체 헬스체크를 위해 예외로 둔다.
+app.use((req, res, next) => {
+  if (
+    process.env.NODE_ENV !== "production" ||
+    !CANONICAL_WEB_ORIGIN ||
+    req.path === "/healthz" ||
+    !["GET", "HEAD"].includes(req.method)
+  ) {
+    return next();
+  }
+  const canonical = new URL(CANONICAL_WEB_ORIGIN);
+  const requestHost = String(req.hostname || "").toLowerCase();
+  const requestProtocol = `${String(req.protocol || "").toLowerCase()}:`;
+  if (requestHost === canonical.hostname.toLowerCase() && requestProtocol === canonical.protocol) {
+    return next();
+  }
+  return res.redirect(308, `${CANONICAL_WEB_ORIGIN}${req.originalUrl || "/"}`);
+});
+
 // MIT-licensed Express compression middleware. EventSource responses are kept
 // uncompressed so progress events flush immediately instead of being buffered.
 app.use(compression({
@@ -1118,12 +1167,30 @@ app.use(
   cookieSession({
     name: "quilo.sid",
     keys: [SESSION_SECRET],
-    maxAge: 1000 * 60 * 60 * 12, // 12h (로그인 시 '로그인 유지'면 30일로 연장)
+    maxAge: AUTH_SESSION_DEFAULT_MAX_AGE_MS, // 이전 세션 하위호환. 새 로그인은 아래 marker로 고정.
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
   }),
 );
+
+// cookie-session 은 요청마다 sessionOptions 를 기본값으로 다시 만든다. 따라서 로그인
+// 응답에서만 30일을 지정하면 /api/me 같은 다음 세션 쓰기 때 12시간으로 줄어든다.
+// 로그인 시 저장한 mode/절대 만료시각을 모든 후속 응답에 다시 적용한다.
+app.use((req, _res, next) => {
+  const mode = req.session?.authPersistence;
+  if (mode === "persistent") {
+    const expiresAt = Number(req.session.authExpiresAt || 0);
+    if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+      req.session = null;
+      return next();
+    }
+    req.sessionOptions.maxAge = Math.max(1, expiresAt - Date.now());
+  } else if (mode === "session") {
+    req.sessionOptions.maxAge = null;
+  }
+  next();
+});
 
 // Codex·외부 클라이언트용 /api/v1 Bearer 인증. 브라우저 세션 쿠키와 분리하며,
 // 토큰에 부여된 scope에 해당하는 안정된 v1 경로만 기존 검증 파이프라인으로 연결한다.
@@ -1275,6 +1342,14 @@ function initializeUploadMemoryBudget(req, res, next) {
   res.once("close", releaseIfRequestOwned);
   next();
 }
+
+// Every API upload that uses makeUpload() shares uploadMemoryBytesInUse. Install
+// the response-lifecycle release hook once for the whole API surface so public
+// school applications, converters, PDF tools, file chat, and report generation
+// all return their accounting lease. Long-running generation transfers ownership
+// to its job below and releases it only when the job finishes.
+app.use("/api", initializeUploadMemoryBudget);
+
 function uploadTooLargeMessage() {
   return `파일이 너무 큽니다 (업로드 합계 최대 ${Math.round(
     MAX_TOTAL_UPLOAD_BYTES / 1024 / 1024,
@@ -1379,6 +1454,19 @@ function pwMarkOf(passwordHash) {
     .slice(0, 16);
 }
 
+function configureAuthSession(req, remember) {
+  if (!req.session) return;
+  if (remember) {
+    req.session.authPersistence = "persistent";
+    req.session.authExpiresAt = Date.now() + AUTH_SESSION_REMEMBER_MAX_AGE_MS;
+    req.sessionOptions.maxAge = AUTH_SESSION_REMEMBER_MAX_AGE_MS;
+  } else {
+    req.session.authPersistence = "session";
+    req.session.authExpiresAt = null;
+    req.sessionOptions.maxAge = null;
+  }
+}
+
 async function refreshSessionUser(req, { failClosed = false } = {}) {
   const u = getSessionUser(req);
   if (!u || !u.id) return u;
@@ -1388,43 +1476,48 @@ async function refreshSessionUser(req, { failClosed = false } = {}) {
     }
     return u;
   }
+  if (!req._sessionRefreshPromise) {
+    req._sessionRefreshPromise = (async () => {
+      const fresh = await supa.findUserById(u.id);
+      if (!fresh) {
+        if (req.apiUser) req.apiUser = null;
+        else req.session = null;
+        return null;
+      }
+      // L12: 세션 발급 이후 비밀번호가 바뀌었으면(마커 불일치) 이 세션을 무효화한다.
+      // 마커가 없는 예전 세션(u.pwMark 미보유)은 건드리지 않는다(하위호환 — 다음 로그인부터 적용).
+      if (!req.apiUser && u.pwMark && fresh.password_hash && pwMarkOf(fresh.password_hash) !== u.pwMark) {
+        req.session = null;
+        return null;
+      }
+      const refreshed = {
+        ...u,
+        name: fresh.name || u.name,
+        username: fresh.username || u.username || fresh.name || u.name,
+        studentId: normalizeStudentId(fresh.student_id),
+        // 외부 토큰은 관리자 권한으로 승격되지 않는다. 허용 작업은 scope가 전부 결정한다.
+        isAdmin: req.apiUser ? false : !!fresh.is_admin,
+        isStaff: req.apiUser ? false : !!fresh.is_staff,
+        isDeveloper: req.apiUser ? false : !!fresh.is_developer,
+        avatarUrl: fresh.avatar_url || null,
+        profileBio: String(fresh.profile_bio || ""),
+        unlimited: !!fresh.unlimited,
+        restrictedModel: fresh.restricted_model || null,
+        emailVerified: !!fresh.email_verified,
+        approved: !!fresh.approved,
+        analyticsConsent: !!fresh.analytics_consent,
+        analyticsConsentVersion: String(fresh.analytics_consent_version || ""),
+      };
+      if (req.apiUser) req.apiUser = refreshed;
+      else req.session.userInfo = refreshed;
+      return refreshed;
+    })();
+  }
   try {
-    const fresh = await supa.findUserById(u.id);
-    if (!fresh) {
-      if (req.apiUser) req.apiUser = null;
-      else req.session = null;
-      return null;
-    }
-    // L12: 세션 발급 이후 비밀번호가 바뀌었으면(마커 불일치) 이 세션을 무효화한다.
-    // 마커가 없는 예전 세션(u.pwMark 미보유)은 건드리지 않는다(하위호환 — 다음 로그인부터 적용).
-    if (!req.apiUser && u.pwMark && fresh.password_hash && pwMarkOf(fresh.password_hash) !== u.pwMark) {
-      req.session = null;
-      return null;
-    }
-    const refreshed = {
-      ...u,
-      name: fresh.name || u.name,
-      username: fresh.username || u.username || fresh.name || u.name,
-      studentId: normalizeStudentId(fresh.student_id),
-      // 외부 토큰은 관리자 권한으로 승격되지 않는다. 허용 작업은 scope가 전부 결정한다.
-      isAdmin: req.apiUser ? false : !!fresh.is_admin,
-      isStaff: req.apiUser ? false : !!fresh.is_staff,
-      isDeveloper: req.apiUser ? false : !!fresh.is_developer,
-      avatarUrl: fresh.avatar_url || null,
-      profileBio: String(fresh.profile_bio || ""),
-      unlimited: !!fresh.unlimited,
-      restrictedModel: fresh.restricted_model || null,
-      emailVerified: !!fresh.email_verified,
-      approved: !!fresh.approved,
-      analyticsConsent: !!fresh.analytics_consent,
-      analyticsConsentVersion: String(fresh.analytics_consent_version || ""),
-    };
-    if (req.apiUser) req.apiUser = refreshed;
-    else req.session.userInfo = refreshed;
-    return refreshed;
+    return await req._sessionRefreshPromise;
   } catch (e) {
     if (failClosed) throw e;
-    return u;
+    return getSessionUser(req) || u;
   }
 }
 
@@ -1434,15 +1527,48 @@ function isApiRequest(req) {
   return pathname === "/api" || pathname.startsWith("/api/");
 }
 
-function requireAuth(req, res, next) {
-  if (getSessionUser(req)) return next();
+function safeLocalReturnPath(value, fallback = "/") {
+  const raw = String(value || "").trim().slice(0, 2048);
+  if (!raw.startsWith("/") || raw.startsWith("//") || raw.includes("\\") || /[\u0000-\u001f\u007f]/.test(raw)) {
+    return fallback;
+  }
+  try {
+    const base = new URL("https://quilo.local");
+    const target = new URL(raw, base);
+    if (target.origin !== base.origin) return fallback;
+    if (["/login", "/login.html"].includes(target.pathname)) return fallback;
+    return `${target.pathname}${target.search}${target.hash}`;
+  } catch {
+    return fallback;
+  }
+}
+
+async function requireAuth(req, res, next) {
+  if (isApiRequest(req)) {
+    res.set({
+      "Cache-Control": "private, no-store, max-age=0, must-revalidate",
+      Pragma: "no-cache",
+    });
+  }
+  let user;
+  try {
+    user = await refreshSessionUser(req, { failClosed: true });
+  } catch (error) {
+    console.warn("[auth] session refresh failed:", error.message);
+    if (isApiRequest(req)) {
+      return res.status(503).json({ error: "로그인 상태를 확인하지 못했습니다." });
+    }
+    return res.status(503).type("text/plain; charset=utf-8").send("로그인 상태를 확인하지 못했습니다.");
+  }
+  if (user) return next();
   // /api/* 는 Accept 헤더와 무관하게 **항상 JSON 401** 로 응답한다. (이전엔 EventSource
   // 처럼 Accept 가 json 이 아니면 빈 본문 302 redirect 가 나가 프런트의 res.json() 이
   // "Unexpected end of JSON input" 으로 깨졌다.) 페이지(비-/api) 네비게이션만 redirect.
   if (isApiRequest(req)) {
     return res.status(401).json({ error: "로그인이 필요합니다." });
   }
-  return res.redirect("/login.html");
+  const returnTo = safeLocalReturnPath(req.originalUrl, "/");
+  return res.redirect(`/login.html?next=${encodeURIComponent(returnTo)}`);
 }
 
 // 대용량 multipart 본문을 메모리에 받기 전에 계정 상태와 저비용 보호 장치를 먼저
@@ -1553,10 +1679,15 @@ function requireBeta(key) {
     if (!u) return res.status(401).json({ error: "로그인이 필요합니다." });
     if (u.isAdmin) return next(); // 관리자는 접근·한도 모두 면제
     try {
-      if (
-        (await isFeatureOpenFor(key, u)) ||
-        (supa.isEnabled() && u.id && (await supa.userHasBeta(u.id, key)))
-      ) {
+      const [opened, betaAccess, maxAccess] = await Promise.all([
+        isFeatureOpenFor(key, u),
+        supa.isEnabled() && u.id ? supa.userHasBeta(u.id, key) : false,
+        supa.isEnabled() && u.id ? supa.getActiveBackgroundSub(u.id).then(Boolean) : false,
+      ]);
+      // Max는 Pro의 상위 등급이다. 메뉴 노출뿐 아니라 실제 API 게이트도 같은
+      // 규칙을 사용하고, Pro 테스터용 일일 횟수 제한은 적용하지 않는다.
+      if (maxAccess) return next();
+      if (opened || betaAccess) {
         // 접근 OK → 테스터 일일 사용 한도 확인
         const chk = rateLimit.checkBetaUsageLimit(
           u.id,
@@ -2173,9 +2304,8 @@ const EMAIL_VERIFY_TTL_HOURS = Math.max(
 // 인증 링크에는 절대 그대로 박지 않는다. 환경변수가 없을 때만(로컬 개발) 요청에서 추론.
 function publicBaseUrl(req) {
   const env = (
-    process.env.PUBLIC_BASE_URL ||
-    process.env.APP_BASE_URL ||
-    process.env.RENDER_EXTERNAL_URL ||
+    CANONICAL_WEB_ORIGIN ||
+    (process.env.NODE_ENV !== "production" ? process.env.RENDER_EXTERNAL_URL : "") ||
     ""
   )
     .trim()
@@ -2284,13 +2414,9 @@ app.post("/api/login", requireTrustedLoginOrigin, async (req, res) => {
       approved: !!user.approved,
       pwMark: pwMarkOf(user.password_hash), // L12: 비번 변경 시 세션 무효화 마커
     };
-    // 로그인 유지: 체크 시 30일 지속 쿠키, 아니면 브라우저/앱 세션 한정.
-    // (cookie-session 은 req.sessionOptions 로 이번 응답의 쿠키 만료를 조절한다.)
-    if (req.body && req.body.remember) {
-      req.sessionOptions.maxAge = 1000 * 60 * 60 * 24 * 30; // 30일
-    } else {
-      req.sessionOptions.maxAge = null; // 세션 쿠키(브라우저 닫으면 만료)
-    }
+    // 지속 여부를 세션 안에도 저장해, /api/me 등 후속 응답이 쿠키 만료 정책을
+    // 기본 12시간으로 덮어쓰지 않게 한다.
+    configureAuthSession(req, !!req.body?.remember);
     supa.recordLogin({
       userId: user.id,
       userName: user.name,
@@ -2434,6 +2560,7 @@ app.post("/api/signup", async (req, res) => {
       approved: false,
       pwMark: pwMarkOf(user.password_hash), // L12: 비번 변경 시 세션 무효화 마커
     };
+    configureAuthSession(req, false);
 
     // 1단계: 인증 메일 발송.
     let emailSent = false;
@@ -2553,11 +2680,12 @@ app.post("/api/logout", (req, res) => {
   res.json({ ok: true });
 });
 
-app.get("/api/me", async (req, res) => {
+app.get("/api/me", requireAuth, async (req, res) => {
+  res.set({
+    "Cache-Control": "private, no-store, max-age=0, must-revalidate",
+    Pragma: "no-cache",
+  });
   const u = getSessionUser(req);
-  if (!u) {
-    return res.status(401).json({ error: "not logged in" });
-  }
 
   let studentId = normalizeStudentId(u.studentId);
   let blockedReportTypes = [];
@@ -4276,7 +4404,6 @@ app.post(
   requireAuth,
   beginGenerationTelemetry,
   requireGenerationUploadAccess,
-  initializeUploadMemoryBudget,
   limitTotalUpload,
   upload.any(),
   async (req, res) => {
@@ -4295,8 +4422,8 @@ app.post(
       });
     }
 
-    // 관리자 전용 기능은 정책 동의·업로드 파싱보다 먼저 fresh 권한으로 차단한다.
-    // UI 숨김은 보안 경계가 아니며, API 토큰은 관리자 권한을 갖지 않는다.
+    // 관리자 전용 기능은 업로드 파싱보다 먼저 fresh 권한으로 fail-closed 차단한다.
+    // UI 숨김은 보안 경계가 아니며, scoped API 토큰은 관리자 권한을 갖지 않는다.
     let userInfo = null;
     if (ADMIN_ONLY_REPORT_TYPES.has(reportType) || pipeline.adminOnly === true) {
       try {
@@ -4355,13 +4482,11 @@ app.post(
       return res.status(400).json({ error: e.message });
     }
 
-    if (!userInfo) {
-      try {
-        userInfo = await refreshSessionUser(req, { failClosed: true });
-      } catch (e) {
-        console.warn("[generate] privilege refresh failed:", e.message);
-        return res.status(503).json({ error: "권한 확인 중 오류가 발생했습니다." });
-      }
+    try {
+      userInfo = userInfo || await refreshSessionUser(req, { failClosed: true });
+    } catch (e) {
+      console.warn("[generate] privilege refresh failed:", e.message);
+      return res.status(503).json({ error: "권한 확인 중 오류가 발생했습니다." });
     }
     if (!userInfo) return res.status(401).json({ error: "로그인이 필요합니다." });
 
@@ -4378,16 +4503,18 @@ app.post(
           "phys-mock-exam",
         ]);
         let hasBeta = await isFeatureOpenFor(reportType, userInfo); // 임시 공개(대상 등급 포함) 통과
+        let hasMax = false;
         try {
-          hasBeta =
-            hasBeta ||
-            (supa.isEnabled() &&
-              userInfo.id &&
-              ((await supa.userHasBeta(userInfo.id, reportType)) ||
-                (STUDIO_SKILL_TYPES.has(reportType) &&
-                  (await supa.userHasBeta(userInfo.id, "create"))) ||
-                (reportType === "reading-log-bulk" &&
-                  (await supa.userHasBeta(userInfo.id, "reading-log")))));
+          if (supa.isEnabled() && userInfo.id) {
+            const [directBeta, studioBeta, readingBeta, maxSubscription] = await Promise.all([
+              supa.userHasBeta(userInfo.id, reportType),
+              STUDIO_SKILL_TYPES.has(reportType) ? supa.userHasBeta(userInfo.id, "create") : false,
+              reportType === "reading-log-bulk" ? supa.userHasBeta(userInfo.id, "reading-log") : false,
+              supa.getActiveBackgroundSub(userInfo.id),
+            ]);
+            hasMax = !!maxSubscription;
+            hasBeta = hasBeta || directBeta || studioBeta || readingBeta || hasMax;
+          }
         } catch {
           /* 조회 오류 → 임시 공개 판정(초기값)만 유지 */
         }
@@ -4396,17 +4523,19 @@ app.post(
             error: "이 기능은 Pro 회원 전용입니다.",
           });
         }
-        const chk = rateLimit.checkBetaUsageLimit(
-          userInfo.id,
-          reportType,
-          getBetaDailyLimit(reportType),
-        );
-        if (!chk.allowed) {
-          return res.status(429).json({
-            error: `오늘 Pro 이용 한도(${chk.limit}회)를 모두 사용했습니다. 내일 다시 이용해 주세요.`,
-            limit: chk.limit,
-            used: chk.count,
-          });
+        if (!hasMax) {
+          const chk = rateLimit.checkBetaUsageLimit(
+            userInfo.id,
+            reportType,
+            getBetaDailyLimit(reportType),
+          );
+          if (!chk.allowed) {
+            return res.status(429).json({
+              error: `오늘 Pro 이용 한도(${chk.limit}회)를 모두 사용했습니다. 내일 다시 이용해 주세요.`,
+              limit: chk.limit,
+              used: chk.count,
+            });
+          }
         }
       }
     }
@@ -5377,6 +5506,47 @@ function estimatePdfTranslation(meta, mode, modelId, { unlimitedPages = false } 
   };
 }
 
+function getPdfRendererCapabilities() {
+  return getPdfTranslationRendererCapabilities({
+    env: process.env,
+    findLibreOfficeBinary,
+  });
+}
+
+function requestedRendererValues(body = {}) {
+  const values = [body.renderer];
+  try {
+    const perFile = JSON.parse(String(body.renderers || "null"));
+    if (Array.isArray(perFile)) values.push(...perFile);
+  } catch (_) {
+    // Malformed optional per-file input is ignored like the translation route.
+  }
+  return values;
+}
+
+function assertRequestedPdfRenderersAvailable(body = {}) {
+  if (!requestedRendererValues(body).some(
+    (value) => normalizeRequestedRenderer(value) === "libreoffice",
+  )) return;
+  assertLibreOfficeRendererAvailable({
+    env: process.env,
+    findLibreOfficeBinary,
+  });
+}
+
+function sendRendererUnavailable(res, error) {
+  return res.status(Number(error && error.statusCode) || 503).json({
+    error: error && error.message || "요청한 PDF 출력 엔진을 사용할 수 없습니다.",
+    code: error && error.code || "PDF_TRANSLATION_RENDERER_UNAVAILABLE",
+  });
+}
+
+// Public, read-only capability metadata. It intentionally exposes no binary
+// path or environment values; the UI only needs a fail-closed availability bit.
+app.get("/api/translate-pdf/capabilities", (_req, res) => {
+  res.json(getPdfRendererCapabilities());
+});
+
 // PDF 통번역 — 비용·시간 예측(파일 업로드 시 호출). analyze 만 돌려 빠르고 저렴.
 app.post(
   "/api/translate-pdf/estimate",
@@ -5384,6 +5554,11 @@ app.post(
   upload.single("pdf"),
   async (req, res) => {
     if (!req.file) return res.status(400).json({ error: "PDF 파일이 필요합니다." });
+    try {
+      assertRequestedPdfRenderersAvailable(req.body);
+    } catch (error) {
+      return sendRendererUnavailable(res, error);
+    }
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdfest-"));
     const pdfPath = path.join(tmpDir, "in.pdf");
     try {
@@ -5437,6 +5612,14 @@ app.post(
           error: `PDF 파일만 업로드 가능합니다: ${file.originalname || "(이름 없음)"}`,
         });
       }
+    }
+
+    // Reject an explicitly unavailable renderer before page analysis, quota
+    // accounting, job creation, or any provider/model request.
+    try {
+      assertRequestedPdfRenderersAvailable(req.body);
+    } catch (error) {
+      return sendRendererUnavailable(res, error);
     }
 
     const userInfo = getSessionUser(req);
@@ -5613,6 +5796,9 @@ app.post(
     // auto(기본) / inplace / retypeset 그대로 전달 — runPdfTranslation 이 auto 를
     // 분석으로 해석한다(여기서 inplace 로 뭉개면 auto 분기가 죽고 안내가 틀려진다).
     const mode = normalizeRequestedMode(req.body.mode);
+    // 번역 방식과 출력 엔진은 별도 축이다. auto는 재조판일 때 Tectonic을 쓰고,
+    // inplace는 어떤 요청값이 와도 PyMuPDF로 고정된다.
+    const renderer = normalizeRequestedRenderer(req.body.renderer);
     // 파일별 변환 방식(선택): 프런트가 파일 순서에 맞춘 JSON 배열('modes')을 보낼 수 있다
     // (예: 스캔본만 재조판, 나머지는 빠른 번역). 없거나 값이 이상하면 mode 를 적용.
     let reqModes = null;
@@ -5621,6 +5807,13 @@ app.post(
       if (Array.isArray(arr)) reqModes = arr;
     } catch (_) {
       /* modes 없음/파싱 실패 → 공통 mode 사용 */
+    }
+    let reqRenderers = null;
+    try {
+      const arr = JSON.parse(String(req.body.renderers || "null"));
+      if (Array.isArray(arr)) reqRenderers = arr;
+    } catch (_) {
+      /* renderers 없음/파싱 실패 → 공통 renderer 사용 */
     }
     // 복원만(번역 없이 재조판) / 그래프 벡터 재생성 옵션.
     const restoreOnly = ["1", "true", "on"].includes(
@@ -5632,10 +5825,12 @@ app.post(
 
     const fileItems = files.map((f, i) => {
       const m = reqModes && reqModes[i];
+      const r = reqRenderers && reqRenderers[i];
       return {
         buffer: f.buffer,
         originalName: f.originalname || "document.pdf",
         mode: normalizeRequestedMode(m, mode),
+        renderer: normalizeRequestedRenderer(r, renderer),
       };
     });
 
@@ -5643,6 +5838,7 @@ app.post(
       files: fileItems,
       model,
       mode,
+      renderer,
       restoreOnly,
       chartRedraw,
       adminPageLimitBypass: effectiveIsAdmin,
@@ -5813,6 +6009,7 @@ async function prepareScannedRouting(
     onProgress,
     ocrDependencies = {},
     adminPageLimitBypass = false,
+    beforeVisionModel = null,
   } = {},
 ) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdftr-"));
@@ -5880,6 +6077,9 @@ async function prepareScannedRouting(
         onProgress(`⚠ 숨은 OCR 텍스트층 auxiliary hash 생성 건너뜀: ${e.message}`);
       }
     }
+    // An explicit retypeset renderer must be usable before strict OCR/provider
+    // work spends model tokens. The caller supplies this only once it applies.
+    if (typeof beforeVisionModel === "function") beforeVisionModel();
     onProgress("🔎 strict OCR source evidence 생성·검증 중...");
     const strictOcr = await prepareStrictScanOcr({
       pdfBuffer,
@@ -5996,6 +6196,7 @@ async function translateLargeVisionPdf({
   pdfBuffer,
   pageCount,
   model,
+  effectiveRenderer,
   signal,
   onProgress,
   pageTexts = null,
@@ -6051,6 +6252,7 @@ async function translateLargeVisionPdf({
       restoreOnly,
       chartRedraw,
       model,
+      renderer: effectiveRenderer,
       cpuGate,
       signal,
       onProgress,
@@ -6133,6 +6335,7 @@ async function translateLargeVisionPdf({
               tiles: blocks.tileBuffers,
               figures: chunkFigs && chunkFigs.length ? chunkFigs : null,
               model,
+              renderer: effectiveRenderer,
               ocrHint: buildOcrHint(pageTexts, c.start, c.end), // 이 구간의 canonical OCR evidence 힌트
               ocrEvidence,
               ocrRenderManifest: blocks.ocrRenderManifest,
@@ -6309,6 +6512,7 @@ async function translateOnePdfCore({
   originalName,
   model,
   mode,
+  renderer = "auto",
   restoreOnly = false,
   chartRedraw = false,
   signal,
@@ -6320,6 +6524,22 @@ async function translateOnePdfCore({
   const sizeKB = Math.round(pdfBuffer.length / 1024);
   onProgress(`📥 PDF 수신 (${sizeKB}KB)`);
 
+  const requestedRenderer = normalizeRequestedRenderer(renderer);
+  let libreOfficeReady = false;
+  const preflightLibreOffice = () => {
+    if (requestedRenderer !== "libreoffice" || libreOfficeReady) return;
+    const binary = assertLibreOfficeRendererAvailable({
+      env: process.env,
+      findLibreOfficeBinary,
+    });
+    libreOfficeReady = true;
+    onProgress(`🖨️ LibreOffice 출력 엔진 확인 완료 (${path.basename(binary)})`);
+  };
+  // An explicit renderer choice is an operator-controlled capability, even if
+  // mode resolution would later choose in-place output. Reject it before scan
+  // routing or any translation/OCR provider can be invoked.
+  if (requestedRenderer === "libreoffice") preflightLibreOffice();
+
   // 스캔/이미지 PDF 라우팅: 텍스트 레이어가 없으면 in-place 든 retypeset 이든
   // 무조건 고해상도 OCR 재조판으로 처리한다(글자 교체는 텍스트 박스가 없어 불가).
   const routing = await prepareScannedRouting(pdfBuffer, {
@@ -6327,6 +6547,8 @@ async function translateOnePdfCore({
     onProgress,
     ocrDependencies,
     adminPageLimitBypass,
+    beforeVisionModel:
+      requestedRenderer === "libreoffice" ? preflightLibreOffice : null,
   });
   // 상한 이내면 in-place 경로가 자동으로 50쪽씩 구간 분할·병렬 번역 후 합친다
   // (translate.js translatePdf). 상한을 넘는 초대형 문서만 거부한다.
@@ -6353,6 +6575,17 @@ async function translateOnePdfCore({
   const isAuto = modeDecision.isAuto;
   const needsRetypeset = modeDecision.needsRetypeset;
   const resolvedMode = modeDecision.resolvedMode;
+  const rendererDecision = resolvePdfTranslationRenderer({
+    requestedRenderer,
+    effectiveMode: resolvedMode,
+  });
+  const effectiveRenderer = rendererDecision.effectiveRenderer;
+  if (rendererDecision.applies) {
+    if (requestedRenderer === "libreoffice") preflightLibreOffice();
+    onProgress(
+      `🖨️ 재조판 출력 엔진 → ${effectiveRenderer === "libreoffice" ? "LibreOffice" : "Tectonic"}`,
+    );
+  }
   if (normalizedMode === "inplace" && routing.scanned) {
     onProgress(
       routing.ocrLayer
@@ -6410,6 +6643,7 @@ async function translateOnePdfCore({
       pdfBuffer,
       pageCount: routing.pageCount,
       model,
+      effectiveRenderer,
       pageTexts: routing.pageTexts || null,
       ocrEvidence: routing.ocrEvidence,
       visualAdjudicationInputSha256:
@@ -6441,6 +6675,7 @@ async function translateOnePdfCore({
       restoreOnly,
       chartRedraw,
       model,
+      renderer: effectiveRenderer,
       signal,
       onProgress,
     });
@@ -6480,6 +6715,7 @@ async function translateOnePdfCore({
         restoreOnly,
         chartRedraw,
         model,
+        renderer: effectiveRenderer,
         signal,
         onProgress,
       });
@@ -6545,6 +6781,7 @@ async function translateOnePdfCore({
     buffer: terminal.buffer,
     filename,
     effectiveMode: terminal.effectiveMode,
+    effectiveRenderer,
     result,
     qualityReport: terminal.qualityReport,
   };
@@ -6556,6 +6793,7 @@ async function runPdfTranslation(
     files,
     model,
     mode,
+    renderer = "auto",
     restoreOnly = false,
     chartRedraw = false,
     adminPageLimitBypass = false,
@@ -6614,6 +6852,7 @@ async function runPdfTranslation(
         originalName: item.originalName,
         model,
         mode: item.mode || mode,
+        renderer: item.renderer || renderer,
         restoreOnly,
         chartRedraw,
         signal: ac.signal,
@@ -6627,6 +6866,7 @@ async function runPdfTranslation(
         buffer: out.buffer,
         fileId: null,
         effectiveMode: out.effectiveMode,
+        effectiveRenderer: out.effectiveRenderer,
       };
 
       const result = out.result;
@@ -6657,6 +6897,7 @@ async function runPdfTranslation(
               reportLabel: "PDF 통번역",
               title: item.originalName,
               mode: out.effectiveMode,
+              effectiveRenderer: out.effectiveRenderer,
             },
           },
           {
@@ -6704,6 +6945,7 @@ async function runPdfTranslation(
             filename: entry.filename,
             fileId: entry.fileId,
             effectiveMode: entry.effectiveMode,
+            effectiveRenderer: entry.effectiveRenderer,
           }),
         );
       }
@@ -6727,6 +6969,8 @@ async function runPdfTranslation(
               cacheWriteTokens: result.cost?.cacheWriteTokens,
               pageCount: result.pageCount,
               blockCount: result.blockCount,
+              effectiveMode: out.effectiveMode,
+              effectiveRenderer: out.effectiveRenderer,
             },
           });
         } catch (e) {
@@ -6796,6 +7040,7 @@ async function runPdfTranslation(
       job.filename = entry.filename;
       job.fileId = entry.fileId;
       job.effectiveMode = entry.effectiveMode;
+      job.effectiveRenderer = entry.effectiveRenderer;
     }
     job.status = "done";
     emitJobWebhook(job, "job.completed");
@@ -6832,11 +7077,13 @@ async function runPdfTranslation(
       filename: job.filename,
       fileId: job.fileId,
       effectiveMode: job.effectiveMode || null,
+      effectiveRenderer: job.effectiveRenderer || null,
       files: job.files.map((f, i) => ({
         index: i,
         filename: f.filename,
         fileId: f.fileId,
         effectiveMode: f.effectiveMode,
+        effectiveRenderer: f.effectiveRenderer,
       })),
     });
     r.end();
@@ -7300,9 +7547,9 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
     );
     assertGenerationActive();
     job.telemetryTimings.generation_ms = Math.max(0, Date.now() - tGenerationStart);
-    // 복원 기능은 원문 문장부호도 출처의 일부이므로 변경하지 않는다.
+    // 복원 기능은 원문의 문장부호도 출처 일부이므로 일반 보고서용 문장 정리를 적용하지 않는다.
     if (job.reportType !== "print-pdf-restore") {
-      stripAiDashes(content); // 일반 생성 보고서의 AI 특유 긴 하이픈 최종 제거
+      stripAiDashes(content);
     }
     content.__allowHighlights = !!pipelineInput.allowHighlights;
 
@@ -7891,7 +8138,15 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
 
   markJobArtifactsCompleted(job);
   job.listeners.forEach((r) => {
-    sendSse(r, "done", { filename: job.filename, fileId: job.fileId, googleDriveUrl: job.googleDriveUrl || "", warnings: job.warnings || [], styleFont: job.styleFont || null, handoff: job.handoff || "", restoreQa: job.restoreQa || null });
+    sendSse(r, "done", {
+      filename: job.filename,
+      fileId: job.fileId,
+      googleDriveUrl: job.googleDriveUrl || "",
+      warnings: job.warnings || [],
+      styleFont: job.styleFont || null,
+      handoff: job.handoff || "",
+      restoreQa: job.restoreQa || null,
+    });
     r.end();
   });
   job.listeners = [];
@@ -8009,6 +8264,7 @@ app.get("/api/jobs/:id/stream", requireAuth, (req, res) => {
       fileId: job.fileId,
       googleDriveUrl: job.googleDriveUrl || "",
       effectiveMode: job.effectiveMode || null,
+      effectiveRenderer: job.effectiveRenderer || null,
       warnings: job.warnings || [],
       styleFont: job.styleFont || null,
       handoff: job.handoff || "",
@@ -8018,6 +8274,7 @@ app.get("/api/jobs/:id/stream", requireAuth, (req, res) => {
         filename: f.filename,
         fileId: f.fileId || null,
         effectiveMode: f.effectiveMode || null,
+        effectiveRenderer: f.effectiveRenderer || null,
       })),
     });
     return res.end();
@@ -8189,11 +8446,8 @@ app.get("/api/jobs/:id/preview", requireAuth, async (req, res) => {
 // ── 클라우드 저장소(Dropbox) 연동 ─────────────────────────────────────────────
 function appBaseUrl(req) {
   const env = (
-    process.env.PUBLIC_BASE_URL ||
-    process.env.APP_BASE_URL ||
-    (process.env.NODE_ENV === "production"
-      ? "https://quilolab.com"
-      : process.env.RENDER_EXTERNAL_URL) ||
+    CANONICAL_WEB_ORIGIN ||
+    (process.env.NODE_ENV !== "production" ? process.env.RENDER_EXTERNAL_URL : "") ||
     ""
   ).replace(/\/+$/, "");
   if (env) return env;
@@ -8395,6 +8649,10 @@ async function resolveFilechatAccess(u) {
   if (!supa.isEnabled()) return { allowed: false, reason: "" };
   try {
     if (await supa.getActiveGrant(u.id)) return { allowed: true, reason: "grant" };
+  } catch (_) {}
+  try {
+    if (await supa.getActiveBackgroundSub(u.id))
+      return { allowed: true, reason: "max" };
   } catch (_) {}
   try {
     if (await supa.userHasBeta(u.id, "file-chat"))
@@ -9566,16 +9824,31 @@ app.use("/schedule", (req, res, next) => {
 
 // express.static 의 extensions:["html"] 가 /admin -> public/admin.html 로 먼저
 // 해석하지 않도록, 관리자 페이지는 정적 파일 서빙보다 앞에서 인증한다.
+// 로그인한 사용자가 로그인 URL로 직접 들어오면 폼을 다시 보여 주지 않고 원래
+// 작업으로 돌려보낸다. next/returnTo는 같은 origin의 상대 경로만 허용한다.
+app.get(["/login", "/login.html"], async (req, res, next) => {
+  let u;
+  try {
+    u = await refreshSessionUser(req, { failClosed: true });
+  } catch (error) {
+    console.warn("[auth] login page session refresh failed:", error.message);
+    return res.status(503).type("text/plain; charset=utf-8").send("로그인 상태를 확인하지 못했습니다.");
+  }
+  if (!u) return next();
+  const returnTo = safeLocalReturnPath(req.query.next || req.query.returnTo, "/");
+  return res.redirect(303, returnTo);
+});
+
 app.get(["/admin", "/admin.html"], async (req, res) => {
   let u = getSessionUser(req);
-  if (!u) return res.redirect("/login.html");
+  if (!u) return res.redirect("/login.html?next=%2Fadmin");
   try {
     u = await refreshSessionUser(req, { failClosed: true });
   } catch (e) {
     console.warn("[auth] admin page privilege refresh failed:", e.message);
     return res.status(503).send("권한 확인 중 오류가 발생했습니다.");
   }
-  if (!u) return res.redirect("/login.html");
+  if (!u) return res.redirect("/login.html?next=%2Fadmin");
   if (!u.isAdmin) return res.status(403).send("관리자만 접근 가능합니다.");
   res.sendFile(path.join(__dirname, "public", "admin.html"));
 });

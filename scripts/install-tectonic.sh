@@ -25,7 +25,7 @@ case "$OS-$ARCH" in
   Linux-aarch64)  ASSET="tectonic-${VER}-aarch64-unknown-linux-musl.tar.gz" ;;
   Darwin-arm64)   ASSET="tectonic-${VER}-aarch64-apple-darwin.tar.gz" ;;
   Darwin-x86_64)  ASSET="tectonic-${VER}-x86_64-apple-darwin.tar.gz" ;;
-  *) echo "no tectonic prebuilt for $OS-$ARCH — skip"; exit 0 ;;
+  *) echo "ERROR: no tectonic prebuilt for $OS-$ARCH" >&2; exit 1 ;;
 esac
 URL="https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic%40${VER}/${ASSET}"
 case "$ASSET" in

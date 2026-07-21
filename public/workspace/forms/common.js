@@ -43,6 +43,7 @@ export function createCommonFormsController({
   setView,
   showTab,
   setPending,
+  navigateReport,
   openLogin,
   reportChecklistItems,
 }) {
@@ -53,6 +54,7 @@ export function createCommonFormsController({
   const checklist = $("reportChecklist");
   const checklistTitle = $("workspaceChecklistTitle");
   let activeObserver = null;
+  let manualFlowLockUntil = 0;
   let sidebarTimer = null;
   let saveTimer = null;
 
@@ -203,6 +205,11 @@ export function createCommonFormsController({
     form.dataset.flowStep = stepName;
     setNavStep(stepName);
     if (options.scroll) {
+      // A workflow-nav click starts a smooth scroll. During that animation the
+      // observer can briefly report the old section and overwrite the step the
+      // user just chose. Keep the explicit choice authoritative until the
+      // programmatic scroll has settled; later manual scrolling still updates it.
+      manualFlowLockUntil = Date.now() + 800;
       const target = resolveWorkflowTarget(form, workflow, stepName);
       try { (target || form).scrollIntoView({ behavior: "smooth", block: "start" }); }
       catch (_) { (target || form).scrollIntoView(); }
@@ -219,6 +226,7 @@ export function createCommonFormsController({
       node: resolveWorkflowTarget(form, workflow, stepName),
     })).filter(({ node }, index, list) => node && list.findIndex((entry) => entry.node === node) === index);
     activeObserver = new IntersectionObserver((entries) => {
+      if (Date.now() < manualFlowLockUntil) return;
       const visible = entries
         .filter((entry) => entry.isIntersecting)
         .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
@@ -411,6 +419,7 @@ export function createCommonFormsController({
         openLogin();
         return;
       }
+      navigateReport?.(radio.value, "push");
       updateReportTypeView({ scroll: true });
     }));
     updateReportTypeView();

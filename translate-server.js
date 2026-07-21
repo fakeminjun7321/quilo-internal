@@ -21,6 +21,15 @@ const path = require("path");
 const { translatePdf, makeGate } = require("./lib/pipelines/pdf-translate/translate");
 const { retypesetPdf } = require("./lib/pipelines/pdf-translate/latex-gen");
 const {
+  assertLibreOfficeRendererAvailable,
+  getPdfTranslationRendererCapabilities,
+  normalizeRequestedRenderer,
+  resolvePdfTranslationRenderer,
+} = require("./lib/pipelines/pdf-translate/renderer-contract");
+const {
+  findLibreOfficeBinary,
+} = require("./lib/pipelines/pdf-translate/libreoffice-pdf");
+const {
   assertCompleteRasterization,
   assertCompleteChunkResults,
   qualityFailure,
@@ -109,6 +118,41 @@ function isAuthed(req) {
 function requireCode(req, res, next) {
   if (isAuthed(req)) return next();
   res.status(401).json({ error: "코드 인증이 필요합니다." });
+}
+
+function getPdfRendererCapabilities() {
+  return getPdfTranslationRendererCapabilities({
+    env: process.env,
+    findLibreOfficeBinary,
+  });
+}
+
+function requestedRendererValues(body = {}) {
+  const values = [body.renderer];
+  try {
+    const perFile = JSON.parse(String(body.renderers || "null"));
+    if (Array.isArray(perFile)) values.push(...perFile);
+  } catch (_) {
+    // Malformed optional per-file input is ignored like the translation route.
+  }
+  return values;
+}
+
+function assertRequestedPdfRenderersAvailable(body = {}) {
+  if (!requestedRendererValues(body).some(
+    (value) => normalizeRequestedRenderer(value) === "libreoffice",
+  )) return;
+  assertLibreOfficeRendererAvailable({
+    env: process.env,
+    findLibreOfficeBinary,
+  });
+}
+
+function sendRendererUnavailable(res, error) {
+  return res.status(Number(error && error.statusCode) || 503).json({
+    error: error && error.message || "요청한 PDF 출력 엔진을 사용할 수 없습니다.",
+    code: error && error.code || "PDF_TRANSLATION_RENDERER_UNAVAILABLE",
+  });
 }
 
 app.get("/api/me", (req, res) => {
@@ -288,7 +332,7 @@ async function extractFiguresForRetypeset(pdfBuffer, { signal, onProgress }) {
 }
 async function prepareScannedRouting(
   pdfBuffer,
-  { signal, onProgress, ocrDependencies = {} } = {},
+  { signal, onProgress, ocrDependencies = {}, beforeVisionModel = null } = {},
 ) {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdftr-"));
   const pdfPath = path.join(tmpDir, "in.pdf");
@@ -324,6 +368,8 @@ async function prepareScannedRouting(
       const pageTextResult = await extractPageTexts(pdfPath, { signal });
       hiddenOcrPageTexts = Array.isArray(pageTextResult.pages) ? pageTextResult.pages : null;
     }
+    // Fail an explicit renderer prerequisite before strict OCR/provider work.
+    if (typeof beforeVisionModel === "function") beforeVisionModel();
     onProgress("🔎 strict OCR source evidence 생성·검증 중...");
     const strictOcr = await prepareStrictScanOcr({
       pdfBuffer,
@@ -429,6 +475,7 @@ async function translateLargeVisionPdf({
   pdfBuffer,
   pageCount,
   model,
+  effectiveRenderer,
   signal,
   onProgress,
   pageTexts,
@@ -517,6 +564,7 @@ async function translateLargeVisionPdf({
             ),
             pageNumbers: false,
             model,
+            renderer: effectiveRenderer,
             cpuGate,
             signal: ctrl.signal,
             onProgress: () => {},
@@ -664,7 +712,7 @@ function estimateTime(meta, mode, modelId) {
 
 async function runPdfTranslation(
   job,
-  { pdfBuffer, originalName, model, mode, ocrDependencies = {} },
+  { pdfBuffer, originalName, model, mode, renderer = "auto", ocrDependencies = {} },
 ) {
   const t0 = Date.now();
   const timeoutMin = Math.round(PDF_TRANSLATE_TIMEOUT_MS / 60000);
@@ -680,10 +728,26 @@ async function runPdfTranslation(
   try {
     pushProgress(job, `📥 PDF 수신 (${Math.round(pdfBuffer.length / 1024)}KB)`);
     const onProgress = (msg) => pushProgress(job, msg);
+    const requestedRenderer = normalizeRequestedRenderer(renderer);
+    let libreOfficeReady = false;
+    const preflightLibreOffice = () => {
+      if (requestedRenderer !== "libreoffice" || libreOfficeReady) return;
+      const binary = assertLibreOfficeRendererAvailable({
+        env: process.env,
+        findLibreOfficeBinary,
+      });
+      libreOfficeReady = true;
+      onProgress(`🖨️ LibreOffice 출력 엔진 확인 완료 (${path.basename(binary)})`);
+    };
+    // Explicit LibreOffice is an operator-controlled capability even if mode
+    // resolution would later select in-place output. Fail before any provider.
+    if (requestedRenderer === "libreoffice") preflightLibreOffice();
     const routing = await prepareScannedRouting(pdfBuffer, {
       signal: ac.signal,
       onProgress,
       ocrDependencies,
+      beforeVisionModel:
+        requestedRenderer === "libreoffice" ? preflightLibreOffice : null,
     });
     const { maxPages } = resolvePdfTranslationLimits({ defaultMaxPages: 700 });
     assertPdfTranslationInputCoverage({ routing, maxPages });
@@ -694,6 +758,17 @@ async function runPdfTranslation(
     const normalizedMode = modeDecision.requestedMode;
     const isAuto = modeDecision.isAuto;
     const resolvedMode = modeDecision.resolvedMode;
+    const rendererDecision = resolvePdfTranslationRenderer({
+      requestedRenderer,
+      effectiveMode: resolvedMode,
+    });
+    const effectiveRenderer = rendererDecision.effectiveRenderer;
+    if (rendererDecision.applies) {
+      if (requestedRenderer === "libreoffice") preflightLibreOffice();
+      onProgress(
+        `🖨️ 재조판 출력 엔진 → ${effectiveRenderer === "libreoffice" ? "LibreOffice" : "Tectonic"}`,
+      );
+    }
     if (normalizedMode === "inplace" && routing.scanned)
       pushProgress(job, "⚠ 스캔본/이미지 PDF는 '빠른 번역'이 불가능 → 'OCR 재조판'으로 전환합니다.");
     else if (isAuto)
@@ -706,6 +781,7 @@ async function runPdfTranslation(
         pdfBuffer,
         pageCount: routing.pageCount,
         model,
+        effectiveRenderer,
         pageTexts: routing.pageTexts || null,
         ocrEvidence: routing.ocrEvidence,
         visualAdjudicationInputSha256:
@@ -734,6 +810,7 @@ async function runPdfTranslation(
           (_, index) => index,
         ),
         model,
+        renderer: effectiveRenderer,
         signal: ac.signal,
         onProgress,
       });
@@ -745,7 +822,7 @@ async function runPdfTranslation(
         if (figures.length) pushProgress(job, `🖼️ 본문 그림 ${figures.length}개 추출 — 재조판본에 복원합니다.`);
         if (routing.twoColumn) pushProgress(job, "📐 2단 레이아웃 감지 — 2단으로 조판합니다.");
         const pdfChunks = await splitPdfToBuffers(pdfBuffer, { signal: ac.signal, onProgress });
-        result = await retypesetPdf({ pdfBuffer, pdfChunks, figures, twoColumn: routing.twoColumn, model, signal: ac.signal, onProgress });
+        result = await retypesetPdf({ pdfBuffer, pdfChunks, figures, twoColumn: routing.twoColumn, model, renderer: effectiveRenderer, signal: ac.signal, onProgress });
         if (result.figures) pushProgress(job, `🖼️ 원본 그림 ${result.figures}개를 재조판본에 복원했습니다.`);
       } catch (e) {
         if (ac.signal.aborted || timedOut) throw e;
@@ -789,6 +866,7 @@ async function runPdfTranslation(
     job.mimeType = "application/pdf";
     job.filename = buildTranslatedFilename(originalName, terminal.suffix);
     job.effectiveMode = terminal.effectiveMode;
+    job.effectiveRenderer = effectiveRenderer;
     job.status = "done";
     const totalSec = Math.floor((Date.now() - t0) / 1000);
     const outKB = Math.round(terminal.buffer.length / 1024);
@@ -804,13 +882,24 @@ async function runPdfTranslation(
   } finally {
     clearTimeout(timer);
   }
-  job.listeners.forEach((r) => { sendSse(r, "done", { filename: job.filename, effectiveMode: job.effectiveMode }); r.end(); });
+  job.listeners.forEach((r) => { sendSse(r, "done", { filename: job.filename, effectiveMode: job.effectiveMode, effectiveRenderer: job.effectiveRenderer }); r.end(); });
   job.listeners = [];
 }
 
 // ── 라우트 ───────────────────────────────────────────────────────────────────
+// Public, read-only capability metadata. No binary path or environment value
+// is returned; clients only receive a fail-closed availability bit.
+app.get("/api/translate-pdf/capabilities", (_req, res) => {
+  res.json(getPdfRendererCapabilities());
+});
+
 app.post("/api/translate-pdf/estimate", requireCode, upload.single("pdf"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "PDF 파일이 필요합니다." });
+  try {
+    assertRequestedPdfRenderersAvailable(req.body);
+  } catch (error) {
+    return sendRendererUnavailable(res, error);
+  }
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "pdfest-"));
   const pdfPath = path.join(tmpDir, "in.pdf");
   try {
@@ -833,9 +922,25 @@ app.post("/api/translate-pdf", requireCode, upload.single("pdf"), (req, res) => 
   const requested = String(req.body.model || "").trim();
   const model = ALLOWED_MODELS.includes(requested) ? requested : DEFAULT_MODEL;
   const mode = normalizeRequestedMode(req.body.mode);
+  let rendererInput = req.body.renderer;
+  try {
+    const perFile = JSON.parse(String(req.body.renderers || "null"));
+    if (Array.isArray(perFile) && perFile.length) rendererInput = perFile[0];
+  } catch (_) {
+    // Optional per-file JSON is ignored when malformed; the common value wins.
+  }
+  const renderer = normalizeRequestedRenderer(rendererInput);
+  try {
+    assertRequestedPdfRenderersAvailable({
+      ...req.body,
+      renderer: rendererInput,
+    });
+  } catch (error) {
+    return sendRendererUnavailable(res, error);
+  }
   const job = createJob();
   res.json({ jobId: job.id });
-  runPdfTranslation(job, { pdfBuffer: file.buffer, originalName: file.originalname || "document.pdf", model, mode }).catch((err) => {
+  runPdfTranslation(job, { pdfBuffer: file.buffer, originalName: file.originalname || "document.pdf", model, mode, renderer }).catch((err) => {
     job.status = "error";
     job.error = err.message || String(err);
     pushProgress(job, `❌ 오류: ${job.error}`);
@@ -855,7 +960,7 @@ app.get("/api/jobs/:id/stream", requireCode, (req, res) => {
   });
   res.flushHeaders?.();
   job.progress.forEach((p) => sendSse(res, "progress", p));
-  if (job.status === "done") { sendSse(res, "done", { filename: job.filename, effectiveMode: job.effectiveMode }); return res.end(); }
+  if (job.status === "done") { sendSse(res, "done", { filename: job.filename, effectiveMode: job.effectiveMode, effectiveRenderer: job.effectiveRenderer }); return res.end(); }
   if (job.status === "error") { sendSse(res, "error", job.error); return res.end(); }
   job.listeners.push(res);
   req.on("close", () => { job.listeners = job.listeners.filter((r) => r !== res); });

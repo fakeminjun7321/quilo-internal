@@ -46,26 +46,50 @@
     options = options || {};
     var gate = node(options.gate);
     var content = node(options.content);
+    var lastShellState = global.QuiloShellAuth && global.QuiloShellAuth.current
+      ? global.QuiloShellAuth.current().state
+      : "pending";
+    var running = null;
     if (content) content.hidden = true;
     render(gate, "loading", options);
 
-    async function run() {
+    function showGate(state) {
+      if (content) content.hidden = true;
+      render(gate, state, options);
+    }
+
+    async function runOnce() {
       try {
-        var meResponse = await fetch("/api/me", { credentials: "same-origin" });
-        if (meResponse.status === 401) {
-          render(gate, "logged-out", options);
-          return { allowed: false, state: "logged-out" };
+        var me;
+        if (global.QuiloShellAuth && global.QuiloShellAuth.ready) {
+          var currentSession = global.QuiloShellAuth.current ? global.QuiloShellAuth.current() : null;
+          var shellSession = currentSession && currentSession.state !== "pending"
+            ? currentSession
+            : await global.QuiloShellAuth.ready;
+          lastShellState = shellSession.state;
+          if (shellSession.state === "anonymous") {
+            showGate("logged-out");
+            return { allowed: false, state: "logged-out" };
+          }
+          if (shellSession.state !== "authenticated") throw new Error("me:unknown");
+          me = shellSession.user;
+        } else {
+          var meResponse = await fetch("/api/me", { cache: "no-store", credentials: "same-origin" });
+          if (meResponse.status === 401) {
+            showGate("logged-out");
+            return { allowed: false, state: "logged-out" };
+          }
+          if (!meResponse.ok) throw new Error("me:" + meResponse.status);
+          me = await readJson(meResponse);
         }
-        if (!meResponse.ok) throw new Error("me:" + meResponse.status);
-        var me = await readJson(meResponse);
         var allowed = !!(me.isAdmin || me.admin);
         var reason = allowed ? "admin" : "";
         var details = null;
 
         if (options.accessEndpoint) {
-          var accessResponse = await fetch(options.accessEndpoint, { credentials: "same-origin" });
+          var accessResponse = await fetch(options.accessEndpoint, { cache: "no-store", credentials: "same-origin" });
           if (accessResponse.status === 401) {
-            render(gate, "logged-out", options);
+            showGate("logged-out");
             return { allowed: false, state: "logged-out", me: me };
           }
           if (!accessResponse.ok) throw new Error("access:" + accessResponse.status);
@@ -73,9 +97,9 @@
           allowed = details.allowed === true;
           reason = details.reason || reason;
         } else if (options.feature) {
-          var betaResponse = await fetch("/api/me/beta", { credentials: "same-origin" });
+          var betaResponse = await fetch("/api/me/beta", { cache: "no-store", credentials: "same-origin" });
           if (betaResponse.status === 401) {
-            render(gate, "logged-out", options);
+            showGate("logged-out");
             return { allowed: false, state: "logged-out", me: me };
           }
           if (!betaResponse.ok) throw new Error("beta:" + betaResponse.status);
@@ -87,19 +111,39 @@
         }
 
         if (!allowed) {
-          render(gate, "forbidden", options);
+          showGate("forbidden");
           return { allowed: false, state: "forbidden", me: me, details: details };
         }
         if (gate) gate.hidden = true;
         if (content) content.hidden = false;
         return { allowed: true, state: "ready", me: me, details: details, reason: reason };
       } catch (error) {
-        render(gate, "error", options);
+        showGate("error");
         var retry = gate && gate.querySelector("[data-entitlement-retry]");
-        if (retry) retry.addEventListener("click", function () { requireAccess(options); }, { once: true });
+        if (retry) retry.addEventListener("click", function () { run(); }, { once: true });
         return { allowed: false, state: "error", error: error };
       }
     }
+
+    function run() {
+      if (running) return running;
+      running = runOnce().finally(function () { running = null; });
+      return running;
+    }
+
+    document.addEventListener("quilo:auth-state", function (event) {
+      var nextState = event.detail && event.detail.state;
+      var previousState = lastShellState;
+      if (nextState) lastShellState = nextState;
+      if (previousState === "anonymous" && nextState === "authenticated") {
+        // The page-specific initializer returned while access was denied. Reload once
+        // so authenticated users receive the fully initialized application, not only
+        // newly visible markup.
+        location.reload();
+        return;
+      }
+      void run();
+    });
 
     return run();
   }

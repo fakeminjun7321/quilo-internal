@@ -276,6 +276,7 @@ test("파일함 저장은 일시 오류를 유한 재시도하고 식별자 없�
 test("job download는 메모리 eviction 뒤 소유자 storage로 fallback하고 삭제 즉시 두 경로가 404다", async (t) => {
   const original = {
     isEnabled: supa.isEnabled,
+    findUserById: supa.findUserById,
     downloadReportFile: supa.downloadReportFile,
     deleteReportFile: supa.deleteReportFile,
     recordGenerationDelivery: supa.recordGenerationDelivery,
@@ -297,6 +298,14 @@ test("job download는 메모리 eviction 뒤 소유자 storage로 fallback하고
   ]);
   const ownershipChecks = [];
   supa.isEnabled = () => true;
+  supa.findUserById = async (id) => ({
+    id,
+    name: "개발관리자",
+    username: "개발관리자",
+    is_admin: true,
+    is_staff: true,
+    is_developer: true,
+  });
   supa.downloadReportFile = async (userId, fileId) => {
     ownershipChecks.push([userId, fileId]);
     return stored.get(fileId) || null;

@@ -3,6 +3,20 @@ import { REPORT_ALIASES } from "./report-registry.js";
 const PENDING_REPORT_KEY = "pendingReportType";
 
 export function createRouter({ state, hooks }) {
+  function writeReportUrl(type, mode = "push") {
+    const reportType = String(type || "");
+    if (!reportType) return;
+    state.set({ reportType });
+    const target = new URL("/", location.origin);
+    target.searchParams.set("report", reportType);
+    const next = `${target.pathname}${target.search}`;
+    const current = `${location.pathname}${location.search}${location.hash}`;
+    if (current === next || mode === false || mode === "none") return;
+    try {
+      history[mode === "replace" ? "replaceState" : "pushState"]({}, "", next);
+    } catch (_) {}
+  }
+
   function setPending(type) {
     try {
       if (type) sessionStorage.setItem(PENDING_REPORT_KEY, String(type));
@@ -24,7 +38,8 @@ export function createRouter({ state, hooks }) {
     const radio = document.querySelector(`input[name="reportType"][value="${CSS.escape(alias ? alias.base : key)}"]`);
     if (!radio || radio.disabled || radio.closest("label")?.hidden) return false;
     radio.checked = true;
-    state.set({ reportType: radio.value });
+    // 별칭 선택은 URL·state에 별칭 id를 남겨 새로고침해도 하위 모드가 복원되게 한다.
+    writeReportUrl(alias ? key : radio.value, options.history ?? "push");
     if (alias?.mode) {
       const form = document.querySelector(`form[data-report-form="${CSS.escape(radio.value)}"]`);
       const modeRadio = (form || document).querySelector(
@@ -53,5 +68,5 @@ export function createRouter({ state, hooks }) {
     catch (_) { return ""; }
   }
 
-  return { setPending, takePending, consumePending, requestedReport, select };
+  return { setPending, takePending, consumePending, requestedReport, select, writeReportUrl };
 }

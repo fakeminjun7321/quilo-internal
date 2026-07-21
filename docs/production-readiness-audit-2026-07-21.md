@@ -29,7 +29,12 @@
 - 다중 PDF 결과의 보상 삭제는 `job.fileId`뿐 아니라 모든 `files[].fileId`를 정리한다.
 - 완료 파일의 메모리 TTL/LRU, 사용자별 소유권, 24시간 저장 fallback을 보강했다.
 - 생성 동시성·대기열 길이·대기시간·전체 multipart RAM 예산을 제한했다.
+- 공유 multipart RAM 예산의 반납 훅을 `/api` 공통 경계에 설치해 학교 도입 신청,
+  변환 도구, 파일 챗, 보고서 생성 등 모든 `makeUpload()` 소비자가 응답 종료 시 lease를
+  반납한다. 장기 생성 작업은 기존처럼 job으로 소유권을 넘긴 뒤 작업 종료 시 반납한다.
 - 바이브 이미지 생성은 공급자 호출 전에 크레딧을 예약하고 사용자별 동시 실행을 제한한다.
+- 장시간 Studio 생성은 4분마다 durable credit reservation lease를 갱신하고 모델 호출이
+  끝나면 heartbeat를 해제한다.
 
 ### 인증·권한·외부 연동
 
@@ -40,7 +45,11 @@
 - OAuth redirect URI는 완전 일치 HTTPS URL만 허용하고 동적 클라이언트 등록에 제한을 둔다.
 - 연동 상태 조회와 실제 Drive/Dropbox 데이터 접근 scope를 분리했다.
 - 액세스 토큰 폐기 시 같은 사용자·리소스의 refresh token family도 함께 폐기한다.
+- MCP 액세스 토큰 폐기 시 같은 사용자·리소스의 기존 access token sibling도 함께
+  폐기해, refresh token을 여러 번 사용해 발급된 토큰이 남지 않게 했다.
 - Webhook은 DNS 해석 결과를 검증한 뒤 그 IP로 연결하고 redirect를 거부해 SSRF 재바인딩을 막는다.
+- Webhook 생성의 사용자별 count/insert 구간을 현재 단일 프로세스 안에서 직렬화했다.
+  Render를 수평 확장할 때는 이 제약을 DB 원자 RPC로 옮겨야 한다.
 
 ### 업로드·파서·실행 격리
 
@@ -62,6 +71,10 @@
 - `/api/version` 기본 응답을 최소화하고 상세 노트는 명시적 요청에서만 제공한다.
 - 보안 헤더, sitemap, 키보드 접근성, dropzone 상태, 공통 shell 일관성을 개선했다.
 - 공급망 빌드·배포 구성은 별도 점검 결과와 함께 최종 회귀 테스트로 확정한다.
+- Studio 팝아웃은 생성 HTML을 `document.write`의 script 파서 문맥에 넣지 않고, 정적
+  wrapper를 만든 뒤 sandboxed iframe의 `srcdoc` DOM 속성으로만 전달한다.
+- Dropbox 보상 삭제는 `path_lookup/not_found`만 이미 삭제된 성공으로 보고, 권한·제한·
+  충돌을 포함한 다른 409는 retry handle을 보존하도록 실패 처리한다.
 
 ## 검증 근거
 
@@ -69,9 +82,9 @@
 - 정상 XLSX/XLS/CSV와 저장소에서 생성한 HWPX는 강화된 파서를 통과했다.
 - 결제 원장, 예약 보상, 영속 저장, 다중 파일 정리, OAuth scope·폐기, webhook SSRF,
   브라우저 저장소 격리, Worker 격리 테스트를 추가했다.
-- Root Node 테스트 `511/511`, PDF Python `155/155`, SDK Python `9/9`, Classbot
-  `114/114`, 문법 검사 `20/20`이 통과했다.
-- Playwright QA `417/417`이 안정적인 단일 worker 실행에서 통과했다. 48개 공개 route,
+- 병렬 최종 회귀에서 Root Node·보안·파이프라인·PDF 번역·Classbot·JS/Python SDK를 합쳐
+  `963/963`, Playwright QA `523/523`이 통과했다. 실패·skip은 0개다.
+- Playwright QA는 안정적인 단일 worker 실행에서 통과했다. 공개 route,
   1440/933/390px shell, 보고서 모델 선택, mocked 생성/SSE 재연결, 인증, 관리자,
   PDF·OCR, 외부 연동 흐름을 실제 Chromium으로 확인했다.
 - 홈과 화학 사전보고서의 데스크톱·모바일 화면을 같은 뷰포트에서 전후 비교했고,
@@ -81,22 +94,29 @@
   `git diff --check`도 통과했다.
 - Linux amd64 HF Docker 이미지를 실제로 빌드·실행해 uid 1000, Node 의존성,
   PyMuPDF/fontTools/lxml, Tectonic을 확인했고 SDK wheel/sdist도 실제 빌드했다.
+- 실제 OpenAI `gpt-5.4-mini`를 사용해 화학 사전·화학 결과·물리 결과의 DOCX/HWPX
+  6개 canary를 생성했고 구조 검증을 통과했다. 이 점검 비용은 약 USD 0.143이었다.
+- Codex Security diff scan은 변경 파일 worklist `99/99`에 완료 receipt를 남겼고,
+  최종 medium/P2 2건(공유 업로드 lease 미반납, MCP access sibling 폐기 누락)을
+  수정했다. 나머지 후보 5건은 attack-path 기준으로 rejected/not-applicable 처리했지만
+  안전한 hardening은 함께 반영했다.
 - macOS 차트 테스트에서 `sharp`와 `canvas`가 로드하는 GLib 클래스 중복 경고가 한 번
   발생했으나 실패·크래시는 없었다. Linux/Render에서는 배포 후 차트 생성을 별도로 확인한다.
 
 ## 남은 수동·외부 검증
 
-- 실제 AI 공급자 키를 사용하는 `.cap`, `.cap + Excel`, Excel/텍스트 단독, 이미지 포함
-  DOCX/HWPX 스테이징 생성
+- 실제 AI 공급자 키를 사용하는 `.cap`, `.cap + Excel`, 이미지 포함 DOCX/HWPX
+  스테이징 생성
 - 생성 파일의 원본 데이터 일치와 raw `{{EQ...}}`, Markdown pipe 잔존 여부 확인
 - Render 환경의 큐 포화, 업로드 메모리 한도, 파일함 장애, 프로세스 재시작 시나리오
 - 공개 저장소에 포함하지 않는 학교 템플릿의 사용 권한과 배포 경로 확인
 
 ## 점검 도구 제약
 
-- 공식 Deep/Standard Security Scan 도구는 이번 실행 환경의 worker 수와 연결 오류 때문에
-  완료 상태를 주장할 수 없다. 대신 인증·소유권, 공급망·브라우저, 파서·생성 세 축으로
-  독립적인 코드 점검과 회귀 테스트를 수행했다.
+- Codex Security diff scan 자체는 완료·봉인했다. 다만 공격 재현용 validation worker는
+  플랫폼 보안 필터에 차단되어, 사용자의 지시에 따라 destructive live 재현을 생략하고
+  정적 source/control/dataflow 증거와 안전한 회귀 테스트로 판정했다. 운영 서비스에는
+  DoS 반복 요청이나 실제 탈취 토큰을 사용하지 않았다.
 - 앱 내 브라우저 제어 연결은 `Transport closed`로 반복 종료됐다. 사용자의 명시적
   허가 후 standalone Playwright Chromium으로 fallback해 최신 화면 캡처·상호작용·전후
   비교를 완료했으므로 화면 점검 결과에는 이 대체 경로를 명시한다.
@@ -119,7 +139,7 @@
 - 범위 선택 preset, 동적 scope/endpoint 수, catalog category 접기, paused 항목 비활성,
   clipboard 실패 표시, 요청 로그 loading/disable 상태를 추가했다. 죽은
   `navBetaTranslate` reveal target도 제거했다.
-- 개발자 페이지 집중 Playwright `6/6`, 전체 Playwright `417/417`이 통과했다. 같은 상태와
+- 개발자 페이지 집중 Playwright `6/6`, 최종 전체 Playwright `523/523`이 통과했다. 같은 상태와
   viewport의 선택 시안·실제 구현을 한 화면에서 비교한 기록은 `design-qa.md`에 추가했다.
 - 상세 경로·권한 결과는 외부 점검 산출물
   `/Users/minjun/.codex/visualizations/2026/07/21/019f83bd-c9ff-7ab0-abbd-53238b8e0365/quilo-exhaustive-frontend/combined-summary.md`

@@ -5,9 +5,16 @@ const TYPE_LABELS = {
   "phys-inquiry": "물리 수행평가",
   "math-inquiry": "수학 수행평가",
   free: "자유 보고서",
+  "reading-log": "독서록",
+  "reading-log-bulk": "독서록 대량 생성",
   "problem-set": "문제집 메이커",
   "vocabulary-book": "단어장 메이커",
   "form-maker": "양식 메이커",
+  "print-pdf-restore": "프린트 PDF 복원",
+  "eng-exam-prep": "영어 시험대비 세트",
+  "korean-lit-exam": "국어 문학 시험 세트",
+  "phys-mock-exam": "물리 모의고사",
+  "cap-translate": "Capstone 번역",
   "pdf-translate": "PDF 통번역",
 };
 const STATUS_LABELS = { running: "⏳ 진행 중", interrupted: "⚠ 중단됨", error: "❌ 실패" };

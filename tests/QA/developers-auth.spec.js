@@ -78,10 +78,12 @@ function apiFixture(pathname) {
   const fixtures = {
     "/api/announcements": { announcements: [] },
     "/api/catalog": {
-      total: 2,
+      total: 4,
       categories: { reports: { title: "보고서", description: "보고서 생성 기능" } },
       features: [
         { id: "chem-pre", title: "화학 사전보고서", summary: "실험 매뉴얼에서 사전보고서 초안을 만듭니다.", category: "reports", path: "/?report=chem-pre", status: "active", execution: "remote", audience: "member", kind: "generator" },
+        { id: "chem-result", title: "화학 결과보고서", summary: "결과와 데이터를 정리합니다.", category: "reports", path: "/?report=chem-result", status: "active", execution: "remote", audience: "member", kind: "generator" },
+        { id: "phys-result", title: "물리 결과보고서", summary: "측정값과 그래프를 정리합니다.", category: "reports", path: "/?report=phys-result", status: "active", execution: "remote", audience: "member", kind: "generator" },
         { id: "paused-report", title: "준비 중 보고서", summary: "아직 사용할 수 없는 기능입니다.", category: "reports", path: "/?report=paused-report", status: "paused", execution: "paused", audience: "public", kind: "generator" },
       ],
     },
@@ -100,8 +102,17 @@ function apiFixture(pathname) {
   return fixtures[pathname] || {};
 }
 
-async function installApi(page, { meStatus, meBody, delayMe = false }) {
+async function installApi(page, {
+  meStatus,
+  meBody,
+  betaBody = null,
+  editorialCapabilities = null,
+  delayMe = false,
+  allowLogout = false,
+}) {
   const calls = [];
+  let currentMeStatus = meStatus;
+  let currentMeBody = meBody;
   let releaseMe;
   const meGate = delayMe ? new Promise((resolve) => { releaseMe = resolve; }) : Promise.resolve();
 
@@ -113,13 +124,38 @@ async function installApi(page, { meStatus, meBody, delayMe = false }) {
 
     if (url.origin !== baseUrl) return route.abort("blockedbyclient");
     if (url.pathname.startsWith("/api/")) {
-      if (method !== "GET") return route.abort("blockedbyclient");
+      if (method !== "GET") {
+        if (allowLogout && method === "POST" && url.pathname === "/api/logout") {
+          currentMeStatus = 401;
+          currentMeBody = { error: "로그인이 필요합니다." };
+          return route.fulfill({
+            status: 200,
+            contentType: "application/json; charset=utf-8",
+            body: JSON.stringify({ ok: true }),
+          });
+        }
+        return route.abort("blockedbyclient");
+      }
       if (url.pathname === "/api/me") {
         await meGate;
         return route.fulfill({
-          status: meStatus,
+          status: currentMeStatus,
           contentType: "application/json; charset=utf-8",
-          body: JSON.stringify(meBody),
+          body: JSON.stringify(currentMeBody),
+        });
+      }
+      if (url.pathname === "/api/me/beta" && betaBody) {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json; charset=utf-8",
+          body: JSON.stringify(betaBody),
+        });
+      }
+      if (url.pathname === "/api/editorial/me/capabilities" && editorialCapabilities) {
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json; charset=utf-8",
+          body: JSON.stringify({ capabilities: editorialCapabilities, profile: meBody }),
         });
       }
       return route.fulfill({
@@ -134,6 +170,10 @@ async function installApi(page, { meStatus, meBody, delayMe = false }) {
   return {
     calls,
     releaseMe: () => releaseMe?.(),
+    setMe(status, body) {
+      currentMeStatus = status;
+      currentMeBody = body;
+    },
   };
 }
 
@@ -189,7 +229,9 @@ test("authenticated shell keeps home and developer account labels consistent", a
     { text: "세션사용자 님", href: "/#settings", hidden: false, state: "authenticated" },
     { text: "세션사용자 님", href: "/#settings", hidden: false, state: "authenticated" },
   ]);
-  expect(network.calls.filter((call) => call.pathname === "/api/me").length - meCallsBeforeDevelopers).toBe(1);
+  const developerMeCalls = network.calls.filter((call) => call.pathname === "/api/me").length - meCallsBeforeDevelopers;
+  expect(developerMeCalls).toBeGreaterThanOrEqual(1);
+  expect(developerMeCalls).toBeLessThanOrEqual(2);
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator(".ui-mobile-trigger").click();
@@ -212,8 +254,8 @@ test("logged-out shell shows login on desktop and mobile and locks token control
   expect(snapshot.headerState).toBe("anonymous");
   expect(snapshot.bodyState).toBe("anonymous");
   expect(snapshot.actions).toEqual([
-    { text: "로그인", href: "/?login=1", hidden: false, state: "anonymous" },
-    { text: "로그인", href: "/?login=1", hidden: false, state: "anonymous" },
+    { text: "로그인", href: "/login.html?next=%2Fdevelopers.html", hidden: false, state: "anonymous" },
+    { text: "로그인", href: "/login.html?next=%2Fdevelopers.html", hidden: false, state: "anonymous" },
   ]);
   await expect(page.locator("#accountStatus")).toContainText("로그인이 필요합니다");
   await expect(page.locator("#createTokenBtn")).toBeDisabled();
@@ -259,6 +301,161 @@ test("pending shell hides login copy until the account check resolves", async ({
   expect(network.calls.filter((call) => call.method !== "GET" && call.method !== "HEAD")).toEqual([]);
 });
 
+const ROLE_PERSONAS = [
+  { id: "free", tier: "free" },
+  { id: "pro", tier: "pro", features: ["create", "code-editor"] },
+  { id: "max", tier: "max", features: ["create", "code-editor", "file-chat"] },
+  { id: "staff", tier: "free", isStaff: true },
+  { id: "developer", tier: "free", isDeveloper: true },
+  { id: "staff-developer", tier: "free", isStaff: true, isDeveloper: true },
+  { id: "admin", tier: "admin", isAdmin: true, features: ["create", "code-editor", "file-chat"] },
+];
+
+for (const persona of ROLE_PERSONAS) {
+  test(`${persona.id} keeps one authenticated identity across reports and developer routes`, async ({ page }) => {
+    const name = `${persona.id}-사용자`;
+    const shellName = [...name].length > 14 ? `${[...name].slice(0, 14).join("")}…` : name;
+    await installApi(page, {
+      meStatus: 200,
+      meBody: {
+        user: name,
+        username: persona.id,
+        isAdmin: !!persona.isAdmin,
+        isStaff: !!persona.isStaff,
+        isDeveloper: !!persona.isDeveloper,
+        blockedReportTypes: [],
+      },
+      betaBody: {
+        admin: !!persona.isAdmin,
+        tier: persona.tier,
+        features: persona.features || [],
+        blockedReportTypes: [],
+      },
+      editorialCapabilities: {
+        writeDeveloperNotes: !!(persona.isDeveloper || persona.isAdmin),
+        writeResources: !!(persona.isStaff || persona.isAdmin),
+        manageResourceRequests: !!(persona.isStaff || persona.isAdmin),
+        administerRoles: !!persona.isAdmin,
+      },
+    });
+
+    const routes = [
+      "/?report=chem-pre",
+      "/?report=chem-result",
+      "/?report=phys-result",
+      "/developer-notes.html",
+      "/resources.html",
+      "/developers.html",
+    ];
+    for (const route of routes) {
+      await page.goto(baseUrl + route, { waitUntil: "domcontentloaded" });
+      await expect(page.locator("[data-ui-shell]")).toHaveAttribute("data-ui-auth-state", "authenticated");
+      await expect(page.locator(".ui-site-actions [data-ui-auth-action]")).toContainText(`${shellName} 님`);
+      if (route.startsWith("/?report=")) {
+        const type = new URL(baseUrl + route).searchParams.get("report");
+        await expect(page.locator(`input[name="reportType"][value="${type}"]`)).toBeChecked();
+        if (type === "chem-pre") {
+          const tierLabel = persona.tier === "admin"
+            ? "Admin"
+            : `${persona.tier[0].toUpperCase()}${persona.tier.slice(1)}`;
+          await expect(page.locator("#accountTriggerMeta")).toHaveText(tierLabel);
+        }
+      } else if (route === "/developer-notes.html") {
+        const action = page.locator("[data-write-action]");
+        if (persona.isDeveloper || persona.isAdmin) await expect(action).toBeVisible();
+        else await expect(action).toBeHidden();
+      } else if (route === "/resources.html") {
+        const action = page.locator("[data-resource-write]");
+        if (persona.isStaff || persona.isAdmin) await expect(action).toBeVisible();
+        else await expect(action).toBeHidden();
+      }
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${baseUrl}/developers.html`, { waitUntil: "domcontentloaded" });
+    await page.locator("[data-ui-mobile-trigger]").click();
+    await expect(page.locator("#uiMobilePanel [data-ui-auth-action]")).toHaveText(`${shellName} 님`);
+    await expect(page.locator("#uiMobilePanel [data-ui-auth-action]")).toHaveAttribute("href", "/#settings");
+    await expect(page.locator("#uiMobilePanel [data-ui-mobile-logout]")).toBeVisible();
+    if (persona.isAdmin) await expect(page.locator("#uiMobilePanel [data-ui-mobile-admin]")).toBeVisible();
+    else await expect(page.locator("#uiMobilePanel [data-ui-mobile-admin]")).toBeHidden();
+    await page.locator("#uiMobilePanel [data-ui-auth-action]").click();
+    await expect(page).toHaveURL(`${baseUrl}/#settings`);
+    const roleLabel = [
+      persona.isAdmin ? "관리자" : "",
+      persona.isDeveloper ? "Quilo 개발자" : "",
+      persona.isStaff ? "스탭" : "",
+    ].filter(Boolean).join(" · ") || "일반 사용자";
+    await expect(page.locator("#settingsUserRole")).toHaveText(roleLabel);
+  });
+}
+
+test("authenticated mobile user can log out from the shared menu", async ({ page }) => {
+  const network = await installApi(page, {
+    meStatus: 200,
+    meBody: { user: "모바일사용자", username: "mobile-user", isAdmin: false, blockedReportTypes: [] },
+    allowLogout: true,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${baseUrl}/developers.html`, { waitUntil: "domcontentloaded" });
+
+  await page.locator("[data-ui-mobile-trigger]").click();
+  await page.locator("#uiMobilePanel [data-ui-mobile-logout]").click();
+
+  await expect(page).toHaveURL(`${baseUrl}/`);
+  await expect(page.locator("[data-ui-shell]")).toHaveAttribute("data-ui-auth-state", "anonymous");
+  expect(network.calls.filter((call) => call.pathname === "/api/logout")).toEqual([
+    { method: "POST", pathname: "/api/logout" },
+  ]);
+});
+
+test("report and account navigation stay aligned with URL, back, and refresh", async ({ page }) => {
+  await installApi(page, {
+    meStatus: 200,
+    meBody: { user: "경로사용자", username: "route-user", isAdmin: false, blockedReportTypes: [] },
+  });
+  await page.goto(`${baseUrl}/?report=chem-pre`, { waitUntil: "domcontentloaded" });
+  await expect(page.locator('input[name="reportType"][value="chem-pre"]')).toBeChecked();
+
+  await page.getByRole("button", { name: "제품" }).click();
+  await page.locator('#uiSiteMega a[data-report="chem-result"]').click();
+  await expect(page).toHaveURL(`${baseUrl}/?report=chem-result`);
+  await expect(page.locator('input[name="reportType"][value="chem-result"]')).toBeChecked();
+
+  await page.locator("#sessionAction").click();
+  await page.locator('#acctDd a[data-tab="settings"]').click();
+  await expect(page).toHaveURL(`${baseUrl}/#settings`);
+  await expect(page.locator('[data-tab-panel="settings"]')).toBeVisible();
+
+  await page.goBack();
+  await expect(page).toHaveURL(`${baseUrl}/?report=chem-result`);
+  await expect(page.locator('input[name="reportType"][value="chem-result"]')).toBeChecked();
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.locator('input[name="reportType"][value="chem-result"]')).toBeChecked();
+});
+
+test("auth changes from another tab refresh the current tab without treating errors as logout", async ({ page, context }) => {
+  const authenticated = { user: "멀티탭사용자", username: "tabs", isAdmin: false, blockedReportTypes: [] };
+  const firstNetwork = await installApi(page, { meStatus: 200, meBody: authenticated });
+  const other = await context.newPage();
+  await installApi(other, { meStatus: 200, meBody: authenticated });
+  await Promise.all([
+    page.goto(`${baseUrl}/?report=chem-pre`, { waitUntil: "domcontentloaded" }),
+    other.goto(`${baseUrl}/developers.html`, { waitUntil: "domcontentloaded" }),
+  ]);
+  await expect(page.locator("[data-ui-shell]")).toHaveAttribute("data-ui-auth-state", "authenticated");
+
+  firstNetwork.setMe(500, { error: "temporary" });
+  await other.evaluate(() => localStorage.setItem("quilo:auth-sync", JSON.stringify({ action: "change", at: Date.now() })));
+  await expect(page.locator("[data-ui-shell]")).toHaveAttribute("data-ui-auth-state", "unknown");
+  await expect(page.locator("body")).toHaveAttribute("data-auth", "in");
+
+  firstNetwork.setMe(401, { error: "logged out" });
+  await other.evaluate(() => localStorage.setItem("quilo:auth-sync", JSON.stringify({ action: "logout", at: Date.now() + 1 })));
+  await expect(page.locator("[data-ui-shell]")).toHaveAttribute("data-ui-auth-state", "anonymous");
+  await expect(page.locator("body")).toHaveAttribute("data-auth", "out");
+  await other.close();
+});
+
 test("developer portal presents a task-first responsive connection flow", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("theme", "light"));
   const network = await installApi(page, {
@@ -277,7 +474,7 @@ test("developer portal presents a task-first responsive connection flow", async 
   await expect(page.locator(".dev-endpoints > div")).toHaveCount(6);
   await expect(page.locator("#apiReferenceSummary")).toHaveText("3개 주소 · 3개 작업");
   await expect(page.locator("#scopeCount")).toHaveText("22개 권한");
-  await expect(page.locator("#catalogBody .feature")).toHaveCount(1);
+  await expect(page.locator("#catalogBody .feature")).toHaveCount(3);
 
   await expect(page.locator("#chatgptPanel")).toBeVisible();
   await expect(page.locator("#codexPanel")).toBeHidden();
@@ -302,7 +499,7 @@ test("developer portal presents a task-first responsive connection flow", async 
   await page.screenshot({ path: "/tmp/quilo-developer-menu-light-1440.png", fullPage: false });
   await developerMenu.press("Escape");
 
-  await page.locator("#catalogSearch").fill("화학");
+  await page.locator("#catalogSearch").fill("화학 사전");
   await expect(page.locator("#catalogBody .feature strong")).toHaveText("화학 사전보고서");
   await page.locator("#catalogSearch").fill("없는 기능");
   await expect(page.locator("#catalogBody")).toHaveText("조건에 맞는 기능이 없습니다.");

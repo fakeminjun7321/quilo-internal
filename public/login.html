@@ -130,8 +130,39 @@
         const error = document.getElementById("li_err");
 
         // 로그인 화면은 세션이 끝난 공유 기기일 수 있다. 이전 principal의 자동완성용
-        // 아이디·초안·코드가 보이기 전에 계정 브라우저 상태를 먼저 정리한다.
+        // 아이디·초안·코드가 보이기 전에 계정 브라우저 상태를 먼저 정리한다. 보고서
+        // 종류만 담은 짧은 이동 의도는 개인정보가 아니므로 로그인 뒤 복원할 수 있게 보존한다.
+        let pendingReport = "";
+        try { pendingReport = sessionStorage.getItem("pendingReportType") || ""; } catch (_) {}
         window.QuiloStoragePrivacy?.signOut?.();
+        if (/^[a-z0-9-]{1,64}$/.test(pendingReport)) {
+          try { sessionStorage.setItem("pendingReportType", pendingReport); } catch (_) {}
+        }
+
+        function safeReturnPath(value) {
+          const raw = String(value || "").trim();
+          if (!raw.startsWith("/") || raw.startsWith("//") || raw.includes("\\")) return "/";
+          try {
+            const target = new URL(raw, location.origin);
+            if (target.origin !== location.origin || ["/login", "/login.html"].includes(target.pathname)) return "/";
+            return `${target.pathname}${target.search}${target.hash}`;
+          } catch (_) {
+            return "/";
+          }
+        }
+
+        const params = new URLSearchParams(location.search);
+        const returnPath = safeReturnPath(params.get("next") || params.get("returnTo"));
+
+        function announceAuthChange() {
+          const message = { action: "login", at: Date.now() };
+          try {
+            const channel = new BroadcastChannel("quilo-auth");
+            channel.postMessage(message);
+            channel.close();
+          } catch (_) {}
+          try { localStorage.setItem("quilo:auth-sync", JSON.stringify(message)); } catch (_) {}
+        }
         try {
           const saved = localStorage.getItem("lastUsername");
           if (saved && !username.value) username.value = saved;
@@ -176,10 +207,11 @@
               else localStorage.removeItem("lastUsername");
             } catch (_) {}
 
+            announceAuthChange();
             if (data.redirect && String(data.redirect).startsWith("/oauth/authorize?")) {
               location.assign(data.redirect);
             } else {
-              location.assign("/");
+              location.assign(returnPath);
             }
           } catch (exception) {
             error.textContent = exception.message;

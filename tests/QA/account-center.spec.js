@@ -1,6 +1,5 @@
 const path = require("path");
-const { spawn } = require("child_process");
-const { isolatedServerEnv } = require("./support/isolated-server-env");
+const { startQaServer } = require("./helpers/qa-server");
 
 function loadPlaywrightTest() {
   try { return require("@playwright/test"); }
@@ -15,22 +14,8 @@ function loadPlaywrightTest() {
 }
 const { test, expect } = loadPlaywrightTest();
 
-const BASE_URL = process.env.QA_BASE_URL || "http://127.0.0.1:3000";
-let serverProcess = null;
-
-async function serverIsUp() {
-  try { const response = await fetch(BASE_URL); return response.ok || response.status < 500; }
-  catch (_) { return false; }
-}
-
-async function waitForServer() {
-  const deadline = Date.now() + 15000;
-  while (Date.now() < deadline) {
-    if (await serverIsUp()) return;
-    await new Promise((resolve) => setTimeout(resolve, 200));
-  }
-  throw new Error("Quilo QA server did not start");
-}
+let qaServer = null;
+let BASE_URL = "";
 
 async function mockAccountApis(page, options = {}) {
   const calls = options.calls || [];
@@ -111,16 +96,11 @@ async function mockAccountApis(page, options = {}) {
 }
 
 test.beforeAll(async () => {
-  if (await serverIsUp()) return;
-  serverProcess = spawn("node", ["server.js"], {
-    cwd: process.cwd(),
-    env: isolatedServerEnv({ PORT: "3000" }),
-    stdio: "pipe",
-  });
-  await waitForServer();
+  qaServer = await startQaServer();
+  BASE_URL = qaServer.baseUrl;
 });
 
-test.afterAll(() => { if (serverProcess) serverProcess.kill(); });
+test.afterAll(async () => { if (qaServer) await qaServer.stop(); });
 
 test("account center uses continuous sections and preserves account contracts", async ({ page }) => {
   const consoleErrors = [];
@@ -169,6 +149,36 @@ test("account center uses continuous sections and preserves account contracts", 
   if (process.env.ACCOUNT_QA_SCREEN) {
     await page.screenshot({ path: process.env.ACCOUNT_QA_SCREEN, fullPage: false });
   }
+});
+
+test("mobile account center opens from a report and back restores the report route", async ({ page }) => {
+  const consoleErrors = [];
+  page.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text()); });
+  page.on("pageerror", (error) => consoleErrors.push(error.message));
+  await mockAccountApis(page, { role: "max" });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${BASE_URL}/?report=chem-pre`, { waitUntil: "networkidle" });
+  await expect(page.locator('input[name="reportType"][value="chem-pre"]')).toBeChecked();
+
+  await page.locator("[data-ui-mobile-trigger]").click();
+  await page.locator("#uiMobilePanel [data-ui-auth-action]").click();
+  await expect(page).toHaveURL(`${BASE_URL}/#settings`);
+  await expect(page.locator("#settingsPanel")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Account Center" })).toBeVisible();
+  await expect(page.locator("#settingsUserName")).toHaveText("구민준");
+  const accountMetrics = await page.evaluate(() => ({
+    overflow: document.documentElement.scrollWidth - window.innerWidth,
+    display: getComputedStyle(document.querySelector(".account-center-shell")).display,
+    navOverflow: document.querySelector(".account-local-nav").scrollWidth - document.querySelector(".account-local-nav").clientWidth,
+  }));
+  expect(accountMetrics.overflow).toBeLessThanOrEqual(1);
+  expect(accountMetrics.display).toBe("block");
+  expect(accountMetrics.navOverflow).toBeGreaterThanOrEqual(0);
+
+  await page.goBack({ waitUntil: "domcontentloaded" });
+  await expect(page).toHaveURL(`${BASE_URL}/?report=chem-pre`);
+  await expect(page.locator('input[name="reportType"][value="chem-pre"]')).toBeChecked();
+  expect(consoleErrors).toEqual([]);
 });
 
 test("account center keeps profile, preferences, BYOK and password actions working", async ({ page }) => {

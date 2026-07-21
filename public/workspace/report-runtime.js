@@ -62,6 +62,7 @@ const commonForms = createCommonFormsController({
   setView: runtime.shell.setView,
   showTab: runtime.shell.showTab,
   setPending: runtime.router.setPending,
+  navigateReport: runtime.router.writeReportUrl,
   openLogin: runtime.shell.openLogin,
   reportChecklistItems,
 });

@@ -135,7 +135,6 @@ test("server contract keeps print restoration admin-only with fixed PDF output",
   assert.match(source, /req\.session\.userInfo\.isAdmin = isAdmin/);
   assert.match(source, /const reportEligible = isAdmin \|\| \(emailVerified && approved\)/);
 });
-
 test("print restoration validates configured defaults and never enables Gemini", () => {
   const allowed = [
     "claude-opus-4-8",

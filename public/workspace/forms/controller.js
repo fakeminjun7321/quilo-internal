@@ -802,7 +802,7 @@ export function installReportFormControllers(deps) {
       event.preventDefault();
       if (runtime.currentJobId) return;
       // UI 은 서버 권한 검사를 대신하지 않지만, 숨겨진 폼을 DOM에서 강제로 연
-      // 일반 계정이 관리자 작업을 제출하는 실수를 막는 1차 경계다.
+      // 일반 계정의 제출 실수를 막는 1차 경계다. 최종 권한은 서버가 다시 검사한다.
       if (!runtime.isAdmin) {
         alert("프린트 PDF 복원은 현재 관리자 전용 베타입니다.");
         return;

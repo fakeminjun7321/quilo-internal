@@ -608,7 +608,7 @@ test("managed process groups escalate from TERM to KILL", async (t) => {
     process.execPath,
     [
       "-e",
-      "process.on('SIGTERM',()=>{}); process.send('ready'); setInterval(()=>{},1000)",
+      "process.on('SIGTERM',()=>{}); process.send?.('ready'); setInterval(()=>{},1000)",
     ],
     { detached: true, stdio: ["ignore", "ignore", "ignore", "ipc"] },
   );
@@ -616,6 +616,9 @@ test("managed process groups escalate from TERM to KILL", async (t) => {
     try { process.kill(-child.pid, "SIGKILL"); } catch {}
   });
   await new Promise((resolve) => child.once("spawn", resolve));
+  // Under the full parallel suite the child may be spawned before its JS has
+  // installed the SIGTERM handler. Wait for an explicit readiness handshake so
+  // this test measures TERM→KILL escalation rather than process startup timing.
   await new Promise((resolve) => child.once("message", resolve));
   let exitSignal = null;
   child.once("exit", (_code, signal) => { exitSignal = signal; });

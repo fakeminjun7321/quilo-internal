@@ -7,7 +7,6 @@ const state = {
   sessionState: "pending",
   connection: "chatgpt",
 };
-
 const $ = (id) => document.getElementById(id);
 const CONNECTION_SCOPES = new Set(["account:read", "jobs:read", "files:read"]);
 
@@ -119,6 +118,7 @@ async function loadAccount() {
     $("createTokenBtn").disabled = false;
     $("refreshLogsBtn").disabled = false;
     await Promise.allSettled([loadTokens(), loadApiRequests()]);
+    updateCatalogSummary();
     renderCatalog();
     return;
   }
@@ -130,7 +130,7 @@ async function loadAccount() {
   if (session.state === "anonymous") {
     $("accountStatus").textContent = "로그인이 필요합니다.";
     $("loginLink").textContent = "Quilo 로그인";
-    $("loginLink").href = "/?login=1&next=%2Fdevelopers.html";
+    $("loginLink").href = "/login.html?next=%2Fdevelopers.html";
     $("tokenMessage").textContent = "로그인 후 토큰을 만들고 관리할 수 있습니다.";
     return;
   }
@@ -144,6 +144,7 @@ async function loadAccount() {
 async function loadCatalog() {
   try {
     state.catalog = await api("/api/catalog");
+    updateCatalogSummary();
     renderCatalog();
   } catch (error) {
     $("catalogSummary").textContent = `카탈로그를 불러오지 못했습니다: ${error.message}`;
@@ -161,6 +162,16 @@ function matchesCatalogAccess(item, access) {
   if (access === "paused") return paused;
   if (access === "handoff") return !paused && item.execution === "handoff";
   return !paused && ["remote", "local", "read-only"].includes(item.execution);
+}
+
+function updateCatalogSummary() {
+  if (!state.catalog) return;
+  const visibleFeatures = catalogFeatures();
+  const modes = visibleFeatures.reduce((counts, item) => {
+    counts[item.execution] = (counts[item.execution] || 0) + 1;
+    return counts;
+  }, {});
+  $("catalogSummary").textContent = `${visibleFeatures.length}개 기능 · API ${modes.remote || 0} · 로컬 ${modes.local || 0} · 읽기 ${modes["read-only"] || 0} · 웹 연결 ${modes.handoff || 0} · 중단 ${modes.paused || 0}`;
 }
 
 function renderCatalog() {

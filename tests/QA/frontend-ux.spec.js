@@ -1,7 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const { spawn } = require("child_process");
-const { isolatedServerEnv } = require("./support/isolated-server-env");
+const { startQaServer } = require("./helpers/qa-server");
 
 function loadPlaywrightTest() {
   try {
@@ -20,27 +19,9 @@ function loadPlaywrightTest() {
 }
 
 const { test, expect } = loadPlaywrightTest();
-const BASE_URL = process.env.QA_BASE_URL || "http://127.0.0.1:3000";
 const SCREEN_DIR = path.join(process.cwd(), "test-results", "frontend-screens");
-let serverProcess = null;
-
-async function serverIsUp() {
-  try {
-    const res = await fetch(BASE_URL);
-    return res.ok || res.status < 500;
-  } catch (_) {
-    return false;
-  }
-}
-
-async function waitForServer() {
-  const deadline = Date.now() + 15000;
-  while (Date.now() < deadline) {
-    if (await serverIsUp()) return;
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-  throw new Error(`Server did not start at ${BASE_URL}`);
-}
+let qaServer = null;
+let BASE_URL = "";
 
 async function mockLoggedInApis(page) {
   await page.route("**/api/**", (route) => {
@@ -115,17 +96,12 @@ async function mockLoggedInApis(page) {
 }
 
 test.beforeAll(async () => {
-  if (await serverIsUp()) return;
-  serverProcess = spawn("node", ["server.js"], {
-    cwd: process.cwd(),
-    env: isolatedServerEnv({ PORT: "3000" }),
-    stdio: "pipe",
-  });
-  await waitForServer();
+  qaServer = await startQaServer();
+  BASE_URL = qaServer.baseUrl;
 });
 
 test.afterAll(async () => {
-  if (serverProcess) serverProcess.kill();
+  if (qaServer) await qaServer.stop();
 });
 
 test("home uses the compact header at the real 933px viewport", async ({ page }) => {

@@ -37,4 +37,16 @@ test("Dropbox compensation delete surfaces permission and transport failures", a
     () => dropbox.deleteFile({ accessToken: "access", path: "id:1" }),
     /Dropbox delete 403/,
   );
+
+  globalThis.fetch = async () => new Response(
+    JSON.stringify({
+      error_summary: "path_lookup/restricted_content/..",
+      error: { ".tag": "path_lookup", path_lookup: { ".tag": "restricted_content" } },
+    }),
+    { status: 409 },
+  );
+  await assert.rejects(
+    () => dropbox.deleteFile({ accessToken: "access", path: "id:restricted" }),
+    /Dropbox delete 409/,
+  );
 });

@@ -47,11 +47,15 @@ test("revoking an MCP access token also revokes its refresh family", async (t) =
   });
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { ok: true });
-  assert.equal(operations.length, 2);
+  assert.equal(operations.length, 3);
   assert.equal(operations[0].table, "user_access_tokens");
   assert.equal(operations[0].select, "id, audience");
   assert.equal(operations[1].table, "mcp_oauth_refresh_tokens");
   assert.ok(operations[1].filters.some((entry) => entry[1] === "user_id" && entry[2] === "user-1"));
   assert.ok(operations[1].filters.some((entry) => entry[1] === "resource" && entry[2] === "https://quilo.example/mcp"));
   assert.equal(operations[1].update.revoked_at, operations[0].update.revoked_at);
+  assert.equal(operations[2].table, "user_access_tokens");
+  assert.ok(operations[2].filters.some((entry) => entry[1] === "user_id" && entry[2] === "user-1"));
+  assert.ok(operations[2].filters.some((entry) => entry[1] === "audience" && entry[2] === "https://quilo.example/mcp"));
+  assert.equal(operations[2].update.revoked_at, operations[0].update.revoked_at);
 });

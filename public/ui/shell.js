@@ -320,7 +320,7 @@
       ${searchMarkup("uiFeatureSearch")}
       <div class="ui-site-actions">
         <div class="ui-session-slot" id="accountSlot">
-          <a class="ui-site-action ui-session-trigger" id="sessionAction" data-ui-auth-action href="/?login=1" hidden><span id="user" data-ui-auth-label>로그인</span></a>
+          <a class="ui-site-action ui-session-trigger" id="sessionAction" data-ui-auth-action href="${escapeHtml(loginUrlForCurrentPage())}" hidden><span id="user" data-ui-auth-label>로그인</span></a>
           <small class="ui-session-tier" id="accountTriggerMeta" aria-hidden="true" hidden>Account</small>
           <div class="ui-session-panel ui-login-panel" id="loginDd" hidden>
             <form id="loginForm" class="ui-login-form">
@@ -349,7 +349,7 @@
     </div>
     <div class="ui-site-scrim" data-ui-scrim aria-hidden="true"></div>
     <div class="ui-site-mega" id="uiSiteMega" aria-hidden="true"><div class="ui-site-mega__clip"><div class="ui-site-mega__inner" data-ui-mega-content></div></div></div>
-    <div class="ui-mobile-panel" id="uiMobilePanel" aria-hidden="true"><div class="ui-mobile-search-wrap">${searchMarkup("uiMobileFeatureSearch", true)}</div><div class="ui-mobile-panel__inner" data-ui-mobile-content>${mobileMarkup(groups)}</div><div class="ui-mobile-actions"><a href="/pricing.html">요금</a><a href="https://www.instagram.com/quilo._.official/" target="_blank" rel="noopener">Instagram ↗</a><button type="button" data-ui-theme></button><a data-ui-auth-action href="/?login=1" hidden><span data-ui-auth-label>로그인</span></a><a class="ui-site-cta" data-ui-start-action href="/signup.html" hidden>무료로 시작하기</a></div></div>`;
+    <div class="ui-mobile-panel" id="uiMobilePanel" aria-hidden="true"><div class="ui-mobile-search-wrap">${searchMarkup("uiMobileFeatureSearch", true)}</div><div class="ui-mobile-panel__inner" data-ui-mobile-content>${mobileMarkup(groups)}</div><div class="ui-mobile-actions"><a href="/pricing.html">요금</a><a href="https://www.instagram.com/quilo._.official/" target="_blank" rel="noopener">Instagram ↗</a><button type="button" data-ui-theme></button><a data-ui-auth-action href="${escapeHtml(loginUrlForCurrentPage())}" hidden><span data-ui-auth-label>로그인</span></a><a data-ui-mobile-admin href="/admin.html" hidden>관리자</a><button type="button" data-ui-mobile-logout hidden>로그아웃</button><a class="ui-site-cta" data-ui-start-action href="/signup.html" hidden>무료로 시작하기</a></div></div>`;
   }
 
   header.className = "ui-site-header";
@@ -368,9 +368,39 @@
   const mobilePanel = header.querySelector("#uiMobilePanel");
   const mobileTrigger = header.querySelector("[data-ui-mobile-trigger]");
   const searchRoots = [...header.querySelectorAll("[data-ui-feature-search]")];
-  const currentUrl = new URL(window.location.href);
+  const currentUrl = () => new URL(window.location.href);
   let currentAuthState = { state: "pending", user: null, status: null };
   let openMenuIndex = -1;
+
+  function safeLocalReturnPath(value) {
+    const raw = String(value || "").trim();
+    if (!raw.startsWith("/") || raw.startsWith("//") || raw.includes("\\")) return "";
+    try {
+      const target = new URL(raw, location.origin);
+      if (target.origin !== location.origin || ["/login", "/login.html"].includes(target.pathname)) return "";
+      return `${target.pathname}${target.search}${target.hash}`;
+    } catch (_) {
+      return "";
+    }
+  }
+
+  function currentReturnPath() {
+    const url = new URL(location.href);
+    const requested = safeLocalReturnPath(url.searchParams.get("next") || url.searchParams.get("returnTo"));
+    if (requested) return requested;
+
+    // Legacy login links used the home page as a desktop-only login launcher.
+    // Do not send those launcher parameters back through the dedicated login page.
+    url.searchParams.delete("login");
+    url.searchParams.delete("next");
+    url.searchParams.delete("returnTo");
+    const search = url.searchParams.toString();
+    return `${url.pathname}${search ? `?${search}` : ""}${url.hash}`;
+  }
+
+  function loginUrlForCurrentPage() {
+    return `/login.html?next=${encodeURIComponent(currentReturnPath())}`;
+  }
 
   function authActions() { return [...header.querySelectorAll("[data-ui-auth-action]")]; }
 
@@ -611,6 +641,15 @@
     return true;
   }
 
+  function openLoginFlow() {
+    if (window.matchMedia?.("(max-width: 1120px)").matches) {
+      closeDropdowns();
+      location.assign(loginUrlForCurrentPage());
+      return true;
+    }
+    return openSessionPanel("login");
+  }
+
   header.addEventListener("click", (event) => {
     const menuTrigger = event.target.closest?.("[data-ui-menu-trigger]");
     if (menuTrigger) {
@@ -657,10 +696,11 @@
   });
 
   function syncCurrentLinks() {
+    const here = currentUrl();
     header.querySelectorAll("a[href]").forEach((link) => {
       let target;
-      try { target = new URL(link.href, currentUrl); } catch (_) { return; }
-      if (target.origin === currentUrl.origin && target.pathname === currentUrl.pathname && target.search === currentUrl.search && target.hash === currentUrl.hash) link.setAttribute("aria-current", "page");
+      try { target = new URL(link.href, here); } catch (_) { return; }
+      if (target.origin === here.origin && target.pathname === here.pathname && target.search === here.search && target.hash === here.hash) link.setAttribute("aria-current", "page");
       else link.removeAttribute("aria-current");
     });
   }
@@ -677,7 +717,7 @@
   }
 
   const usesThemeJs = [...document.scripts].some((script) => {
-    try { return new URL(script.src, currentUrl).pathname === "/theme.js"; } catch (_) { return false; }
+    try { return new URL(script.src, currentUrl()).pathname === "/theme.js"; } catch (_) { return false; }
   });
   if (!usesThemeJs) {
     header.querySelectorAll("[data-ui-theme]").forEach((button) => button.addEventListener("click", () => {
@@ -691,6 +731,7 @@
   syncTheme();
 
   function renderAuthState(result) {
+    const previousState = currentAuthState.state;
     currentAuthState = result;
     if (result.state === "authenticated") storagePrivacy.protect(result.user?.id);
     else if (result.state === "anonymous") storagePrivacy.signOut();
@@ -708,7 +749,7 @@
     header.dataset.uiAuthState = result.state;
     header.setAttribute("aria-busy", "false");
     document.body.dataset.sessionState = result.state;
-    closeDropdowns();
+    if (previousState !== result.state) closeDropdowns();
 
     const authenticated = result.state === "authenticated";
     const anonymous = result.state === "anonymous";
@@ -725,6 +766,10 @@
     if (accountPanel) accountPanel.hidden = !authenticated;
     const adminLink = header.querySelector("#adminLink");
     if (adminLink) adminLink.hidden = !authenticated || result.user?.isAdmin !== true;
+    const mobileAdminLink = header.querySelector("[data-ui-mobile-admin]");
+    if (mobileAdminLink) mobileAdminLink.hidden = !authenticated || result.user?.isAdmin !== true;
+    const mobileLogout = header.querySelector("[data-ui-mobile-logout]");
+    if (mobileLogout) mobileLogout.hidden = !authenticated;
     const accountMenuName = header.querySelector("#accountMenuName");
     if (accountMenuName && authenticated) accountMenuName.textContent = name;
     const accountTier = header.querySelector("#accountTriggerMeta");
@@ -741,7 +786,7 @@
         action.setAttribute("aria-label", `${name} Account Center 열기`);
       } else if (anonymous) {
         label.textContent = "로그인";
-        action.href = "/?login=1";
+        action.href = loginUrlForCurrentPage();
         action.setAttribute("aria-label", "Quilo 로그인");
       } else {
         label.textContent = "계정 확인";
@@ -755,20 +800,52 @@
     return result;
   }
 
+  let authSyncPromise = null;
   async function syncAuthState() {
-    try {
-      const response = await fetch("/api/me", { cache: "no-store", credentials: "same-origin", headers: { accept: "application/json" } });
-      if (response.status === 401) return renderAuthState({ state: "anonymous", user: null, status: 401 });
-      if (!response.ok) return renderAuthState({ state: "unknown", user: null, status: response.status });
-      return renderAuthState({ state: "authenticated", user: await response.json(), status: response.status });
-    } catch (_) {
-      return renderAuthState({ state: "unknown", user: null, status: 0 });
-    }
+    if (authSyncPromise) return authSyncPromise;
+    authSyncPromise = (async () => {
+      try {
+        const response = await fetch("/api/me", { cache: "no-store", credentials: "same-origin", headers: { accept: "application/json" } });
+        if (response.status === 401) return renderAuthState({ state: "anonymous", user: null, status: 401 });
+        if (!response.ok) return renderAuthState({ state: "unknown", user: currentAuthState.user, status: response.status });
+        return renderAuthState({ state: "authenticated", user: await response.json(), status: response.status });
+      } catch (_) {
+        return renderAuthState({ state: "unknown", user: currentAuthState.user, status: 0 });
+      } finally {
+        authSyncPromise = null;
+      }
+    })();
+    return authSyncPromise;
   }
 
+  const AUTH_SYNC_KEY = "quilo:auth-sync";
+  const authChannel = typeof BroadcastChannel === "function" ? new BroadcastChannel("quilo-auth") : null;
+  function notifyAuthChange(action = "change") {
+    const message = { action, at: Date.now() };
+    try { authChannel?.postMessage(message); } catch (_) {}
+    try { localStorage.setItem(AUTH_SYNC_KEY, JSON.stringify(message)); } catch (_) {}
+  }
+  authChannel?.addEventListener("message", () => { void syncAuthState(); });
+  window.addEventListener("storage", (event) => {
+    if (event.key === AUTH_SYNC_KEY) void syncAuthState();
+  });
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted) void syncAuthState();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") void syncAuthState();
+  });
+  let lastFocusSync = 0;
+  window.addEventListener("focus", () => {
+    if (Date.now() - lastFocusSync < 1000) return;
+    lastFocusSync = Date.now();
+    void syncAuthState();
+  });
+  window.addEventListener("popstate", syncCurrentLinks);
+
   const authReady = syncAuthState();
-  window.QuiloShellAuth = Object.freeze({ ready: authReady, refresh: syncAuthState, current: () => currentAuthState });
-  window.QuiloSiteShell = Object.freeze({ closeDropdowns, openLogin: () => openSessionPanel("login"), openAccount: () => openSessionPanel("account") });
+  window.QuiloShellAuth = Object.freeze({ ready: authReady, refresh: syncAuthState, current: () => currentAuthState, notify: notifyAuthChange });
+  window.QuiloSiteShell = Object.freeze({ closeDropdowns, openLogin: openLoginFlow, openAccount: () => openSessionPanel("account") });
 
   fetch("/api/catalog", { headers: { accept: "application/json" } })
     .then((response) => response.ok ? response.json() : null)
@@ -789,8 +866,9 @@
   const prefetched = new Set();
   function prefetchPage(link) {
     if (!(link instanceof HTMLAnchorElement)) return;
-    const target = new URL(link.href, currentUrl);
-    if (target.origin !== currentUrl.origin || target.pathname === currentUrl.pathname) return;
+    const here = currentUrl();
+    const target = new URL(link.href, here);
+    if (target.origin !== here.origin || target.pathname === here.pathname) return;
     const key = `${target.pathname}${target.search}`;
     if (prefetched.has(key)) return;
     prefetched.add(key);
@@ -827,19 +905,31 @@
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || "로그인하지 못했습니다.");
         storagePrivacy.protect(data.id);
+        notifyAuthChange("login");
         location.reload();
       } catch (exception) {
         if (error) error.textContent = exception.message;
         if (button) { button.disabled = false; button.textContent = "로그인"; }
       }
     });
-    header.querySelector("#logout")?.addEventListener("click", async () => {
-      try {
-        await fetch("/api/logout", { method: "POST", credentials: "same-origin" });
-      } finally {
+    header.querySelectorAll("#logout, [data-ui-mobile-logout]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        button.disabled = true;
+        let response;
+        try {
+          response = await fetch("/api/logout", { method: "POST", credentials: "same-origin" });
+        } catch (_) {
+          button.disabled = false;
+          return;
+        }
+        if (!response.ok) {
+          button.disabled = false;
+          return;
+        }
         storagePrivacy.signOut();
-      }
-      location.assign("/");
+        notifyAuthChange("logout");
+        location.assign("/");
+      });
     });
   }
 

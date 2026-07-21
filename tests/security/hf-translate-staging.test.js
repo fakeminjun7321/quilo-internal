@@ -53,13 +53,56 @@ test("HF PDF translation staging contains every local JavaScript dependency", ()
       dest,
       "lib/pipelines/pdf-translate/resource-gate.js",
     )));
+    for (const file of [
+      "renderer-contract.js",
+      "libreoffice-pdf.js",
+      "libreoffice-gen.js",
+      "libreoffice-docx.py",
+    ]) {
+      assert.ok(fs.existsSync(path.join(
+        dest,
+        "lib/pipelines/pdf-translate",
+        file,
+      )));
+    }
+    for (const file of ["STIXTwoMath.otf", "STIXTwoMath-LICENSE.txt"]) {
+      const stagedFontAsset = path.join(dest, "lib/fonts", file);
+      const sourceFontAsset = path.join(ROOT, "lib/fonts", file);
+      assert.ok(fs.existsSync(stagedFontAsset), `${file} must be staged`);
+      assert.deepEqual(
+        fs.readFileSync(stagedFontAsset),
+        fs.readFileSync(sourceFontAsset),
+        `${file} must be copied byte-for-byte`,
+      );
+    }
     const requirements = fs.readFileSync(
       path.join(dest, "requirements.txt"),
       "utf8",
     );
     assert.match(requirements, /^fonttools==4\.63\.0 \\$/m);
     assert.match(requirements, /^lxml==6\.1\.1 \\$/m);
-    assert.ok((requirements.match(/--hash=sha256:/g) || []).length >= 6);
+    assert.match(requirements, /^pdf2docx==0\.5\.13 \\$/m);
+    assert.match(requirements, /^python-docx==1\.2\.0 \\$/m);
+    const requiredPackages = [
+      "pymupdf",
+      "fonttools",
+      "lxml",
+      "pdf2docx",
+      "python-docx",
+      "typing_extensions",
+      "numpy",
+      "opencv-python-headless",
+      "fire",
+      "termcolor",
+    ];
+    for (const dependency of requiredPackages) {
+      assert.match(
+        requirements,
+        new RegExp(`^${dependency}==[^\\n]+ \\\\$[\\s\\S]*?^\\s+--hash=sha256:`, "m"),
+        `${dependency} must be exact-pinned with an allowed wheel hash`,
+      );
+    }
+    assert.ok((requirements.match(/--hash=sha256:/g) || []).length >= requiredPackages.length);
     assert.ok(fs.existsSync(path.join(dest, "scripts/check-python-runtime.py")));
     assert.ok(fs.existsSync(path.join(dest, "package-lock.json")));
     const stagedPackage = JSON.parse(
@@ -69,10 +112,17 @@ test("HF PDF translation staging contains every local JavaScript dependency", ()
     const dockerfile = fs.readFileSync(path.join(dest, "Dockerfile"), "utf8");
     assert.match(dockerfile, /npm ci --omit=dev --ignore-scripts/);
     assert.match(dockerfile, /scripts\/check-python-runtime\.py/);
+    assert.match(dockerfile, /scripts\/install-tectonic\.sh/);
+    assert.match(dockerfile, /tectonic --version/);
+    assert.doesNotMatch(dockerfile, /dependencies venv setup failed/);
+    assert.doesNotMatch(dockerfile, /tectonic setup failed/);
+    assert.doesNotMatch(dockerfile, /install-tectonic\.sh[\s\\]*\|\|/);
     const readme = fs.readFileSync(path.join(dest, "README.md"), "utf8");
     assert.match(readme, /MISTRAL_API_KEY/);
     assert.match(readme, /visual adjudicator/);
     assert.match(readme, /fail-closed/);
+    assert.match(dockerfile, /libreoffice-writer/);
+    assert.match(dockerfile, /LIBREOFFICE_BIN=\/usr\/bin\/libreoffice/);
   } finally {
     fs.rmSync(parent, { recursive: true, force: true });
   }
@@ -99,7 +149,18 @@ test("HF clean Python runtime check fails closed and covers every staged third-p
     );
     assert.deepEqual(
       [...declared].sort(),
-      ["fonttools", "lxml", "pymupdf"],
+      [
+        "fire",
+        "fonttools",
+        "lxml",
+        "numpy",
+        "opencv-python-headless",
+        "pdf2docx",
+        "pymupdf",
+        "python-docx",
+        "termcolor",
+        "typing_extensions",
+      ],
     );
 
     const checker = path.join(dest, "scripts/check-python-runtime.py");
@@ -116,10 +177,14 @@ test("HF clean Python runtime check fails closed and covers every staged third-p
     const fakeSite = path.join(parent, "fake-site");
     fs.mkdirSync(path.join(fakeSite, "fontTools"), { recursive: true });
     fs.mkdirSync(path.join(fakeSite, "lxml"), { recursive: true });
+    fs.mkdirSync(path.join(fakeSite, "pdf2docx"), { recursive: true });
+    fs.mkdirSync(path.join(fakeSite, "docx"), { recursive: true });
     fs.writeFileSync(path.join(fakeSite, "fitz.py"), "", "utf8");
     fs.writeFileSync(path.join(fakeSite, "fontTools", "__init__.py"), "", "utf8");
     fs.writeFileSync(path.join(fakeSite, "lxml", "__init__.py"), "", "utf8");
     fs.writeFileSync(path.join(fakeSite, "lxml", "etree.py"), "", "utf8");
+    fs.writeFileSync(path.join(fakeSite, "pdf2docx", "__init__.py"), "", "utf8");
+    fs.writeFileSync(path.join(fakeSite, "docx", "__init__.py"), "", "utf8");
     const closed = spawnSync("python3", ["-S", checker], {
       cwd: dest,
       encoding: "utf8",
@@ -129,5 +194,47 @@ test("HF clean Python runtime check fails closed and covers every staged third-p
     assert.match(closed.stdout, /PDF Python runtime imports OK/);
   } finally {
     fs.rmSync(parent, { recursive: true, force: true });
+  }
+});
+
+test("Tectonic installer fails closed on an unsupported deployment architecture", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "quilo-tectonic-arch-"));
+  try {
+    const fakeBin = path.join(root, "bin");
+    fs.mkdirSync(fakeBin, { recursive: true });
+    const fakeUname = path.join(fakeBin, "uname");
+    fs.writeFileSync(
+      fakeUname,
+      [
+        "#!/bin/sh",
+        "case \"$1\" in",
+        "  -s) printf 'UnsupportedOS\\n' ;;",
+        "  -m) printf 'unsupported-arch\\n' ;;",
+        "  *) exit 2 ;;",
+        "esac",
+        "",
+      ].join("\n"),
+      { encoding: "utf8", mode: 0o755 },
+    );
+    const installed = spawnSync(
+      "bash",
+      [path.join(ROOT, "scripts/install-tectonic.sh")],
+      {
+        cwd: root,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          PATH: `${fakeBin}:/usr/bin:/bin`,
+          TRUST_SYSTEM_TECTONIC: "0",
+        },
+      },
+    );
+    assert.notEqual(installed.status, 0);
+    assert.match(
+      `${installed.stdout}\n${installed.stderr}`,
+      /ERROR: no tectonic prebuilt for UnsupportedOS-unsupported-arch/,
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });

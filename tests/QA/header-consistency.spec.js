@@ -59,6 +59,7 @@ const TOOL_ROUTES = Object.freeze([
 const GENERAL_PUBLIC_ROUTES = Object.freeze([
   "/changelog.html",
   "/community.html",
+  "/developer-notes.html",
   "/developers.html",
   "/equation/index.html",
   "/examples.html",
@@ -66,6 +67,7 @@ const GENERAL_PUBLIC_ROUTES = Object.freeze([
   "/pricing.html",
   "/privacy.html",
   "/refund.html",
+  "/resources.html",
   "/school-apply.html",
   "/status.html",
   "/support.html",
@@ -123,6 +125,8 @@ const COMMON_NAV_DESTINATIONS = Object.freeze([
 const VIEWPORTS = Object.freeze([
   { name: "desktop-1440", width: 1440, height: 900 },
   { name: "compact-desktop-933", width: 933, height: 844 },
+  { name: "mobile-430", width: 430, height: 932 },
+  { name: "mobile-390", width: 390, height: 844 },
 ]);
 
 let staticServer;
@@ -351,7 +355,9 @@ async function expectCanonicalAnonymousHeader(page, route) {
   await expect(authAction, `${route} logged-out action`).toHaveCount(1);
   await expect(authAction).toBeVisible();
   await expect(authAction).toHaveText("로그인");
-  await expect(authAction).toHaveAttribute("href", "/?login=1");
+  const routeUrl = new URL(route, "https://qa.quilolab.com");
+  const returnPath = `${routeUrl.pathname}${routeUrl.search}${routeUrl.hash}`;
+  await expect(authAction).toHaveAttribute("href", `/login.html?next=${encodeURIComponent(returnPath)}`);
 
   const start = actionScope.locator('.ui-site-cta[href="/signup.html"]');
   await expect(start, `${route} signup start action`).toHaveCount(1);
@@ -420,10 +426,10 @@ test.afterEach(async ({ page }) => {
 
 test("canonical header route inventory and destinations are explicit", () => {
   expect(TOOL_ROUTES).toHaveLength(14);
-  expect(GENERAL_PUBLIC_ROUTES).toHaveLength(13);
+  expect(GENERAL_PUBLIC_ROUTES).toHaveLength(15);
   expect(DOWNLOAD_APP_ROUTES).toHaveLength(2);
   expect(WORK_APP_ROUTES).toHaveLength(8);
-  expect(HEADER_ROUTES).toHaveLength(39);
+  expect(HEADER_ROUTES).toHaveLength(41);
   expect(new Set(HEADER_ROUTES).size).toBe(HEADER_ROUTES.length);
   expect(COMMON_NAV_DESTINATIONS).toHaveLength(19);
   expect(new Set(COMMON_NAV_DESTINATIONS).size).toBe(COMMON_NAV_DESTINATIONS.length);
@@ -479,6 +485,17 @@ test.describe("authenticated header state", () => {
       await expect(account).toHaveAttribute("href", "/#settings");
       await expect(header.locator('.ui-site-actions a[href="/?login=1"]')).toHaveCount(0);
       await expect(header.locator(".ui-site-actions [data-ui-start-action]")).toBeHidden();
+
+      await page.setViewportSize({ width: 390, height: 844 });
+      await header.locator("[data-ui-mobile-trigger]").click();
+      const mobileAccount = header.locator("#uiMobilePanel [data-ui-auth-action]");
+      await expect(mobileAccount, `${route} mobile account action`).toBeVisible();
+      await expect(mobileAccount).toHaveText("세션사용자 님");
+      await expect(mobileAccount).toHaveAttribute("href", "/#settings");
+      await expect(header.locator("#uiMobilePanel [data-ui-mobile-logout]")).toBeVisible();
+      await expect(header.locator("#uiMobilePanel [data-ui-mobile-admin]")).toBeHidden();
+      const overflow = await horizontalOverflowReport(page);
+      expect(overflow.documentWidth, `${route} authenticated mobile overflow`).toBeLessThanOrEqual(overflow.viewportWidth + 1);
     });
   }
 });
@@ -512,8 +529,8 @@ test("representative mega menu groups switch in place and restore focus on close
 
   await productTrigger.click();
   await expect(productTrigger).toHaveAttribute("aria-expanded", "true");
-  const outsideY = await header.evaluate((element) =>
-    Math.min(window.innerHeight - 8, Math.round(element.getBoundingClientRect().bottom + 240)),
+  const outsideY = await panel.evaluate((element) =>
+    Math.min(window.innerHeight - 8, Math.ceil(element.getBoundingClientRect().bottom) + 8),
   );
   await page.mouse.click(8, outsideY);
   await expect(panel).toHaveAttribute("aria-hidden", "true");

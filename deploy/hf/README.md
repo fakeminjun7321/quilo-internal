@@ -14,8 +14,16 @@ short_description: DeepL식 PDF 문서 번역 (그림·레이아웃 유지, 텍�
 그림·표·레이아웃을 최대한 보존하며 **텍스트를 한국어로** 바꾼 PDF를 돌려줍니다.
 수식 많은 논문·스캔본은 자동으로 재조판/OCR 처리합니다. 빠른 번역은 추출 텍스트를,
 재조판·OCR은 PDF 또는 페이지 이미지를 번역 제공자 및 설정된 OCR 제공자에 전송할 수 있습니다.
+재조판 출력 엔진은 기본 Tectonic과 선택형 LibreOffice Writer를 지원합니다. LibreOffice
+경로도 검증된 번역을 먼저 Tectonic 중간 PDF로 만든 뒤 Writer용 DOCX로 재조판하며,
+Writer 변환이나 최종 품질검사가 실패하면 다른 렌더러로 조용히 강등하지 않습니다.
+따라서 Tectonic 설치 또는 실행 확인이 실패하면 Docker 빌드도 실패하도록 구성됩니다.
 
 접근은 **초대코드**(`TRANSLATE_ACCESS_CODES`)로 제한됩니다.
+
+LibreOffice 실행 파일은 이미지에 포함되지만 렌더러는 운영 플래그
+`PDF_TRANSLATE_LIBREOFFICE_ENABLED=1`이 있어야 노출됩니다. reflow 전용 최종 검증이
+배포되기 전에는 이 플래그를 설정하지 않습니다.
 
 ## 필요한 Secrets (Space → Settings → Variables and secrets)
 

@@ -164,6 +164,135 @@ def make_structural_table_pdf(path: Path) -> None:
     c.save()
 
 
+def make_formula_header_collision_table_pdf(path: Path) -> None:
+    """Booktabs table whose adjacent formula headers share one source block.
+
+    This mirrors scientific publishers which paint the two visual headings as one
+    display-math stream.  MuPDF's whitespace table inference may still expose a
+    narrower synthetic cell ending before the source block, so repainting that cell
+    would leave the source block's trailing glyphs over the generated overlay.
+    """
+    c = canvas.Canvas(str(path), pagesize=letter, invariant=1)
+    c.setTitle("Formula header ownership fixture")
+    c.setSubject("Natural table labels translate while formula headings stay original")
+    c.setStrokeColor(colors.HexColor("#334155"))
+    c.setLineWidth(0.8)
+    for yy in (680, 650, 520):
+        c.line(50, yy, 300, yy)
+
+    c.setFillColor(colors.black)
+    c.setFont(FIXTURES.FONT_REGULAR, 10)
+    c.drawString(60, 660, "Date range")
+    # These calls intentionally share the same baseline / font so ReportLab emits
+    # one logical source block even though the visible table has two formula cells.
+    c.drawString(149, 660, "E = mc2")
+    c.drawString(220, 660, "TT − UTC")
+    for yy, date, atomic, terrestrial in (
+        (630, "1972-01-01", "10 s", "42.184 s"),
+        (605, "1972-07-01", "11 s", "43.184 s"),
+        (580, "1973-01-01", "12 s", "44.184 s"),
+        (555, "1974-01-01", "13 s", "45.184 s"),
+    ):
+        c.drawString(60, yy, date)
+        c.drawString(149, yy, atomic)
+        c.drawString(220, yy, terrestrial)
+    c.showPage()
+    c.save()
+
+
+def make_long_definition_table_pdf(path: Path) -> None:
+    """Strong grid whose ordinary source rows contain long natural-language cells."""
+    c = canvas.Canvas(str(path), pagesize=letter, invariant=1)
+    c.setTitle("Long definition table ownership fixture")
+    x = (50, 145, 215, 560)
+    y = (680, 650, 620, 590)
+    c.setStrokeColor(colors.HexColor("#334155"))
+    c.setLineWidth(0.8)
+    for yy in y:
+        c.line(x[0], yy, x[-1], yy)
+    for xx in x:
+        c.line(xx, y[-1], xx, y[0])
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica-Bold", 8.5)
+    for xx, value in zip(x, ("Quantity", "Unit", "Definition")):
+        c.drawString(xx + 4, 660, value)
+    c.setFont("Helvetica", 8.0)
+    rows = (
+        (
+            "Mass",
+            "Kilogram",
+            "Equal to the mass of the international prototype of the kilogram.",
+        ),
+        (
+            "Time",
+            "Second",
+            "The duration of radiation periods corresponding to a caesium transition.",
+        ),
+    )
+    for baseline, row in zip((630, 600), rows):
+        for xx, value in zip(x, row):
+            c.drawString(xx + 4, baseline, value)
+    c.showPage()
+    c.save()
+
+
+def make_running_rule_and_figure_frame_prose_pdf(path: Path) -> None:
+    """Book prose between a running rule and a nearby illustration frame.
+
+    The two long horizontal edges are intentionally close enough to satisfy the
+    coarse booktabs grouping heuristic.  Justified-looking word starts must not
+    turn the intervening prose into a synthetic text-strategy table.
+    """
+    c = canvas.Canvas(str(path), pagesize=letter)
+    c.setTitle("Running rule and figure frame prose regression")
+    c.setStrokeColor(colors.HexColor("#475569"))
+    c.setLineWidth(0.8)
+    c.line(50, 732, 560, 732)
+    # Three sides mirror a clipped textbook illustration frame.  Its upper edge
+    # is 132 points below the running rule in PDF top-origin coordinates.
+    c.line(150, 600, 500, 600)
+    c.line(150, 600, 150, 320)
+    c.line(500, 600, 500, 320)
+
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica-Bold", 13)
+    c.drawString(150, 710, "Preface to the Test Edition")
+    text = c.beginText(150, 686)
+    text.setFont("Helvetica", 9)
+    text.setLeading(13)
+    for line in (
+        "As the title suggests this book explains fundamental ideas for readers",
+        "who need accurate but approachable mathematical descriptions of space.",
+        "The chapter on the solar system is divided into several useful sections.",
+        "Individual objects are discussed carefully as new observations accumulate.",
+        "These revisions preserve the original figures and improve the explanations.",
+        "Several other chapters contain smaller corrections for advanced students.",
+    ):
+        text.textLine(line)
+    c.drawText(text)
+    c.showPage()
+
+    # Page 2 has no rules at all.  Compact, evenly aligned prose must still stay
+    # prose instead of becoming a borderless table via the text strategy.
+    c.setFillColor(colors.black)
+    c.setFont("Helvetica-Bold", 13)
+    c.drawString(72, 720, "A Ruleless Prose Section")
+    text = c.beginText(72, 694)
+    text.setFont("Helvetica", 9)
+    text.setLeading(13)
+    for line in (
+        "Astronomical observations often require patient calibration and review.",
+        "Careful readers compare each measurement with the surrounding evidence.",
+        "A consistent explanation remains more important than visual coincidence.",
+        "Ordinary sentences can share word positions without forming table columns.",
+        "The translation engine must preserve these paragraphs as coherent prose.",
+    ):
+        text.textLine(line)
+    c.drawText(text)
+    c.showPage()
+    c.save()
+
+
 class TableCellTranslationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tempdir = tempfile.TemporaryDirectory(prefix="quilo-pdf-table-test-")
@@ -290,6 +419,19 @@ class TableCellTranslationTests(unittest.TestCase):
         )
         self.assertFalse(table_blocks(extracted))
 
+    def test_running_rule_and_figure_frame_do_not_turn_book_prose_into_cells(self):
+        source = self.root / "running-rule-figure-frame.pdf"
+        make_running_rule_and_figure_frame_prose_pdf(source)
+
+        extracted = run_translator("extract", source)
+        self.assertFalse(table_blocks(extracted))
+        prose = " ".join(block["text"] for block in extracted["blocks"])
+        self.assertIn("Preface to the Test Edition", prose)
+        self.assertIn("The chapter on the solar system", prose)
+        self.assertIn("Individual objects are discussed carefully", prose)
+        self.assertIn("A Ruleless Prose Section", prose)
+        self.assertIn("Ordinary sentences can share word positions", prose)
+
     def test_table_page_with_unprovable_interleave_fails_closed(self):
         source = self.root / "fixture02.pdf"
         unsafe = self.root / "fixture02-unsafe-stream.pdf"
@@ -330,6 +472,84 @@ class TableCellTranslationTests(unittest.TestCase):
         self.assertNotEqual(completed.returncode, 0, completed.stdout)
         self.assertIn("table translation reading-order interleave", completed.stderr)
         self.assertFalse(output.exists())
+
+    def test_formula_only_table_header_has_one_source_owner(self):
+        source = self.root / "formula-header-ownership.pdf"
+        output = self.root / "formula-header-ownership-ko.pdf"
+        FIXTURES.register_fonts()
+        make_formula_header_collision_table_pdf(source)
+
+        extracted = run_translator("extract", source)
+        cells = table_blocks(extracted)
+        self.assertEqual(
+            [(block["id"], block["text"]) for block in cells],
+            [("__pdf_table_cell__:p0001:t000:r000:c000", "Date range")],
+        )
+        self.assertFalse(
+            any("TT" in block["text"] or "UTC" in block["text"] for block in cells)
+        )
+
+        translations = {
+            str(block["id"]): (
+                "날짜 범위" if block["text"] == "Date range" else block["text"]
+            )
+            for block in extracted["blocks"]
+        }
+        stats = run_translator(
+            "render", source, output, FONT, payload={"translations": translations}
+        )
+        self.assertTrue(stats["ok"], stats)
+        self.assertEqual(stats["failed"], 0)
+        self.assertEqual(stats["overflow"], 0)
+
+        output_text = "\n".join(
+            page.extract_text() or "" for page in PdfReader(output).pages
+        )
+        self.assertIn("날짜 범위", output_text)
+        self.assertNotIn("Date range", output_text)
+        self.assertIn("E = mc2", output_text)
+        self.assertIn("TT − UTC", output_text)
+
+        # The complete shared formula stream is byte-for-byte visually identical;
+        # only the independently owned natural-language cell is repainted.
+        formula_band = fitz.Rect(145, 118, 300, 139)
+        self.assertEqual(
+            rendered_clip(output, 0, formula_band),
+            rendered_clip(source, 0, formula_band),
+        )
+        for token in ("1972-01-01", "10", "42.184", "1974-01-01", "45.184"):
+            self.assertEqual(word_rects(output, token), word_rects(source, token), token)
+        for y in (112.0, 142.0, 272.0):
+            strip = fitz.Rect(49, y - 0.6, 301, y + 0.6)
+            self.assertEqual(
+                rendered_clip(output, 0, strip), rendered_clip(source, 0, strip)
+            )
+
+    def test_long_definition_grid_uses_only_synthetic_cell_owners(self):
+        source = self.root / "long-definition-table.pdf"
+        make_long_definition_table_pdf(source)
+
+        extracted = run_translator("extract", source)
+        cells = table_blocks(extracted)
+        cell_texts = {block["text"] for block in cells}
+        self.assertIn("Kilogram", cell_texts)
+        self.assertIn(
+            "Equal to the mass of the international prototype of the kilogram.",
+            cell_texts,
+        )
+        ordinary_texts = [
+            block["text"]
+            for block in extracted["blocks"]
+            if not str(block["id"]).startswith("__pdf_table_cell__:")
+        ]
+        self.assertFalse(
+            any("international prototype" in text for text in ordinary_texts),
+            ordinary_texts,
+        )
+        self.assertFalse(
+            any("caesium transition" in text for text in ordinary_texts),
+            ordinary_texts,
+        )
 
     def test_merged_multiline_booktabs_borderless_and_narrow_cells(self):
         source = self.root / "structural-tables.pdf"

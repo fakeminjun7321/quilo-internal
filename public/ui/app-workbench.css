@@ -237,3 +237,79 @@
   .app-shell--study .study-workbench { grid-template-columns: 320px minmax(0, 1fr); }
   .app-shell--create .gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+@media (max-width: 760px) {
+  .landing-shell,
+  .epwrap,
+  .container { width: calc(100% - 32px); }
+
+  .app-shell--study .study-top,
+  .app-shell--create .launch {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .app-shell--study .study-workbench,
+  .app-shell--exam-prep .ct {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-shell--study .study-controls,
+  .app-shell--exam-prep .ct-list {
+    border-right: 0;
+    border-bottom: 1px solid var(--app-line);
+  }
+
+  .app-shell--study .study-controls,
+  .app-shell--study .study-output,
+  .app-shell--exam-prep .ct-detail {
+    padding: 16px;
+  }
+
+  .app-shell--study .study-actions,
+  .app-shell--create .myrow {
+    flex-wrap: wrap;
+  }
+
+  .app-shell--editor .qt-body {
+    grid-template-columns: 48px minmax(0, 1fr);
+  }
+
+  .app-shell--editor .ide-side {
+    display: none;
+  }
+
+  .app-shell--editor .ide-panel {
+    height: 160px;
+  }
+
+  .app-shell--editor .ide-statusbar {
+    overflow-x: auto;
+  }
+
+  .app-shell--create .launch {
+    gap: 12px;
+    padding: 18px;
+  }
+
+  .app-shell--create .gallery {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-shell--create #cmtModal > .card {
+    width: min(600px, calc(100vw - 32px));
+  }
+
+  .app-shell--exam-prep .eptabs {
+    overflow-x: auto;
+  }
+
+  .app-shell--exam-prep .eptabs button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .app-shell--exam-prep .ct-list {
+    max-height: 280px;
+  }
+}

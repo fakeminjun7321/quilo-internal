@@ -9478,6 +9478,11 @@ registerAppDownloadRoutes(app);
 let classbotAppPromise = null;
 function getClassbotApp() {
   if (!classbotAppPromise) {
+    const isolatedStaging = process.env.QUILO_STAGING === "1";
+    const stagingClassbotSecret = (label) => crypto
+      .createHmac("sha256", SESSION_SECRET)
+      .update(`quilo-staging-classbot:${label}`)
+      .digest("hex");
     classbotAppPromise = Promise.all([
       import("./apps/classbot/server/app.js"),
       import("./apps/classbot/server/config.js"),
@@ -9490,6 +9495,16 @@ function getClassbotApp() {
           CLASSBOT_SESSION_SECRET: process.env.CLASSBOT_SESSION_SECRET || SESSION_SECRET,
           SUPABASE_SERVICE_ROLE_KEY:
             process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || "",
+          ...(isolatedStaging ? {
+            NODE_ENV: "staging",
+            RENDER: "false",
+            CLASSBOT_STORAGE: "memory",
+            CLASSBOT_ALLOWED_ORIGIN: process.env.RENDER_EXTERNAL_URL || "",
+            CLASSBOT_ADMIN_PASSWORD: process.env.CLASSBOT_ADMIN_PASSWORD || stagingClassbotSecret("admin"),
+            CLASSBOT_CRON_SECRET: process.env.CLASSBOT_CRON_SECRET || stagingClassbotSecret("cron"),
+            CLASSBOT_KAKAO_SKILL_SECRET:
+              process.env.CLASSBOT_KAKAO_SKILL_SECRET || stagingClassbotSecret("kakao"),
+          } : {}),
         }),
       }))
       .catch((error) => {

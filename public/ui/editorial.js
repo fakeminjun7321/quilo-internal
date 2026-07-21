@@ -843,6 +843,7 @@
       const media = document.createElement("a");
       media.className = "ed-featured__media";
       media.href = articleHref(post);
+      media.setAttribute("aria-label", `${post.title} 읽기`);
       if (post.coverUrl) {
         const image = document.createElement("img");
         image.src = safeUrl(post.coverUrl, { image: true });
@@ -1393,7 +1394,8 @@
       list.replaceChildren(emptyState("자료를 불러오지 못했습니다", "잠시 후 다시 시도해 주세요."));
       count.textContent = "자료 목록을 확인할 수 없습니다.";
     }
-    await loadRequests();
+    if (session || canManage) await loadRequests();
+    else renderRequests();
   }
 
   function requestStatusLabel(status) {

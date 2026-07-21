@@ -551,7 +551,7 @@ test("router blocks cross-account draft edits and attachment downloads", async (
   assert.equal((await edit.json()).code, "EDITORIAL_FORBIDDEN");
 });
 
-test("router factory validates dependencies and returns structured storage-unavailable errors", async (t) => {
+test("router factory keeps public editorial reads available without storage and structures protected errors", async (t) => {
   assert.throws(() => createEditorialRouter({}), /requireAuth/);
 
   const oldUrl = process.env.SUPABASE_URL;
@@ -582,7 +582,21 @@ test("router factory validates dependencies and returns structured storage-unava
   t.after(() => server.close());
 
   const base = `http://127.0.0.1:${server.address().port}`;
-  const unavailable = await fetch(`${base}/api/editorial/posts`);
+  const posts = await fetch(`${base}/api/editorial/posts`);
+  assert.equal(posts.status, 200);
+  assert.deepEqual(await posts.json(), { posts: [] });
+
+  const taxonomies = await fetch(`${base}/api/editorial/taxonomies`);
+  assert.equal(taxonomies.status, 200);
+  assert.deepEqual(await taxonomies.json(), {
+    taxonomies: [],
+    groups: {
+      developer: { categories: [], topics: [] },
+      resource: { categories: [], topics: [] },
+    },
+  });
+
+  const unavailable = await fetch(`${base}/api/editorial/profiles/00000000-0000-4000-8000-000000000000`);
   assert.equal(unavailable.status, 503);
   assert.deepEqual(await unavailable.json(), {
     error: "편집 콘텐츠 저장소가 설정되지 않았습니다.",

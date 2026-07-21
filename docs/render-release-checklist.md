@@ -21,6 +21,12 @@
 - `ADMIN_NAME`
 - `ADMIN_PASSWORD`
 
+`ADMIN_NAME`은 로그인 아이디(username)로 먼저 조회한다. 기존 관리자 비밀번호를
+Render의 `ADMIN_PASSWORD`로 복구해야 할 때만 `ADMIN_SYNC_PASSWORD=1`을 일시적으로
+설정하고, 로그인 성공을 확인한 즉시 제거한다. 같은 아이디의 일반 사용자를 승격하는
+복구는 `ADMIN_ALLOW_EXISTING_PROMOTION=1`도 함께 설정해야 하며 두 플래그 모두 상시
+활성화하지 않는다.
+
 `SESSION_SECRET`은 32자 이상인 별도 랜덤 값이어야 한다. 운영 서버는 누락되거나
 짧으면 시작을 거부하며, 공개 URL 같은 값에서 세션 키를 파생하지 않는다.
 운영 서버는 Supabase 설정이 없을 때도 시작을 거부한다. 정식 서비스에서는

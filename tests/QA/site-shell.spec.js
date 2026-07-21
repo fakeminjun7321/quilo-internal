@@ -276,9 +276,11 @@ test("every public pricing navigation points to the visible pricing page", () =>
 test("every catalog feature exposes a real destination and an explicit audience", () => {
   expect(FEATURES.length).toBeGreaterThan(30);
   for (const feature of FEATURES) {
-    expect(["public", "member", "pro", "max"], `${feature.id} audience`).toContain(feature.audience);
+    expect(["public", "member", "pro", "max", "admin"], `${feature.id} audience`).toContain(feature.audience);
     expect(["active", "pro", "max", "paused", "beta"], `${feature.id} status`).toContain(feature.status);
     const pathname = new URL(feature.path, "http://quilo.local").pathname;
+    // "/schedule/"은 정적 파일이 아니라 server.js의 app.use("/schedule", …) 라우트가 서빙한다.
+    if (pathname === "/schedule/") continue;
     const target = pathname === "/"
       ? path.join(PUBLIC_DIR, "index.html")
       : path.join(PUBLIC_DIR, pathname.replace(/^\/+/, ""));

@@ -1,3 +1,11 @@
-pymupdf>=1.26.0
-fonttools>=4.55,<5
-lxml>=4.9,<7
+# Runtime wheels are restricted to the Linux amd64/arm64 artifacts used by the
+# pinned Node Bookworm image. Update versions and hashes together.
+pymupdf==1.28.0 \
+    --hash=sha256:44f0973f5e5edbaec95bc34b64e71d1959d4ee90b1328de1b4f4f5b4fa78673f \
+    --hash=sha256:47a5c29ed4eb0744de9c4e37bb49b1259b18d4d75fcc8a7c130f7c9fa15956f6
+fonttools==4.63.0 \
+    --hash=sha256:d76ac49f929aecaf82d83250b8347e099d7aecba0f4726c1d9b6df3b8bb5fe18 \
+    --hash=sha256:2c14b4fd138c4bafcca294765c547914e1aa431ae1ca94ab99d8db08c958bd3b
+lxml==6.1.1 \
+    --hash=sha256:18b73c339ae29b90fd2d06e58ebd555a751bde9cd6bbd36cc0281b9a2c94e9d8 \
+    --hash=sha256:3a12689be69a28ddaa0ab99a5a1137da2afd5f8f16df7b5680b66f616d3eda1d

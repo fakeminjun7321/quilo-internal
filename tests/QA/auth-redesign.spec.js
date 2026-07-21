@@ -136,11 +136,12 @@ test("auth theme controls use icon-only moon/sun states and keep accessible labe
   }
 });
 
-test("login preserves payload, remembered username, password toggle, and OAuth redirect", async ({ page }) => {
+test("login clears the previous principal, preserves payload, toggles password, and redirects to OAuth", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("lastUsername", "saved-user"));
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`${baseUrl}/login.html`);
-  await expect(page.locator("#li_username")).toHaveValue("saved-user");
+  await expect(page.locator("#li_username")).toHaveValue("");
+  await page.locator("#li_username").fill("qa-user");
   await page.locator("#li_password").fill("secret-pass");
   await page.locator('[data-password-toggle="li_password"]').click();
   await expect(page.locator("#li_password")).toHaveAttribute("type", "text");
@@ -150,7 +151,7 @@ test("login preserves payload, remembered username, password toggle, and OAuth r
   expect(apiRequests).toEqual([
     {
       pathname: "/api/login",
-      body: { username: "saved-user", password: "secret-pass", remember: true },
+      body: { username: "qa-user", password: "secret-pass", remember: true },
     },
   ]);
 });

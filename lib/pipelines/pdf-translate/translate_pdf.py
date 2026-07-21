@@ -4371,6 +4371,219 @@ def _split_safe_residual_text_stream(data):
         return None
 
 
+def _page_standalone_text_groups(doc, page):
+    """Return source text objects with inherited fill/text state made local."""
+    groups = []
+    for xref in page.get_contents():
+        raw_data = bytes(doc.xref_stream(int(xref)) or b"")
+        tokens = _pdf_content_tokens(raw_data)
+        fill = b"0 g"
+        text_state = dict(_PDF_TEXT_STATE_DEFAULTS)
+        graphics_stack = []
+        operands = []
+        index = 0
+        while index < len(tokens):
+            kind, raw, start, end = tokens[index]
+            if kind == "operand":
+                operands.append(raw)
+                index += 1
+                continue
+            if raw == b"BT":
+                if operands:
+                    raise RuntimeError("source text object has pending operands")
+                stop = index + 1
+                while stop < len(tokens):
+                    skind, sraw, _ss, _se = tokens[stop]
+                    if skind == "operator" and sraw == b"ET":
+                        break
+                    if skind == "operator" and sraw == b"BT":
+                        raise RuntimeError("nested source PDF text object")
+                    stop += 1
+                if stop >= len(tokens):
+                    raise RuntimeError("unterminated source PDF text object")
+                anchor, next_state = _analyse_safe_text_object(
+                    tokens[index + 1 : stop], text_state
+                )
+                state_parts = [
+                    text_state[operator] + b" " + operator
+                    for operator in (b"Tc", b"Tw", b"Tz", b"TL", b"Tr", b"Ts")
+                ]
+                inherited_font = text_state.get(b"Tf")
+                if inherited_font is not None:
+                    state_parts.append(
+                        inherited_font[0] + b" " + inherited_font[1] + b" Tf"
+                    )
+                body = bytes(raw_data[end : tokens[stop][2]])
+                standalone = (
+                    b"q\n"
+                    + fill
+                    + b"\nBT\n"
+                    + b" ".join(state_parts)
+                    + b"\n"
+                    + body
+                    + b"\nET\nQ\n"
+                )
+                groups.append(
+                    {
+                        "xref": int(xref),
+                        "start": start,
+                        "end": tokens[stop][3],
+                        "data": standalone,
+                        "anchor_pdf": anchor,
+                    }
+                )
+                text_state = next_state
+                index = stop + 1
+                continue
+            if raw == b"q":
+                graphics_stack.append((fill, dict(text_state)))
+            elif raw == b"Q":
+                if graphics_stack:
+                    fill, text_state = graphics_stack.pop()
+            elif raw in {b"g", b"rg", b"k"}:
+                count = {b"g": 1, b"rg": 3, b"k": 4}[raw]
+                if len(operands) >= count:
+                    values = operands[-count:]
+                    if all(_PDF_NUMBER_TOKEN.match(value) for value in values):
+                        fill = b" ".join(values + [raw])
+            operands = []
+            index += 1
+    return groups
+
+
+def _preserved_span_descriptor(span):
+    origin = span.get("origin") or (0.0, 0.0)
+    return {
+        "font": str(span.get("font", "")),
+        "origin_y": float(origin[1]),
+        "bbox": fitz.Rect(span.get("bbox", (0, 0, 0, 0))),
+    }
+
+
+def _trace_matches_preserved_span(trace, descriptors):
+    font_name = str(trace.get("font", ""))
+    chars = list(trace.get("chars") or [])
+    if not chars:
+        return False
+    for descriptor in descriptors:
+        if descriptor["font"] != font_name:
+            continue
+        source_bbox = fitz.Rect(descriptor["bbox"])
+        for char in chars:
+            try:
+                origin = char[2]
+                x, y = float(origin[0]), float(origin[1])
+            except Exception:
+                continue
+            if (
+                abs(y - descriptor["origin_y"]) <= 0.8
+                and source_bbox.x0 - 1.0 <= x <= source_bbox.x1 + 1.0
+            ):
+                return True
+    return False
+
+
+def _preserved_text_group_indexes(page, groups, descriptors):
+    if not descriptors:
+        return []
+    text_log = [
+        sequence
+        for sequence, (kind, _bbox) in enumerate(page.get_bboxlog())
+        if "text" in str(kind)
+    ]
+    if len(groups) != len(text_log):
+        raise RuntimeError(
+            "cannot prove preserved formula text-object mapping: "
+            f"content_groups={len(groups)}, bboxlog_text={len(text_log)}"
+        )
+    traces_by_sequence = defaultdict(list)
+    for trace in page.get_texttrace():
+        traces_by_sequence[int(trace.get("seqno", -1))].append(trace)
+    selected = []
+    for group_index, sequence in enumerate(text_log):
+        if any(
+            _trace_matches_preserved_span(trace, descriptors)
+            for trace in traces_by_sequence.get(sequence, [])
+        ):
+            selected.append(group_index)
+    return selected
+
+
+def _clip_preserved_text_group(page, data, descriptors, halo=0.75):
+    inverse = ~page.transformation_matrix
+    paths = []
+    for descriptor in descriptors:
+        rect = fitz.Rect(descriptor["bbox"])
+        padding = max(0.0, float(halo))
+        rect = fitz.Rect(
+            rect.x0 - padding,
+            rect.y0 - padding,
+            rect.x1 + padding,
+            rect.y1 + padding,
+        ) & page.rect
+        if rect.is_empty or rect.width <= 0 or rect.height <= 0:
+            continue
+        pdf_rect = rect * inverse
+        values = (pdf_rect.x0, pdf_rect.y0, pdf_rect.width, pdf_rect.height)
+        if not all(math.isfinite(value) for value in values):
+            raise RuntimeError("preserved formula clip has non-finite geometry")
+        paths.append(
+            "{:.6f} {:.6f} {:.6f} {:.6f} re".format(*values).encode("ascii")
+        )
+    if not paths:
+        raise RuntimeError("preserved formula clip has no valid geometry")
+    return b"q\n" + b"\n".join(paths) + b"\nW n\n" + bytes(data) + b"\nQ\n"
+
+
+def _build_preserved_text_overlay(doc, page, descriptors):
+    """Snapshot exact source formula operators for post-redaction replay."""
+    groups = _page_standalone_text_groups(doc, page)
+    selected = _preserved_text_group_indexes(page, groups, descriptors)
+    if not selected:
+        raise RuntimeError("preserved formula has no source text-object mapping")
+    text_log = [
+        sequence
+        for sequence, (kind, _bbox) in enumerate(page.get_bboxlog())
+        if "text" in str(kind)
+    ]
+    traces_by_sequence = defaultdict(list)
+    for trace in page.get_texttrace():
+        traces_by_sequence[int(trace.get("seqno", -1))].append(trace)
+    chunks = []
+    for index in selected:
+        matching = [
+            descriptor
+            for descriptor in descriptors
+            if any(
+                _trace_matches_preserved_span(trace, [descriptor])
+                for trace in traces_by_sequence.get(text_log[index], [])
+            )
+        ]
+        if not matching:
+            raise RuntimeError("preserved formula text object lost its descriptor binding")
+        chunks.append(_clip_preserved_text_group(page, groups[index]["data"], matching))
+        chunks.append(b"\n")
+    return b"".join(chunks), len(selected)
+
+
+def _append_page_content_stream(doc, page, data):
+    if not data:
+        return page
+    stream_xref = doc.get_new_xref()
+    doc.update_object(stream_xref, "<<>>")
+    doc.update_stream(stream_xref, bytes(data))
+    page_xref = doc.page_xref(page.number)
+    value_type, raw_value = doc.xref_get_key(page_xref, "Contents")
+    if value_type == "array":
+        updated = raw_value[:-1] + f" {stream_xref} 0 R]"
+    elif value_type == "xref":
+        updated = f"[{raw_value} {stream_xref} 0 R]"
+    else:
+        updated = f"[{stream_xref} 0 R]"
+    doc.xref_set_key(page_xref, "Contents", updated)
+    return doc.reload_page(page)
+
+
 def _new_pdf_stream(doc, data):
     xref = doc.get_new_xref()
     doc.update_object(xref, "<<>>")

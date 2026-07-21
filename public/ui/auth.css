@@ -132,7 +132,7 @@ html[data-theme="dark"] .context-theme__icon--sun { display: inline; }
   text-transform: uppercase;
 }
 
-.auth-context h1 {
+.auth-context__title {
   max-width: 500px;
   margin: 28px 0 18px;
   color: #fff;
@@ -552,7 +552,7 @@ html[data-theme="dark"] .context-theme__icon--sun { display: inline; }
     padding: 38px 24px;
   }
 
-  .auth-context h1 {
+  .auth-context__title {
     margin-top: 18px;
     font-size: 34px;
   }

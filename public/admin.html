@@ -23,6 +23,7 @@
     </script>
     <link rel="stylesheet" href="/ui/foundation.css" />
     <link rel="stylesheet" href="/ui/admin.css" />
+    <script src="/ui/isolated-js-runner.js"></script>
   </head>
   <body class="operations-shell">
     <header class="operations-commandbar">
@@ -66,6 +67,7 @@
     </nav>
 
     <main class="operations-main">
+      <h1 id="adminMainTitle" class="ui-sr-only">Quilo 관리자 — 운영 개요</h1>
       <div class="operations-heading">
         <p id="adminPageDescription">사용자 계정과 서비스 권한, 생성 기록을 안전하게 관리합니다.</p>
         <p id="rateInfo" class="operations-rate">환율 로딩 중...</p>
@@ -82,7 +84,7 @@
       <div id="aaMsgs" class="admin-ai-messages"></div>
       <div id="aaChips" class="admin-ai-chips"></div>
       <div class="admin-ai-compose">
-        <textarea id="aaInput" class="admin-ai-input" rows="1" placeholder="예: 최근 로그인 실패가 많은 IP 있어?"></textarea>
+        <textarea id="aaInput" class="admin-ai-input" rows="1" aria-label="AI 관리자 보조 질문" placeholder="예: 최근 로그인 실패가 많은 IP 있어?"></textarea>
         <button id="aaSend" class="secondary compact">전송</button>
       </div>
     </section>
@@ -505,7 +507,7 @@
       <h2>코드 에디터</h2>
       <p class="hint">브라우저 안에서 동작하는 VS Code 스타일 편집기 — 여러 파일·탭, 자동완성(Ctrl/⌘+Space), 찾기(Ctrl/⌘+F), 주석 토글(Ctrl/⌘+/), 저장(Ctrl/⌘+S), 멀티커서. JS는 ▶ 실행, HTML은 미리보기.</p>
       <p class="editor-launch-row">
-        <a href="/editor.html" target="_blank" class="editor-launch-link">⛶ 전체 화면 Quilo Code 열기 (Pro)</a>
+        <a href="/editor.html" target="_blank" rel="noopener" class="editor-launch-link">⛶ 전체 화면 Quilo Code 열기 (Pro)</a>
         <span class="hint editor-launch-hint">— 더 큰 화면 · 오른쪽 Agent 패널 · 로컬 폴더 열기. 아래는 미니 임베드입니다.</span>
       </p>
       <div id="ide" class="ide">
@@ -522,7 +524,7 @@
           <div class="ide-main">
             <div class="ide-tabs" id="ideTabs"></div>
             <div class="ide-editorwrap">
-              <div class="ide-editorhost"><textarea id="ceArea"></textarea></div>
+              <div class="ide-editorhost"><textarea id="ceArea" aria-label="코드 편집기"></textarea></div>
               <div class="ide-minimap" id="ideMinimap"><pre id="ideMiniCode"></pre><div class="ide-mini-view" id="ideMiniView"></div></div>
             </div>
             <input type="file" id="ideFileInput" multiple hidden />
@@ -543,7 +545,7 @@
                     <span id="caHint" class="editor-ai-hint"></span>
                   </div>
                   <div class="ide-ai-row">
-                    <textarea id="caPrompt" rows="2" placeholder="예: 이 코드 버그 고쳐줘 · 함수 짜줘 · 설명해줘   (Ctrl/⌘+Enter)"></textarea>
+                    <textarea id="caPrompt" rows="2" aria-label="코드 AI 도우미 요청" placeholder="예: 이 코드 버그 고쳐줘 · 함수 짜줘 · 설명해줘   (Ctrl/⌘+Enter)"></textarea>
                   </div>
                   <div class="ide-ai-row">
                     <label><input type="checkbox" id="caUseCode" checked /> 현재 파일 첨부</label>
@@ -601,6 +603,7 @@
 
     <script src="/version-footer.js"></script>
     <script src="/theme.js"></script>
+    <script src="/ui/shell.js"></script>
     <script>
       let krwPerUsd = 1400;
 
@@ -617,6 +620,7 @@
 
       document.getElementById("logout").addEventListener("click", async (e) => {
         e.preventDefault();
+        window.QuiloStoragePrivacy?.signOut?.();
         await fetch("/api/logout", { method: "POST" });
         location.href = "/login.html";
       });
@@ -1954,6 +1958,8 @@
           });
           var pageTitle = document.getElementById("adminPageTitle");
           if (pageTitle) pageTitle.textContent = titles[tab] || "운영 개요";
+          var mainTitle = document.getElementById("adminMainTitle");
+          if (mainTitle) mainTitle.textContent = "Quilo 관리자 — " + (titles[tab] || "운영 개요");
           var descriptions = {
             ai: "운영 지표를 조회하고 승인이 필요한 작업을 검토합니다.",
             users: "사용자 목록과 계정 인스펙터를 한 화면에서 관리합니다.",
@@ -2541,45 +2547,13 @@
             var code = cm.getValue();
             var l = currentLang();
             if (l === "javascript") {
-              var logs = [];
-              var orig = console.log;
-              console.log = function () {
-                logs.push(
-                  Array.prototype.map
-                    .call(arguments, function (a) {
-                      try {
-                        return typeof a === "object"
-                          ? JSON.stringify(a)
-                          : String(a);
-                      } catch (e) {
-                        return String(a);
-                      }
-                    })
-                    .join(" ")
-                );
-                try {
-                  orig.apply(console, arguments);
-                } catch (e) {}
-              };
-              var result;
-              try {
-                result = (0, eval)(code);
-              } catch (e) {
-                logs.push("⚠ " + (e && e.message ? e.message : e));
-              }
-              console.log = orig;
-              if (result !== undefined) {
-                try {
-                  logs.push(
-                    "→ " +
-                      (typeof result === "object"
-                        ? JSON.stringify(result)
-                        : String(result))
-                  );
-                } catch (e) {}
-              }
-              out.textContent = logs.join("\n") || "(출력 없음)";
+              out.textContent = "실행 중…";
               showPanel("output");
+              window.QuiloIsolatedJsRunner.run(code).then(function (execution) {
+                out.textContent = window.QuiloIsolatedJsRunner.formatOutput(execution);
+              }).catch(function (error) {
+                out.textContent = "⚠ " + (error && error.message ? error.message : error);
+              });
             } else if (l === "htmlmixed") {
               frame.srcdoc = code;
               showPanel("preview");

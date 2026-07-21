@@ -68,7 +68,10 @@
       <h1>What can Quilo help you create?</h1>
       <p class="sr-only">Quilo는 보고서, 리서치, 데이터 분석, 코딩과 파일 작업을 연결하는 AI 작업 공간입니다.</p>
       <div id="quiloBotMount" class="quilo-bot-mount" aria-live="polite">
-        <div class="quilo-bot-fallback">실험 자료를 분석해줘</div>
+        <a class="quilo-bot-fallback" href="/?report=phys-result">
+          <span>실험 자료를 분석해줘</span>
+          <strong>물리 결과보고서 시작</strong>
+        </a>
       </div>
     </section>
 
@@ -269,6 +272,12 @@
           <span class="rt-title">양식 메이커 <span class="beta-pill">Pro</span></span>
           <span class="rt-tag">말로 양식 생성 · 종이 사진 → 한글 복원</span>
         </label>
+        <label id="rtPrintPdfRestore" hidden>
+          <input type="radio" name="reportType" value="print-pdf-restore" />
+          <span class="rt-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 3h11l5 5v13H4z"/><path d="M14 3v6h6M8 13h8M8 17h5"/><path d="m18.5 12 .5 1.2 1.2.5-1.2.5-.5 1.2-.5-1.2-1.2-.5 1.2-.5z"/></svg></span>
+          <span class="rt-title">프린트 PDF 복원 <span class="beta-pill">Admin Beta</span></span>
+          <span class="rt-tag">종이 사진 → 의미가 보존된 벡터 PDF</span>
+        </label>
         <label id="rtEngExam" hidden>
           <input type="radio" name="reportType" value="eng-exam-prep" />
           <span class="rt-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v14H4z"/><path d="M4 9h16"/><path d="M8 13h8M8 16h5"/></svg></span>
@@ -375,7 +384,7 @@
           </label>
           <span data-memo-guide="crUserNotes"></span><details class="memo-guide memo-guide-space"><summary class="memo-guide-summary">메모 작성 가이드 · 좋은 예시 + AI에게 줄 기본 프롬프트</summary><div class="memo-guide-body"><b>좋은 AI 참고 메모 예시</b><div class="memo-guide-example">- 3회 측정 중 2회차는 종말점을 지나쳐 제외(평균에서 빼줘)
 - 적정 종말점 색이 옅어 판단이 어려웠음 → 오차 원인으로
-- 결론에서 이론 당량점과 비교 그래프를 강조</div><b class="memo-guide-prompt-title">AI(ChatGPT·Claude 등)에게 물어볼 때 복사해 쓰는 기본 프롬프트</b><textarea class="memo-guide-prompt" readonly rows="6">나는 Quilo로 화학 '결과보고서'를 만들려고 해. 사전보고서·측정 데이터·실험 사진을 올리면 AI가 표·그래프·계산·분석·결론을 써 줘. 'AI 참고 메모'는 데이터만 보고는 모를 맥락(제외한 시행과 이유, 관찰한 특이사항, 실제 겪은 오차 원인, 강조할 분석)을 알려주는 글이야. 내 상황을 듣고 부족하면 2~3개만 물어본 뒤 메모 초안을 불릿으로 만들어줘. 데이터에 없는 수치는 지어내지 마.
+- 결론에서 이론 당량점과 비교 그래프를 강조</div><b class="memo-guide-prompt-title">AI(ChatGPT·Claude 등)에게 물어볼 때 복사해 쓰는 기본 프롬프트</b><textarea class="memo-guide-prompt" readonly rows="6" aria-label="화학 결과보고서 AI 메모 작성용 프롬프트">나는 Quilo로 화학 '결과보고서'를 만들려고 해. 사전보고서·측정 데이터·실험 사진을 올리면 AI가 표·그래프·계산·분석·결론을 써 줘. 'AI 참고 메모'는 데이터만 보고는 모를 맥락(제외한 시행과 이유, 관찰한 특이사항, 실제 겪은 오차 원인, 강조할 분석)을 알려주는 글이야. 내 상황을 듣고 부족하면 2~3개만 물어본 뒤 메모 초안을 불릿으로 만들어줘. 데이터에 없는 수치는 지어내지 마.
 
 [내 상황]: </textarea><button class="memo-guide-copy" type="button" data-action="copy-memo-guide">프롬프트 복사</button></div></details>
           <small>.md/.txt 파일로 길게 작성한 메모도 함께 첨부할 수 있습니다. <a href="/examples.html#notes" target="_blank" rel="noopener">작성 가이드·예시 보기 →</a></small>
@@ -448,7 +457,7 @@
             <label><input type="radio" name="crModel" value="claude-sonnet-5" /> Sonnet 5 · 빠름 · 2크레딧</label>
             <label><input type="radio" name="crModel" value="gpt-5.5" /> GPT-5.5 · 정밀 · 4크레딧</label>
             <label><input type="radio" name="crModel" value="gpt-5.4" /> GPT-5.4 · 중간 · 1크레딧</label>
-            <label><input type="radio" name="crModel" value="gpt-5.4-mini" /> GPT-5.4 mini · 가벼움 · 무료</label>
+            <label><input type="radio" name="crModel" value="gpt-5.4-mini" /> GPT-5.4 mini · 하루 5건 무료 · 이후 1크레딧</label>
             <label class="beta-model" hidden><input type="radio" name="crModel" value="gemini-3.1-pro" /> Gemini 3.1 Pro · 정밀 · 2크레딧</label>
             <label class="beta-model" hidden><input type="radio" name="crModel" value="gemini-2.5-flash" /> Gemini 2.5 Flash · 가성비 · 1크레딧</label>
           </div>
@@ -558,7 +567,7 @@
           </label>
           <span data-memo-guide="prUserNotes"></span><details class="memo-guide memo-guide-space"><summary class="memo-guide-summary">메모 작성 가이드 · 좋은 예시 + AI에게 줄 기본 프롬프트</summary><div class="memo-guide-body"><b>좋은 AI 참고 메모 예시</b><div class="memo-guide-example">- 예비 시행 1회는 포토게이트 흔들림으로 제외
 - 트랙 이음새를 지날 때 카트가 살짝 튀는 현상 관찰 → 오차로
-- Part II 운동량 보존 분석을 특히 자세히</div><b class="memo-guide-prompt-title">AI(ChatGPT·Claude 등)에게 물어볼 때 복사해 쓰는 기본 프롬프트</b><textarea class="memo-guide-prompt" readonly rows="6">나는 Quilo로 물리 '결과보고서'를 만들려고 해. PASCO .cap/엑셀/사진을 올리면 AI가 Part별 표·그래프·분석·결론(오차분석 포함)을 써 줘. 'AI 참고 메모'는 데이터만 보고는 모를 맥락(제외한 시행과 이유, 장치 세팅 특이점, 실제 겪은 문제와 해결, 강조할 Part)을 알려주는 글이야. 내 상황을 듣고 부족하면 2~3개만 물어본 뒤 메모 초안을 불릿으로 만들어줘. 데이터에 없는 값은 지어내지 마.
+- Part II 운동량 보존 분석을 특히 자세히</div><b class="memo-guide-prompt-title">AI(ChatGPT·Claude 등)에게 물어볼 때 복사해 쓰는 기본 프롬프트</b><textarea class="memo-guide-prompt" readonly rows="6" aria-label="물리 결과보고서 AI 메모 작성용 프롬프트">나는 Quilo로 물리 '결과보고서'를 만들려고 해. PASCO .cap/엑셀/사진을 올리면 AI가 Part별 표·그래프·분석·결론(오차분석 포함)을 써 줘. 'AI 참고 메모'는 데이터만 보고는 모를 맥락(제외한 시행과 이유, 장치 세팅 특이점, 실제 겪은 문제와 해결, 강조할 Part)을 알려주는 글이야. 내 상황을 듣고 부족하면 2~3개만 물어본 뒤 메모 초안을 불릿으로 만들어줘. 데이터에 없는 값은 지어내지 마.
 
 [내 상황]: </textarea><button class="memo-guide-copy" type="button" data-action="copy-memo-guide">프롬프트 복사</button></div></details>
           <small>.md/.txt 파일로 길게 작성한 메모도 함께 첨부할 수 있습니다. <a href="/examples.html#notes" target="_blank" rel="noopener">작성 가이드·예시 보기 →</a></small>
@@ -621,7 +630,7 @@
             <label><input type="radio" name="prModel" value="claude-sonnet-5" /> Sonnet 5 · 빠름 · 2크레딧</label>
             <label><input type="radio" name="prModel" value="gpt-5.5" /> GPT-5.5 · 정밀 · 4크레딧</label>
             <label><input type="radio" name="prModel" value="gpt-5.4" /> GPT-5.4 · 중간 · 1크레딧</label>
-            <label><input type="radio" name="prModel" value="gpt-5.4-mini" /> GPT-5.4 mini · 가벼움 · 무료</label>
+            <label><input type="radio" name="prModel" value="gpt-5.4-mini" /> GPT-5.4 mini · 하루 5건 무료 · 이후 1크레딧</label>
             <label class="beta-model" hidden><input type="radio" name="prModel" value="gemini-3.1-pro" /> Gemini 3.1 Pro · 정밀 · 2크레딧</label>
             <label class="beta-model" hidden><input type="radio" name="prModel" value="gemini-2.5-flash" /> Gemini 2.5 Flash · 가성비 · 1크레딧</label>
           </div>
@@ -723,7 +732,7 @@
           <span data-memo-guide="piUserNotes"></span><details class="memo-guide memo-guide-space"><summary class="memo-guide-summary">메모 작성 가이드 · 좋은 예시 + AI에게 줄 기본 프롬프트</summary><div class="memo-guide-body"><b>좋은 AI 참고 메모 예시</b><div class="memo-guide-example">- 처음 생각(오개념): 모든 역학 문제는 힘 분해(F=ma)로 풀 수 있다
 - 막힌 지점: 진자·구속 조건에서 힘 분해가 너무 복잡해짐
 - 해결: 라그랑지안(L=T−V)과 오일러-라그랑주 방정식으로 전환
-- 노트의 이중진자 풀이를 세부 분석에 꼭 넣어줘</div><b class="memo-guide-prompt-title">AI(ChatGPT·Claude 등)에게 물어볼 때 복사해 쓰는 기본 프롬프트</b><textarea class="memo-guide-prompt" readonly rows="6">나는 Quilo로 '물리 수행평가(일반물리학 탐구 및 사고 과정 성찰 보고서)'를 만들려고 해. 주제와 필기노트를 올리면 AI가 '초기 오개념 → 오류 인식 → 정확한 개념으로 해결 → 성찰' 흐름으로 써 줘. 이 보고서는 처음에 무엇을 어떻게 잘못 생각했는지(오개념)가 핵심 평가 요소야. 'AI 참고 메모'에 그 오개념·깨달은 계기·노트에서 꼭 포함할 유도/문제를 알려주고 싶어. 내 상황을 듣고 특히 '처음에 어떻게 생각했었는지'를 물어본 뒤 메모 초안을 불릿으로 만들어줘. 없는 사실은 지어내지 마.
+- 노트의 이중진자 풀이를 세부 분석에 꼭 넣어줘</div><b class="memo-guide-prompt-title">AI(ChatGPT·Claude 등)에게 물어볼 때 복사해 쓰는 기본 프롬프트</b><textarea class="memo-guide-prompt" readonly rows="6" aria-label="물리 수행평가 AI 메모 작성용 프롬프트">나는 Quilo로 '물리 수행평가(일반물리학 탐구 및 사고 과정 성찰 보고서)'를 만들려고 해. 주제와 필기노트를 올리면 AI가 '초기 오개념 → 오류 인식 → 정확한 개념으로 해결 → 성찰' 흐름으로 써 줘. 이 보고서는 처음에 무엇을 어떻게 잘못 생각했는지(오개념)가 핵심 평가 요소야. 'AI 참고 메모'에 그 오개념·깨달은 계기·노트에서 꼭 포함할 유도/문제를 알려주고 싶어. 내 상황을 듣고 특히 '처음에 어떻게 생각했었는지'를 물어본 뒤 메모 초안을 불릿으로 만들어줘. 없는 사실은 지어내지 마.
 
 [내 상황]: </textarea><button class="memo-guide-copy" type="button" data-action="copy-memo-guide">프롬프트 복사</button></div></details>
           <button type="button" class="qc-memo-btn qc-assist-trigger" data-action="open-quilo-assist" data-assist-kind="memo" data-target="piUserNotes">AI로 메모 작성 도움받기</button>
@@ -861,7 +870,7 @@
           <span data-memo-guide="miUserNotes"></span><details class="memo-guide memo-guide-space"><summary class="memo-guide-summary">메모 작성 가이드 · 좋은 예시 + AI에게 줄 기본 프롬프트</summary><div class="memo-guide-body"><b>좋은 AI 참고 메모 예시</b><div class="memo-guide-example">- 동기: 계산기·AI가 초월함수를 어떻게 계산하는지 궁금했음
 - 테일러 급수 유도(라그랑주 나머지항 포함)를 Ⅲ.이론적 배경에 풀버전으로 넣어줘
 - Ⅳ에서 x=1의 sin 부분합 N=1~6을 계산해 오차 표랑 수렴 그래프로 보여줘
-- 창의적 시도: 같은 방법으로 e^x도 계산해서 두 급수의 수렴 속도를 비교</div><b class="memo-guide-prompt-title">AI(ChatGPT·Claude 등)에게 물어볼 때 복사해 쓰는 기본 프롬프트</b><textarea class="memo-guide-prompt" readonly rows="6">나는 Quilo로 '수학 수행평가(수학Ⅲ 급수 탐구보고서)'를 만들려고 해. 급수 관련 주제 한 줄만 입력하면 AI가 Ⅰ.탐구 주제 / Ⅱ.탐구 목적 / Ⅲ.선행연구 분석 / Ⅳ.탐구 과정 및 탐구 내용 / Ⅴ.결과 정리 및 반성 양식으로 써 줘. 평가 기준이 '수학적 타당성·창의성 40점 / 논리성·자료(표·그래프) 활용 40점 / 발표 20점'이고 만점이 목표라, 메모가 방향을 정하는 유일한 수단이야. 'AI 참고 메모'에 탐구 동기, 꼭 다루고 싶은 개념/유도, 넣고 싶은 표·그래프, 창의적 연결 아이디어를 정리하고 싶어. 내 상황을 듣고 메모 초안을 불릿으로 만들어줘. 없는 수치는 지어내지 마.
+- 창의적 시도: 같은 방법으로 e^x도 계산해서 두 급수의 수렴 속도를 비교</div><b class="memo-guide-prompt-title">AI(ChatGPT·Claude 등)에게 물어볼 때 복사해 쓰는 기본 프롬프트</b><textarea class="memo-guide-prompt" readonly rows="6" aria-label="수학 수행평가 AI 메모 작성용 프롬프트">나는 Quilo로 '수학 수행평가(수학Ⅲ 급수 탐구보고서)'를 만들려고 해. 급수 관련 주제 한 줄만 입력하면 AI가 Ⅰ.탐구 주제 / Ⅱ.탐구 목적 / Ⅲ.선행연구 분석 / Ⅳ.탐구 과정 및 탐구 내용 / Ⅴ.결과 정리 및 반성 양식으로 써 줘. 평가 기준이 '수학적 타당성·창의성 40점 / 논리성·자료(표·그래프) 활용 40점 / 발표 20점'이고 만점이 목표라, 메모가 방향을 정하는 유일한 수단이야. 'AI 참고 메모'에 탐구 동기, 꼭 다루고 싶은 개념/유도, 넣고 싶은 표·그래프, 창의적 연결 아이디어를 정리하고 싶어. 내 상황을 듣고 메모 초안을 불릿으로 만들어줘. 없는 수치는 지어내지 마.
 
 [내 상황]: </textarea><button class="memo-guide-copy" type="button" data-action="copy-memo-guide">프롬프트 복사</button></div></details>
           <button type="button" class="qc-memo-btn qc-assist-trigger" data-action="open-quilo-assist" data-assist-kind="memo" data-target="miUserNotes">AI로 메모 작성 도움받기</button>
@@ -1145,7 +1154,7 @@
             <label><input type="radio" name="rlModel" value="claude-opus-4-8" /> Opus 4.8 · 정밀 · 4크레딧</label>
             <label><input type="radio" name="rlModel" value="gpt-5.5" /> GPT-5.5 · 4크레딧</label>
             <label><input type="radio" name="rlModel" value="gpt-5.4" /> GPT-5.4 · 1크레딧</label>
-            <label><input type="radio" name="rlModel" value="gpt-5.4-mini" /> GPT-5.4 mini · 무료</label>
+            <label><input type="radio" name="rlModel" value="gpt-5.4-mini" /> GPT-5.4 mini · 하루 5건 무료 · 이후 1크레딧</label>
           </div>
           <small>표시 크레딧은 <b>예약(최대)</b>이며, 실제로는 생성에 <b>실제 사용한 토큰만큼만</b> 차감되고 차액은 환불됩니다(보통 표시보다 적음). 독서록은 책 내용을 정확히 써야 해 <b>Claude</b>를 권합니다(GPT는 책 내용을 일반론으로 뭉뚱그려 부정확).</small>
         </div>
@@ -1556,6 +1565,95 @@
       </div>
     </form>
 
+    <!-- ── 프린트 PDF 복원 (관리자 베타) ─────────────────────────────── -->
+    <form id="printPdfRestoreForm" class="report-form" data-report-form="print-pdf-restore" hidden>
+      <div class="notice">
+        <strong>관리자 베타 · 고정밀 프린트 복원</strong><br>
+        종이 프린트 사진의 <strong>원문·수식·표·레이아웃을 편집 가능한 벡터 요소로 재구성</strong>합니다.
+        그래프와 도해는 겉모양을 베끼는 방식이 아니라 <strong>맥락·축·라벨·물리적 의미를 분석해 다시 그리며</strong>,
+        완성 PDF는 300dpi로 렌더링해 OCR 대조와 시각 QA를 거칩니다.
+        <br><small>흐릿하거나 가려져 확인할 수 없는 글자·수치·관계는 임의로 만들지 않습니다. 픽셀 복사나 단순 사진 PDF가 아닙니다.</small>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head">
+          <span class="form-section-title">복원할 프린트 사진</span>
+        </div>
+        <div class="field">
+          <span class="field-label">페이지 사진 <span class="req">*</span> (여러 장 가능)</span>
+          <div class="dropzone">
+            <input id="pprPhotos" name="photos" type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" multiple required aria-label="복원할 프린트 페이지 사진" />
+            <span class="dropzone-icon" aria-hidden="true"></span>
+            <span class="dropzone-title">원본 해상도의 페이지 사진을 순서대로 선택</span>
+            <span class="dropzone-sub">PNG · JPG · WebP · 여러 장 지원</span>
+            <span class="dropzone-file" data-dz-file></span>
+          </div>
+          <small>사진은 브라우저에서 축소하지 않고 원본 품질로 업로드합니다. 가능한 한 페이지 전체와 네 모서리가 보이게 촬영하세요.</small>
+        </div>
+        <div class="field">
+          <span class="field-label">원본·참고 PDF (선택)</span>
+          <div class="dropzone">
+            <input id="pprReference" name="reference" type="file" accept="application/pdf,.pdf" aria-label="원본 또는 양식 참고 PDF" />
+            <span class="dropzone-icon" aria-hidden="true"></span>
+            <span class="dropzone-title">같은 교재·학교 양식 PDF가 있으면 첨부</span>
+            <span class="dropzone-sub">글꼴·여백·머리말·워터마크·공통 도형 기준으로만 사용</span>
+            <span class="dropzone-file" data-dz-file></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head">
+          <span class="form-section-title">페이지 순서 · 복원 지시</span>
+        </div>
+        <div class="field">
+          <label><span class="field-label">페이지 순서 (선택)</span>
+            <input id="pprPageOrder" name="pageOrder" type="text" maxlength="1000" inputmode="numeric" placeholder="예: 사진 3장을 3→1→2 순서로 만들려면 3,1,2 / 비우면 선택한 파일 순서" />
+          </label>
+          <small>파일명과 다른 순서가 필요할 때만 사진 번호를 쉼표로 적으세요. 모든 사진 번호를 중복 없이 한 번씩 포함해야 합니다.</small>
+        </div>
+        <div class="field">
+          <label><span class="field-label">복원 지시 (선택)</span>
+            <textarea id="pprInstructions" name="promptText" rows="4" maxlength="12000" placeholder="예: 원래 학교 프린트의 2단 구성과 글꼴 비율 유지. 배경 로고 복원. 산란 도해는 충돌 매개변수 b가 입사 점근선에 수직이고 산란각 θ가 두 점근선 사이 각이 되도록 의미를 확인해 다시 그릴 것."></textarea>
+          </label>
+          <small>문서의 과목·단원·그림이 설명하는 관계를 알려주면 도해의 의미 검증에 사용합니다.</small>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <div class="form-section-head">
+          <span class="form-section-title">복원 원칙</span>
+        </div>
+        <div class="vocab-option-grid">
+          <label class="check-row">
+            <input id="pprPreserveLayout" type="checkbox" checked />
+            <span><strong>원본 양식·레이아웃 유지</strong><small>페이지 크기, 여백, 단·표·머리말, 글자 크기 비율과 배경 요소를 원본에 맞춥니다.</small></span>
+          </label>
+          <label class="check-row">
+            <input id="pprSemanticRedraw" name="semanticRedraw" type="checkbox" value="true" checked />
+            <span><strong>그래프·도해 의미 기반 재작성</strong><small>축·단위·라벨·방향·수학적/물리적 관계를 먼저 분석한 뒤 벡터로 다시 그립니다.</small></span>
+          </label>
+        </div>
+        <div class="notice space-top-3">
+          <strong>출력: PDF 고정</strong> · 벡터 텍스트·수식·표·도형 · 300dpi OCR 대조 · 페이지별 시각 QA
+          <input type="hidden" name="format" value="pdf" />
+          <input type="hidden" name="qualityGate" value="ocr-visual-300dpi" />
+        </div>
+      </div>
+
+      <div class="policy-check">
+        <label>
+          <input type="checkbox" required />
+          본인이 복원·이용할 권한을 가진 문서만 업로드하며, 결과 PDF의 원문·수식·수치·도해 의미를 직접 최종 확인합니다.
+        </label>
+      </div>
+
+      <div class="form-actions">
+        <span class="hint">고정밀 분석·재조판·300dpi 검증 때문에 페이지 수에 따라 수 분 이상 걸릴 수 있습니다.</span>
+        <button type="submit" id="pprBtn">벡터 PDF 복원</button>
+      </div>
+    </form>
+
     <!-- ── 영어 시험대비 3종 (베타) ─────────────────────────────────────── -->
     <form id="engExamForm" class="report-form" data-report-form="eng-exam-prep" hidden>
       <div class="notice">
@@ -1912,7 +2010,7 @@
             <label><input type="radio" name="frModel" value="claude-sonnet-5" /> Sonnet 5 · 빠름 · 2크레딧</label>
             <label><input type="radio" name="frModel" value="gpt-5.5" /> GPT-5.5 · 정밀 · 4크레딧</label>
             <label><input type="radio" name="frModel" value="gpt-5.4" /> GPT-5.4 · 중간 · 1크레딧</label>
-            <label><input type="radio" name="frModel" value="gpt-5.4-mini" /> GPT-5.4 mini · 가벼움 · 무료</label>
+            <label><input type="radio" name="frModel" value="gpt-5.4-mini" /> GPT-5.4 mini · 하루 5건 무료 · 이후 1크레딧</label>
             <label class="beta-model" hidden><input type="radio" name="frModel" value="gemini-3.1-pro" /> Gemini 3.1 Pro · 정밀 · 2크레딧</label>
             <label class="beta-model" hidden><input type="radio" name="frModel" value="gemini-2.5-flash" /> Gemini 2.5 Flash · 가성비 · 1크레딧</label>
           </div>
@@ -1975,7 +2073,7 @@
           </label>
           <span data-memo-guide="preUserNotes"></span><details class="memo-guide memo-guide-space"><summary class="memo-guide-summary">메모 작성 가이드 · 좋은 예시 + AI에게 줄 기본 프롬프트</summary><div class="memo-guide-body"><b>좋은 AI 참고 메모 예시</b><div class="memo-guide-example">- 이론적 배경에 완충용액의 헨더슨-하셀바흐 식 유도를 포함해줘
 - 매뉴얼 3단계 적정 중 우리는 2회 반복으로 진행
-- pH 미터 보정 과정을 실험 과정에 추가</div><b class="memo-guide-prompt-title">AI(ChatGPT·Claude 등)에게 물어볼 때 복사해 쓰는 기본 프롬프트</b><textarea class="memo-guide-prompt" readonly rows="6">나는 Quilo(실험 보고서 생성 사이트)로 화학 '사전보고서'를 만들려고 해. 매뉴얼 PDF를 올리면 AI가 이론·기구·시약·실험과정을 써 줘. 거기에 함께 줄 'AI 참고 메모'를 쓰고 싶어 — 매뉴얼만 보고는 모를 맥락(꼭 넣을 이론 전개, 강조점, 절차 변경, 원하는 깊이)을 짧게 알려주는 글이야. 내 상황을 듣고 부족하면 2~3개만 물어본 뒤 'AI 참고 메모' 초안을 불릿으로 만들어줘. 없는 내용은 지어내지 마.
+- pH 미터 보정 과정을 실험 과정에 추가</div><b class="memo-guide-prompt-title">AI(ChatGPT·Claude 등)에게 물어볼 때 복사해 쓰는 기본 프롬프트</b><textarea class="memo-guide-prompt" readonly rows="6" aria-label="화학 사전보고서 AI 메모 작성용 프롬프트">나는 Quilo(실험 보고서 생성 사이트)로 화학 '사전보고서'를 만들려고 해. 매뉴얼 PDF를 올리면 AI가 이론·기구·시약·실험과정을 써 줘. 거기에 함께 줄 'AI 참고 메모'를 쓰고 싶어 — 매뉴얼만 보고는 모를 맥락(꼭 넣을 이론 전개, 강조점, 절차 변경, 원하는 깊이)을 짧게 알려주는 글이야. 내 상황을 듣고 부족하면 2~3개만 물어본 뒤 'AI 참고 메모' 초안을 불릿으로 만들어줘. 없는 내용은 지어내지 마.
 
 [내 상황]: </textarea><button class="memo-guide-copy" type="button" data-action="copy-memo-guide">프롬프트 복사</button></div></details>
           <small>.md/.txt 파일로 길게 작성한 메모도 함께 첨부할 수 있습니다. <a href="/examples.html#notes" target="_blank" rel="noopener">작성 가이드·예시 보기 →</a></small>
@@ -2068,7 +2166,7 @@
             <label><input type="radio" name="model" value="claude-sonnet-5" /> Sonnet 5 · 빠름 · 2크레딧</label>
             <label><input type="radio" name="model" value="gpt-5.5" /> GPT-5.5 · 정밀 · 4크레딧</label>
             <label><input type="radio" name="model" value="gpt-5.4" /> GPT-5.4 · 중간 · 1크레딧</label>
-            <label><input type="radio" name="model" value="gpt-5.4-mini" /> GPT-5.4 mini · 가벼움 · 무료</label>
+            <label><input type="radio" name="model" value="gpt-5.4-mini" /> GPT-5.4 mini · 하루 5건 무료 · 이후 1크레딧</label>
             <label class="beta-model" hidden><input type="radio" name="model" value="gemini-3.1-pro" /> Gemini 3.1 Pro · 정밀 · 2크레딧</label>
             <label class="beta-model" hidden><input type="radio" name="model" value="gemini-2.5-flash" /> Gemini 2.5 Flash · 가성비 · 1크레딧</label>
           </div>
@@ -2437,7 +2535,7 @@
                   <option value="claude-sonnet-5">Sonnet 5 (빠름 · 2크레딧)</option>
                   <option value="gpt-5.5">GPT-5.5 (정밀 · 4크레딧)</option>
                   <option value="gpt-5.4">GPT-5.4 (중간 · 1크레딧)</option>
-                  <option value="gpt-5.4-mini">GPT-5.4 mini (빠름 · 무료)</option>
+                  <option value="gpt-5.4-mini">GPT-5.4 mini (하루 5건 무료 · 이후 1크레딧)</option>
                 </select>
               </label>
               <label>기본 양식
@@ -2455,7 +2553,7 @@
                 <h3>내 기본 글 스타일</h3>
                 <p>문체의 특징만 저장합니다. 보고서 내용은 저장하거나 복사하지 않습니다.</p>
               </div>
-              <textarea id="settingsStyleNote" rows="4" maxlength="1500" placeholder="예: 직관을 먼저 설명하고, 수식은 단계별로 유도해 주세요."></textarea>
+              <textarea id="settingsStyleNote" rows="4" maxlength="1500" aria-label="내 기본 글 스타일" placeholder="예: 직관을 먼저 설명하고, 수식은 단계별로 유도해 주세요."></textarea>
               <div class="account-actions">
                 <button type="button" class="account-button" id="styleSaveBtn">저장</button>
                 <a class="account-help-link" href="/guide.html">글 스타일 작성 도움말</a>

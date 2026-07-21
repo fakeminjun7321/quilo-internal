@@ -78,9 +78,12 @@ function apiFixture(pathname) {
   const fixtures = {
     "/api/announcements": { announcements: [] },
     "/api/catalog": {
-      total: 1,
+      total: 2,
       categories: { reports: { title: "보고서", description: "보고서 생성 기능" } },
-      features: [{ id: "chem-pre", title: "화학 사전보고서", summary: "실험 매뉴얼에서 사전보고서 초안을 만듭니다.", category: "reports", path: "/?report=chem-pre", status: "active", execution: "remote", audience: "member", kind: "generator" }],
+      features: [
+        { id: "chem-pre", title: "화학 사전보고서", summary: "실험 매뉴얼에서 사전보고서 초안을 만듭니다.", category: "reports", path: "/?report=chem-pre", status: "active", execution: "remote", audience: "member", kind: "generator" },
+        { id: "paused-report", title: "준비 중 보고서", summary: "아직 사용할 수 없는 기능입니다.", category: "reports", path: "/?report=paused-report", status: "paused", execution: "paused", audience: "public", kind: "generator" },
+      ],
     },
     "/api/chat/status": { enabled: false, writeAssistEnabled: false },
     "/api/cloud/providers/status": { integrations: {} },
@@ -89,6 +92,7 @@ function apiFixture(pathname) {
     "/api/me/balance": { credits: 12, unlimited: false, isAdmin: false, modelCredits: {} },
     "/api/me/beta": { admin: false, tier: "free", features: [], blockedReportTypes: [] },
     "/api/me/files": { storage: true, files: [] },
+    "/api/openapi.json": { paths: { "/api/catalog": { get: {} }, "/api/v1/account": { get: {} }, "/api/v1/reports": { post: {} } } },
     "/api/subscriptions/me": { active: false, subscription: null },
     "/api/version": { app: "quilo", version: "1.0.0", releaseVersion: "1.0.23", shortCommit: "auth" },
     "/api/write-assist/models": { enabled: false, models: [] },
@@ -255,7 +259,7 @@ test("pending shell hides login copy until the account check resolves", async ({
   expect(network.calls.filter((call) => call.method !== "GET" && call.method !== "HEAD")).toEqual([]);
 });
 
-test("developer portal presents a focused navigation and responsive documentation flow", async ({ page }) => {
+test("developer portal presents a task-first responsive connection flow", async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("theme", "light"));
   const network = await installApi(page, {
     meStatus: 401,
@@ -265,14 +269,29 @@ test("developer portal presents a focused navigation and responsive documentatio
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${baseUrl}/developers.html`, { waitUntil: "networkidle" });
 
-  await expect(page.locator("#devHeroTitle")).toHaveText("Quilo를 연결하고,작업을 확장하세요.");
-  await expect(page.locator(".dev-route-strip a")).toHaveText([
-    /빠른 시작/, /API 문서/, /액세스 토큰/, /API 기록/,
+  await expect(page.locator("#devHeroTitle")).toHaveText("Quilo를 어디에 연결할까요?");
+  await expect(page.locator(".dev-path-toggle")).toHaveText([
+    /ChatGPT에서 보고서와 도구 사용/, /내 Mac의 Codex에서 파일 작업/, /내 서비스에 API 연결/,
   ]);
-  await expect(page.locator(".dev-sidebar")).toBeVisible();
   await expect(page.locator("#serviceStatus")).toHaveText("Quilo 1.0.23 운영 서버 정상");
   await expect(page.locator(".dev-endpoints > div")).toHaveCount(6);
+  await expect(page.locator("#apiReferenceSummary")).toHaveText("3개 주소 · 3개 작업");
+  await expect(page.locator("#scopeCount")).toHaveText("22개 권한");
   await expect(page.locator("#catalogBody .feature")).toHaveCount(1);
+
+  await expect(page.locator("#chatgptPanel")).toBeVisible();
+  await expect(page.locator("#codexPanel")).toBeHidden();
+  await page.locator('[data-connection="codex"] .dev-path-toggle').click();
+  await expect(page.locator("#chatgptPanel")).toBeHidden();
+  await expect(page.locator("#codexPanel")).toBeVisible();
+  await expect(page.locator('[data-connection="codex"] .dev-path-toggle')).toHaveAttribute("aria-expanded", "true");
+
+  await expect(page.locator("#scopeGrid input:checked")).toHaveCount(3);
+  await page.locator('[data-scope-preset="none"]').click();
+  await expect(page.locator("#scopeGrid input:checked")).toHaveCount(0);
+  await expect(page.locator("#scopeSelectionSummary")).toHaveText("선택된 권한이 없습니다.");
+  await page.locator('[data-scope-preset="connection"]').click();
+  await expect(page.locator("#scopeGrid input:checked")).toHaveCount(3);
 
   const developerMenu = page.locator("[data-ui-menu-trigger]", { hasText: "개발자" });
   await developerMenu.click();
@@ -286,18 +305,37 @@ test("developer portal presents a focused navigation and responsive documentatio
   await page.locator("#catalogSearch").fill("화학");
   await expect(page.locator("#catalogBody .feature strong")).toHaveText("화학 사전보고서");
   await page.locator("#catalogSearch").fill("없는 기능");
-  await expect(page.locator("#catalogBody")).toHaveText("검색 결과가 없습니다.");
+  await expect(page.locator("#catalogBody")).toHaveText("조건에 맞는 기능이 없습니다.");
   await page.locator("#catalogSearch").fill("");
+  await page.locator("#catalogAccess").selectOption("paused");
+  await expect(page.locator("#catalogBody .feature--paused")).toHaveCount(1);
+  await expect(page.locator("#catalogBody a.feature")).toHaveCount(0);
+  await page.locator("#catalogAccess").selectOption("connected");
 
   const desktopOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(desktopOverflow).toBeLessThanOrEqual(1);
   await page.screenshot({ path: "/tmp/quilo-developers-light-1440.png", fullPage: false });
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await expect(page.locator(".dev-sidebar")).toBeHidden();
+  await expect(page.locator(".dev-path-toggle").first()).toBeVisible();
   const mobileOverflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(mobileOverflow).toBeLessThanOrEqual(1);
   await page.screenshot({ path: "/tmp/quilo-developers-light-390.png", fullPage: false });
 
   expect(network.calls.filter((call) => call.method !== "GET" && call.method !== "HEAD")).toEqual([]);
+});
+
+test("token copy failure is handled without an unhandled rejection", async ({ page }) => {
+  await installApi(page, {
+    meStatus: 200,
+    meBody: { user: "세션사용자", username: "session-user", isAdmin: false, blockedReportTypes: [] },
+  });
+  await page.goto(`${baseUrl}/developers.html`, { waitUntil: "networkidle" });
+  await page.evaluate(() => {
+    document.getElementById("tokenSecret").hidden = false;
+    document.getElementById("tokenValue").textContent = "quilo_test_example";
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: () => Promise.reject(new Error("denied")) } });
+  });
+  await page.locator("#copyTokenBtn").click();
+  await expect(page.locator("#tokenMessage")).toContainText("자동 복사에 실패했습니다");
 });

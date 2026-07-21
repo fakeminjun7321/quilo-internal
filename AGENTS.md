@@ -7,15 +7,16 @@
 - 화학 사전보고서: `docs/chem-pre-pipeline.md`
 - 화학 결과보고서: `docs/chem-result-pipeline.md`
 - 물리 결과보고서: `docs/phys-result-pipeline.md`
+- 프린트 PDF 복원(관리자 베타): `docs/print-pdf-restore-pipeline.md`
 
 ## 범위
 
-- 대상 기능: 웹사이트의 `화학 사전보고서`, `화학 결과보고서`, `물리 결과보고서` 생성
-- 요청 타입: `type=chem-pre`, `type=chem-result`, `type=phys-result`
+- 대상 기능: 웹사이트의 `화학 사전보고서`, `화학 결과보고서`, `물리 결과보고서`, 관리자용 `프린트 PDF 복원` 생성
+- 요청 타입: `type=chem-pre`, `type=chem-result`, `type=phys-result`, `type=print-pdf-restore`
 - 엔드포인트: `POST /api/generate`
 - 서버 엔트리: `server.js`
-- 핵심 파이프라인: `lib/pipelines/chem-pre/`, `lib/pipelines/chem-result/`, `lib/pipelines/phys-result/`
-- 출력 형식: `.docx`, `.hwpx`
+- 핵심 파이프라인: `lib/pipelines/chem-pre/`, `lib/pipelines/chem-result/`, `lib/pipelines/phys-result/`, `lib/pipelines/print-pdf-restore/`
+- 출력 형식: `.docx`, `.hwpx`, 프린트 복원은 `.pdf` 고정
 - 현재 허용 모델: `Codex-opus-4-8`(기본, 4크레딧), `Codex-sonnet-5`(2크레딧). `chem-pre`/`chem-result`/`phys-result`는 GPT(`gpt-5.5` 4 / `gpt-5.4` 1 / `gpt-5.4-mini` 무료)도 선택 가능. 실제 차감 단가는 `lib/pricing.js`의 `MODEL_CREDITS` 기준.
 
 ## 핵심 파일

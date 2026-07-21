@@ -135,6 +135,7 @@ button[type="submit"]:hover { background: var(--ui-brand-hover); color: #fff; te
 .feature-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
 .feature-card { display: grid; gap: 10px; color: var(--ui-text); }
 .feature-card:hover { border-color: var(--ui-line-strong); text-decoration: none; }
+.feature-card h2,
 .feature-card h3 { margin: 0; font-size: 20px; }
 .feature-card p { margin: 0; color: var(--ui-muted); line-height: 1.7; }
 .feature-ico { display: grid; place-items: center; width: 46px; height: 46px; color: var(--ui-brand); background: var(--accent-soft); border-radius: 8px; }

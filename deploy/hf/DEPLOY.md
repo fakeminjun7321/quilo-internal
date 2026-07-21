@@ -39,3 +39,13 @@ HF 가 Dockerfile 로 빌드(첫 빌드 수 분) → 7860 포트로 구동. Spac
 - 무료 CPU Space: 2 vCPU·16GB RAM. 48시간 무접속 시 sleep(다음 접속 시 깨어남).
 - 재조판(Tectonic)은 첫 컴파일 때 TeX 패키지를 받아 캐시(첫 실행 느릴 수 있음).
 - 엔진(lib/pipelines/pdf-translate)은 메인 repo 와 동일 — 고치면 다시 build-staging→push.
+
+## 공급망 잠금 갱신
+
+- `Dockerfile`의 Node 태그와 digest는 한 쌍이다. Node 보안 업데이트 시 공식
+  `node:20-bookworm` manifest digest를 다시 확인하여 둘을 함께 갱신한다.
+- npm 의존성을 바꾸면 `deploy/hf/package.json`의 정확한 버전을 고친 뒤
+  `npm install --package-lock-only --ignore-scripts --prefix deploy/hf`로 lock을 갱신한다.
+- Python 의존성을 바꾸면 Linux amd64와 arm64 wheel의 SHA-256을 모두
+  `deploy/hf/requirements.txt`에 갱신한다. sdist 설치는 허용하지 않는다.
+- 배포 전 `node --test tests/supply-chain-safety.test.js`를 통과시킨다.

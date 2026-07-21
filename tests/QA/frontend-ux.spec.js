@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
+const { isolatedServerEnv } = require("./support/isolated-server-env");
 
 function loadPlaywrightTest() {
   try {
@@ -117,7 +118,7 @@ test.beforeAll(async () => {
   if (await serverIsUp()) return;
   serverProcess = spawn("node", ["server.js"], {
     cwd: process.cwd(),
-    env: { ...process.env, PORT: "3000" },
+    env: isolatedServerEnv({ PORT: "3000" }),
     stdio: "pipe",
   });
   await waitForServer();
@@ -236,6 +237,7 @@ test("authentication stays on landing until an explicit report opens the workspa
   await expect(page.locator("#accountSlot")).toHaveClass(/is-open/);
   await expect(page.locator("#acctDd")).toBeVisible();
   await expect(page.locator("#homeHero")).toBeVisible();
+  await expect(page.locator("#quiloBotMount .quilo-bot-fallback")).toHaveAttribute("href", "/?report=phys-result");
 
   await page.locator('[data-ui-menu-trigger="0"]').click();
   await page.locator('#uiSiteMega a[data-report="chem-pre"]').click();
@@ -375,21 +377,47 @@ test("report entry links bypass the removed intermediary and open the free repor
   await expect(page.locator('.ui-site-actions [data-ui-start-action]')).toBeHidden();
 });
 
-test("all thirteen report routes resolve to a continuous visible form contract", async ({ page }) => {
+test("home fallback remains actionable when the AI chat provider is unavailable", async ({ page }) => {
+  await mockLoggedInApis(page);
+  await page.goto(BASE_URL, { waitUntil: "networkidle" });
+
+  const fallback = page.locator("#quiloBotMount .quilo-bot-fallback");
+  await expect(fallback).toBeVisible();
+  await fallback.click();
+  await expect(page.locator("body")).toHaveAttribute("data-view", "workspace");
+  await expect(page.locator('input[name="reportType"][value="phys-result"]')).toBeChecked();
+  await expect(page.locator('#physResultForm[data-report-form="phys-result"]')).toBeVisible();
+});
+
+test("mobile report routes put the working form before the long status summary", async ({ page }) => {
+  await mockLoggedInApis(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${BASE_URL}/?report=chem-pre`, { waitUntil: "networkidle" });
+
+  await expect(page.locator("#form.active")).toBeVisible();
+  await expect(page.locator("#workspaceSummary")).toBeVisible();
+  const layout = await page.evaluate(() => {
+    const form = document.getElementById("form").getBoundingClientRect();
+    const summary = document.getElementById("workspaceSummary").getBoundingClientRect();
+    const workflow = document.getElementById("reportWorkflowNav").getBoundingClientRect();
+    return {
+      workflowBeforeForm: workflow.top < form.top,
+      formBeforeSummary: form.top < summary.top,
+      pageOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    };
+  });
+  expect(layout.workflowBeforeForm).toBe(true);
+  expect(layout.formBeforeSummary).toBe(true);
+  expect(layout.pageOverflow).toBe(0);
+});
+
+test("public report routes resolve to a continuous visible form contract", async ({ page }) => {
   await mockLoggedInApis(page);
   const cases = [
     ["chem-pre", "form"],
     ["chem-result", "chemResultForm"],
     ["phys-result", "physResultForm"],
-    ["phys-inquiry", "physInquiryForm"],
-    ["math-inquiry", "mathInquiryForm"],
     ["reading-log", "readingLogForm"],
-    ["problem-set", "problemSetForm"],
-    ["form-maker", "formMakerForm"],
-    ["eng-exam-prep", "engExamForm"],
-    ["korean-lit-exam", "koreanLitForm"],
-    ["cap-translate", "capTranslateForm"],
-    ["phys-mock-exam", "physMockForm"],
     ["free", "freeForm"],
   ];
   for (const [type, formId] of cases) {

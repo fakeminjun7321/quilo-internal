@@ -25,7 +25,15 @@
   function setFieldError(id, message) {
     const input = field(id);
     const error = document.querySelector(`[data-error-for="${id}"]`);
-    if (input) input.setAttribute("aria-invalid", message ? "true" : "false");
+    if (input) {
+      if (message) {
+        input.setAttribute("aria-invalid", "true");
+        if (error?.id) input.setAttribute("aria-errormessage", error.id);
+      } else {
+        input.removeAttribute("aria-invalid");
+        input.removeAttribute("aria-errormessage");
+      }
+    }
     if (error) error.textContent = message || "";
   }
 
@@ -198,17 +206,7 @@
   });
   field("studentEmailDomain")?.addEventListener("blur", normalizeDomain);
 
-  document.querySelector("[data-file-trigger]")?.addEventListener("click", (event) => {
-    event.stopPropagation();
-    fileInput.click();
-  });
-  dropzone.addEventListener("click", () => fileInput.click());
-  dropzone.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      fileInput.click();
-    }
-  });
+  document.querySelector("[data-file-trigger]")?.addEventListener("click", () => fileInput.click());
   ["dragenter", "dragover"].forEach((type) => {
     dropzone.addEventListener(type, (event) => {
       event.preventDefault();

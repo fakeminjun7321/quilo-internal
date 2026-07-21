@@ -1,5 +1,6 @@
 const path = require("path");
 const { spawn } = require("child_process");
+const { isolatedServerEnv } = require("./support/isolated-server-env");
 
 function loadPlaywrightTest() {
   try {
@@ -44,7 +45,7 @@ test.beforeAll(async () => {
   if (await serverIsUp()) return;
   serverProcess = spawn("node", ["server.js"], {
     cwd: process.cwd(),
-    env: { ...process.env, PORT: "3000" },
+    env: isolatedServerEnv({ PORT: "3000" }),
     stdio: "pipe",
   });
   await waitForServer();
@@ -54,36 +55,65 @@ test.afterAll(async () => {
   if (serverProcess) serverProcess.kill();
 });
 
-async function mockFrontendApis(page) {
+async function mockFrontendApis(page, options = {}) {
   let jobCounter = 0;
   const generationRequests = [];
+  const headRequests = [];
 
-  await page.addInitScript(() => {
+  await page.addInitScript(({ streamScenario }) => {
+    window.__qaStreamStats = { closed: 0, errors: 0, opens: 0 };
     class MockEventSource {
       constructor(url) {
         this.url = url;
         this.listeners = {};
+        if (streamScenario === "transient-done") {
+          setTimeout(() => this.emit("progress", JSON.stringify("업로드 확인")), 20);
+          setTimeout(() => this.emit("error"), 45);
+          setTimeout(() => this.emit("open"), 300);
+          setTimeout(() => this.emit("progress", JSON.stringify("문서 생성 재개")), 340);
+          setTimeout(() => this.emitDone(), 390);
+          return;
+        }
+        if (streamScenario === "disconnect-only") {
+          setTimeout(() => this.emit("progress", JSON.stringify("업로드 확인")), 20);
+          setTimeout(() => this.emit("error"), 45);
+          return;
+        }
+        if (streamScenario === "terminal-error") {
+          setTimeout(() => this.emit("progress", JSON.stringify("AI 분석 중")), 20);
+          setTimeout(() => this.emit("error", JSON.stringify("AI 처리 실패")), 45);
+          return;
+        }
+        if (streamScenario === "terminal-abort") {
+          setTimeout(() => this.emit("progress", JSON.stringify("AI 분석 중")), 20);
+          setTimeout(() => this.emit("error", JSON.stringify("사용자가 작업을 중지했습니다.")), 45);
+          return;
+        }
         setTimeout(() => this.emit("progress", JSON.stringify("업로드 확인")), 20);
         setTimeout(() => this.emit("progress", JSON.stringify("AI 분석 중")), 45);
         setTimeout(() => this.emit("progress", JSON.stringify("문서 생성 중")), 70);
-        setTimeout(() => {
-          const id = String(url).match(/\/api\/jobs\/([^/]+)\/stream/)?.[1] || "qa-job";
-          this.emit("done", JSON.stringify({ filename: `${id}.docx`, warnings: [] }));
-        }, 95);
+        setTimeout(() => this.emitDone(), 95);
       }
       addEventListener(type, callback) {
         (this.listeners[type] ||= []).push(callback);
       }
       close() {
+        if (!this.closed) window.__qaStreamStats.closed += 1;
         this.closed = true;
       }
       emit(type, data) {
         if (this.closed) return;
+        if (type === "error") window.__qaStreamStats.errors += 1;
+        if (type === "open") window.__qaStreamStats.opens += 1;
         for (const callback of this.listeners[type] || []) callback({ data });
+      }
+      emitDone() {
+        const id = String(this.url).match(/\/api\/jobs\/([^/]+)\/stream/)?.[1] || "qa-job";
+        this.emit("done", JSON.stringify({ filename: `${id}.docx`, warnings: [] }));
       }
     }
     window.EventSource = MockEventSource;
-  });
+  }, { streamScenario: options.streamScenario || "done" });
 
   await page.route("**/api/me", async (route) => {
     await route.fulfill({
@@ -148,7 +178,13 @@ async function mockFrontendApis(page) {
     });
   });
 
-  return { generationRequests };
+  await page.route("**/api/jobs/*/download", async (route) => {
+    if (route.request().method() !== "HEAD") return route.continue();
+    headRequests.push(route.request().url());
+    await route.fulfill({ status: options.headStatus || 409, body: "" });
+  });
+
+  return { generationRequests, headRequests };
 }
 
 async function chooseReport(page, type) {
@@ -189,6 +225,21 @@ async function confirmGeneration(page, summaryText) {
   await expect(page.locator("#statusTitle")).toHaveText("완료", { timeout: 7000 });
   await expect(page.locator('#progressSteps [data-progress-step="ready"]')).toHaveClass(/is-active/);
   await expect(page.locator("#resultArea a")).toHaveAttribute("href", /\/api\/jobs\/qa-\d+\/download/);
+}
+
+async function startChemPreGeneration(page) {
+  await page.goto(BASE_URL);
+  await chooseReport(page, "chem-pre");
+  await page.setInputFiles("#manual", {
+    name: "manual.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("%PDF-1.4\nqa\n%%EOF"),
+  });
+  await goFlowStep(page, "chem-pre", "generate");
+  await acceptPolicy(page, "chem-pre");
+  await page.locator('#form button[type="submit"]').click();
+  await expect(page.locator(".confirm-card")).toBeVisible();
+  await page.locator(".confirm-card button.primary").click();
 }
 
 test("mocked SSE report generation smoke: chem-pre, chem-result, phys-result", async ({ page }) => {
@@ -248,3 +299,47 @@ test("mocked SSE report generation smoke: chem-pre, chem-result, phys-result", a
   expect(generationRequests[2]).toContain('name="backgroundMode"');
   expect(generationRequests[2]).not.toContain('name="notifyEmail"');
 });
+
+test("a transient SSE disconnect with a running 409 job reconnects and reaches done", async ({ page }) => {
+  const { headRequests } = await mockFrontendApis(page, { streamScenario: "transient-done", headStatus: 409 });
+  await startChemPreGeneration(page);
+
+  await expect(page.locator("#statusTitle")).toContainText("연결 재시도 중");
+  await expect(page.locator("#stopBtn")).toBeVisible();
+  await expect(page.locator("#manual")).toBeDisabled();
+  await expect.poll(() => headRequests.length).toBe(1);
+  await expect(page.locator("#progress")).toContainText("서버에서 보고서를 계속 생성");
+  await expect(page.locator("#statusTitle")).toHaveText("완료", { timeout: 3000 });
+  await expect(page.locator("#progress")).toContainText("서버 연결이 복구되었습니다");
+  await expect(page.locator("#resultArea a")).toHaveAttribute("href", "/api/jobs/qa-1/download");
+  expect(await page.evaluate(() => window.__qaStreamStats)).toEqual({ closed: 1, errors: 1, opens: 1 });
+});
+
+for (const [streamScenario, detail] of [
+  ["terminal-error", "AI 처리 실패"],
+  ["terminal-abort", "사용자가 작업을 중지했습니다."],
+]) {
+  test(`${streamScenario} closes the stream and restores the report form`, async ({ page }) => {
+    const { headRequests } = await mockFrontendApis(page, { streamScenario });
+    await startChemPreGeneration(page);
+
+    await expect(page.locator("#statusTitle")).toHaveText("오류");
+    await expect(page.locator("#retryCard")).toContainText(detail);
+    await expect(page.locator("#stopBtn")).toBeHidden();
+    await expect(page.locator("#manual")).toBeEnabled();
+    expect(headRequests).toHaveLength(0);
+    expect(await page.evaluate(() => window.__qaStreamStats.closed)).toBe(1);
+  });
+}
+
+for (const [headStatus, title] of [[401, "로그인 필요"], [404, "오류"], [410, "오류"]]) {
+  test(`disconnect status ${headStatus} is terminal`, async ({ page }) => {
+    await mockFrontendApis(page, { streamScenario: "disconnect-only", headStatus });
+    await startChemPreGeneration(page);
+
+    await expect(page.locator("#statusTitle")).toHaveText(title);
+    await expect(page.locator("#stopBtn")).toBeHidden();
+    await expect(page.locator("#manual")).toBeEnabled();
+    expect(await page.evaluate(() => window.__qaStreamStats.closed)).toBe(1);
+  });
+}

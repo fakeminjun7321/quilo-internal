@@ -33,7 +33,7 @@
       <!-- 바이브 코딩 생성기 런처 (로그인 사용자 + 크레딧) -->
       <a class="launch app-inline-create-1" href="/vibe-coding.html">
         <div class="lt">
-          <h1>바이브 코딩 생성기</h1>
+          <h2>바이브 코딩 생성기</h2>
           <p>만들고 싶은 걸 한 문장으로 적으면 AI가 프로젝트 설계·MVP·첫 작업·검증 루틴과 AI 코딩 도구용 작업 지시문까지 만들어 줘요.</p>
           <span class="launch-req">🔑 로그인 · 크레딧 필요</span>
         </div>
@@ -43,7 +43,7 @@
       <!-- 스튜디오 런처 (만들기 권한 있을 때) -->
       <a id="launch" class="launch app-inline-create-3" href="/studio.html" hidden>
         <div class="lt">
-          <h1>스튜디오</h1>
+          <h2>스튜디오</h2>
           <p>대화하듯 AI에게 말하면 웹앱·위젯·도구를 만들어 줘요. 미리보기를 보며 "더 예쁘게", "다크모드로" 처럼 고쳐 나가세요.</p>
           <span class="launch-req">🔑 로그인 · 크레딧 필요</span>
         </div>
@@ -70,17 +70,17 @@
     </main>
 
     <!-- 댓글 모달 -->
-    <div id="cmtModal" role="dialog" aria-modal="true" aria-labelledby="cmtTitle" class="app-inline-create-7" hidden>
+    <div id="cmtModal" role="dialog" aria-modal="true" aria-labelledby="cmtTitle" class="app-inline-create-7" tabindex="-1" hidden>
       <div class="card app-inline-create-8">
         <div class="row app-inline-create-9">
           <b id="cmtTitle">💬 댓글</b>
-          <button id="cmtClose" class="ghost app-inline-create-10" aria-label="댓글 닫기" title="닫기">✕</button>
+          <button id="cmtClose" class="ghost app-inline-create-10" type="button" aria-label="댓글 닫기" title="닫기">✕</button>
         </div>
         <input type="hidden" id="cmtSlug" />
         <div id="cmtList" class="app-inline-create-11"></div>
         <div class="row app-inline-create-12">
           <input id="cmtText" placeholder="댓글을 입력하세요 (로그인 필요)" aria-label="댓글 입력" maxlength="1000"  class="app-inline-create-13"/>
-          <button id="cmtSend">등록</button>
+          <button id="cmtSend" type="button">등록</button>
         </div>
       </div>
     </div>
@@ -190,10 +190,45 @@
         frames.forEach((f)=>thumbObserver.observe(f));
       }
       // ── 댓글 모달 ──
+      let commentModalReturnFocus = null;
+      let commentModalInerted = [];
+
+      function setCommentModalBackgroundInert(isOpen){
+        if (!("inert" in HTMLElement.prototype)) return;
+        if (isOpen) {
+          commentModalInerted = [...document.body.children].filter((element) =>
+            element !== $("cmtModal") && element.tagName !== "SCRIPT" && !element.inert
+          );
+          commentModalInerted.forEach((element) => { element.inert = true; });
+          return;
+        }
+        commentModalInerted.forEach((element) => { element.inert = false; });
+        commentModalInerted = [];
+      }
+
+      function commentModalFocusable(){
+        return [...$("cmtModal").querySelectorAll(
+          'a[href], button:not([disabled]), input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )].filter((element) => element.getClientRects().length > 0);
+      }
+
+      function closeComments(){
+        const modal = $("cmtModal");
+        if (modal.hidden) return;
+        setCommentModalBackgroundInert(false);
+        modal.hidden = true;
+        const returnFocus = commentModalReturnFocus;
+        commentModalReturnFocus = null;
+        if (returnFocus?.isConnected) returnFocus.focus({ preventScroll: true });
+      }
+
       async function openComments(slug,title){
+        commentModalReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         $("cmtTitle").textContent="💬 "+(title||"댓글");
         $("cmtSlug").value=slug; $("cmtList").innerHTML='<span class="muted">불러오는 중…</span>';
         $("cmtModal").hidden = false;
+        $("cmtClose").focus({ preventScroll: true });
+        setCommentModalBackgroundInert(true);
         await loadComments(slug);
       }
       async function loadComments(slug){
@@ -237,9 +272,36 @@
       }
 
       $("sort").onchange=renderGallery;
-      $("cmtClose").onclick=()=>$("cmtModal").hidden = true;
-      $("cmtModal").onclick=(e)=>{ if(e.target===$("cmtModal")) $("cmtModal").hidden = true; };
-      document.addEventListener("keydown",(e)=>{ if(e.key==="Escape"&&!$("cmtModal").hidden) $("cmtModal").hidden = true; });
+      $("cmtClose").onclick=closeComments;
+      $("cmtModal").onclick=(e)=>{ if(e.target===$("cmtModal")) closeComments(); };
+      document.addEventListener("keydown",(e)=>{
+        const modal = $("cmtModal");
+        if (modal.hidden) return;
+        if (e.key === "Escape") {
+          e.preventDefault();
+          closeComments();
+          return;
+        }
+        if (e.key !== "Tab") return;
+        const focusable = commentModalFocusable();
+        if (!focusable.length) {
+          e.preventDefault();
+          modal.focus();
+          return;
+        }
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        } else if (!modal.contains(document.activeElement)) {
+          e.preventDefault();
+          first.focus();
+        }
+      });
       $("cmtSend").onclick=sendComment;
       $("cmtText").onkeydown=(e)=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); sendComment(); } };
       init();

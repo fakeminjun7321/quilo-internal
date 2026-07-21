@@ -192,7 +192,22 @@ Render Web Service 설정 예시:
 | `CHAT_DAILY_MAX` | Quilo Bot 전역 일일 메시지 상한, 기본 `1500` |
 | `MAX_TOKENS` | Claude 출력 token 상한, 기본 `32000` |
 | `MAX_UPLOAD_MB` | 업로드 파일 1개 최대 크기, 기본 `64` |
-| `JOB_TIMEOUT_MS` | 작업 timeout, 기본 `480000` ms |
+| `JOB_TIMEOUT_MS` | 일반 작업 timeout, 기본 `900000` ms(15분) |
+| `JOB_TIMEOUT_PRINT_PDF_RESTORE_MS` | 프린트 PDF 복원 timeout, 기본 `5400000` ms(90분) |
+| `PRINT_RESTORE_MODEL` | 프린트 PDF 복원 기본 모델, 기본 `claude-opus-4-8` |
+| `JOB_ARTIFACT_MEMORY_MAX_BYTES` | 완료 산출물 RAM 캐시 상한, 기본 `134217728`(128MiB) |
+| `JOB_ARTIFACT_MEMORY_TTL_MS` | 완료 산출물 RAM 캐시 TTL, 기본 `900000` ms(15분); 파일함 원본은 24시간 유지 |
+| `REPORT_STORAGE_RETRY_ATTEMPTS` | 24시간 파일함 저장 시도 횟수, 기본 `3`(최대 `4`); 최종 실패 시 정산·완료 중단 |
+| `REPORT_STORAGE_RETRY_BASE_DELAY_MS` | 파일함 저장 재시도 지수 backoff 기준, 기본 `250` ms |
+| `MAX_CONCURRENT_GENERATIONS` | 서버 전체 동시 생성 수, 기본 `10`; 초과 요청은 중단 가능한 FIFO 대기 |
+| `MAX_GENERATION_QUEUE` | 생성 대기열 최대 길이, 기본 `6`; 포화 시 업로드 전 `503` |
+| `GENERATION_QUEUE_TIMEOUT_MS` | 생성 대기열 최대 대기시간, 기본 `600000` ms |
+| `MAX_UPLOAD_MEMORY_MB` | 대기·실행 중 multipart 입력의 서버 전체 RAM 예산, 기본 `256` MiB |
+| `VIBE_IMAGE_CONCURRENCY_PER_USER` | 바이브 이미지 사용자별 동시 생성 수, 기본 `2`(최대 `4`) |
+| `VERIFY_EXEMPT_EMAILS` | 다회 이메일 인증을 허용할 권한 있는 테스트 주소 목록(쉼표 구분); 기본값 없음 |
+| `ALLOW_STATELESS_PRODUCTION` | 운영 Supabase 없이 읽기 전용 데모만 띄울 때 `1`; 정식 서비스에서는 사용 금지 |
+| `MCP_OAUTH_REGISTRATION_LIMIT` | MCP OAuth 동적 클라이언트 등록 IP당 시간 한도, 기본 `30` |
+| `MCP_OAUTH_REDIRECT_ALLOWLIST` | ChatGPT 외 허용할 정확한 HTTPS callback URL 목록(쉼표 구분, prefix 매칭 안 함) |
 | `ANTHROPIC_IMAGE_MAX_BASE64_CHARS` | 이미지 1장 base64 제한 |
 | `ANTHROPIC_IMAGE_MAX_EDGE` | 이미지 리사이즈 최대 edge |
 | `MISTRAL_API_KEY` | 이미지 OCR 및 PDF strict OCR 공급자 키 |
@@ -227,6 +242,11 @@ Render Web Service 설정 예시:
 PDF 통번역의 일반 사용자 기술 상한은 기본 700쪽이며, 관리자는 페이지 수 검사만 면제된다. 페이지·구간별 픽셀/타일/요청 크기 안전장치와 완전성 검증은 관리자에게도 동일하게 적용된다.
 
 환경변수 예시는 [`.env.example`](./.env.example)을 참고하세요. 실제 `.env`와 API 키는 절대 GitHub에 올리지 않습니다.
+
+크레딧 예약을 서버 재시작에도 안전하게 정산하려면 배포 전에
+`db/migrations/20260721_add_credit_reservation_ledger.sql`을 Supabase SQL Editor에서
+적용해야 합니다. 마이그레이션 전에는 기록 없는 선차감을 하지 않고 기존 후불 경로로
+폴백하지만, 동시 요청 보호가 약해지므로 정식 운영에서는 마이그레이션이 필수입니다.
 
 ## 출력 형식
 

@@ -18,7 +18,8 @@ export function installReportFormControllers(deps) {
   } = deps;
   const USE_POLICY_NOTE = usePolicyNote;
   const { form, btn, crForm, crBtn, prForm, prBtn, piForm, piBtn, miForm, miBtn,
-    frForm, frBtn, psForm, psBtn, vbForm, vbBtn, fmForm, fmBtn, rlForm, rlBtn } = elements;
+    frForm, frBtn, psForm, psBtn, vbForm, vbBtn, fmForm, fmBtn, pprForm, pprBtn,
+    rlForm, rlBtn } = elements;
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     if (runtime.currentJobId) return; // 안전장치: 진행 중이면 무시
@@ -418,7 +419,7 @@ export function installReportFormControllers(deps) {
             ["출력", mapCount || homeroomTeacher ? "교사별 합본 .hwpx → ZIP" : "책마다 .hwpx → ZIP 묶음"],
             ["차감 크레딧", rlMaxCredits > 0
               ? `권당 최대 ${rlMaxCredits}크레딧 예약 · 실제 사용 토큰만큼만 차감(차액 환불)`
-              : "무료 (mini)"],
+              : "하루 5건 무료 · 이후 1크레딧"],
           ],
           note: `엑셀의 책마다 AI가 선택 계기·내용·느낀 점을 써서 학교 '독서활동 기록지'(.hwpx)를 만들어 ZIP으로 묶습니다. 책이 많으면 몇 분 걸릴 수 있어요. 크레딧은 실제 생성된 책의 토큰만큼만 차감됩니다(실패한 책은 미차감). ${USE_POLICY_NOTE}`,
         });
@@ -455,7 +456,7 @@ export function installReportFormControllers(deps) {
           ["감상 메모", userNotes ? "반영" : "없음"],
           ["차감 크레딧", rlMaxCredits > 0
             ? `최대 ${rlMaxCredits}크레딧 예약 · 실제 사용 토큰만큼만 차감(차액 환불)`
-            : "무료 (mini)"],
+            : "하루 5건 무료 · 이후 1크레딧"],
           ["예상 시간", formatDuration(estimateGenSeconds("reading-log", rlModel))],
         ],
         note: `도서 정보로 AI가 선택 계기·내용 요약·느낀 점을 써서 학교 '독서활동 기록지' 양식(.hwpx)에 채웁니다. ${USE_POLICY_NOTE}`,
@@ -792,6 +793,74 @@ export function installReportFormControllers(deps) {
       appendPolicyAcknowledgements(fd);
 
       await submitReport({ formEl: fmForm, buttonEl: fmBtn, formData: fd, estimate: estimateGenSeconds("free", fmModel, photos.length * 1500) });
+    });
+  }
+
+  // ── 프린트 PDF 복원 (관리자 전용 베타) ─────────────────────────────
+  if (pprForm) {
+    pprForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (runtime.currentJobId) return;
+      // UI 은 서버 권한 검사를 대신하지 않지만, 숨겨진 폼을 DOM에서 강제로 연
+      // 일반 계정이 관리자 작업을 제출하는 실수를 막는 1차 경계다.
+      if (!runtime.isAdmin) {
+        alert("프린트 PDF 복원은 현재 관리자 전용 베타입니다.");
+        return;
+      }
+
+      const photosInput = document.getElementById("pprPhotos");
+      const photos = Array.from(photosInput?.files || []);
+      if (!photos.length) {
+        alert("복원할 프린트 페이지 사진을 한 장 이상 올리세요.");
+        photosInput?.focus();
+        return;
+      }
+      const reference = document.getElementById("pprReference")?.files?.[0] || null;
+      const pageOrder = document.getElementById("pprPageOrder")?.value.trim() || "";
+      const promptText = document.getElementById("pprInstructions")?.value.trim() || "";
+      const preserveLayout = document.getElementById("pprPreserveLayout")?.checked !== false;
+      const semanticRedraw = document.getElementById("pprSemanticRedraw")?.checked !== false;
+      const estimateSeconds = Math.max(
+        180,
+        estimateGenSeconds("free", "claude-opus-4-8", photos.length * 2200),
+      );
+
+      const ok = await showConfirmDialog({
+        title: "프린트 PDF 복원 · 관리자 베타",
+        background: pprForm,
+        rows: [
+          ["입력", `페이지 사진 ${photos.length}장${reference ? ", 참고 PDF 1개" : ""}`],
+          ["페이지 순서", pageOrder || "선택한 파일 순서"],
+          ["양식", preserveLayout ? "원본 페이지·여백·단·표 구조 유지" : "내용 중심으로 정리"],
+          ["그래프·도해", semanticRedraw ? "맥락·수학적/물리적 의미를 검증해 벡터 재작성" : "원본 도형을 보존해 배치"],
+          ["출력", "벡터 PDF"],
+          ["품질 검사", "300dpi 렌더 · OCR 대조 · 페이지별 시각 QA"],
+          ["공개 범위", "관리자 전용 베타"],
+          ["예상 시간", formatDuration(estimateSeconds)],
+        ],
+        note: `사진을 단순히 PDF에 넣지 않고 원문·수식·표·레이아웃을 다시 구성합니다. 확인할 수 없는 값은 만들지 않습니다. ${USE_POLICY_NOTE}`,
+      });
+      if (!ok) return;
+
+      const formData = new FormData();
+      formData.append("type", "print-pdf-restore");
+      photos.forEach((photo) => formData.append("photos", photo, photo.name));
+      if (reference) formData.append("reference", reference, reference.name);
+      if (pageOrder) formData.append("pageOrder", pageOrder);
+      if (promptText) formData.append("promptText", promptText);
+      formData.append("layoutMode", preserveLayout ? "source" : "clean");
+      formData.append("semanticRedraw", semanticRedraw ? "true" : "false");
+      formData.append("qualityGate", "ocr-visual-300dpi");
+      formData.append("format", "pdf");
+      if (runtime.studentId) formData.append("studentId", runtime.studentId);
+      appendPolicyAcknowledgements(formData);
+
+      await submitReport({
+        formEl: pprForm,
+        buttonEl: pprBtn,
+        formData,
+        estimate: estimateSeconds,
+      });
     });
   }
 

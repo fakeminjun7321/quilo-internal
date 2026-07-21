@@ -102,9 +102,15 @@ export function initDefaultReportPreferences() {
     const style = get("prefStyle");
     if (model) {
       document
-        .querySelectorAll('input[name="model"],input[name="crModel"],input[name="prModel"],input[name="frModel"],input[name="piModel"],input[name="miModel"]')
+        .querySelectorAll('input[type="radio"][name="model"], input[type="radio"][name$="Model"]')
         .forEach((radio) => {
-          if (radio.value === model && !radio.checked && !radio.disabled) {
+          const label = radio.closest("label");
+          if (
+            radio.value === model &&
+            !radio.checked &&
+            !radio.disabled &&
+            (!label || (!label.hidden && getComputedStyle(label).display !== "none"))
+          ) {
             radio.checked = true;
             radio.dispatchEvent(new Event("change", { bubbles: true }));
           }

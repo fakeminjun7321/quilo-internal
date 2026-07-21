@@ -90,6 +90,7 @@ import { loadEntitlementsSnapshot } from "./entitlements.js";
       ui.input.value = "";
       note("등록했습니다. 이 제공자의 생성은 내 API 키로 실행됩니다.", "success");
       await refresh();
+      document.dispatchEvent(new CustomEvent("quilo:model-providers-changed"));
     } catch (error) {
       note(error.message || "저장 중 오류가 발생했습니다.", "danger");
     } finally {
@@ -109,6 +110,7 @@ import { loadEntitlementsSnapshot } from "./entitlements.js";
       removed = true;
       note("연결을 삭제했습니다. 이후 생성은 서버 키와 크레딧을 사용합니다.", "success");
       await refresh();
+      document.dispatchEvent(new CustomEvent("quilo:model-providers-changed"));
     } catch (error) {
       note(error.message || "삭제 중 오류가 발생했습니다.", "danger");
     } finally {

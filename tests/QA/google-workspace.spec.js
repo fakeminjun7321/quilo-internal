@@ -1,5 +1,6 @@
 const path = require("path");
 const { spawn } = require("child_process");
+const { isolatedServerEnv } = require("./support/isolated-server-env");
 
 function loadPlaywrightTest() {
   try { return require("@playwright/test"); }
@@ -33,7 +34,7 @@ async function waitForServer() {
 
 test.beforeAll(async () => {
   if (await serverIsUp()) return;
-  serverProcess = spawn("node", ["server.js"], { cwd: process.cwd(), env: { ...process.env, PORT: "3000" }, stdio: "pipe" });
+  serverProcess = spawn("node", ["server.js"], { cwd: process.cwd(), env: isolatedServerEnv({ PORT: "3000" }), stdio: "pipe" });
   await waitForServer();
 });
 

@@ -15,6 +15,7 @@ rm -rf "$DEST"; mkdir -p \
 cp "$ROOT/deploy/hf/Dockerfile"        "$DEST/Dockerfile"
 cp "$ROOT/deploy/hf/README.md"         "$DEST/README.md"
 cp "$ROOT/deploy/hf/package.json"      "$DEST/package.json"
+cp "$ROOT/deploy/hf/package-lock.json" "$DEST/package-lock.json"
 cp "$ROOT/deploy/hf/requirements.txt"  "$DEST/requirements.txt"
 cp "$ROOT/translate-server.js"         "$DEST/translate-server.js"
 cp "$ROOT/public/translate-app.html"   "$DEST/public/translate-app.html"
@@ -44,9 +45,11 @@ bin/
 *.log
 EOF
 
-# Catch a broken minimal package before it reaches a remote Docker build.  The
-# runtime import check is repeated after pip install by package.json.
-grep -Eq '^lxml([<>=!~]|$)' "$DEST/requirements.txt"
+# Catch a broken minimal package before it reaches a remote Docker build. The
+# runtime import check is repeated after the hash-locked pip install in Docker.
+grep -Eq '^lxml==' "$DEST/requirements.txt"
+grep -Eq -- '--hash=sha256:' "$DEST/requirements.txt"
+test -f "$DEST/package-lock.json"
 PYCACHE_DIR="$(mktemp -d)"
 trap 'rm -rf "$PYCACHE_DIR"' EXIT
 PYTHONPYCACHEPREFIX="$PYCACHE_DIR" python3 -m py_compile \

@@ -1,6 +1,81 @@
 "use strict";
 
 (function initQuiloSiteShell() {
+  // 보고서 메모·학번·코드·채팅은 계정과 무관한 브라우저 전역 저장소에 남으면
+  // 공용 기기에서 다음 로그인 사용자에게 노출될 수 있다. 현재 principal을 표시하고
+  // 계정 전환·로그아웃 때 민감한 키만 지운다(테마 같은 기기 설정은 유지).
+  const storagePrivacy = window.QuiloStoragePrivacy || (() => {
+    const PRINCIPAL_KEY = "quilo.browser.principal.v1";
+    const LOCAL_EXACT = new Set([
+      "studentId",
+      "quiloStyleNote",
+      "chemPreUserDefaults",
+      "quilo_studio_session_v1",
+      "ceFiles",
+      "ceCode",
+      "ceActive",
+      "lastReportPrefs",
+      "lastUsername",
+      "codingSolved",
+      "quilo.editorial.bookmarks.v1",
+      "quilo.googleDrive.autoSaveReports",
+      "quilo.googleDrive.folderId",
+    ]);
+    const LOCAL_PREFIXES = [
+      "quiloDraft:v1:",
+      "quilo.editorial.draft.v2.",
+      "codingCode:",
+    ];
+    const SESSION_EXACT = new Set([
+      "quiloChat",
+      "quiloChat:v2",
+      "quilo_vibe_handoff",
+      "pendingReportType",
+    ]);
+
+    function removeMatching(storage, exact, prefixes = []) {
+      if (!storage) return;
+      const keys = [];
+      try {
+        for (let index = 0; index < storage.length; index += 1) {
+          const key = storage.key(index);
+          if (key && (exact.has(key) || prefixes.some((prefix) => key.startsWith(prefix)))) {
+            keys.push(key);
+          }
+        }
+        keys.forEach((key) => storage.removeItem(key));
+      } catch (_) {}
+    }
+
+    function clear() {
+      removeMatching(window.localStorage, LOCAL_EXACT, LOCAL_PREFIXES);
+      removeMatching(window.sessionStorage, SESSION_EXACT);
+    }
+
+    function protect(principalId) {
+      const next = String(principalId || "").trim();
+      if (!next) return false;
+      try {
+        const previous = localStorage.getItem(PRINCIPAL_KEY);
+        // marker가 없는 첫 배포/첫 로그인도 기존 전역 초안을 안전하게 정리한다.
+        if (previous !== next) clear();
+        localStorage.setItem(PRINCIPAL_KEY, next);
+        return true;
+      } catch (_) {
+        clear();
+        return false;
+      }
+    }
+
+    function signOut() {
+      clear();
+      try { localStorage.removeItem(PRINCIPAL_KEY); } catch (_) {}
+    }
+
+    return Object.freeze({ clear, protect, signOut });
+  })();
+  window.QuiloStoragePrivacy = storagePrivacy;
+
   const header = document.querySelector("[data-ui-shell]");
   if (!header) return;
 
@@ -14,6 +89,7 @@
     ["problem-set", "문제집 메이커", "교재에서 문제지와 해설지 세트를 만듭니다.", "/?report=problem-set", "pro", "pro"],
     ["vocabulary-book", "단어장 메이커", "영어교재·기존 단어장·엑셀표에서 영한 단어장을 만듭니다.", "/?report=vocabulary-book", "pro", "pro"],
     ["form-maker", "양식 메이커", "설명이나 사진에서 편집 가능한 양식을 만듭니다.", "/?report=form-maker", "pro", "pro"],
+    ["print-pdf-restore", "프린트 PDF 복원", "종이 사진을 의미가 보존된 벡터 PDF로 복원하고 300dpi로 검증합니다.", "/?report=print-pdf-restore", "admin", "beta"],
     ["phys-inquiry", "물리 수행평가", "탐구와 사고 과정을 보고서로 구조화합니다.", "/exam-prep.html", "pro", "paused"],
     ["math-inquiry", "수학 수행평가", "필기와 탐구 주제로 수학 보고서를 작성합니다.", "/exam-prep.html", "pro", "paused"],
     ["eng-exam-prep", "영어 시험대비 세트", "지문에서 시험과 학습 자료를 만듭니다.", "/exam-prep.html", "pro", "paused"],
@@ -32,7 +108,7 @@
     ["file-convert", "파일 및 PDF 도구", "파일, 이미지, PDF를 브라우저에서 처리합니다.", "/tools/index.html", "public", "active"],
     ["equation", "LaTeX 한글 수식", "수식을 한글 수식 객체로 변환합니다.", "/equation/index.html", "public", "active"],
     ["image-ocr", "이미지 OCR", "4중 교차 검증 후 보기·병합 표·그림을 Word·한글·HTML·TXT로 복원합니다.", "/tools/image-ocr.html", "pro", "pro"],
-    ["pdf-analysis", "PDF 분석", "페이지와 텍스트층, 수식 밀도를 분석합니다.", "/developers.html#catalog", "member", "active"],
+    ["pdf-analysis", "PDF 분석", "페이지와 텍스트층, 수식 밀도를 분석합니다.", "/tools/pdf-analysis.html", "member", "active"],
   ].map(([id, title, summary, path, audience, status]) => ({ id, title, summary, path, audience, status })));
 
   const STATIC_LINKS = Object.freeze({
@@ -68,6 +144,7 @@
     "problem-set": ["문제지", "시험지", "문제 생성", "워크북", "학습지"],
     "vocabulary-book": ["단어장", "단어짱", "영단어", "영어 단어", "어휘", "보카", "vocabulary", "vocab", "영어교재", "엑셀 단어장"],
     "form-maker": ["서식", "템플릿", "양식 복원", "문서 사진"],
+    "print-pdf-restore": ["프린트 복원", "사진 pdf 복원", "벡터 pdf", "수식 복원", "도해 복원", "ocr 검증"],
     "pdf-translate": ["번역", "통역", "translate", "영문 번역", "pdf 번역"],
     "cap-translate": ["cap 번역", "캡스톤 번역", "pasco 번역"],
     "file-convert": ["변환", "pdf 합치기", "이미지 변환", "엑셀 csv"],
@@ -87,6 +164,7 @@
 
   const SEARCH_PINNED = ["vocabulary-book", "problem-set", "phys-result", "chem-pre", "pdf-translate", "file-convert"];
   const HIDDEN_FEATURE_IDS = new Set(["quilo-schedule"]);
+  let adminViewer = false;
 
   const escapeHtml = (value) => String(value == null ? "" : value)
     .replaceAll("&", "&amp;")
@@ -98,7 +176,9 @@
 
   function feature(id) {
     if (HIDDEN_FEATURE_IDS.has(id)) return null;
-    return featureMap.get(id) || null;
+    const item = featureMap.get(id) || null;
+    if (item?.audience === "admin" && !adminViewer) return null;
+    return item;
   }
 
   function tierLabel(item) {
@@ -108,6 +188,7 @@
     if (item.audience === "member") return "Free";
     if (item.audience === "pro") return "Pro";
     if (item.audience === "max") return "Max";
+    if (item.audience === "admin") return "Admin";
     return "";
   }
 
@@ -123,7 +204,7 @@
         label: "제품",
         sections: [
           { title: "보고서", items: items(["chem-pre", "chem-result", "phys-result", "free", "reading-log"]) },
-          { title: "문서 제작", items: items(["reading-log-bulk", "form-maker", "problem-set"]) },
+          { title: "문서 제작", items: items(["reading-log-bulk", "form-maker", "print-pdf-restore", "problem-set"]) },
           { title: "추천 작업", items: items(["pdf-translate", "file-convert", "create"]) },
         ],
         all: { title: "전체 기능 보기", path: "/developers.html#catalog" },
@@ -418,6 +499,7 @@
     if (!normalizeSearch(query)) return SEARCH_PINNED.map(feature).filter(Boolean);
     return [...featureMap.values()]
       .filter((item) => !HIDDEN_FEATURE_IDS.has(item.id))
+      .filter((item) => item.audience !== "admin" || adminViewer)
       .map((item) => ({ item, score: searchScore(item, query) }))
       .filter(({ score }) => score >= 38)
       .sort((a, b) => b.score - a.score || a.item.title.localeCompare(b.item.title, "ko"))
@@ -610,6 +692,19 @@
 
   function renderAuthState(result) {
     currentAuthState = result;
+    if (result.state === "authenticated") storagePrivacy.protect(result.user?.id);
+    else if (result.state === "anonymous") storagePrivacy.signOut();
+    const nextAdminViewer = result.state === "authenticated" && result.user?.isAdmin === true;
+    if (adminViewer !== nextAdminViewer) {
+      adminViewer = nextAdminViewer;
+      groups = groupModel();
+      closeMega();
+      const nav = header.querySelector("[data-ui-nav-groups]");
+      const mobile = header.querySelector("[data-ui-mobile-content]");
+      if (nav) nav.innerHTML = navTriggersMarkup(groups);
+      if (mobile) mobile.innerHTML = mobileMarkup(groups);
+      searchRoots.forEach((root) => root._refreshFeatureSearch?.());
+    }
     header.dataset.uiAuthState = result.state;
     header.setAttribute("aria-busy", "false");
     document.body.dataset.sessionState = result.state;
@@ -731,6 +826,7 @@
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || "로그인하지 못했습니다.");
+        storagePrivacy.protect(data.id);
         location.reload();
       } catch (exception) {
         if (error) error.textContent = exception.message;
@@ -738,7 +834,11 @@
       }
     });
     header.querySelector("#logout")?.addEventListener("click", async () => {
-      await fetch("/api/logout", { method: "POST", credentials: "same-origin" });
+      try {
+        await fetch("/api/logout", { method: "POST", credentials: "same-origin" });
+      } finally {
+        storagePrivacy.signOut();
+      }
       location.assign("/");
     });
   }

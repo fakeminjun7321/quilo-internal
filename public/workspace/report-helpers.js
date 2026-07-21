@@ -60,6 +60,8 @@ export function getModelLabel(modelId) {
     "gpt-5.5": "GPT-5.5",
     "gpt-5.4": "GPT-5.4",
     "gpt-5.4-mini": "GPT-5.4 mini",
+    "gemini-3.1-pro": "Gemini 3.1 Pro",
+    "gemini-2.5-flash": "Gemini 2.5 Flash",
   })[modelId] || modelId || "Opus 4.8";
 }
 

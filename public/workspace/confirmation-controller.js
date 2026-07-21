@@ -437,7 +437,7 @@ export function createConfirmationController({ balanceState, formatDateTime, fin
 
       // ── 크레딧 사전 점검(부족 시 인라인 경고 + 회복 동선) ─────────────
       // 관리자/무제한/잔액미상이면 graceful 생략. 잔액 < 선택 모델 크레딧이면
-      // 빨간 경고 + 생성 버튼 비활성('크레딧 부족') + '더 저렴/무료 모델로 바꾸기'.
+      // 빨간 경고 + 생성 버튼 비활성('크레딧 부족') + 더 저렴한 모델로 바꾸기.
       const warnBox = document.createElement("div");
       warnBox.className = "confirm-credit-warn";
       warnBox.hidden = true;
@@ -490,7 +490,7 @@ export function createConfirmationController({ balanceState, formatDateTime, fin
 
         const wActions = document.createElement("div");
         wActions.className = "confirm-credit-warn-actions";
-        // 회복: 잔액으로 감당 가능한 가장 싼(무료 우선) 모델로 1클릭 전환.
+        // 회복: 잔액으로 감당 가능한 가장 싼 모델로 1클릭 전환.
         if (recovery && recovery.formEl && recovery.radioName) {
           const aff = findAffordableModelOption(recovery.formEl, recovery.radioName, bal);
           if (aff) {
@@ -499,7 +499,7 @@ export function createConfirmationController({ balanceState, formatDateTime, fin
             swapBtn.className = "secondary compact";
             const free = aff.credits <= 0;
             swapBtn.textContent = free
-              ? "무료 모델로 바꾸기"
+              ? "GPT-5.4 mini로 바꾸기 (일일 무료 한도 적용)"
               : `더 저렴한 모델로 바꾸기 (${aff.credits}크레딧)`;
             swapBtn.addEventListener("click", () => {
               try { aff.input.checked = true; } catch (_) {}

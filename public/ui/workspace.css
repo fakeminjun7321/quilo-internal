@@ -68,7 +68,35 @@
 .home-hero-v2 { display: grid; min-height: 505px; align-content: start; justify-items: center; padding: 108px 20px 0; background: #fff; }
 .home-hero-v2 h1 { width: min(100%, 1000px); margin: 0; color: #090b0f; font-size: 42px; font-weight: 760; letter-spacing: -.04em; line-height: 1.14; text-align: center; }
 .quilo-bot-mount { width: min(100%, 1030px); margin-top: 28px; }
-.quilo-bot-fallback { min-height: 160px; padding: 32px 38px; border: 1px solid #d4d5d8; border-radius: 28px; color: #55565a; background: #fff; font-size: 20px; }
+.quilo-bot-fallback {
+  display: flex;
+  min-height: 160px;
+  box-sizing: border-box;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 32px 38px;
+  border: 1px solid #d4d5d8;
+  border-radius: 28px;
+  color: #55565a;
+  background: #fff;
+  font-size: 20px;
+  text-decoration: none;
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+.quilo-bot-fallback strong {
+  padding: 10px 14px;
+  border-radius: 9px;
+  color: #fff;
+  background: var(--q-blue);
+  font-size: 13px;
+}
+.quilo-bot-fallback:hover {
+  border-color: color-mix(in srgb, var(--q-blue) 52%, #d4d5d8);
+  box-shadow: 0 16px 40px rgba(15, 23, 42, .08);
+  transform: translateY(-1px);
+}
+.quilo-bot-fallback:focus-visible { outline: 3px solid color-mix(in srgb, var(--q-blue) 28%, transparent); outline-offset: 4px; }
 .workshow { min-height: 456px; padding: 44px max(32px, calc((100vw - 1360px)/2)); color: #fff; background: #0d1119; content-visibility: auto; contain-intrinsic-size: 456px; }
 .workshow-head span { color: #9db7f4; font-size: 13px; }
 .workshow-head h2 { margin: 7px 0 0; font-size: 36px; letter-spacing: -.04em; }
@@ -456,6 +484,8 @@ body[data-view="workspace"] #qc-launch.qc-home-launch { display: flex; }
   #reportsPanel.workspace-mode > .report-form.active { grid-row: auto; }
   #reportsPanel.workspace-mode #workspaceSummary,
   #reportsPanel.workspace-mode #balanceBox { grid-column: 1; grid-row: auto; position: static; }
+  #reportsPanel.workspace-mode #balanceBox { order: 9; }
+  #reportsPanel.workspace-mode #workspaceSummary { order: 10; }
   #integrationsPanel, #filesPanel, #feedbackPanel, #settingsPanel { grid-template-columns: 1fr; }
   .auth-verification-card__layout { grid-template-columns: 1fr; }
 }

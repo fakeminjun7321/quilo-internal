@@ -155,16 +155,30 @@ export function createJobStreamController(deps) {
 
   function streamJob(jobId) {
     trackEvent("job_stream_opened", { reportType: runtime.pendingPrefs?.type || "unknown" });
+    let settled = false;
+    let disconnectCheckPending = false;
+    let connectionInterrupted = false;
     const es = new EventSource(`/api/jobs/${jobId}/stream`);
     runtime.currentEs = es;
     const genSpinner = document.getElementById("genSpinner");
     if (genSpinner) genSpinner.hidden = false;
 
+    es.addEventListener("open", () => {
+      if (settled || !connectionInterrupted) return;
+      connectionInterrupted = false;
+      appendLine("서버 연결이 복구되었습니다. 진행 로그를 다시 받습니다.");
+      statusTitle.textContent = "생성 중...";
+      if (genSpinner) genSpinner.hidden = false;
+    });
+
     es.addEventListener("progress", (e) => {
+      if (settled) return;
       appendLine(JSON.parse(e.data));
     });
 
     es.addEventListener("done", (e) => {
+      if (settled) return;
+      settled = true;
       const data = JSON.parse(e.data);
       appendLine("완료");
       statusTitle.textContent = "완료";
@@ -346,22 +360,22 @@ export function createJobStreamController(deps) {
       // 서버가 명시적으로 보낸 error 이벤트(e.data 있음)인지, 순수 연결 끊김
       // (e.data 없음)인지 구분한다. 서버 error 이벤트는 작업이 실제로 실패한
       // 것이라 크레딧 미차감 + 재시도 안전. 반면 연결만 끊긴 경우 서버는 작업을
-      // 중단하지 않고 끝까지 돌려 파일함에 저장 + 크레딧을 차감하므로, "미차감"을
-      // 단정하거나 즉시 재생성(=중복 과금)을 권하면 안 된다.
+      // 중단하지 않고 끝까지 돌릴 수 있으므로 EventSource 기본 재연결을 유지한다.
       let msg;
       try { msg = e.data ? JSON.parse(e.data) : null; } catch (_) { msg = e.data || null; }
       const serverReportedError = e && e.data != null;
-      stopGenTimer(); // 경과 타이머 정지·정리
-      if (genSpinner) genSpinner.hidden = true;
-      es.close();
+      if (settled) return;
 
       if (serverReportedError) {
+        settled = true;
+        stopGenTimer();
+        if (genSpinner) genSpinner.hidden = true;
+        es.close();
         trackEvent("generation_failed", {
           reportType: runtime.pendingPrefs?.type || "unknown",
           failureCode: "server_error",
           source: "sse",
         });
-        // 진짜 실패(서버 error 이벤트). 미차감 + 같은 입력 원클릭 재시도 안전.
         const detail = msg ||
           "보고서 생성 중 오류가 발생했습니다. 크레딧은 차감되지 않았습니다. 잠시 후 다시 시도하세요.";
         appendLine("오류: " + detail);
@@ -378,22 +392,28 @@ export function createJobStreamController(deps) {
         return;
       }
 
-      // 연결만 끊긴 경우: 서버 작업은 계속 진행/완료됐을 수 있다. 단정하지 말고
-      // 실제 작업 상태를 조회한 뒤 안내한다.
-      appendLine("서버 연결이 끊겼습니다. 작업 상태를 확인하는 중…");
-      trackEvent("generation_failed", {
-        reportType: runtime.pendingPrefs?.type || "unknown",
-        failureCode: "stream_disconnected",
-        source: "sse",
-      });
-      statusTitle.textContent = "연결 끊김 — 상태 확인 중";
-      const _jobId = jobId;
-      // 완료 여부는 다운로드 엔드포인트로 확인: 200=완료, 409=아직/미완, 404=없음.
-      fetch(`/api/jobs/${_jobId}/download`, { method: "HEAD" })
+      if (!connectionInterrupted) {
+        connectionInterrupted = true;
+        appendLine("서버 연결이 잠시 끊겼습니다. 같은 작업에 다시 연결하는 중…");
+        trackEvent("generation_failed", {
+          reportType: runtime.pendingPrefs?.type || "unknown",
+          failureCode: "stream_disconnected",
+          source: "sse",
+        });
+      }
+      statusTitle.textContent = "연결 재시도 중 · 서버에서 생성 계속";
+      if (disconnectCheckPending) return;
+      disconnectCheckPending = true;
+
+      fetch(`/api/jobs/${jobId}/download`, { method: "HEAD" })
         .then((r) => {
+          disconnectCheckPending = false;
+          if (settled) return;
           if (r.status === 200) {
-            // 서버에서 완료됨 → 크레딧이 이미 차감됐을 수 있으므로 재생성 권하지 않는다.
-            // 파일함/다운로드로 안내.
+            settled = true;
+            stopGenTimer();
+            if (genSpinner) genSpinner.hidden = true;
+            es.close();
             let filename = "";
             try {
               const cd = r.headers.get("Content-Disposition") || "";
@@ -416,7 +436,7 @@ export function createJobStreamController(deps) {
               "화면과의 연결만 끊겼을 뿐, 서버에서 보고서 생성이 끝났습니다. 아래 버튼 또는 '내 파일'에서 받으세요(24시간 보관). 다시 생성하면 중복 요금이 나갈 수 있으니 재생성은 하지 마세요.";
             box.appendChild(p);
             const link = document.createElement("a");
-            link.href = `/api/jobs/${_jobId}/download`;
+            link.href = `/api/jobs/${jobId}/download`;
             link.textContent = filename ? `${filename} 다운로드` : "보고서 다운로드";
             if (filename) link.download = filename;
             link.className = "generation-recovered-download";
@@ -424,7 +444,7 @@ export function createJobStreamController(deps) {
             preview.type = "button";
             preview.className = "generation-recovered-preview";
             preview.textContent = "미리보기";
-            preview.addEventListener("click", () => openPreview(`/api/jobs/${_jobId}/preview`, filename));
+            preview.addEventListener("click", () => openPreview(`/api/jobs/${jobId}/preview`, filename));
             const actions = document.createElement("div");
             actions.className = "generation-recovered-actions";
             actions.append(preview, link);
@@ -435,8 +455,11 @@ export function createJobStreamController(deps) {
             if (typeof loadFiles === "function") loadFiles();
             return;
           }
-          if (r.status === 404) {
-            // 작업 기록이 사라짐(재배포로 컨테이너 재시작 등) → 완료 못 함, 미차감. 재시도 안전.
+          if (r.status === 404 || r.status === 410) {
+            settled = true;
+            stopGenTimer();
+            if (genSpinner) genSpinner.hidden = true;
+            es.close();
             appendLine("서버가 재시작되어 작업이 중단되었습니다.");
             statusTitle.textContent = "오류";
             setProgressStep("document", "error");
@@ -445,41 +468,43 @@ export function createJobStreamController(deps) {
               message: "서버 재시작으로 작업이 중단되었습니다. 크레딧은 차감되지 않았습니다. 다시 시도하세요.",
               detail: "서버 재시작으로 작업이 중단되었습니다. 크레딧은 차감되지 않았습니다. 다시 시도하세요.",
               phase: "stream",
-              httpStatus: 0,
+              httpStatus: r.status,
               allowRetry: true,
             });
             return;
           }
-          // 409 등 — 아직 진행 중이거나 상태 불명. 미차감 단정·즉시 재생성 금지.
-          appendLine("보고서가 아직 생성 중일 수 있습니다.");
-          statusTitle.textContent = "생성 중일 수 있음";
-          setProgressStep("document", "error");
-          resetForm();
-          showGenErrorCard({
-            message:
-              "화면과의 연결이 끊겼지만 보고서는 아직 생성 중일 수 있습니다. 1~2분 뒤 '내 파일'을 확인하세요. 완료됐다면 크레딧이 차감되므로, 파일이 없을 때만 다시 시도하세요.",
-            detail:
-              "화면과의 연결이 끊겼지만 보고서는 아직 생성 중일 수 있습니다. 1~2분 뒤 '내 파일'을 확인하세요. 완료됐다면 크레딧이 차감되므로, 파일이 없을 때만 다시 시도하세요.",
-            phase: "stream",
-            httpStatus: 0,
-            allowRetry: true,
-          });
+          if (r.status === 401 || r.status === 403) {
+            settled = true;
+            stopGenTimer();
+            if (genSpinner) genSpinner.hidden = true;
+            es.close();
+            appendLine("로그인 상태가 만료되어 작업 연결을 계속할 수 없습니다.");
+            statusTitle.textContent = "로그인 필요";
+            setProgressStep("document", "error");
+            resetForm();
+            showGenErrorCard({
+              message: "로그인 상태를 확인한 뒤 '내 파일'에서 작업 결과를 확인해 주세요.",
+              detail: "작업 상태 조회 권한이 없어 실시간 연결을 종료했습니다.",
+              phase: "stream",
+              httpStatus: r.status,
+              allowRetry: false,
+            });
+            return;
+          }
+          if (r.status === 409) {
+            if (connectionInterrupted) {
+              appendLine("서버에서 보고서를 계속 생성하고 있습니다. 진행 로그에 재연결하는 중…");
+            }
+            return;
+          }
+          if (connectionInterrupted) {
+            appendLine(`작업 상태 확인이 지연되고 있습니다 (HTTP ${r.status}). 재연결을 계속 시도합니다.`);
+          }
         })
         .catch(() => {
-          // 상태 조회 자체가 실패 — 네트워크 문제. 미차감 단정하지 않고 파일 확인 권함.
-          appendLine("작업 상태를 확인하지 못했습니다.");
-          statusTitle.textContent = "상태 확인 실패";
-          setProgressStep("document", "error");
-          resetForm();
-          showGenErrorCard({
-            message:
-              "연결이 끊겨 작업 상태를 확인하지 못했습니다. 1~2분 뒤 '내 파일'을 확인하고, 파일이 없을 때만 다시 시도하세요(완료됐다면 크레딧이 차감됩니다).",
-            detail:
-              "연결이 끊겨 작업 상태를 확인하지 못했습니다. 1~2분 뒤 '내 파일'을 확인하고, 파일이 없을 때만 다시 시도하세요(완료됐다면 크레딧이 차감됩니다).",
-            phase: "stream",
-            httpStatus: 0,
-            allowRetry: true,
-          });
+          disconnectCheckPending = false;
+          if (settled || !connectionInterrupted) return;
+          appendLine("작업 상태 확인이 지연되고 있습니다. 재연결을 계속 시도합니다.");
         });
     });
   }

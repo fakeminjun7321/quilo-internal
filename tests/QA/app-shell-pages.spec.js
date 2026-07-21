@@ -487,15 +487,39 @@ test("representative empty, modal, and loading states remain contained below the
 
   await page.goto(`${baseUrl}/create.html`, { waitUntil: "networkidle" });
   await expect(page.locator("#gallery .empty")).toBeVisible();
-  await page.locator("#cmtModal").evaluate((modal) => { modal.hidden = false; });
+  await page.route("**/p/focus-demo", (route) =>
+    route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html><title>QA preview</title>" }),
+  );
+  await page.evaluate(() => {
+    galItems = [{ slug: "focus-demo", title: "포커스 테스트", owner: "QA", category: "기타", likes: 0, views: 0 }];
+    renderGallery();
+  });
+  const commentOpener = page.locator('button[data-cmt="focus-demo"]');
+  await commentOpener.focus();
+  await commentOpener.click();
   await expect(page.locator("#cmtModal")).toBeVisible();
+  await expect(page.locator("#cmtClose")).toBeFocused();
+  await expect(page.locator("#main-content")).toHaveJSProperty("inert", true);
   const modalRect = await page.locator("#cmtModal .card").boundingBox();
   expect(modalRect.x).toBeGreaterThanOrEqual(0);
   expect(modalRect.y).toBeGreaterThanOrEqual(0);
   expect(modalRect.x + modalRect.width).toBeLessThanOrEqual(1440);
   expect(modalRect.y + modalRect.height).toBeLessThanOrEqual(933);
+
+  await page.keyboard.press("Shift+Tab");
+  await expect(page.locator("#cmtSend")).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(page.locator("#cmtClose")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#cmtModal")).toBeHidden();
+  await expect(commentOpener).toBeFocused();
+  await expect(page.locator("#main-content")).toHaveJSProperty("inert", false);
+
+  await commentOpener.click();
+  await expect(page.locator("#cmtClose")).toBeFocused();
   await page.locator("#cmtClose").click();
   await expect(page.locator("#cmtModal")).toBeHidden();
+  await expect(commentOpener).toBeFocused();
 
   await page.route("**/api/physics-studio/generate", async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 350));

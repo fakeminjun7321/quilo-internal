@@ -100,7 +100,7 @@
                   <label class="form-field form-field--wide" for="schoolName">
                     <span>학교명 <b aria-hidden="true">*</b></span>
                     <input id="schoolName" name="schoolName" required maxlength="120" autocomplete="organization" placeholder="예: OO과학고등학교" />
-                    <small data-error-for="schoolName"></small>
+                    <small id="schoolNameError" data-error-for="schoolName"></small>
                   </label>
                   <label class="form-field" for="schoolType">
                     <span>학교 유형</span>
@@ -125,7 +125,7 @@
                   <label class="form-field" for="contactName">
                     <span>담당자 이름 <b aria-hidden="true">*</b></span>
                     <input id="contactName" name="contactName" required maxlength="60" autocomplete="name" placeholder="이름" />
-                    <small data-error-for="contactName"></small>
+                    <small id="contactNameError" data-error-for="contactName"></small>
                   </label>
                   <label class="form-field" for="contactPhone">
                     <span>연락처 <em>선택</em></span>
@@ -133,9 +133,9 @@
                   </label>
                   <label class="form-field form-field--wide" for="contactEmail">
                     <span>담당자 이메일 <b aria-hidden="true">*</b></span>
-                    <input id="contactEmail" name="contactEmail" type="email" required maxlength="160" autocomplete="email" placeholder="teacher@school.hs.kr" />
-                    <small>신청 검토 결과와 후속 절차를 받을 이메일입니다.</small>
-                    <small data-error-for="contactEmail"></small>
+                    <input id="contactEmail" name="contactEmail" type="email" required maxlength="160" autocomplete="email" aria-describedby="contactEmailHint" placeholder="teacher@school.hs.kr" />
+                    <small id="contactEmailHint">신청 검토 결과와 후속 절차를 받을 이메일입니다.</small>
+                    <small id="contactEmailError" data-error-for="contactEmail"></small>
                   </label>
                 </div>
               </div>
@@ -163,9 +163,9 @@
                 <div class="form-grid form-grid--two">
                   <label class="form-field" for="studentEmailDomain">
                     <span>학생 이메일 도메인 <b aria-hidden="true">*</b></span>
-                    <div class="domain-input"><span>@</span><input id="studentEmailDomain" name="studentEmailDomain" required maxlength="120" autocomplete="off" placeholder="school.hs.kr" /></div>
-                    <small>@ 기호를 제외하고 학교에서 사용하는 도메인만 입력해 주세요.</small>
-                    <small data-error-for="studentEmailDomain"></small>
+                    <div class="domain-input"><span>@</span><input id="studentEmailDomain" name="studentEmailDomain" required maxlength="120" autocomplete="off" aria-describedby="studentEmailDomainHint" placeholder="school.hs.kr" /></div>
+                    <small id="studentEmailDomainHint">@ 기호를 제외하고 학교에서 사용하는 도메인만 입력해 주세요.</small>
+                    <small id="studentEmailDomainError" data-error-for="studentEmailDomain"></small>
                   </label>
                   <label class="form-field" for="desiredStart">
                     <span>도입 희망 시기 <em>선택</em></span>
@@ -190,18 +190,18 @@
 
                 <div class="file-upload">
                   <div class="file-upload__label">
-                    <strong>평가기준 · 양식 · 예시 파일</strong>
+                    <strong id="filesLabel">평가기준 · 양식 · 예시 파일</strong>
                     <span>선택 · 최대 8개</span>
                   </div>
-                  <div class="file-dropzone" id="fileDropzone" tabindex="0" role="button" aria-controls="files" aria-describedby="filesHint">
+                  <div class="file-dropzone" id="fileDropzone" role="group" aria-labelledby="filesLabel" aria-describedby="filesHint">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V5m0 0L8 9m4-4 4 4M5 14v5h14v-5" /></svg>
                     <div>
                       <strong>파일을 여기로 끌어오거나 선택하세요</strong>
                       <p id="filesHint">HWPX, HWP, DOCX, PDF, 이미지 등 학교가 제공할 수 있는 실제 자료를 첨부할 수 있습니다.</p>
                     </div>
-                    <button type="button" data-file-trigger>파일 선택</button>
+                    <button type="button" data-file-trigger aria-controls="files" aria-describedby="filesHint">파일 선택</button>
                   </div>
-                  <input class="file-input" id="files" name="files" type="file" multiple />
+                  <input class="file-input" id="files" name="files" type="file" multiple tabindex="-1" aria-label="평가기준, 양식 또는 예시 파일 첨부" />
                   <ul class="file-list" id="fileList" aria-live="polite"></ul>
                   <p class="file-error" id="fileError" role="alert"></p>
                 </div>
@@ -261,7 +261,7 @@
                   <input type="checkbox" id="consent" name="consent" value="true" required />
                   <span>개인정보 수집·이용에 동의합니다. <b>(필수)</b></span>
                 </label>
-                <small data-error-for="consent"></small>
+                <small id="consentError" data-error-for="consent"></small>
               </div>
 
               <div class="honeypot" aria-hidden="true">

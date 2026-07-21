@@ -57,14 +57,18 @@ test("HF PDF translation staging contains every local JavaScript dependency", ()
       path.join(dest, "requirements.txt"),
       "utf8",
     );
-    assert.match(requirements, /^fonttools>=4\.55,<5$/m);
-    assert.match(requirements, /^lxml>=4\.9,<7$/m);
+    assert.match(requirements, /^fonttools==4\.63\.0 \\$/m);
+    assert.match(requirements, /^lxml==6\.1\.1 \\$/m);
+    assert.ok((requirements.match(/--hash=sha256:/g) || []).length >= 6);
     assert.ok(fs.existsSync(path.join(dest, "scripts/check-python-runtime.py")));
+    assert.ok(fs.existsSync(path.join(dest, "package-lock.json")));
     const stagedPackage = JSON.parse(
       fs.readFileSync(path.join(dest, "package.json"), "utf8"),
     );
-    assert.match(stagedPackage.scripts.postinstall, /scripts\/check-python-runtime\.py/);
-    assert.doesNotMatch(stagedPackage.scripts.postinstall, /dependencies venv setup failed/);
+    assert.equal(stagedPackage.scripts.postinstall, undefined);
+    const dockerfile = fs.readFileSync(path.join(dest, "Dockerfile"), "utf8");
+    assert.match(dockerfile, /npm ci --omit=dev --ignore-scripts/);
+    assert.match(dockerfile, /scripts\/check-python-runtime\.py/);
     const readme = fs.readFileSync(path.join(dest, "README.md"), "utf8");
     assert.match(readme, /MISTRAL_API_KEY/);
     assert.match(readme, /visual adjudicator/);
@@ -89,6 +93,7 @@ test("HF clean Python runtime check fails closed and covers every staged third-p
     const declared = new Set(
       requirements
         .split(/\r?\n/u)
+        .filter((line) => /^[a-z0-9_-]+==/iu.test(line.trim()))
         .map((line) => line.trim().toLowerCase().split(/[<>=!~\[]/u, 1)[0])
         .filter(Boolean),
     );

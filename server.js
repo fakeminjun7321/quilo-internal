@@ -15,25 +15,48 @@ const {
   normalizeFontFaceForFormat,
 } = require("./lib/document-fonts");
 const styleRef = require("./lib/style-ref");
+const { GenerationSemaphore } = require("./lib/generation-semaphore");
+const {
+  GEMINI_REPORT_MODELS,
+  GEMINI_REPORT_TYPES,
+  checkGeminiReportAccess,
+  checkReportModelProviderAvailability,
+  resolveRequestedReportModel,
+  serverModelProviderAvailability,
+  mergeUserModelProviderAvailability,
+} = require("./lib/report-model-policy");
+const {
+  refundDurableReservation,
+  settleDurableReservation,
+} = require("./lib/credit-reservation-flow");
+const {
+  cleanupExternalGeneratedArtifacts,
+} = require("./lib/generated-artifact-cleanup");
 const {
   assertGeneratedOutputMagic,
+  normalizeGeneratedArtifact,
   validateReportArtifact,
-  ENFORCEABLE_RULES: OUTPUT_VALIDATE_ENFORCEABLE_RULES,
+  findEnforceableArtifactProblem,
 } = require("./lib/output-validate");
 const { registerAppDownloadRoutes } = require("./lib/app-downloads");
 const { createFilePreview } = require("./lib/file-preview");
+const { assertUploadsMagic } = require("./lib/upload-magic");
 
-// 프로세스 전역 안전망: 처리되지 않은 예외/거부가 서버 프로세스 전체를 죽여
-// 진행 중인 다른 사용자 작업까지 같이 날리지 않도록, 최후 백스톱으로 로깅만 한다.
-// (개별 요청 오류는 각 라우트/Promise에서 이미 잡아 처리한다.)
+// 처리되지 않은 예외 뒤에는 메모리·예약 상태가 일관적이라고 보장할 수 없다. 로그만
+// 남기고 손상 가능성이 있는 프로세스를 계속 서비스하지 말고 Render가 재시작하게 한다.
+// durable 예약은 lease 만료 후 부팅 maintenance가 환불한다.
 process.on("uncaughtException", (err) => {
   console.error("[uncaughtException]", err && err.stack ? err.stack : err);
+  process.exitCode = 1;
+  setImmediate(() => process.exit(1));
 });
 process.on("unhandledRejection", (reason) => {
   console.error(
     "[unhandledRejection]",
     reason && reason.stack ? reason.stack : reason,
   );
+  process.exitCode = 1;
+  setImmediate(() => process.exit(1));
 });
 
 // Pipeline registry — 보고서 종류별로 입력 처리 + 생성 함수 묶음.
@@ -49,7 +72,8 @@ const PIPELINES = {
       if (!manual) {
         throw new Error("실험 매뉴얼 PDF를 업로드하세요.");
       }
-      if (manual.mimetype !== "application/pdf") {
+      const manualExt = (manual.originalname.split(".").pop() || "").toLowerCase();
+      if (manualExt !== "pdf" || manual.mimetype !== "application/pdf") {
         throw new Error("PDF 파일만 업로드 가능합니다.");
       }
       // 스타일 모드: "default" (학교 작성요령 풀버전) | "minimal" (필요한 내용만)
@@ -92,6 +116,22 @@ const PIPELINES = {
       const data = filesByField.data?.[0] || null;
       const photos = filesByField.photos || [];
       const manual = filesByField.manual?.[0] || null;
+      if (data) {
+        const dataExt = (data.originalname.split(".").pop() || "").toLowerCase();
+        if (!["xlsx", "xls", "csv", "txt", "png", "jpg", "jpeg"].includes(dataExt)) {
+          throw new Error("실험 데이터는 .xlsx, .xls, .csv, .txt 또는 이미지 파일만 가능합니다.");
+        }
+      }
+      for (const photo of photos) {
+        const photoExt = (photo.originalname.split(".").pop() || "").toLowerCase();
+        if (!["png", "jpg", "jpeg", "gif", "webp"].includes(photoExt)) {
+          throw new Error(`실험 사진은 이미지 파일만 가능합니다. (${photo.originalname})`);
+        }
+      }
+      if (manual) {
+        const manualExt = (manual.originalname.split(".").pop() || "").toLowerCase();
+        if (manualExt !== "pdf") throw new Error("실험 매뉴얼은 PDF만 가능합니다.");
+      }
       // 스타일 모드: "default" (학교 공식 양식) | "minimal" (필요한 내용만)
       const style = String(body.style || "default").trim() === "minimal"
         ? "minimal"
@@ -156,6 +196,17 @@ const PIPELINES = {
           throw new Error(
             "데이터 파일은 .xlsx, .xls, .csv, .txt, .md 형식만 가능합니다.",
           );
+        }
+      }
+
+      if (manual) {
+        const manualExt = (manual.originalname.split(".").pop() || "").toLowerCase();
+        if (manualExt !== "pdf") throw new Error("실험 매뉴얼은 PDF만 가능합니다.");
+      }
+      for (const photo of photos) {
+        const photoExt = (photo.originalname.split(".").pop() || "").toLowerCase();
+        if (!["png", "jpg", "jpeg", "gif", "webp"].includes(photoExt)) {
+          throw new Error(`실험 사진은 이미지 파일만 가능합니다. (${photo.originalname})`);
         }
       }
 
@@ -657,6 +708,42 @@ const PIPELINES = {
     generateHwpx: require("./lib/pipelines/form-maker/hwpx-gen").generateHwpx,
   },
 
+  // 프린트 사진 → 원본급 벡터 PDF 복원 (관리자 전용 베타).
+  // OCR 전사만 하는 기능이 아니라 레이아웃·수식·표와 그림의 물리적 의미를 구조화한 뒤
+  // 300dpi OCR/시각 검증을 통과한 진짜 PDF를 단일 산출물로 반환한다.
+  "print-pdf-restore": {
+    label: "프린트 PDF 복원",
+    filenamePrefix: "프린트복원",
+    filenameSourceField: "photos",
+    creditField: "result",
+    outputKind: "pdf",
+    adminOnly: true,
+    requireArtifactQa: true,
+    // UI에는 모델 선택기가 없으므로 PRINT_RESTORE_MODEL(없으면 DEFAULT_MODEL)을
+    // 공통 Opus 기본값보다 먼저 사용한다. 함수 내부에서 지원 모델을 검증한다.
+    defaultModel: require("./lib/pipelines/print-pdf-restore").getDefaultModel,
+    prepareInput(filesByField, body) {
+      const restore = require("./lib/pipelines/print-pdf-restore");
+      // 초기 UI 빌드에서 사용한 referencePdf도 받아 reference 하나로 정규화한다.
+      const normalizedFiles = {
+        ...filesByField,
+        reference: filesByField.reference || filesByField.referencePdf || [],
+      };
+      return restore.prepareInput(normalizedFiles, {
+        ...body,
+        format: "pdf",
+        qualityGate: "ocr-visual-300dpi",
+      });
+    },
+    buildFilename(content) {
+      const title = sanitizeForFilename(content.title || "복원본");
+      return `프린트복원_${title || "복원본"}.pdf`;
+    },
+    generateContent: require("./lib/pipelines/print-pdf-restore")
+      .generateReportContent,
+    generatePdf: require("./lib/pipelines/print-pdf-restore").generatePdf,
+  },
+
   // 영어 시험대비 자료 3종 세트 (베타) — 영어 지문/학습지 → 모의고사+개념정리+빈칸학습지 PDF 3종 ZIP.
   "eng-exam-prep": {
     label: "영어 시험대비 자료 3종 세트",
@@ -729,6 +816,9 @@ const FREE_BETA_TYPES = new Set([
   "cap-translate",
   "phys-mock-exam",
 ]);
+// 관리자만 볼 수 있는 실험 기능. Pro 베타 배정·임시 공개와 의도적으로 분리한다.
+// 외부 API 토큰은 refreshSessionUser에서 항상 isAdmin=false이므로 이 경로를 호출할 수 없다.
+const ADMIN_ONLY_REPORT_TYPES = new Set(["print-pdf-restore"]);
 // 독서록(단일·대량) — 정상 크레딧 과금 보고서. 예약은 '권수 × 모델단가'(최악치)로 선차감하고,
 // 생성 후 실제 소비 토큰(content.__usage)으로 정산해 차액을 환불한다(reserve→settle).
 const READING_LOG_TYPES = new Set(["reading-log", "reading-log-bulk"]);
@@ -858,17 +948,23 @@ const fs = require("fs");
 const os = require("os");
 
 const app = express();
+app.disable("x-powered-by");
 const PORT = process.env.PORT || 3000;
 // Full-site closure. Revert this commit or set this to false to reopen.
 const SITE_CLOSED = false;
 // 세션 쿠키 서명 키. 재시작마다 바뀌면 기존 로그인 쿠키가 모두 무효화돼 '자동 로그아웃'
-// 되므로 반드시 안정적이어야 한다. SESSION_SECRET 가 있으면 그걸 쓰고, 없으면 재시작에도
-// 변하지 않는 운영 키(Supabase/Anthropic)에서 결정적으로 파생한다(키 노출 아님 — sha256).
+// 되므로 반드시 안정적이어야 한다. 운영은 명시적인 32자 이상 SESSION_SECRET 없이는
+// 시작하지 않는다. 로컬 개발만 비공개 서비스 키에서 결정적으로 파생할 수 있다.
 const SESSION_SECRET = (() => {
-  if (process.env.SESSION_SECRET) return process.env.SESSION_SECRET;
+  const configured = String(process.env.SESSION_SECRET || "");
+  if (process.env.NODE_ENV === "production" && configured.length < 32) {
+    throw new Error(
+      "Production requires an explicit SESSION_SECRET with at least 32 characters.",
+    );
+  }
+  if (configured) return configured;
   const seed =
     process.env.SUPABASE_SERVICE_KEY ||
-    process.env.SUPABASE_URL ||
     process.env.ANTHROPIC_API_KEY ||
     "";
   if (seed) {
@@ -885,6 +981,19 @@ const SESSION_SECRET = (() => {
   );
   return crypto.randomBytes(32).toString("hex");
 })();
+
+// 정식 운영에서 사용자·크레딧·24시간 파일함이 없는 반쪽 서버를 정상으로 띄우지
+// 않는다. 의도적인 정적 데모만 명시적 override로 허용한다.
+if (
+  process.env.NODE_ENV === "production" &&
+  process.env.ALLOW_STATELESS_PRODUCTION !== "1" &&
+  !supa.isEnabled()
+) {
+  throw new Error(
+    "Production requires SUPABASE_URL and SUPABASE_SERVICE_KEY. " +
+      "Set ALLOW_STATELESS_PRODUCTION=1 only for an intentional read-only demo.",
+  );
+}
 
 // Hard timeout for a single generation job (default 15 minutes)
 const JOB_TIMEOUT_MS = parseInt(
@@ -904,7 +1013,13 @@ const JOB_TIMEOUT_PROBLEMSET_MS = parseInt(
   process.env.JOB_TIMEOUT_PROBLEMSET_MS || String(40 * 60 * 1000),
   10,
 );
+// 다중 페이지 프린트 복원은 페이지별 OCR·벡터 조판·300dpi 재검증까지 수행한다.
+const JOB_TIMEOUT_PRINT_PDF_RESTORE_MS = parseInt(
+  process.env.JOB_TIMEOUT_PRINT_PDF_RESTORE_MS || String(90 * 60 * 1000),
+  10,
+);
 function jobTimeoutForModel(model, reportType) {
+  if (reportType === "print-pdf-restore") return JOB_TIMEOUT_PRINT_PDF_RESTORE_MS;
   if (/^claude-fable/.test(String(model || ""))) return JOB_TIMEOUT_FABLE_MS;
   if (reportType === "problem-set") return JOB_TIMEOUT_PROBLEMSET_MS;
   return JOB_TIMEOUT_MS;
@@ -931,14 +1046,47 @@ const PDF_TRANSLATE_FABLE_TIMEOUT_MS = parseInt(
 app.set("trust proxy", 1);
 
 // L4: 보안 헤더(심층 방어) — 클릭재킹·MIME 스니핑·레퍼러 유출 방지 + HTTPS 고정.
-// 엄격 CSP 는 인라인 스크립트가 많은 페이지들을 깨뜨릴 수 있어 지금은 넣지 않는다
-// (추후 nonce 기반으로 점진 도입). 아티팩트 공개 페이지(/p/…)는 외부 임베드를 위해
-// 프레임 차단에서 제외한다.
+// 기존 도구는 Monaco/Pyodide/사용자 미리보기 때문에 inline/eval/blob이 필요하지만,
+// CSP로 플러그인·base 태그·임의 출처 스크립트는 차단한다. 공개 아티팩트(/p/…)는
+// 사용자가 선택한 외부 미디어를 포함할 수 있어 별도 sandbox 경계에 맡긴다.
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader(
+    "Permissions-Policy",
+    "camera=(), geolocation=(), microphone=(self), payment=(), usb=()",
+  );
+  res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
   if (!req.path.startsWith("/p/")) {
+    // Monaco/Pyodide 및 격리 Worker에서 동적 컴파일이 필요한 화면에만 eval 권한을
+    // 남긴다. 홈·로그인·보고서 폼 등 일반 화면은 전역 unsafe-eval 없이 서비스한다.
+    const dynamicCodePaths = new Set([
+      "/admin", "/admin.html",
+      "/editor", "/editor.html",
+      "/exam-prep", "/exam-prep.html",
+      "/studio", "/studio.html",
+    ]);
+    const allowDynamicCode =
+      dynamicCodePaths.has(req.path) || req.path.startsWith("/equation/");
     res.setHeader("X-Frame-Options", "SAMEORIGIN");
+    res.setHeader(
+      "Content-Security-Policy",
+      [
+        "default-src 'self'",
+        "base-uri 'self'",
+        "object-src 'none'",
+        "form-action 'self'",
+        "frame-ancestors 'self'",
+        `script-src 'self' 'unsafe-inline'${allowDynamicCode ? " 'unsafe-eval'" : ""} 'wasm-unsafe-eval' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://esm.sh`,
+        "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+        "font-src 'self' data: https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+        "img-src 'self' data: blob: https:",
+        "media-src 'self' data: blob: https:",
+        "connect-src 'self' https: wss:",
+        "worker-src 'self' blob:",
+        "frame-src 'self' data: blob: https://cdn.jsdelivr.net https://esm.sh",
+      ].join("; "),
+    );
   }
   if (process.env.NODE_ENV === "production") {
     res.setHeader(
@@ -1100,6 +1248,33 @@ const MAX_UPLOAD_BYTES =
 // 본문을 버퍼링하기 전에 가볍게 거부한다(헤더가 없으면 통과 — 스트리밍 호환).
 const MAX_TOTAL_UPLOAD_BYTES =
   parseInt(process.env.MAX_TOTAL_UPLOAD_MB || "192", 10) * 1024 * 1024;
+// 메모리 업로드는 요청 상한뿐 아니라 서버 전체 보유량도 제한한다. 생성 대기 중인
+// 입력 버퍼까지 이 예산에 포함되며 작업 종료 시에만 반납한다.
+const MAX_UPLOAD_MEMORY_BYTES = Math.max(
+  MAX_TOTAL_UPLOAD_BYTES,
+  parseInt(process.env.MAX_UPLOAD_MEMORY_MB || "256", 10) * 1024 * 1024,
+);
+let uploadMemoryBytesInUse = 0;
+
+function releaseUploadMemory(req) {
+  if (!req || req._uploadMemoryReleased) return;
+  req._uploadMemoryReleased = true;
+  const held = Math.max(0, Number(req._uploadMemoryBytes) || 0);
+  uploadMemoryBytesInUse = Math.max(0, uploadMemoryBytesInUse - held);
+  req._uploadMemoryBytes = 0;
+}
+
+function initializeUploadMemoryBudget(req, res, next) {
+  req._uploadMemoryBytes = 0;
+  req._uploadMemoryReleased = false;
+  req._uploadMemoryTransferred = false;
+  const releaseIfRequestOwned = () => {
+    if (!req._uploadMemoryTransferred) releaseUploadMemory(req);
+  };
+  res.once("finish", releaseIfRequestOwned);
+  res.once("close", releaseIfRequestOwned);
+  next();
+}
 function uploadTooLargeMessage() {
   return `파일이 너무 큽니다 (업로드 합계 최대 ${Math.round(
     MAX_TOTAL_UPLOAD_BYTES / 1024 / 1024,
@@ -1120,9 +1295,9 @@ function aggregateMemoryStorage(maxTotalBytes = MAX_TOTAL_UPLOAD_BYTES) {
       file.stream.on("data", (chunk) => {
         if (called) return;
         const len = chunk.length || 0;
-        size += len;
-        req._uploadTotalBytes += len;
-        if (req._uploadTotalBytes > maxTotalBytes) {
+        const nextRequestTotal = req._uploadTotalBytes + len;
+        const nextGlobalTotal = uploadMemoryBytesInUse + len;
+        if (nextRequestTotal > maxTotalBytes) {
           const err = new Error(uploadTooLargeMessage());
           err.status = 413;
           err.expose = true;
@@ -1130,6 +1305,20 @@ function aggregateMemoryStorage(maxTotalBytes = MAX_TOTAL_UPLOAD_BYTES) {
           done(err);
           return;
         }
+        if (nextGlobalTotal > MAX_UPLOAD_MEMORY_BYTES) {
+          const err = new Error(
+            "현재 대용량 업로드가 많습니다. 잠시 후 다시 시도해 주세요.",
+          );
+          err.status = 503;
+          err.expose = true;
+          err.code = "UPLOAD_MEMORY_BUDGET_EXCEEDED";
+          done(err);
+          return;
+        }
+        size += len;
+        req._uploadTotalBytes = nextRequestTotal;
+        req._uploadMemoryBytes = (req._uploadMemoryBytes || 0) + len;
+        uploadMemoryBytesInUse = nextGlobalTotal;
         chunks.push(chunk);
       });
       file.stream.on("error", (err) => done(err));
@@ -1192,7 +1381,13 @@ function pwMarkOf(passwordHash) {
 
 async function refreshSessionUser(req, { failClosed = false } = {}) {
   const u = getSessionUser(req);
-  if (!u || !u.id || !supa.isEnabled()) return u;
+  if (!u || !u.id) return u;
+  if (!supa.isEnabled()) {
+    if (failClosed && process.env.NODE_ENV === "production") {
+      throw new Error("사용자 저장소를 사용할 수 없습니다.");
+    }
+    return u;
+  }
   try {
     const fresh = await supa.findUserById(u.id);
     if (!fresh) {
@@ -1248,6 +1443,62 @@ function requireAuth(req, res, next) {
     return res.status(401).json({ error: "로그인이 필요합니다." });
   }
   return res.redirect("/login.html");
+}
+
+// 대용량 multipart 본문을 메모리에 받기 전에 계정 상태와 저비용 보호 장치를 먼저
+// 확인한다. 상세 report type/모델/크레딧 검증은 필드를 파싱한 뒤 기존 핸들러가 다시
+// 수행하지만, 미승인·정지·사용량 초과 계정과 포화된 대기열은 바이트를 받지 않는다.
+async function requireGenerationUploadAccess(req, res, next) {
+  let user;
+  try {
+    user = await refreshSessionUser(req, { failClosed: true });
+  } catch (error) {
+    console.warn("[generate] pre-upload identity refresh failed:", error.message);
+    return res.status(503).json({ error: "권한 확인 중 오류가 발생했습니다." });
+  }
+  if (!user?.id) return res.status(401).json({ error: "로그인이 필요합니다." });
+
+  if (!user.isAdmin && supa.isEnabled() && !(user.emailVerified && user.approved)) {
+    return res.status(403).json({
+      error: !user.emailVerified
+        ? "학교 이메일 인증이 필요합니다. 메인 페이지에서 학교 이메일을 인증하세요."
+        : "관리자 승인 대기 중입니다. 승인 후 보고서를 생성할 수 있습니다.",
+      needsVerification: !user.emailVerified,
+      needsApproval: !!user.emailVerified && !user.approved,
+    });
+  }
+
+  if (!user.isAdmin) {
+    const limit = rateLimit.checkUserGenLimit(user.id);
+    if (!limit.allowed) {
+      return res.status(429).json({
+        error: `시간당 ${limit.limit}건 생성 한도에 도달했습니다. 잠시 후 다시 시도해 주세요.`,
+      });
+    }
+    try {
+      const suspension = await comm.getGenerationBan(user.id);
+      if (suspension) {
+        return res.status(403).json({
+          error: "비정상적인 사용량이 감지되어 생성이 정지되었습니다.",
+          suspended: true,
+        });
+      }
+    } catch (error) {
+      console.warn("[generate] pre-upload suspension lookup failed:", error.message);
+      return res.status(503).json({ error: "사용 권한을 확인하지 못했습니다." });
+    }
+  }
+
+  if (
+    genSemaphore.active >= genSemaphore.max &&
+    genSemaphore.waiting >= genSemaphore.maxQueue
+  ) {
+    return res.status(503).json({
+      error: "생성 대기열이 가득 찼습니다. 잠시 후 다시 시도해 주세요.",
+      code: "GENERATION_QUEUE_FULL",
+    });
+  }
+  return next();
 }
 
 async function requireAdmin(req, res, next) {
@@ -1454,6 +1705,264 @@ function addToTotal(cost, imageCost) {
 // ── Job storage (in-memory) ──────────────────────────────────────────────────
 const jobs = new Map();
 const JOB_RETENTION_MS = 24 * 60 * 60 * 1000;
+const REPORT_STORAGE_RETRY_ATTEMPTS = Math.min(
+  4,
+  Math.max(
+    1,
+    Number.parseInt(process.env.REPORT_STORAGE_RETRY_ATTEMPTS || "3", 10) || 3,
+  ),
+);
+const REPORT_STORAGE_RETRY_BASE_DELAY_MS = Math.min(
+  5_000,
+  Math.max(
+    0,
+    Number.parseInt(process.env.REPORT_STORAGE_RETRY_BASE_DELAY_MS || "250", 10) ||
+      250,
+  ),
+);
+const JOB_ARTIFACT_MEMORY_MAX_BYTES = Math.min(
+  2 * 1024 * 1024 * 1024,
+  Math.max(
+    8 * 1024 * 1024,
+    Number.parseInt(process.env.JOB_ARTIFACT_MEMORY_MAX_BYTES || "134217728", 10) ||
+      128 * 1024 * 1024,
+  ),
+);
+const JOB_ARTIFACT_MEMORY_TTL_MS = Math.min(
+  JOB_RETENTION_MS,
+  Math.max(
+    60 * 1000,
+    Number.parseInt(process.env.JOB_ARTIFACT_MEMORY_TTL_MS || "900000", 10) ||
+      15 * 60 * 1000,
+  ),
+);
+
+function artifactPersistenceAbortError() {
+  const error = new Error("작업이 중단되었습니다.");
+  error.name = "AbortError";
+  return error;
+}
+
+function waitForArtifactPersistenceRetry(delayMs, signal) {
+  if (!delayMs) {
+    if (signal?.aborted) return Promise.reject(artifactPersistenceAbortError());
+    return Promise.resolve();
+  }
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(artifactPersistenceAbortError());
+      return;
+    }
+    let timer = null;
+    const onAbort = () => {
+      if (timer) clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      reject(artifactPersistenceAbortError());
+    };
+    timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, delayMs);
+    timer.unref?.();
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+// RAM 산출물은 15분 TTL/LRU 대상이므로 운영 저장소가 켜진 작업은
+// Supabase file id 또는 사용자 클라우드 식별자를 확인하기 전에 완료·정산하지
+// 않는다. 로컬/테스트에서 Supabase를 명시적으로 끄는 경우는 기존 RAM 전달을 유지한다.
+function durableArtifactPersistenceRequired(job) {
+  return supa.isEnabled() && !!job?.userInfo?.id;
+}
+
+function hasDurableArtifact(job) {
+  return !!(
+    job?.fileId ||
+    job?.googleDriveFileId ||
+    job?.dropboxFileId ||
+    job?.dropboxFilePath ||
+    (Array.isArray(job?.files) && job.files.some((entry) => entry?.fileId))
+  );
+}
+
+function reportStorageErrorIsRetryable(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  // 재시도해도 결과가 바뀌지 않는 입력/권한/용량 오류는 즉시 실패한다.
+  return !(
+    /(?:http\s*)?413\b/.test(message) ||
+    /payload too large|file(?:\s+size)?[^\n]*(?:too large|exceed|max)/.test(message) ||
+    /unsupported|invalid (?:mime|content|file)|mime type/.test(message) ||
+    /unauthori[sz]ed|forbidden|permission|row.level|policy violation/.test(message)
+  );
+}
+
+async function saveReportFileDurably(
+  payload,
+  {
+    signal,
+    attempts = REPORT_STORAGE_RETRY_ATTEMPTS,
+    baseDelayMs = REPORT_STORAGE_RETRY_BASE_DELAY_MS,
+    onRetry,
+  } = {},
+) {
+  const maxAttempts = Math.min(4, Math.max(1, Math.trunc(Number(attempts) || 1)));
+  const retryBase = Math.min(5_000, Math.max(0, Math.trunc(Number(baseDelayMs) || 0)));
+  let lastError = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    if (signal?.aborted) throw artifactPersistenceAbortError();
+    try {
+      const savedFile = await supa.saveReportFile(payload);
+      if (!savedFile?.id) {
+        throw new Error("파일 식별자가 반환되지 않았습니다.");
+      }
+      return savedFile;
+    } catch (error) {
+      if (signal?.aborted || error?.name === "AbortError") throw error;
+      lastError = error;
+      if (attempt >= maxAttempts || !reportStorageErrorIsRetryable(error)) break;
+      onRetry?.(attempt, error);
+      await waitForArtifactPersistenceRetry(retryBase * 2 ** (attempt - 1), signal);
+    }
+  }
+  const reason = String(lastError?.message || lastError || "알 수 없는 저장 오류").slice(
+    0,
+    240,
+  );
+  const error = new Error(
+    `결과 파일을 24시간 보관하지 못해 작업을 완료하지 않았습니다. ` +
+      `유료 작업이면 예약 크레딧은 자동 환불됩니다. 잠시 후 다시 시도해 주세요. (${reason})`,
+  );
+  error.code = "ARTIFACT_PERSISTENCE_FAILED";
+  error.cause = lastError;
+  throw error;
+}
+
+// 완료 산출물은 DB 파일함과 달리 프로세스 RAM을 직접 차지한다. result와
+// 다중 파일 files[].buffer를 모두 세되, 단일 번역처럼 같은 Buffer를 두 필드가
+// 가리키는 경우에는 실제 메모리와 맞게 한 번만 센다.
+function jobArtifactBuffers(job) {
+  const buffers = [];
+  const seen = new Set();
+  const add = (value) => {
+    if (!Buffer.isBuffer(value) || seen.has(value)) return;
+    seen.add(value);
+    buffers.push(value);
+  };
+  add(job?.result);
+  for (const entry of job?.files || []) add(entry?.buffer);
+  return buffers;
+}
+
+function jobArtifactMemoryBytes(job) {
+  return jobArtifactBuffers(job).reduce((total, buffer) => total + buffer.length, 0);
+}
+
+function purgeJobArtifactMemory(job, now = Date.now()) {
+  if (!job) return 0;
+  const releasedBytes = jobArtifactMemoryBytes(job);
+  job.result = null;
+  if (Array.isArray(job.files)) {
+    for (const entry of job.files) {
+      if (entry && typeof entry === "object") entry.buffer = null;
+    }
+  }
+  if (releasedBytes > 0) job.artifactEvictedAt = now;
+  return releasedBytes;
+}
+
+function touchJobArtifact(job, now = Date.now()) {
+  if (job && job.status !== "running" && jobArtifactMemoryBytes(job) > 0) {
+    job.artifactLastAccessAt = now;
+  }
+}
+
+// TTL을 먼저 적용하고, 남은 완료 산출물은 마지막 접근이 오래된 순서로 비운다.
+// 실행 중 작업은 생성기가 Buffer를 쓰는 중일 수 있으므로 어떤 경우에도 건드리지
+// 않는다. 실행 중 Buffer만으로 cap을 넘으면 완료 산출물을 전부 비우되 실행 작업은
+// 끝날 때까지 보존한다.
+function enforceJobArtifactMemoryLimits({
+  now = Date.now(),
+  maxBytes = JOB_ARTIFACT_MEMORY_MAX_BYTES,
+  ttlMs = JOB_ARTIFACT_MEMORY_TTL_MS,
+} = {}) {
+  let releasedBytes = 0;
+  let evictedJobs = 0;
+  const completedWithBuffers = [];
+  let totalBytes = 0;
+
+  for (const job of jobs.values()) {
+    const bytes = jobArtifactMemoryBytes(job);
+    totalBytes += bytes;
+    if (!bytes || job.status === "running") continue;
+    const lastAccess =
+      job.artifactLastAccessAt || job.artifactCompletedAt || job.createdAt || 0;
+    if (lastAccess <= now - ttlMs) {
+      releasedBytes += purgeJobArtifactMemory(job, now);
+      evictedJobs += 1;
+      totalBytes -= bytes;
+    } else {
+      completedWithBuffers.push({ job, bytes, lastAccess });
+    }
+  }
+
+  completedWithBuffers.sort(
+    (a, b) => a.lastAccess - b.lastAccess || (a.job.createdAt || 0) - (b.job.createdAt || 0),
+  );
+  for (const item of completedWithBuffers) {
+    if (totalBytes <= maxBytes) break;
+    releasedBytes += purgeJobArtifactMemory(item.job, now);
+    evictedJobs += 1;
+    totalBytes -= item.bytes;
+  }
+
+  return { totalBytes: Math.max(0, totalBytes), releasedBytes, evictedJobs };
+}
+
+function markJobArtifactsCompleted(job, now = Date.now()) {
+  if (!job || job.status === "running") return;
+  job.artifactCompletedAt = now;
+  job.artifactLastAccessAt = now;
+  enforceJobArtifactMemoryLimits({ now });
+}
+
+// 파일함 삭제는 DB 객체뿐 아니라 같은 프로세스의 별칭 Buffer도 삭제해야 한다.
+// 파일 ID가 붙은 entry/result만 없애 다른 다중 파일 산출물은 계속 받을 수 있게 한다.
+function purgeDeletedFileFromJobs(userId, fileId, now = Date.now()) {
+  const affectedJobs = [];
+  const targetId = String(fileId || "");
+  if (!userId || !targetId) return affectedJobs;
+
+  for (const job of jobs.values()) {
+    if (job.userInfo?.id !== userId) continue;
+    let matched = false;
+    const matchedBuffers = new Set();
+    if (String(job.fileId || "") === targetId) {
+      matched = true;
+      if (Buffer.isBuffer(job.result)) matchedBuffers.add(job.result);
+      job.fileId = null;
+    }
+    if (Array.isArray(job.files)) {
+      for (const entry of job.files) {
+        if (!entry || String(entry.fileId || "") !== targetId) continue;
+        matched = true;
+        if (Buffer.isBuffer(entry.buffer)) matchedBuffers.add(entry.buffer);
+        entry.buffer = null;
+        entry.fileId = null;
+      }
+    }
+    if (!matched) continue;
+
+    if (matchedBuffers.has(job.result)) job.result = null;
+    if (Array.isArray(job.files) && matchedBuffers.size) {
+      for (const entry of job.files) {
+        if (entry && matchedBuffers.has(entry.buffer)) entry.buffer = null;
+      }
+    }
+    job.artifactPurgedAt = now;
+    affectedJobs.push(job);
+  }
+  return affectedJobs;
+}
 
 // 사용자별 진행 중인 작업 ID — B1: 같은 사용자가 새 작업 제출 시 이전 작업 자동 중단.
 // curl 등으로 폼 락을 우회한 동시 요청도 1개로 제한됨.
@@ -1468,36 +1977,19 @@ const MAX_CONCURRENT_GENERATIONS = Math.max(
   1,
   parseInt(process.env.MAX_CONCURRENT_GENERATIONS || "10", 10) || 10,
 );
-class GenerationSemaphore {
-  constructor(max) {
-    this.max = max;
-    this.active = 0;
-    this.queue = [];
-  }
-  acquire() {
-    return new Promise((resolve) => {
-      if (this.active < this.max) {
-        this.active++;
-        resolve();
-      } else {
-        this.queue.push(resolve);
-      }
-    });
-  }
-  release() {
-    if (this.queue.length > 0) {
-      // 슬롯을 반납하지 않고 대기 중인 다음 작업에 바로 넘긴다(active 유지).
-      const next = this.queue.shift();
-      next();
-    } else {
-      this.active = Math.max(0, this.active - 1);
-    }
-  }
-  get waiting() {
-    return this.queue.length;
-  }
-}
-const genSemaphore = new GenerationSemaphore(MAX_CONCURRENT_GENERATIONS);
+const MAX_GENERATION_QUEUE = Math.max(
+  0,
+  parseInt(process.env.MAX_GENERATION_QUEUE || "6", 10) || 0,
+);
+const GENERATION_QUEUE_TIMEOUT_MS = Math.max(
+  1000,
+  parseInt(process.env.GENERATION_QUEUE_TIMEOUT_MS || String(10 * 60 * 1000), 10) ||
+    10 * 60 * 1000,
+);
+const genSemaphore = new GenerationSemaphore(MAX_CONCURRENT_GENERATIONS, {
+  maxQueue: MAX_GENERATION_QUEUE,
+  waitTimeoutMs: GENERATION_QUEUE_TIMEOUT_MS,
+});
 
 // ── 비용 서킷 브레이커 등급별 시간당 한도(USD) ──────────────────────────────
 // 무료 15 / Pro 20 / Max 30 (env 로 조정). 초과 시 정지(banGeneration) + 소명.
@@ -1518,8 +2010,13 @@ async function costLimitForUser(userInfo) {
   return COST_LIMIT_FREE;
 }
 
-function createJob(userInfo) {
-  const id = crypto.randomBytes(12).toString("hex");
+function newJobId() {
+  return crypto.randomBytes(12).toString("hex");
+}
+
+function createJob(userInfo, requestedId = null) {
+  const id = requestedId || newJobId();
+  if (jobs.has(id)) throw new Error("job id collision");
   const job = {
     id,
     userInfo, // { id?, name, isAdmin }
@@ -1537,15 +2034,63 @@ function createJob(userInfo) {
 }
 
 function cleanupOldJobs() {
+  enforceJobArtifactMemoryLimits();
   const cutoff = Date.now() - JOB_RETENTION_MS;
   for (const [id, job] of jobs.entries()) {
     if (job.status === "running") continue;
-    if ((job.createdAt || 0) < cutoff) jobs.delete(id);
+    if ((job.createdAt || 0) < cutoff) {
+      purgeJobArtifactMemory(job);
+      jobs.delete(id);
+    }
   }
 }
 
-const jobCleanupTimer = setInterval(cleanupOldJobs, 60 * 60 * 1000);
+const jobCleanupTimer = setInterval(
+  cleanupOldJobs,
+  Math.min(60 * 1000, Math.max(10 * 1000, Math.floor(JOB_ARTIFACT_MEMORY_TTL_MS / 2))),
+);
 if (typeof jobCleanupTimer.unref === "function") jobCleanupTimer.unref();
+
+// Durable 크레딧 예약 lease를 실행 중인 작업만 연장하고, 종료된 프로세스가 남긴
+// 만료 예약은 원자 RPC로 환불한다. 다중 인스턴스에서도 살아 있는 작업의 lease는
+// 계속 갱신되므로 다른 인스턴스가 그 예약을 회수하지 않는다.
+const CREDIT_RESERVATION_HEARTBEAT_MS = 5 * 60 * 1000;
+let creditReservationMaintenanceRunning = false;
+async function maintainCreditReservations() {
+  if (!supa.isEnabled() || creditReservationMaintenanceRunning) return;
+  creditReservationMaintenanceRunning = true;
+  try {
+    const active = Array.from(jobs.values()).filter(
+      (job) =>
+        job.status === "running" &&
+        !job.creditSettled &&
+        job.creditReservation?.durable,
+    );
+    await Promise.allSettled(
+      active.map((job) =>
+        supa.touchCreditReservation(
+          job.creditReservation.jobId || job.id,
+          job.creditReservation.ttlMs,
+        ),
+      ),
+    );
+    const refunded = await supa.reconcileCreditReservations(500);
+    if (refunded) {
+      console.warn(`[BILLING] 만료된 크레딧 예약 ${refunded}건 자동 환불`);
+    }
+  } catch (error) {
+    console.warn(`[BILLING] 크레딧 예약 유지보수 실패: ${error.message}`);
+  } finally {
+    creditReservationMaintenanceRunning = false;
+  }
+}
+const creditReservationMaintenanceTimer = setInterval(
+  maintainCreditReservations,
+  CREDIT_RESERVATION_HEARTBEAT_MS,
+);
+if (typeof creditReservationMaintenanceTimer.unref === "function") {
+  creditReservationMaintenanceTimer.unref();
+}
 
 // 운영/분석 로그 보존기간 자동 적용. SQL 함수가 아직 배포되지 않은 환경에서는
 // 조용히 건너뛰어 기존 생성 기능을 방해하지 않는다.
@@ -1669,7 +2214,23 @@ async function issueVerificationEmail(req, user, email) {
 
 // ── Login routes ─────────────────────────────────────────────────────────────
 
-app.post("/api/login", async (req, res) => {
+function requireTrustedLoginOrigin(req, res, next) {
+  const rawOrigin = String(req.get("origin") || "").trim();
+  if (!rawOrigin) return next(); // CLI/네이티브 앱 호환. 브라우저 POST는 Origin을 보낸다.
+  try {
+    const supplied = new URL(rawOrigin).origin;
+    const expected = new URL(`${req.protocol}://${req.get("host")}`).origin;
+    if (supplied === expected) return next();
+  } catch {
+    // 아래의 동일한 403 응답으로 처리한다.
+  }
+  return res.status(403).json({
+    error: "신뢰할 수 없는 사이트에서 시작된 로그인 요청입니다.",
+    code: "UNTRUSTED_LOGIN_ORIGIN",
+  });
+}
+
+app.post("/api/login", requireTrustedLoginOrigin, async (req, res) => {
   // 브루트포스 방어: 동일 IP에서 분당 10회 초과 시 차단
   const ip = req.ip || "unknown";
   const limit = rateLimit.checkLoginLimit(ip);
@@ -1744,6 +2305,7 @@ app.post("/api/login", async (req, res) => {
     if (req.session) delete req.session.oauthReturn;
     return res.json({
       ok: true,
+      id: user.id,
       user: user.name,
       isAdmin: !!user.is_admin,
       redirect: oauthRedirect,
@@ -2006,6 +2568,9 @@ app.get("/api/me", async (req, res) => {
   let pendingEmail = "";
   let emailVerified = !!u.emailVerified;
   let approved = !!u.approved;
+  // 관리자 표시는 오래된 세션 플래그가 아니라 아래 fresh profile 조회 결과를
+  // 우선한다. 권한 부여/회수 직후에도 관리자 전용 UI가 즉시 정확해야 한다.
+  let isAdmin = !!u.isAdmin;
   let isStaff = !!u.isStaff;
   let isDeveloper = !!u.isDeveloper;
   let avatarUrl = u.avatarUrl || null;
@@ -2029,6 +2594,7 @@ app.get("/api/me", async (req, res) => {
         pendingEmail = String(freshUser.email_verify_email || "");
         emailVerified = !!freshUser.email_verified;
         approved = !!freshUser.approved;
+        isAdmin = !!freshUser.is_admin;
         isStaff = !!freshUser.is_staff;
         isDeveloper = !!freshUser.is_developer;
         avatarUrl = freshUser.avatar_url || null;
@@ -2038,6 +2604,7 @@ app.get("/api/me", async (req, res) => {
         // 세션에도 최신 인증 상태 반영(이후 게이트 판단의 stale 방지).
         req.session.userInfo.emailVerified = emailVerified;
         req.session.userInfo.approved = approved;
+        req.session.userInfo.isAdmin = isAdmin;
         req.session.userInfo.isStaff = isStaff;
         req.session.userInfo.isDeveloper = isDeveloper;
         req.session.userInfo.avatarUrl = avatarUrl;
@@ -2049,11 +2616,12 @@ app.get("/api/me", async (req, res) => {
       console.warn("[me] profile lookup failed:", e.message);
     }
   }
-  const reportEligible = !!u.isAdmin || (emailVerified && approved);
+  const reportEligible = isAdmin || (emailVerified && approved);
   return res.json({
+    id: u.id,
     user: u.name,
     username,
-    isAdmin: !!u.isAdmin,
+    isAdmin,
     isStaff,
     isDeveloper,
     avatarUrl,
@@ -2103,7 +2671,7 @@ const CHAT_SYSTEM = `당신은 "Quilo" 사이트의 한국어 도우미입니다
 - 도구 모음: LaTeX 수식 변환, 파일·이미지 변환·압축, PDF 도구(병합/분할/회전 등).
 - 데스크톱 앱(Quilo, Mac/Windows) 다운로드: https://quilolab.com/apps/quilo.html
 
-[크레딧] 보고서 1건당 선택 모델 기준으로 차감: Opus 4.8 = 4크레딧, Sonnet 5 = 2크레딧, GPT-5.5 = 4크레딧, GPT-5.4 = 1크레딧, GPT-5.4 mini = 무료. 실제 표시 단가는 사이트의 최신 모델 선택 화면을 우선합니다.
+[크레딧] 보고서 1건당 선택 모델 기준으로 차감: Opus 4.8 = 4크레딧, Sonnet 5 = 2크레딧, GPT-5.5 = 4크레딧, GPT-5.4 = 1크레딧, GPT-5.4 mini = 하루 5건 무료(이후 1크레딧). 실제 표시 단가는 사이트의 최신 모델 선택 화면을 우선합니다.
 
 [자주 묻는 것]
 - .hwpx는 한컴오피스/한글에서, .docx는 MS Word(또는 한글)에서 열립니다.
@@ -3707,6 +4275,8 @@ app.post(
   "/api/generate",
   requireAuth,
   beginGenerationTelemetry,
+  requireGenerationUploadAccess,
+  initializeUploadMemoryBudget,
   limitTotalUpload,
   upload.any(),
   async (req, res) => {
@@ -3723,6 +4293,22 @@ app.post(
       return res.status(403).json({
         error: "이 기능은 현재 제공이 일시 중단되었습니다. (추후 재공개 예정)",
       });
+    }
+
+    // 관리자 전용 기능은 정책 동의·업로드 파싱보다 먼저 fresh 권한으로 차단한다.
+    // UI 숨김은 보안 경계가 아니며, API 토큰은 관리자 권한을 갖지 않는다.
+    let userInfo = null;
+    if (ADMIN_ONLY_REPORT_TYPES.has(reportType) || pipeline.adminOnly === true) {
+      try {
+        userInfo = await refreshSessionUser(req, { failClosed: true });
+      } catch (e) {
+        console.warn("[generate] admin privilege refresh failed:", e.message);
+        return res.status(503).json({ error: "권한 확인 중 오류가 발생했습니다." });
+      }
+      if (!userInfo) return res.status(401).json({ error: "로그인이 필요합니다." });
+      if (!userInfo.isAdmin) {
+        return res.status(403).json({ error: "이 기능은 관리자 전용입니다." });
+      }
     }
 
     const copyrightAccepted = isTruthyPolicyFlag(req.body.copyrightAccepted);
@@ -3761,17 +4347,21 @@ app.post(
     // 파이프라인별 입력 검증·준비
     let pipelineInput;
     try {
+      // 브라우저의 MIME/파일명은 신뢰할 수 없다. PDF·Office ZIP·이미지는 실제
+      // 시그니처까지 확인해 위장 업로드가 복잡한 파서로 진입하지 못하게 한다.
+      assertUploadsMagic(req.files);
       pipelineInput = pipeline.prepareInput(filesByField, req.body);
     } catch (e) {
       return res.status(400).json({ error: e.message });
     }
 
-    let userInfo;
-    try {
-      userInfo = await refreshSessionUser(req, { failClosed: true });
-    } catch (e) {
-      console.warn("[generate] privilege refresh failed:", e.message);
-      return res.status(503).json({ error: "권한 확인 중 오류가 발생했습니다." });
+    if (!userInfo) {
+      try {
+        userInfo = await refreshSessionUser(req, { failClosed: true });
+      } catch (e) {
+        console.warn("[generate] privilege refresh failed:", e.message);
+        return res.status(503).json({ error: "권한 확인 중 오류가 발생했습니다." });
+      }
     }
     if (!userInfo) return res.status(401).json({ error: "로그인이 필요합니다." });
 
@@ -3870,6 +4460,14 @@ app.post(
       } catch (e) {
         console.warn("[generate] profile lookup failed:", e.message);
       }
+    }
+
+    // 위의 profile 재조회에서 관리자 권한이 회수된 경우에도 같은 요청에서 즉시 차단한다.
+    if (
+      (ADMIN_ONLY_REPORT_TYPES.has(reportType) || pipeline.adminOnly === true) &&
+      !effectiveIsAdmin
+    ) {
+      return res.status(403).json({ error: "이 기능은 관리자 전용입니다." });
     }
 
     // ── 학생 인증 게이트(2단계) ───────────────────────────────────────────────
@@ -4015,22 +4613,23 @@ app.post(
     // ⚠ 과거 제외 이력: reading-log/-bulk 은 GPT가 책 내용을 일반론으로 뭉뚱그리거나
     //   다른 책(예: '코스모스')으로 바꾸는 사고가 있었음(실측) — 품질 민원 시 재제외 검토.
     const GPT_REPORT_MODELS = ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini"];
-    // Gemini(OpenAI 호환) — 라우팅을 배선한 핵심 보고서 타입에서만 허용.
+    // Gemini(OpenAI 호환) — 관리자 전용이며, 라우팅을 배선한 핵심 보고서 타입에서만 허용.
     // 미배선 타입(reading-log 등)은 Claude 경로로 빠져 깨지므로 화이트리스트에 넣지 않는다.
-    const GEMINI_REPORT_MODELS = ["gemini-3.1-pro", "gemini-2.5-flash"];
     const GPT_OK_TYPES = new Set(Object.keys(PIPELINES));
-    const OPENAI_COMPAT_TYPES = new Set([
-      "chem-pre",
-      "chem-result",
-      "phys-result",
-      "free",
-    ]);
     const allowedModels = [...ALLOWED_MODELS];
     if (GPT_OK_TYPES.has(reportType)) allowedModels.push(...GPT_REPORT_MODELS);
-    if (OPENAI_COMPAT_TYPES.has(reportType)) {
+    if (effectiveIsAdmin && GEMINI_REPORT_TYPES.has(reportType)) {
       allowedModels.push(...GEMINI_REPORT_MODELS);
     }
     const requestedModel = String(req.body.model || "").trim();
+    const geminiAccess = checkGeminiReportAccess({
+      requestedModel,
+      reportType,
+      isAdmin: effectiveIsAdmin,
+    });
+    if (!geminiAccess.allowed) {
+      return res.status(geminiAccess.status).json({ error: geminiAccess.error });
+    }
     // Fable 5 요청 처리: 일시 차단 중이면 관리자 포함 전체 거부, 아니면 관리자 전용.
     if (isFableModel(requestedModel)) {
       if (FABLE_DISABLED) {
@@ -4044,25 +4643,45 @@ app.post(
           .json({ error: "Fable 5 모델은 관리자 전용입니다." });
       }
     }
-    let model = allowedModels.includes(requestedModel) ? requestedModel : null;
-    // 모델 제한 계정: 허용 목록(쉼표구분, 여러 개 가능) 안에서만 선택 가능 — fresh row 기준.
-    // 요청 모델이 허용 목록에 있으면 그대로, 없으면 목록의 첫 모델로.
+    let defaultModel = "claude-opus-4-8";
+    if (typeof pipeline.defaultModel === "function") {
+      // 빈 요청에만 파이프라인 설정값을 쓴다. allowedModels를 함께 넘겨 관리자 전용
+      // 모델·일시 중단 정책을 환경변수가 우회하지 못하게 한다.
+      const pipelineDefault = String(
+        pipeline.defaultModel(process.env, allowedModels) || "",
+      ).trim();
+      if (allowedModels.includes(pipelineDefault)) defaultModel = pipelineDefault;
+    }
+    const resolvedModel = resolveRequestedReportModel({
+      requestedModel,
+      allowedModels,
+      defaultModel,
+    });
+    if (!resolvedModel.ok) {
+      return res.status(resolvedModel.status).json({ error: resolvedModel.error });
+    }
+    let model = resolvedModel.model;
+
+    // 모델 제한 계정은 UI뿐 아니라 직접 API 요청도 같은 허용 목록을 지킨다. 명시한
+    // 모델을 다른 모델로 조용히 바꾸면 품질·가격이 달라지므로 403으로 분명히 거부한다.
     if (effectiveRestrictedModel) {
       const allowList = String(effectiveRestrictedModel)
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
-      const usable = allowList.filter((m) => allowedModels.includes(m));
-      if (usable.length) {
-        model = usable.includes(requestedModel) ? requestedModel : usable[0];
-      } else if (allowList.length) {
-        // 제한 모델이 이 보고서 종류에서 안 쓰이면(예: GPT 제한인데 GPT 미허용) 안전한 기본.
-        model = allowedModels.includes("claude-sonnet-5")
-          ? "claude-sonnet-5"
-          : allowedModels[0];
+      const usable = allowList.filter((candidate) => allowedModels.includes(candidate));
+      if (!usable.length) {
+        return res.status(503).json({
+          error: "계정에 허용된 AI 모델이 이 보고서에서 준비되지 않았습니다. 관리자에게 문의해 주세요.",
+        });
       }
+      if (requestedModel && !usable.includes(model)) {
+        return res.status(403).json({
+          error: "이 계정에서는 선택한 AI 모델을 사용할 수 없습니다.",
+        });
+      }
+      if (!requestedModel) model = usable[0];
     }
-    if (!model) model = "claude-opus-4-8"; // 기본 = Opus 4.8
     // ── BYOK: 본인 API 키 등록 사용자는 해당 제공자 호출을 본인 키로 + 크레딧 미차감 ──
     // 등급 내 기능·모델 화이트리스트는 그대로 적용. 키는 아래에서 job 에 비열거 속성으로만
     // 부착해 persistBgJob(명시 필드 직렬화)·로그에 절대 실리지 않는다.
@@ -4071,23 +4690,15 @@ app.post(
       byokKeys = await byok.loadUserKeys(supa, userInfo.id);
     }
     const byokActive = !!(byokKeys && byokKeys[byok.activeProvider(model)]);
-    // GPT 선택인데 서버·본인 키가 모두 없으면 명확히 거부(Claude로 조용히 바꾸지 않음).
-    if (
-      /^gpt/i.test(model) &&
-      !(process.env.GPT_API_KEY || process.env.OPENAI_API_KEY) &&
-      !(byokKeys && byokKeys.openai)
-    ) {
-      return res.status(503).json({
-        error:
-          "GPT 모델은 현재 서버에 키가 설정되지 않아 사용할 수 없습니다(GPT_API_KEY). 개인 설정에서 본인 키(BYOK)를 등록하면 사용할 수 있습니다.",
-      });
-    }
-    // Gemini 키 미설정 시 명확히 거부(조용히 Claude 로 바꾸지 않음).
-    if (/^gemini/i.test(model) && !process.env.GEMINI_API_KEY) {
-      return res.status(503).json({
-        error:
-          "Gemini 모델은 현재 서버에 키가 설정되지 않아 사용할 수 없습니다(GEMINI_API_KEY).",
-      });
+    const providerAccess = checkReportModelProviderAvailability({
+      model,
+      providers: mergeUserModelProviderAvailability(
+        serverModelProviderAvailability(process.env),
+        byokKeys,
+      ),
+    });
+    if (!providerAccess.ok) {
+      return res.status(providerAccess.status).json({ error: providerAccess.error });
     }
     // Pro 무료 보고서, 활성 위임(grant), BYOK 사용자는 크레딧 미차감(0). 그 외는 모델별 단가.
     const isFreeBeta = FREE_BETA_TYPES.has(reportType);
@@ -4133,13 +4744,18 @@ app.post(
         ? 1 * REPORT_IMAGE_MAX
         : 0;
 
+    // 크레딧 예약과 실제 job이 같은 ID를 쓰게 해 DB ledger를 프로세스 재시작 뒤에도
+    // 정확히 정산할 수 있게 한다. 무료 작업도 아래 createJob에서 이 ID를 그대로 쓴다.
+    const pendingJobId = newJobId();
+
     // 크레딧 예약/검증 (Supabase + 일반 사용자. admin·무제한 계정·무료 베타·위임 사용자는 제외)
     // 권한 면제 판단은 fresh row(effectiveIsAdmin/effectiveUnlimited) 기준.
     // P1(H2/M2/M3): '요청 시점 검사 → 생성 후 차감(0 바닥)' 구조는 동시요청·과대생성 시
     // 부족분을 조용히 무료로 흘렸다. 이제 생성 '전'에 최악치를 원자적으로 선차감(예약)하고,
     // 완료 시 실제 비용만 남기고 차액을 환불한다(reserve→settle/refund). 실패/중단 시 전액 환불.
-    // reserve RPC 미생성(마이그레이션 전)이면 기존 후불 경로로 폴백해 동작이 바뀌지 않는다.
-    let creditReservation = null; // { amount } — 성공 예약(정산/환불 대상)
+    // durable RPC 미생성(마이그레이션 전)이면 과금 요청을 생성 전에 차단한다.
+    // 기록 없는 선차감/후불 과금은 재시작·동시 요청에서 유실될 수 있어 사용하지 않는다.
+    let creditReservation = null; // { amount, jobId, durable } — 성공 예약
     if (
       !isFreeBeta &&
       !hasGrant &&
@@ -4150,25 +4766,30 @@ app.post(
     ) {
       const need = creditCost + reservedImageCredits;
       try {
-        const r = await supa.reserveCredits(userInfo.id, need);
+        const reservationTtlMs = Math.max(
+          60 * 60 * 1000,
+          jobTimeoutForModel(model, reportType) + 30 * 60 * 1000,
+        );
+        const r = await supa.reserveCredits(userInfo.id, need, {
+          jobId: pendingJobId,
+          ttlMs: reservationTtlMs,
+        });
         if (r.unavailable) {
-          // 마이그레이션 전 — 레거시(후불) 경로: 요청 시점 잔액만 검사.
-          const have =
-            freshUser != null
-              ? Math.max(0, Math.trunc(Number(freshUser.credits) || 0))
-              : await supa.getCredits(userInfo.id);
-          if (have < need) {
-            return res.status(402).json({
-              error: `🚫 크레딧 부족 (보유 ${have} / 필요 ${need}). 관리자에게 충전을 요청하세요.`,
-            });
-          }
+          return res.status(503).json({
+            error: "크레딧 예약 시스템을 준비 중입니다. 잠시 후 다시 시도해 주세요.",
+          });
         } else if (!r.ok) {
           const have = await supa.getCredits(userInfo.id);
           return res.status(402).json({
             error: `🚫 크레딧 부족 (보유 ${have} / 필요 ${need}). 관리자에게 충전을 요청하세요.`,
           });
         } else if (need > 0) {
-          creditReservation = { amount: need };
+          creditReservation = {
+            amount: need,
+            jobId: pendingJobId,
+            durable: r.durable === true,
+            ttlMs: reservationTtlMs,
+          };
         }
       } catch (e) {
         console.error("[credit] reserve error:", e);
@@ -4179,15 +4800,18 @@ app.post(
     }
 
     const date = (req.body.date || "").trim();
-    // 출력 형식: docx (default) 또는 hwpx — pipeline이 hwpx generator를 가진 경우에만 hwpx 허용
+    // 출력 형식: 파이프라인이 고정 산출물(zip/pdf)이면 사용자 입력과 무관하게 해당 형식,
+    // 문서 파이프라인은 기존처럼 docx(default) 또는 지원할 때만 hwpx.
     const requestedFormat = String(req.body.format || "docx").trim().toLowerCase();
     const format =
       pipeline.outputKind === "zip"
         ? "zip"
-        : requestedFormat === "hwpx" &&
-            typeof pipeline.generateHwpx === "function"
-          ? "hwpx"
-          : "docx";
+        : pipeline.outputKind === "pdf"
+          ? "pdf"
+          : requestedFormat === "hwpx" &&
+              typeof pipeline.generateHwpx === "function"
+            ? "hwpx"
+            : "docx";
     pipelineInput.fontFace = normalizeFontFaceForFormat(
       pipelineInput.fontFace,
       format,
@@ -4224,10 +4848,18 @@ app.post(
       }
     }
 
-    const job = createJob(userInfo);
+    const job = createJob(userInfo, pendingJobId);
+    req._uploadMemoryTransferred = true;
+    Object.defineProperty(job, "releaseUploadMemory", {
+      value: () => releaseUploadMemory(req),
+      enumerable: false,
+      configurable: true,
+      writable: true,
+    });
     job.reportType = reportType;
     job.model = model;
     job.creditCost = creditCost;
+    job.miniOverCap = miniOverCap;
     req.generationTelemetryAccepted = true;
     job.requestId = req.requestId || crypto.randomUUID();
     job.telemetryPhase = "queue";
@@ -4286,8 +4918,56 @@ app.post(
       googleDriveFolderId,
     }).catch(
       async (err) => {
+        // 결제 응답 유실 뒤 산출물을 먼저 삭제하면 사용자가 크레딧과 파일을 모두 잃는다.
+        // 따라서 ledger 상태를 먼저 확정하고, 환불/무과금이 확인된 경우에만 보상 삭제한다.
+        const billing = await settleReservationOnFailure(job);
+        // 운영 저장소가 켜져 있으면 RAM Buffer만으로는 정상 완료로 복구하지
+        // 않는다. 15분 TTL/LRU 후 사라지는 파일을 24시간 보관 완료로
+        // 표시하면 안 된다. Supabase를 끄는 로컬/테스트만 RAM 복구를 허용한다.
+        const hasArtifact = durableArtifactPersistenceRequired(job)
+          ? hasDurableArtifact(job)
+          : jobArtifactMemoryBytes(job) > 0 || hasDurableArtifact(job);
+        if (billing.status === "settled" && hasArtifact) {
+          job.status = "done";
+          job.error = null;
+          job.warnings = Array.isArray(job.warnings) ? job.warnings : [];
+          job.warnings.push("완료 후 부가 처리 오류가 있었지만 결제와 산출물은 정상 확인되었습니다.");
+          pushProgress(job, "⚠ 완료 후 부가 처리 오류가 있었지만 파일과 결제 상태는 정상입니다.");
+          emitJobWebhook(job, "job.completed");
+          if (job.background) await persistBgJob(job);
+          markJobArtifactsCompleted(job);
+          job.listeners.forEach((listener) => {
+            sendSse(listener, "done", {
+              filename: job.filename,
+              fileId: job.fileId,
+              googleDriveUrl: job.googleDriveUrl || "",
+              warnings: job.warnings,
+            });
+            listener.end();
+          });
+          job.listeners = [];
+          return;
+        }
+
         job.status = "error";
         job.error = err.message || String(err);
+        if (billing.status !== "uncertain") {
+          const cleanup = await cleanupExternalGeneratedArtifacts(job, {
+            supa,
+            cloudProviders,
+            dropbox: dbx,
+          });
+          for (const failure of cleanup.failures) {
+            console.error(
+              `[JOB] ${failure.provider} artifact cleanup FAILED jobId=${job.id} id=${failure.id} :: ${failure.error.message}`,
+            );
+          }
+          purgeJobArtifactMemory(job);
+        } else {
+          // DB 장애로 정산 여부가 불명확하면 식별자와 산출물을 보존해 재확인할 수 있게 한다.
+          pushProgress(job, "⚠ 결제 상태 확인이 지연되어 결과물을 안전하게 보류했습니다. 중복 생성하지 마세요.");
+          markJobArtifactsCompleted(job);
+        }
         if (process.env.PRODUCT_TELEMETRY_ENABLED !== "0") {
           const aborted = !!(job.userAborted || job.autoAborted);
           await supa.updateGenerationRun(job.id, {
@@ -4305,8 +4985,6 @@ app.post(
         }
         emitJobWebhook(job, "job.failed");
         pushProgress(job, `❌ 오류: ${job.error}`);
-        // P1: 실패/중단(자동중단·타임아웃·에러) 시 선예약 크레딧 전액 환불(아직 정산 안 됐으면).
-        await settleReservationOnFailure(job);
         if (job.background) persistBgJob(job);
         job.listeners.forEach((r) => {
           sendSse(r, "error", job.error);
@@ -5950,16 +6628,10 @@ async function runPdfTranslation(
         fileId: null,
         effectiveMode: out.effectiveMode,
       };
-      const fileIndex = job.files.push(entry) - 1;
 
       const result = out.result;
       const fileSec = Math.floor((Date.now() - tFile) / 1000);
       const outKB = Math.round(out.buffer.length / 1024);
-      onProgress(
-        out.effectiveMode === "retypeset"
-          ? `🎉 재조판 완료! ${outKB}KB, 총 ${fileSec}초. 다운로드 가능합니다.`
-          : `🎉 완료! ${result.pageCount}쪽 / 문단 ${result.blockCount}개 → ${outKB}KB, 총 ${fileSec}초. 다운로드 가능합니다.`,
-      );
       if (result.cost) {
         onProgress(`📊 ${pricing.formatCostLine(result.cost)}`);
         addToTotal(result.cost, null);
@@ -5970,11 +6642,11 @@ async function runPdfTranslation(
         }
       }
 
-      // 백그라운드 작업: 결과 PDF 를 파일함(24시간)에 파일별로 즉시 영속화.
-      // (일반 작업은 탭을 유지하므로 in-memory job 결과로 충분 — 파일함 저장 생략.)
-      if (job.background && supa.isEnabled() && job.userInfo?.id) {
-        try {
-          const savedFile = await supa.saveReportFile({
+      // 결과 PDF는 일반/백그라운드 모두 파일함(24시간)에 즉시 영속화한다.
+      // 완료 Buffer는 짧은 TTL/LRU로 비워지므로 일반 작업도 storage fallback이 있어야 한다.
+      if (durableArtifactPersistenceRequired(job)) {
+        const savedFile = await saveReportFileDurably(
+          {
             userId: job.userInfo.id,
             jobId: job.id,
             reportType: "pdf-translate",
@@ -5986,21 +6658,43 @@ async function runPdfTranslation(
               title: item.originalName,
               mode: out.effectiveMode,
             },
-          });
-          if (savedFile?.id) {
-            entry.fileId = savedFile.id;
-            const expires = new Date(savedFile.expires_at).toLocaleString(
-              "ko-KR",
-              { dateStyle: "short", timeStyle: "short" },
-            );
-            onProgress(
-              `☁ 파일함에 24시간 보관됨 (${expires}까지) — '내 파일'에서 받으세요.`,
-            );
-          }
-        } catch (e) {
-          onProgress(`⚠ 파일함 저장 실패: ${e.message}`);
-        }
+          },
+          {
+            signal: ac.signal,
+            onRetry: (attempt, error) =>
+              onProgress(
+                `⚠ 파일함 저장 재시도 ${attempt}/${REPORT_STORAGE_RETRY_ATTEMPTS - 1}: ${String(error.message || error).slice(0, 120)}`,
+              ),
+          },
+        );
+        entry.fileId = savedFile.id;
+        const expires = savedFile.expires_at
+          ? new Date(savedFile.expires_at).toLocaleString("ko-KR", {
+              dateStyle: "short",
+              timeStyle: "short",
+            })
+          : "24시간 후";
+        onProgress(
+          `☁ 파일함에 24시간 보관됨 (${expires}까지) — '내 파일'에서 받으세요.`,
+        );
       }
+
+      // 영속 저장이 필요한 운영 작업은 fileId를 확인한 후에만
+      // 완료 목록·SSE에 추가한다. 이런 순서라야 다중 파일 중 저장 실패한
+      // 항목이 RAM 다운로드로 성공 처리되지 않는다.
+      if (durableArtifactPersistenceRequired(job) && !entry.fileId) {
+        const error = new Error(
+          "결과 파일의 24시간 보관 식별자를 확인하지 못했습니다.",
+        );
+        error.code = "ARTIFACT_PERSISTENCE_FAILED";
+        throw error;
+      }
+      const fileIndex = job.files.push(entry) - 1;
+      onProgress(
+        out.effectiveMode === "retypeset"
+          ? `🎉 재조판 완료! ${outKB}KB, 총 ${fileSec}초. 다운로드 가능합니다.`
+          : `🎉 완료! ${result.pageCount}쪽 / 문단 ${result.blockCount}개 → ${outKB}KB, 총 ${fileSec}초. 다운로드 가능합니다.`,
+      );
 
       // 다중 파일이면 완료 즉시 개별 다운로드 링크를 내려보낸다(전체 완료 전에도 수령 가능).
       if (multi) {
@@ -6014,8 +6708,7 @@ async function runPdfTranslation(
         );
       }
 
-      // 사용량 기록 (관리자 통계용) — 파일별 1건. 일반(비백그라운드) 통번역은 파일함에
-      // 저장하지 않고 24시간 동안 in-memory job 결과로 다운로드를 제공한다.
+      // 사용량 기록 (관리자 통계용) — 파일별 1건.
       if (supa.isEnabled() && job.userInfo?.id) {
         try {
           await supa.recordUsage({
@@ -6133,6 +6826,7 @@ async function runPdfTranslation(
     }
   }
 
+  markJobArtifactsCompleted(job);
   job.listeners.forEach((r) => {
     sendSse(r, "done", {
       filename: job.filename,
@@ -6291,6 +6985,33 @@ function normalizeWarnings(raw) {
   return out;
 }
 
+// 프린트 PDF 복원 QA는 SSE로 돌려줄 수 있는 작은 수치·요약만 보관한다.
+// OCR 원문이나 렌더 이미지 같은 대형/민감 데이터가 job payload에 섞이지 않게 한다.
+function normalizeRestoreQa(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const finite = (value, min, max) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : null;
+  };
+  const pageCount = finite(raw.pageCount ?? raw.pages, 0, 500);
+  const renderedDpi = finite(raw.renderedDpi ?? raw.dpi, 0, 1200);
+  const ocrCoverage = finite(
+    raw.ocrCoverage ?? raw.ocrSimilarity ?? raw.ocrScore,
+    0,
+    1,
+  );
+  return {
+    ok: raw.ok === true,
+    qualityGate: String(raw.qualityGate || "ocr-visual-300dpi").slice(0, 80),
+    pageCount,
+    renderedDpi,
+    ocrCoverage,
+    visualPassed: raw.visualPassed === true,
+    summary: String(raw.summary || raw.error || "").replace(/\s+/g, " ").trim().slice(0, 500),
+    warnings: normalizeWarnings(raw.warnings),
+  };
+}
+
 // ── 백그라운드 작업: Supabase 영속화 + 완료 이메일 ────────────────────────────
 // 백그라운드 모드 작업만 report_jobs 에 저장한다(일반 작업은 탭을 유지하므로 불필요).
 // 재배포/재시작에도 '내 작업'에서 추적 가능하게 하고, 부팅 시 ghost 작업을 정리한다.
@@ -6374,14 +7095,42 @@ async function notifyBgJobDone(job) {
 // ── P1 크레딧 예약 정산 헬퍼 ────────────────────────────────────────────────
 // 예약(job.creditReservation)이 있는 작업은 '선차감(reserve)' 되었으므로, 실제 비용만
 // 남기고 나머지를 환불한다. 예약이 없으면(레거시/마이그레이션 전) 후불 spendCredits.
-// 이중 정산 방지를 위해 job.creditSettled 로 1회만 실행한다.
+// durable reservation은 DB의 job_id 상태 전이가 멱등성을 보장한다. 메모리 플래그는
+// DB 성공 뒤에만 세워 일시 오류가 나도 같은 작업이 다시 정산될 수 있게 한다.
 async function settleReservationOnSuccess(job, cost) {
-  if (job.creditSettled) return;
-  job.creditSettled = true;
+  if (job.creditSettled) {
+    return { status: job.creditSettlementStatus || "settled" };
+  }
   const reserved = job.creditReservation ? job.creditReservation.amount : 0;
   const spend = Math.max(0, Math.trunc(Number(cost) || 0));
   try {
-    if (reserved > 0) {
+    let newBalance;
+    if (reserved > 0 && job.creditReservation?.durable) {
+      const outcome = await settleDurableReservation(
+        supa,
+        job.creditReservation.jobId || job.id,
+        spend,
+      );
+      newBalance = outcome.newBalance;
+      if (outcome.status === "refunded") {
+        job.creditSettled = true;
+        job.creditSettlementStatus = "refunded";
+        const error = new Error(
+          "크레딧 정산을 확정하지 못해 예약을 환불했습니다. 다시 생성해 주세요.",
+        );
+        error.code = "CREDIT_SETTLEMENT_REFUNDED";
+        throw error;
+      }
+      const adjustment = reserved - spend;
+      if (adjustment > 0) {
+        pushProgress(job, `💳 크레딧 ${spend} 차감(예약 ${reserved} 중 ${adjustment} 환불) — 남은 크레딧: ${newBalance}`);
+      } else if (adjustment < 0) {
+        pushProgress(job, `💳 크레딧 ${spend} 차감(예약 ${reserved} + 추가 ${-adjustment}) — 남은 크레딧: ${newBalance}`);
+      } else {
+        pushProgress(job, `💳 크레딧 ${spend} 차감 — 남은 크레딧: ${newBalance}`);
+      }
+    } else if (reserved > 0) {
+      // 마이그레이션 직전 인메모리 예약과의 호환 경로.
       if (spend < reserved) {
         const refund = reserved - spend;
         const { newBalance } = await supa.refundCredits(job.userInfo.id, refund);
@@ -6398,27 +7147,49 @@ async function settleReservationOnSuccess(job, cost) {
       const { newBalance } = await supa.spendCredits(job.userInfo.id, spend);
       pushProgress(job, `💳 크레딧 ${spend} 차감 — 남은 크레딧: ${newBalance}`);
     }
+    job.creditSettled = true;
+    job.creditSettlementStatus = "settled";
+    return { status: "settled", newBalance };
   } catch (e) {
     console.error(
       `[BILLING] settle FAILED userId=${job.userInfo.id} jobId=${job.id} model=${job.model} reserved=${reserved} cost=${spend} :: ${e.message}`,
     );
     pushProgress(job, `⚠ 크레딧 정산 실패(운영자 확인 필요): ${e.message}`);
+    throw e;
   }
 }
 
 // 실패/중단 시: 선예약분 전액 환불(성공 정산이 이미 됐으면 no-op).
 async function settleReservationOnFailure(job) {
-  if (!job || job.creditSettled) return;
+  if (!job) return { ok: true, status: "none" };
+  if (job.creditSettled) {
+    const status = job.creditSettlementStatus || "settled";
+    return { ok: status !== "settled", status };
+  }
   const reserved = job.creditReservation ? job.creditReservation.amount : 0;
-  if (reserved <= 0) return;
-  job.creditSettled = true;
+  if (reserved <= 0) return { ok: true, status: "none" };
   try {
-    const { newBalance } = await supa.refundCredits(job.userInfo.id, reserved);
+    const outcome = job.creditReservation?.durable
+      ? await refundDurableReservation(
+          supa,
+          job.creditReservation.jobId || job.id,
+        )
+      : await supa.refundCredits(job.userInfo.id, reserved);
+    const newBalance = outcome.newBalance;
+    job.creditSettled = true;
+    if (outcome.status === "settled") {
+      job.creditSettlementStatus = "settled";
+      pushProgress(job, "ℹ 크레딧은 이미 정상 정산된 작업입니다.");
+      return { ok: false, status: "settled", newBalance };
+    }
+    job.creditSettlementStatus = "refunded";
     pushProgress(job, `↩ 작업 미완료 — 예약 크레딧 ${reserved} 환불(잔액 ${newBalance})`);
+    return { ok: true, status: "refunded", newBalance };
   } catch (e) {
     console.error(
       `[BILLING] refund-on-failure FAILED userId=${job.userInfo && job.userInfo.id} jobId=${job.id} reserved=${reserved} :: ${e.message}`,
     );
+    return { ok: false, status: "uncertain", error: e };
   }
 }
 
@@ -6442,6 +7213,16 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
   let timedOut = false;
   let timer = null; // 슬롯 확보 후에 가동(대기열 대기 시간은 timeout 에 안 넣음)
   let gotSlot = false; // 전역 동시 상한 슬롯 확보 여부(finally 반납 판단용)
+
+  function assertGenerationActive() {
+    if (!ac.signal.aborted) return;
+    if (job.userAborted) throw new Error("사용자가 작업을 중지했습니다.");
+    if (job.autoAborted) throw new Error("새 작업 시작으로 자동 중단되었습니다.");
+    if (timedOut) throw new Error(`${timeoutMin}분 timeout으로 작업이 강제 종료되었습니다.`);
+    const error = new Error("작업이 중단되었습니다.");
+    error.name = "AbortError";
+    throw error;
+  }
 
   // 보고서 본문에서 AI 특유의 긴 하이픈(— – ―)을 결정적으로 제거한다(2026-07-03 지시).
   // 프롬프트 금지가 1차 방어, 이 후처리가 최종 보장. 숫자 범위는 '~', 그 외 연결은 쉼표로.
@@ -6483,7 +7264,7 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
         `⏳ 서버가 혼잡해 대기열에서 대기 중… (동시 ${genSemaphore.max}건 상한, 앞 ${ahead}건)`,
       );
     }
-    await genSemaphore.acquire();
+    await genSemaphore.acquire({ signal: ac.signal });
     gotSlot = true;
     job.telemetryTimings.queue_ms = Math.max(0, Date.now() - t0);
     job.telemetryPhase = "generation";
@@ -6495,13 +7276,7 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
       });
     }
     // 대기 중에 자동 중단(새 작업)·사용자 중지가 걸렸으면 슬롯만 반납하고 종료.
-    if (ac.signal.aborted) {
-      throw new Error(
-        job.userAborted
-          ? "사용자가 작업을 중지했습니다."
-          : "새 작업 시작으로 자동 중단되었습니다.",
-      );
-    }
+    assertGenerationActive();
     pushProgress(job, `🚀 작업 시작 (${pipeline.label}, timeout: ${timeoutMin}분)`);
     timer = setTimeout(() => {
       timedOut = true;
@@ -6523,8 +7298,12 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
         onProgress: (msg) => pushProgress(job, msg),
       }),
     );
+    assertGenerationActive();
     job.telemetryTimings.generation_ms = Math.max(0, Date.now() - tGenerationStart);
-    stripAiDashes(content); // 긴 하이픈 최종 제거(전 보고서 종류·docx/hwpx/zip 공통)
+    // 복원 기능은 원문 문장부호도 출처의 일부이므로 변경하지 않는다.
+    if (job.reportType !== "print-pdf-restore") {
+      stripAiDashes(content); // 일반 생성 보고서의 AI 특유 긴 하이픈 최종 제거
+    }
     content.__allowHighlights = !!pipelineInput.allowHighlights;
 
     // AI 개념도 실제 생성분 추가 과금 (장당 1크레딧 — 위 잔액 예약치와 동기화).
@@ -6605,6 +7384,7 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
       const detectedFont = await styleRef.detectStyleFont(
         pipelineInput.styleRefs || [],
       );
+      assertGenerationActive();
       if (detectedFont && detectedFont.face) {
         content.detected_font_face = detectedFont.face;
         if (detectedFont.sizePt) content.detected_font_size_pt = detectedFont.sizePt;
@@ -6638,13 +7418,69 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
         });
       }
     } catch (e) {
+      if (ac.signal.aborted) throw e;
       pushProgress(job, `⚠ 스타일 글꼴 감지 건너뜀: ${e.message}`);
     }
 
     job.telemetryPhase = "build";
     const tBuildStart = Date.now();
     let buffer;
-    if (typeof pipeline.generateBundle === "function") {
+    if (pipeline.outputKind === "pdf") {
+      if (typeof pipeline.generatePdf !== "function") {
+        throw new Error("PDF 생성기가 서버에 연결되지 않았습니다.");
+      }
+      pushProgress(job, pipeline.pdfProgress || "📄 벡터 PDF 빌드 + 300dpi 검증 중...");
+      const proposedFilename =
+        typeof pipeline.buildFilename === "function"
+          ? pipeline.buildFilename(content, {
+              studentId,
+              userName: renderedStudentName,
+              sourceFilename,
+            })
+          : `${pipeline.filenamePrefix || "result"}.pdf`;
+      const generated = await pipeline.generatePdf(content, {
+        studentId,
+        userName: renderedStudentName,
+        sourceFilename,
+        signal: ac.signal,
+        onProgress: (msg) => pushProgress(job, msg),
+      });
+      assertGenerationActive();
+      const artifact = normalizeGeneratedArtifact(generated, {
+        kind: "pdf",
+        fallbackFilename: proposedFilename,
+        label: "restored PDF",
+      });
+      const restoreQa = normalizeRestoreQa(artifact.qa);
+      const expectedRestorePages = Array.isArray(pipelineInput.photos)
+        ? pipelineInput.photos.length
+        : 0;
+      const restoreQaPassed =
+        !!restoreQa &&
+        restoreQa.ok === true &&
+        restoreQa.visualPassed === true &&
+        restoreQa.renderedDpi === 300 &&
+        Number.isInteger(restoreQa.pageCount) &&
+        restoreQa.pageCount > 0 &&
+        (!expectedRestorePages || restoreQa.pageCount === expectedRestorePages) &&
+        Number.isFinite(restoreQa.ocrCoverage);
+      if (pipeline.requireArtifactQa && !restoreQaPassed) {
+        const reason = restoreQa && restoreQa.summary;
+        throw new Error(
+          `PDF OCR·시각 품질 검증을 통과하지 못했습니다${reason ? `: ${String(reason).slice(0, 240)}` : "."}`,
+        );
+      }
+      buffer = artifact.buffer;
+      job.result = buffer;
+      job.mimeType = artifact.mimeType;
+      job.filename = artifact.filename;
+      job.restoreQa = restoreQa;
+      const buildSec = Math.floor((Date.now() - tBuildStart) / 1000);
+      pushProgress(
+        job,
+        `✓ PDF 빌드·검증 완료 (${Math.round(buffer.length / 1024)}KB, ${buildSec}초)`,
+      );
+    } else if (typeof pipeline.generateBundle === "function") {
       // 다중 PDF → ZIP 출력 파이프라인(문제집 메이커 등). generateDocx/Hwpx 대신 사용.
       pushProgress(job, pipeline.bundleProgress || "📦 결과 파일 빌드 + ZIP 중...");
       const bundle = await pipeline.generateBundle(content, {
@@ -6654,6 +7490,7 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
         signal: ac.signal,
         onProgress: (msg) => pushProgress(job, msg),
       });
+      assertGenerationActive();
       buffer = assertGeneratedOutputMagic(bundle.buffer, "zip", "bundle ZIP");
       const buildSec = Math.floor((Date.now() - tBuildStart) / 1000);
       pushProgress(
@@ -6669,7 +7506,8 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
       buffer =
         format === "hwpx"
           ? await pipeline.generateHwpx(content, { signal: ac.signal })
-          : await pipeline.generateDocx(content);
+          : await pipeline.generateDocx(content, { signal: ac.signal });
+      assertGenerationActive();
       buffer = assertGeneratedOutputMagic(buffer, ext, `.${ext} output`);
       const buildSec = Math.floor((Date.now() - tBuildStart) / 1000);
       const sizeKB = Math.round(buffer.length / 1024);
@@ -6702,23 +7540,27 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
     job.telemetryTimings.build_ms = Math.max(0, Date.now() - tBuildStart);
 
     // 산출물 자동검사(W2-C/DEF-011): 저장·전달 직전에 최종 버퍼를 스캔한다.
-    // (수식 raw 마커 잔존, 긴 대시, U+FFFD, HWPX BinData 누락. zip 번들·pdf는 검사 밖)
-    // 기본은 경고만 남기고, OUTPUT_VALIDATE_ENFORCE=1 이면 raw 수식 마커(M1급)에
-    // 한해 생성 실패로 처리한다("HWPX 수식 postprocess 실패는 fatal" 원칙과 동일 선상).
-    // 긴 대시·U+FFFD는 상류 스크럽(stripAiDashes 등)이 1차 방어라 enforce에서도 경고 유지.
+    // (수식 raw 마커 잔존, 긴 대시, U+FFFD, HWPX BinData 누락, PDF 구조 marker).
+    // 핵심 보고서 4종은 raw 수식/금지 마커와 불완전 패키지 같은 치명적 결함을
+    // 환경변수 없이 fail-closed로 처리한다. 그 밖의 기존 파이프라인은
+    // OUTPUT_VALIDATE_ENFORCE=1일 때 같은 정책을 선택할 수 있다.
+    // 긴 대시·U+FFFD는 상류 스크럽(stripAiDashes 등)이 1차 방어라 경고로 유지한다.
     {
       job.telemetryPhase = "validation";
       const tValidationStart = Date.now();
       const artifactFormat =
-        typeof pipeline.generateBundle === "function"
-          ? "zip"
-          : format === "hwpx"
-            ? "hwpx"
-            : "docx";
+        pipeline.outputKind === "pdf"
+          ? "pdf"
+          : typeof pipeline.generateBundle === "function"
+            ? "zip"
+            : format === "hwpx"
+              ? "hwpx"
+              : "docx";
       const artifactCheck = await validateReportArtifact(buffer, {
         format: artifactFormat,
         type: job.reportType,
       });
+      assertGenerationActive();
       job.artifactCheck = artifactCheck;
       job.telemetryTimings.validation_ms = Math.max(0, Date.now() - tValidationStart);
       if (!artifactCheck.ok) {
@@ -6729,21 +7571,23 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
           `format=${artifactFormat}`,
           artifactCheck.problems.map((p) => `${p.rule}: ${p.detail}`).join(" | "),
         );
-        pushProgress(job, `⚠️ 산출물 검사 경고 ${artifactCheck.problems.length}건`);
-        if (process.env.OUTPUT_VALIDATE_ENFORCE === "1") {
-          const fatal = artifactCheck.problems.find((p) =>
-            OUTPUT_VALIDATE_ENFORCEABLE_RULES.has(p.rule),
-          );
-          if (fatal) {
-            job.result = null; // 결함 산출물이 메모리에 남지 않게 정리(다운로드는 status 게이트가 막음)
-            throw new Error(`산출물 검사 실패(수식 raw 마커 잔존): ${fatal.detail}`);
-          }
+        const fatal = findEnforceableArtifactProblem(artifactCheck, {
+          type: job.reportType,
+          enforceAll: process.env.OUTPUT_VALIDATE_ENFORCE === "1",
+        });
+        if (fatal) {
+          pushProgress(job, `⛔ 산출물 검사 실패: ${fatal.rule}`);
+          job.result = null; // 결함 산출물이 메모리에 남지 않게 정리(다운로드는 status 게이트가 막음)
+          throw new Error(`산출물 검사 실패(${fatal.rule}): ${fatal.detail}`);
         }
+        pushProgress(job, `⚠️ 산출물 검사 경고 ${artifactCheck.problems.length}건`);
       }
     }
 
     job.telemetryPhase = "storage";
     const tStorageStart = Date.now();
+    assertGenerationActive();
+    let durableSaved = false;
 
     if (saveToGoogleDrive && job.userInfo?.id) {
       if (!cloudProviders.configured("google") || !supa.isEnabled()) {
@@ -6766,10 +7610,17 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
               quiloReportType: job.reportType,
             },
           });
-          job.googleDriveFileId = driveFile.id || "";
+          if (!driveFile?.id) {
+            throw new Error("Google Drive 파일 식별자가 반환되지 않았습니다.");
+          }
+          job.googleDriveFileId = driveFile.id;
           job.googleDriveUrl = driveFile.webViewLink || "";
+          durableSaved = true;
+          job.cloudProvider = "google";
+          assertGenerationActive();
           pushProgress(job, `☁ Google Drive에 자동 저장됨: ${driveFile.name || job.filename}`);
         } catch (e) {
+          if (ac.signal.aborted) throw e;
           pushProgress(job, `⚠ Google Drive 자동 저장 실패(${String(e.message || e).slice(0, 160)}) → 기본 파일함에도 계속 저장합니다.`);
         }
       }
@@ -6777,7 +7628,6 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
 
     if (job.userInfo?.id) {
       // 1) Dropbox 연결 사용자 → 본인 클라우드에 영구 저장(24시간 박스 대체).
-      let cloudSaved = false;
       if (dbx.isConfigured() && dbx.canStoreTokens() && supa.isEnabled()) {
         try {
           const conn = await supa.getCloudConnection(job.userInfo.id, "dropbox");
@@ -6789,14 +7639,22 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
               path: `/${job.filename}`,
               buffer,
             });
-            cloudSaved = true;
+            const uploadedPath = up.path_lower || up.path_display || "";
+            if (!up.id && !uploadedPath) {
+              throw new Error("Dropbox 파일 식별자가 반환되지 않았습니다.");
+            }
+            job.dropboxFileId = up.id || "";
+            job.dropboxFilePath = uploadedPath;
+            durableSaved = true;
             job.cloudProvider = "dropbox";
+            assertGenerationActive();
             pushProgress(
               job,
               `☁ Dropbox에 영구 저장됨: ${up.path_display || job.filename}`,
             );
           }
         } catch (e) {
+          if (ac.signal.aborted) throw e;
           pushProgress(
             job,
             `⚠ Dropbox 저장 실패(${String(e.message || e).slice(0, 120)}) → 기본 파일함(24시간)에 저장합니다.`,
@@ -6804,9 +7662,9 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
         }
       }
       // 2) 미연결(또는 실패) + Supabase 사용 → 기존 24시간 파일함 폴백.
-      if (!cloudSaved && supa.isEnabled()) {
-        try {
-          const savedFile = await supa.saveReportFile({
+      if (!durableSaved && supa.isEnabled()) {
+        const savedFile = await saveReportFileDurably(
+          {
             userId: job.userInfo.id,
             jobId: job.id,
             reportType: job.reportType,
@@ -6818,40 +7676,43 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
               reportLabel: pipeline.label,
               format,
               policyAcknowledgement,
+              restoreQa: job.restoreQa || undefined,
             },
-          });
-          if (savedFile?.id) {
-            job.fileId = savedFile.id;
-            const expires = new Date(savedFile.expires_at).toLocaleString(
-              "ko-KR",
-              { dateStyle: "short", timeStyle: "short" },
-            );
-            pushProgress(job, `☁ 파일함에 24시간 보관됨 (${expires}까지)`);
-          }
-        } catch (e) {
-          pushProgress(job, `⚠ 파일함 저장 실패: ${e.message}`);
-        }
+          },
+          {
+            signal: ac.signal,
+            onRetry: (attempt, error) =>
+              pushProgress(
+                job,
+                `⚠ 파일함 저장 재시도 ${attempt}/${REPORT_STORAGE_RETRY_ATTEMPTS - 1}: ${String(error.message || error).slice(0, 120)}`,
+              ),
+          },
+        );
+        job.fileId = savedFile.id;
+        durableSaved = true;
+        assertGenerationActive();
+        const expires = savedFile.expires_at
+          ? new Date(savedFile.expires_at).toLocaleString("ko-KR", {
+              dateStyle: "short",
+              timeStyle: "short",
+            })
+          : "24시간 후";
+        pushProgress(job, `☁ 파일함에 24시간 보관됨 (${expires}까지)`);
       }
+    }
+    if (durableArtifactPersistenceRequired(job) && !durableSaved) {
+      const error = new Error(
+        "결과 파일을 영구 저장하지 못해 정산과 완료 처리를 중단했습니다. 예약 크레딧은 자동 환불됩니다.",
+      );
+      error.code = "ARTIFACT_PERSISTENCE_FAILED";
+      throw error;
     }
     job.telemetryTimings.storage_ms = Math.max(0, Date.now() - tStorageStart);
+    assertGenerationActive();
     job.telemetryPhase = "billing";
-    job.status = "done";
-    emitJobWebhook(job, "job.completed");
-
-    const totalSec = Math.floor((Date.now() - t0) / 1000);
-    pushProgress(
-      job,
-      `🎉 전체 완료! 총 ${totalSec}초 소요. 다운로드 가능합니다.`,
-    );
-
-    // 백그라운드 작업: 완료 상태를 영속화(파일함 fileId 포함)하고, 옵트인 시 완료 이메일 발송.
-    if (job.background) {
-      await persistBgJob(job);
-      if (job.notifyEmail) {
-        pushProgress(job, "📧 완료 알림 이메일을 보냅니다...");
-        await notifyBgJobDone(job);
-      }
-    }
+    // 이 지점부터는 검증·저장까지 끝나 원자 정산만 남았다. 정산과 완료 사이의
+    // 취소 race로 '환불됐지만 다운로드 가능' 상태가 생기지 않게 새 중지 요청을 닫는다.
+    job.acceptingAbort = false;
 
     if (content.__imageCost) {
       const imgLine = formatImageCostLine(content.__imageCost);
@@ -6929,7 +7790,8 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
         supa.isEnabled() &&
         job.userInfo.id
       ) {
-        // 0크레딧 모델(무료, 예: GPT-5.4 mini)은 차감 자체를 건너뛴다.
+        // 기본 0크레딧 모델은 차감을 건너뛰되, GPT-5.4-mini 일일 한도 초과
+        // 요청은 job.miniOverCap 상태를 아래 독서록 정산에도 그대로 반영한다.
         // (?? 사용: ||는 0을 falsy로 봐서 모델 단가로 잘못 폴백함)
         let cost = job.creditCost ?? pricing.getModelCredits(job.model);
         // 독서록: 예약(최악치)이 아니라 '실제 소비 토큰'으로 정산한다. 생성 결과에 합산된
@@ -6938,12 +7800,16 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
         // 사용량이 없으면(집계 실패) 0으로 두어 예약분을 전액 환불한다(과청구 방지).
         if (READING_LOG_TYPES.has(job.reportType)) {
           const usage = content && content.__usage;
-          cost = usage
-            ? pricing.creditsForUsage({ usage, model: job.model })
-            : 0;
+          cost = pricing.readingLogCreditsForUsage({
+            usage,
+            model: job.model,
+            miniOverCap: job.miniOverCap,
+          });
           pushProgress(
             job,
-            usage
+            job.miniOverCap
+              ? `🧮 GPT-5.4-mini 일일 무료 한도 초과 정산: ${cost} 크레딧 (예약 ${job.creditReservation ? job.creditReservation.amount : cost})`
+              : usage
               ? `🧮 실제 토큰 정산: ${cost} 크레딧 (예약 ${job.creditReservation ? job.creditReservation.amount : cost} 중 차액 환불)`
               : "🧮 실제 토큰 집계 없음 — 예약분 전액 환불",
           );
@@ -6960,6 +7826,23 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
         job,
         `📊 서버 누적 (메모리): ${totalUsage.jobs}건 / 총 ${fmtUSD(totalUsage.totalUSD)} ${fmtKRW(totalUsage.totalUSD)}`,
       );
+    }
+
+    job.status = "done";
+    emitJobWebhook(job, "job.completed");
+    const totalSec = Math.floor((Date.now() - t0) / 1000);
+    pushProgress(
+      job,
+      `🎉 전체 완료! 총 ${totalSec}초 소요. 다운로드 가능합니다.`,
+    );
+
+    // 백그라운드 작업: 완료 상태를 영속화(파일함 fileId 포함)하고, 옵트인 시 완료 이메일 발송.
+    if (job.background) {
+      await persistBgJob(job);
+      if (job.notifyEmail) {
+        pushProgress(job, "📧 완료 알림 이메일을 보냅니다...");
+        await notifyBgJobDone(job);
+      }
     }
     job.telemetryPhase = "complete";
     job.telemetryTimings.total_ms = Math.max(0, Date.now() - t0);
@@ -6991,6 +7874,10 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
     throw e;
   } finally {
     if (timer) clearTimeout(timer);
+    if (typeof job.releaseUploadMemory === "function") {
+      job.releaseUploadMemory();
+      job.releaseUploadMemory = null;
+    }
     // 전역 동시 상한 슬롯 반납(확보했을 때만) — 대기열의 다음 작업이 즉시 시작된다.
     if (gotSlot) genSemaphore.release();
     // 사용자별 active job 매핑에서 제거 (현재 매핑이 이 작업을 가리키고 있을 때만)
@@ -7002,8 +7889,9 @@ async function runGeneration(job, pipeline, pipelineInput, meta) {
     }
   }
 
+  markJobArtifactsCompleted(job);
   job.listeners.forEach((r) => {
-    sendSse(r, "done", { filename: job.filename, fileId: job.fileId, googleDriveUrl: job.googleDriveUrl || "", warnings: job.warnings || [], styleFont: job.styleFont || null, handoff: job.handoff || "" });
+    sendSse(r, "done", { filename: job.filename, fileId: job.fileId, googleDriveUrl: job.googleDriveUrl || "", warnings: job.warnings || [], styleFont: job.styleFont || null, handoff: job.handoff || "", restoreQa: job.restoreQa || null });
     r.end();
   });
   job.listeners = [];
@@ -7020,6 +7908,9 @@ app.post("/api/jobs/:id/abort", requireAuth, (req, res) => {
   }
   if (job.status !== "running") {
     return res.status(409).json({ error: "이미 완료된 작업입니다." });
+  }
+  if (job.acceptingAbort === false) {
+    return res.status(409).json({ error: "완료 처리 중이라 중지할 수 없습니다." });
   }
   if (job.abortController) {
     job.userAborted = true;
@@ -7121,6 +8012,7 @@ app.get("/api/jobs/:id/stream", requireAuth, (req, res) => {
       warnings: job.warnings || [],
       styleFont: job.styleFont || null,
       handoff: job.handoff || "",
+      restoreQa: job.restoreQa || null,
       files: (job.files || []).map((f, i) => ({
         index: i,
         filename: f.filename,
@@ -7150,39 +8042,79 @@ app.get("/api/jobs/:id/stream", requireAuth, (req, res) => {
   });
 });
 
-// Download
-app.get("/api/jobs/:id/download", requireAuth, (req, res) => {
+// Download. 완료 Buffer가 TTL/LRU로 비워졌더라도 파일함 ID가 있으면 같은 사용자
+// 소유권으로 다시 조회한다. storage 응답은 RAM에 재적재하지 않아 cap을 우회하지 않는다.
+app.get("/api/jobs/:id/download", requireAuth, async (req, res) => {
   const job = jobs.get(req.params.id);
   if (!job) return res.status(404).send("작업을 찾을 수 없습니다.");
   const u = getSessionUser(req);
   if (!u.id || job.userInfo?.id !== u.id) return res.status(403).send("권한 없음");
+
+  const sendArtifact = (buffer, { mimeType, filename }) => {
+    res.set({
+      "Content-Type": mimeType || "application/octet-stream",
+      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(filename || "download")}`,
+      "Content-Length": buffer.length,
+    });
+    if (req.method === "GET") void supa.recordGenerationDelivery(job.id, "download");
+    return res.send(buffer);
+  };
+
+  const sendStoredArtifact = async (fileId) => {
+    if (!fileId || !supa.isEnabled()) return false;
+    const saved = await supa.downloadReportFile(u.id, fileId);
+    // fileId는 런타임 job에서 왔지만 저장소 row도 같은 job인지 한 번 더 확인한다.
+    if (!saved || (saved.row.job_id && saved.row.job_id !== job.id)) return false;
+    sendArtifact(saved.buffer, {
+      mimeType: saved.row.mime_type,
+      filename: saved.row.filename,
+    });
+    return true;
+  };
+
   // 다중 파일 job(PDF 통번역 여러 개): ?file=N 으로 개별 파일 다운로드.
   // 완료된 파일은 전체 작업이 끝나기 전에도 바로 받을 수 있다.
   if (req.query.file !== undefined) {
     const entry = (job.files || [])[parseInt(String(req.query.file), 10)];
-    if (!entry || !entry.buffer) {
-      return res.status(404).send("파일을 찾을 수 없습니다.");
+    if (!entry) return res.status(404).send("파일을 찾을 수 없습니다.");
+    if (entry.buffer) {
+      touchJobArtifact(job);
+      return sendArtifact(entry.buffer, {
+        mimeType: entry.mimeType || "application/pdf",
+        filename: entry.filename,
+      });
     }
-    res.set({
-      "Content-Type": entry.mimeType || "application/pdf",
-      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(entry.filename)}`,
-      "Content-Length": entry.buffer.length,
-    });
-    if (req.method === "GET") void supa.recordGenerationDelivery(job.id, "download");
-    return res.send(entry.buffer);
+    try {
+      if (await sendStoredArtifact(entry.fileId)) return;
+    } catch (e) {
+      console.error("[jobs] storage fallback download error:", e.message);
+      return res.status(500).send("파일 다운로드 중 오류가 발생했습니다.");
+    }
+    return res.status(404).send("파일이 삭제되었거나 만료되었습니다.");
   }
-  if (job.status !== "done" || !job.result) {
+  if (job.status !== "done") {
     return res.status(409).send("아직 완료되지 않았습니다.");
   }
-  res.set({
-    "Content-Type":
-      job.mimeType ||
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(job.filename)}`,
-    "Content-Length": job.result.length,
-  });
-  if (req.method === "GET") void supa.recordGenerationDelivery(job.id, "download");
-  res.send(job.result);
+  if (job.result) {
+    touchJobArtifact(job);
+    return sendArtifact(job.result, {
+      mimeType:
+        job.mimeType ||
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      filename: job.filename,
+    });
+  }
+  // 다중 파일은 대표 fileId가 있어도 반드시 ?file=N으로 정확한 산출물을 고른다.
+  if ((job.files || []).length > 1) {
+    return res.status(404).send("파일 번호를 지정하거나 파일함에서 다운로드하세요.");
+  }
+  try {
+    if (await sendStoredArtifact(job.fileId || job.files?.[0]?.fileId)) return;
+  } catch (e) {
+    console.error("[jobs] storage fallback download error:", e.message);
+    return res.status(500).send("파일 다운로드 중 오류가 발생했습니다.");
+  }
+  return res.status(404).send("파일이 삭제되었거나 만료되었습니다.");
 });
 
 // Generated-file preview.  This intentionally reuses the exact same job
@@ -7198,10 +8130,37 @@ app.get("/api/jobs/:id/preview", requireAuth, async (req, res) => {
   let entry = null;
   if (req.query.file !== undefined) {
     entry = (job.files || [])[parseInt(String(req.query.file), 10)] || null;
-  } else if (job.status === "done" && job.result) {
-    entry = { buffer: job.result, filename: job.filename, mimeType: job.mimeType };
+  } else if (job.status === "done") {
+    entry = {
+      buffer: job.result,
+      filename: job.filename,
+      mimeType: job.mimeType,
+      fileId: job.fileId || job.files?.[0]?.fileId || null,
+    };
   }
-  if (!entry?.buffer) return res.status(409).send("아직 미리볼 파일이 준비되지 않았습니다.");
+  if (!entry) return res.status(404).send("파일을 찾을 수 없습니다.");
+  if (!entry.buffer && entry.fileId && supa.isEnabled()) {
+    try {
+      const saved = await supa.downloadReportFile(u.id, entry.fileId);
+      if (saved && (!saved.row.job_id || saved.row.job_id === job.id)) {
+        entry = {
+          buffer: saved.buffer,
+          filename: saved.row.filename,
+          mimeType: saved.row.mime_type,
+          fileId: entry.fileId,
+        };
+      }
+    } catch (error) {
+      console.error("[preview] storage fallback error:", error.message);
+      return res.status(500).send("파일 미리보기 중 오류가 발생했습니다.");
+    }
+  }
+  if (!entry.buffer) {
+    return res
+      .status(job.status === "done" ? 404 : 409)
+      .send(job.status === "done" ? "파일이 삭제되었거나 만료되었습니다." : "아직 미리볼 파일이 준비되지 않았습니다.");
+  }
+  touchJobArtifact(job);
 
   try {
     const preview = await createFilePreview(entry.buffer, {
@@ -7356,6 +8315,7 @@ app.use(
     refreshSessionUser,
     supa,
     pricing,
+    imageConcurrencyLimit: process.env.VIBE_IMAGE_CONCURRENCY_PER_USER,
   }),
 );
 
@@ -7943,6 +8903,13 @@ app.delete("/api/me/files/:id", requireAuth, async (req, res) => {
   try {
     const ok = await supa.deleteReportFile(u.id, req.params.id);
     if (!ok) return res.status(404).json({ error: "파일이 없거나 만료되었습니다." });
+    const purgedJobs = purgeDeletedFileFromJobs(u.id, req.params.id);
+    // 백그라운드 작업 레코드에도 삭제된 대표 fileId가 남지 않게 best-effort 갱신한다.
+    await Promise.allSettled(
+      purgedJobs
+        .filter((job) => job.background)
+        .map((job) => persistBgJob(job)),
+    );
     res.json({ ok: true });
   } catch (e) {
     console.error("[files] delete error:", e);
@@ -8271,22 +9238,39 @@ app.delete("/api/me/api-keys/:provider", requireAuth, async (req, res) => {
   }
 });
 
+async function modelProvidersForUser(user) {
+  const serverProviders = serverModelProviderAvailability(process.env);
+  if (!supa.isEnabled() || !user?.id) return serverProviders;
+  // loadUserKeys handles a missing/unavailable user_api_keys table and corrupt
+  // encrypted rows as no BYOK credentials. The response therefore falls back
+  // to server availability without exposing key material or failing balance.
+  const userKeys = await byok.loadUserKeys(supa, user.id);
+  return mergeUserModelProviderAvailability(serverProviders, userKeys);
+}
+
 // 사용자 본인 잔액 조회 (메인 화면 잔액 박스용)
 app.get("/api/me/balance", requireAuth, async (req, res) => {
   const u = getSessionUser(req);
-  if (u.isAdmin) {
-    return res.json({ isAdmin: true, modelCredits: pricing.MODEL_CREDITS });
-  }
+  const modelProviders = await modelProvidersForUser(u);
   if (!supa.isEnabled() || !u.id) {
-    return res.json({ credits: 0, modelCredits: pricing.MODEL_CREDITS });
+    return res.json({
+      credits: 0,
+      unlimited: !!u.unlimited || !!u.isAdmin,
+      isAdmin: !!u.isAdmin,
+      restrictedModel: u.restrictedModel || null,
+      modelCredits: pricing.MODEL_CREDITS,
+      modelProviders,
+    });
   }
   try {
     const user = await supa.findUserById(u.id);
     res.json({
       credits: Math.max(0, Math.trunc(Number(user?.credits) || 0)),
-      unlimited: !!user?.unlimited,
+      unlimited: !!user?.unlimited || !!user?.is_admin,
+      isAdmin: !!user?.is_admin,
       restrictedModel: user?.restricted_model || null,
       modelCredits: pricing.MODEL_CREDITS,
+      modelProviders,
     });
   } catch (e) {
     console.error("[me/balance] error:", e);
@@ -8501,8 +9485,8 @@ function getClassbotApp() {
       .then(([{ createApp }, { loadConfig }]) => createApp({
         embedded: true,
         config: loadConfig({
-          // SESSION_SECRET can be derived above from the existing production
-          // Supabase key even when Render has no explicit SESSION_SECRET.
+          // Production startup already requires an explicit strong SESSION_SECRET;
+          // classbot may use a separate secret or inherit that validated value.
           CLASSBOT_SESSION_SECRET: process.env.CLASSBOT_SESSION_SECRET || SESSION_SECRET,
           SUPABASE_SERVICE_ROLE_KEY:
             process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || "",
@@ -8581,10 +9565,33 @@ app.get(["/admin", "/admin.html"], async (req, res) => {
   res.sendFile(path.join(__dirname, "public", "admin.html"));
 });
 
+// express.static({ index: false })는 디렉터리형 짧은 주소를 먼저 `/.../`로
+// 리다이렉트한 뒤 404로 끝낸다. 제품 안내와 기존 공유 링크에서 쓰는 짧은 주소를
+// 명시적인 canonical HTML로 연결해 사용자가 빈 페이지에 도착하지 않게 한다.
+app.get(["/tools", "/tools/"], (_req, res) => {
+  res.redirect(308, "/tools/index.html");
+});
+app.get(["/equation", "/equation/"], (_req, res) => {
+  res.redirect(308, "/equation/index.html");
+});
+
 app.use(
   express.static(path.join(__dirname, "public"), {
     extensions: ["html"],
     index: false,
+    setHeaders(res, filePath) {
+      if (path.extname(filePath).toLowerCase() === ".html") {
+        // HTML은 배포 직후 새 자산 목록을 다시 확인해야 한다.
+        res.setHeader("Cache-Control", "no-cache");
+        return;
+      }
+      // 파일명이 아직 content hash 기반은 아니므로 장기 immutable 캐시는 피하고,
+      // 짧은 fresh window + 백그라운드 재검증으로 반복 화면 이동의 RTT를 줄인다.
+      res.setHeader(
+        "Cache-Control",
+        "public, max-age=300, stale-while-revalidate=86400",
+      );
+    },
   }),
 );
 
@@ -8600,7 +9607,7 @@ app.get("/api/version", (req, res) => {
   // cloud: 서버에 어떤 클라우드 연동 키가 설정됐는지(불리언만 — 비밀값 노출 아님).
   // "클라우드 저장소 카드가 안 떠요" 디버깅용 공개 플래그.
   res.json({
-    ...getVersionInfo(),
+    ...getVersionInfo({ includeNotes: req.query.includeNotes === "1" }),
     cloud: {
       dropbox: dbx.isConfigured(),
       google: cloudProviders.configured("google"),
@@ -8701,7 +9708,12 @@ app.use((err, req, res, next) => {
 
 // ── Start ────────────────────────────────────────────────────────────────────
 
-app.listen(PORT, async () => {
+const JOB_MEMORY_TEST_HOOKS_ENABLED =
+  process.env.NODE_ENV === "test" &&
+  process.env.QUILO_JOB_MEMORY_TEST_HOOKS === "1";
+const httpServer = JOB_MEMORY_TEST_HOOKS_ENABLED
+  ? null
+  : app.listen(PORT, async () => {
   console.log(`▶ chem-pre-lab-web listening on :${PORT}`);
   // Tectonic 콜드 컴파일(~60초)을 첫 PDF 재조판 요청에서 빼기 위해 부팅 직후 미리 데운다.
   // fire-and-forget(부팅·헬스체크 블로킹 금지). 실패는 무시 — 실제 컴파일이 재시도한다.
@@ -8796,6 +9808,9 @@ app.listen(PORT, async () => {
     } catch (e) {
       console.warn(`  ⚠ 백그라운드 작업 정리 실패: ${e.message}`);
     }
+    // 이전 프로세스가 lease를 갱신하지 못해 만료된 durable 예약을 되돌린다.
+    // 아직 실행 중인 다른 인스턴스의 예약은 expires_at이 미래라 건드리지 않는다.
+    await maintainCreditReservations();
     // 문제집 메이커 최대 문제 수(관리자 설정값)를 app_settings 에서 로드(있으면).
     try {
       const v = await supa.getAppSetting("problem_set_max_problems");
@@ -8869,4 +9884,67 @@ app.listen(PORT, async () => {
     console.log("  · self-ping 비활성 (RENDER_EXTERNAL_URL 없음 또는 DISABLE_SELF_PING=1)");
   }
   */
-});
+    });
+
+let gracefulShutdownStarted = false;
+async function gracefulShutdown(signalName) {
+  if (gracefulShutdownStarted) return;
+  gracefulShutdownStarted = true;
+  console.warn(`[shutdown] ${signalName} 수신 — 실행 중 작업 중단 및 예약 환불`);
+  const closing = httpServer
+    ? new Promise((resolve) => httpServer.close(resolve))
+    : Promise.resolve();
+  const active = Array.from(jobs.values()).filter((job) => job.status === "running");
+  active.forEach((job) => {
+    job.acceptingAbort = false;
+    job.shutdownAborted = true;
+    job.abortController?.abort();
+  });
+  const billingResults = await Promise.all(
+    active.map((job) => settleReservationOnFailure(job)),
+  );
+  await Promise.allSettled(
+    active.map(async (job, index) => {
+      const billing = billingResults[index];
+      if (billing.status === "settled" || billing.status === "uncertain") return;
+      await cleanupExternalGeneratedArtifacts(job, {
+        supa,
+        cloudProviders,
+        dropbox: dbx,
+      });
+      purgeJobArtifactMemory(job);
+    }),
+  );
+  await Promise.race([
+    closing,
+    new Promise((resolve) => setTimeout(resolve, 8_000)),
+  ]);
+  process.exit(0);
+}
+process.once("SIGTERM", () => { void gracefulShutdown("SIGTERM"); });
+process.once("SIGINT", () => { void gracefulShutdown("SIGINT"); });
+
+// 전용 회귀 테스트에서만 in-memory 산출물 정책을 실제 라우트와 함께 검증한다.
+if (JOB_MEMORY_TEST_HOOKS_ENABLED) {
+  module.exports = {
+    app,
+    httpServer,
+    jobArtifactMemoryTestHooks: {
+      jobs,
+      jobArtifactMemoryBytes,
+      purgeJobArtifactMemory,
+      touchJobArtifact,
+      enforceJobArtifactMemoryLimits,
+      markJobArtifactsCompleted,
+      purgeDeletedFileFromJobs,
+      durableArtifactPersistenceRequired,
+      hasDurableArtifact,
+      saveReportFileDurably,
+      constants: {
+        maxBytes: JOB_ARTIFACT_MEMORY_MAX_BYTES,
+        ttlMs: JOB_ARTIFACT_MEMORY_TTL_MS,
+        reportStorageRetryAttempts: REPORT_STORAGE_RETRY_ATTEMPTS,
+      },
+    },
+  };
+}

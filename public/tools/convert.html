@@ -41,15 +41,15 @@
           <button type="button" data-jump-tab="equation">LaTeX → 한글 수식</button>
         </div>
 
-        <div class="conv-tabs" id="convTabs" role="tablist">
-          <button class="on" type="button" data-tab="file">파일 · 표 변환</button>
-          <button type="button" data-tab="image">이미지 변환 · 압축</button>
-          <button type="button" data-tab="pdf">PDF 도구</button>
-          <button type="button" data-tab="equation">수식 변환 (LaTeX→한글)</button>
-          <button type="button" data-tab="docx2hwpx">Word → 한글 (DOCX→HWPX)</button>
+        <div class="conv-tabs" id="convTabs" role="tablist" aria-label="변환 도구 종류">
+          <button class="on" type="button" id="convTab-file" role="tab" data-tab="file" aria-controls="convPanel-file" aria-selected="true" tabindex="0">파일 · 표 변환</button>
+          <button type="button" id="convTab-image" role="tab" data-tab="image" aria-controls="convPanel-image" aria-selected="false" tabindex="-1">이미지 변환 · 압축</button>
+          <button type="button" id="convTab-pdf" role="tab" data-tab="pdf" aria-controls="convPanel-pdf" aria-selected="false" tabindex="-1">PDF 도구</button>
+          <button type="button" id="convTab-equation" role="tab" data-tab="equation" aria-controls="convPanel-equation" aria-selected="false" tabindex="-1">수식 변환 (LaTeX→한글)</button>
+          <button type="button" id="convTab-docx2hwpx" role="tab" data-tab="docx2hwpx" aria-controls="convPanel-docx2hwpx" aria-selected="false" tabindex="-1">Word → 한글 (DOCX→HWPX)</button>
         </div>
 
-        <div class="conv-panel on" data-panel="file">
+        <div class="conv-panel on" id="convPanel-file" role="tabpanel" aria-labelledby="convTab-file" data-panel="file">
         <div class="tool-card">
           <div class="mode-tabs" id="modeTabs">
             <button data-m="table" class="on">표 (Excel ↔ CSV ↔ TSV)</button>
@@ -102,11 +102,11 @@
         </div>
         </div>
 
-        <div class="conv-panel" data-panel="image">
+        <div class="conv-panel" id="convPanel-image" role="tabpanel" aria-labelledby="convTab-image" data-panel="image" hidden>
           <iframe class="conv-frame" data-src="/tools/image.html?embed=1" title="이미지 변환·압축"></iframe>
         </div>
 
-        <div class="conv-panel" data-panel="pdf">
+        <div class="conv-panel" id="convPanel-pdf" role="tabpanel" aria-labelledby="convTab-pdf" data-panel="pdf" hidden>
           <!-- 도구 카드 그리드 -->
           <div id="pdfGrid" class="pdf-grid">
             <button class="pdf-tile" type="button" data-tool="pdf-merge" data-title="PDF 병합">
@@ -170,11 +170,11 @@
           </div>
         </div>
 
-        <div class="conv-panel" data-panel="equation">
+        <div class="conv-panel" id="convPanel-equation" role="tabpanel" aria-labelledby="convTab-equation" data-panel="equation" hidden>
           <iframe class="conv-frame" data-src="/equation/index.html?embed=1" title="수식 변환"></iframe>
         </div>
 
-        <div class="conv-panel" data-panel="docx2hwpx">
+        <div class="conv-panel" id="convPanel-docx2hwpx" role="tabpanel" aria-labelledby="convTab-docx2hwpx" data-panel="docx2hwpx" hidden>
           <div class="tool-card">
             <h3 class="ui-inline-tools-convert-17" >Word(.docx) → 한글(.hwpx)</h3>
             <p class="hint ui-inline-tools-convert-18">
@@ -202,20 +202,45 @@
     <script>
       // 상위 탭 전환 + iframe 지연 로드(처음 누를 때만 src 설정)
       (function () {
-        const tabs = document.querySelectorAll("#convTabs button[data-tab]");
-        const panels = document.querySelectorAll(".conv-panel[data-panel]");
+        const tabs = Array.from(document.querySelectorAll("#convTabs button[data-tab]"));
+        const panels = Array.from(document.querySelectorAll(".conv-panel[data-panel]"));
+
+        function activateTab(btn, moveFocus) {
+          if (!btn) return;
+          const selectedName = btn.dataset.tab;
+          tabs.forEach((tab) => {
+            const selected = tab === btn;
+            tab.classList.toggle("on", selected);
+            tab.setAttribute("aria-selected", String(selected));
+            tab.tabIndex = selected ? 0 : -1;
+          });
+          panels.forEach((panel) => {
+            const selected = panel.dataset.panel === selectedName;
+            panel.classList.toggle("on", selected);
+            panel.hidden = !selected;
+          });
+          const frame = document
+            .querySelector(`.conv-panel[data-panel="${selectedName}"]`)
+            ?.querySelector("iframe.conv-frame[data-src]");
+          if (frame && !frame.src && frame.dataset.src) frame.src = frame.dataset.src;
+          if (moveFocus) btn.focus();
+        }
+
         tabs.forEach((btn) => {
-          btn.addEventListener("click", () => {
-            const t = btn.dataset.tab;
-            tabs.forEach((b) => b.classList.toggle("on", b === btn));
-            panels.forEach((p) => p.classList.toggle("on", p.dataset.panel === t));
-            const frame = document
-              .querySelector(`.conv-panel[data-panel="${t}"]`)
-              ?.querySelector("iframe.conv-frame[data-src]");
-            if (frame && !frame.src && frame.dataset.src)
-              frame.src = frame.dataset.src;
+          btn.addEventListener("click", () => activateTab(btn, false));
+          btn.addEventListener("keydown", (event) => {
+            const current = tabs.indexOf(btn);
+            let next = current;
+            if (event.key === "ArrowRight") next = (current + 1) % tabs.length;
+            else if (event.key === "ArrowLeft") next = (current - 1 + tabs.length) % tabs.length;
+            else if (event.key === "Home") next = 0;
+            else if (event.key === "End") next = tabs.length - 1;
+            else return;
+            event.preventDefault();
+            activateTab(tabs[next], true);
           });
         });
+        activateTab(tabs.find((tab) => tab.getAttribute("aria-selected") === "true") || tabs[0], false);
         document.getElementById("convertShortcuts")?.addEventListener("click", (e) => {
           const btn = e.target.closest("button[data-jump-tab]");
           if (!btn) return;

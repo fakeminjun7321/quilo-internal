@@ -303,17 +303,19 @@ Physical Pendulum처럼 사용자가 Capstone 표에 직접 입력한 값이 중
 
 ### 10.1 엑셀/CSV
 
-`parseToMarkdown(buffer, ext)`:
+`parseSpreadsheet(buffer, ext)`:
 
-- Claude 입력용 Markdown table 생성
+- workbook과 각 시트를 한 번만 bounded parse
+- 같은 row 결과에서 Claude 입력용 Markdown table과 서버 내부 보정용 structured table 생성
+- structured table은 `headers`, `rows`, `sheetName`, `truncated` 포함
 - 최대 sheet 수: 20
 - sheet당 최대 row 수: 10000
-- CSV는 `XLSX.read(..., { type: "buffer" })`로 처리
+- 전체 셀 예산: 200만
+- CSV는 원본 바이트 상한 안에서 문자열로 처리
 
-`parseToTables(buffer, ext)`:
-
-- 서버 내부 보정용 structured table 생성
-- `headers`, `rows`, `sheetName`, `truncated` 포함
+`.xlsx`는 SheetJS 호출 전에 ZIP 중앙 디렉터리와 실제 deflate 출력을 모두 검사한다.
+항목 수, 단일/누적 실제 해제 바이트, 압축률, 필수 workbook 항목이 안전 한도를
+벗어나면 파싱을 중단한다. `.xls`는 OLE signature와 원본 크기 상한을 확인한다.
 
 ### 10.2 텍스트 파일
 

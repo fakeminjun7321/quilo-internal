@@ -1,6 +1,7 @@
 {
   "name": "lab-report-generator-web",
   "version": "1.0.0",
+  "private": true,
   "description": "AI-assisted lab report generator web app",
   "main": "server.js",
   "type": "commonjs",
@@ -8,8 +9,8 @@
     "start": "node server.js",
     "start:translate": "node translate-server.js",
     "dev": "node server.js",
-    "test:qa": "npx --yes -p @playwright/test playwright test tests/QA",
-    "test:qa:headed": "npx --yes -p @playwright/test playwright test tests/QA --headed",
+    "test:qa": "npx --yes -p @playwright/test playwright test tests/QA --workers=1",
+    "test:qa:headed": "npx --yes -p @playwright/test playwright test tests/QA --headed --workers=1",
     "test:pdf-translate": "node --test tests/pdf-translate/*.test.js && .venv/bin/python -m unittest discover -s tests/pdf-translate -p 'test_*.py' && .venv/bin/python tests/pdf-translate/generate_fixtures.py && .venv/bin/python tests/pdf-translate/verify_fixtures.py",
     "fixtures:pdf-translate": ".venv/bin/python tests/pdf-translate/generate_fixtures.py && .venv/bin/python tests/pdf-translate/verify_fixtures.py",
     "eval:pdf-translate": "node scripts/eval_pdf_translation.js",

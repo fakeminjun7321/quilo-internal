@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="/ui/app-workbench.css" />
     <script src="/ui/entitlement-gate.js"></script>
     <script src="/ui/app-assets.js"></script>
+    <script src="/ui/isolated-js-runner.js"></script>
     <title>Quilo Code (Pro)</title>
     <link rel="icon" href="/favicon.ico" />
 </head>
@@ -75,7 +76,7 @@
             <div class="ide-agent-empty">코드에 대해 무엇이든 물어보세요.<br />예: 이 함수 버그 고쳐줘 · 정렬 함수 짜줘 · 이 코드 설명해줘</div>
           </div>
           <div class="ide-agent-input">
-            <textarea id="agentPrompt" rows="2" placeholder="무엇이든 물어보세요  (현재 파일 자동 첨부 · Ctrl/⌘+Enter)"></textarea>
+            <textarea id="agentPrompt" rows="2" aria-label="코드 Agent 요청" placeholder="무엇이든 물어보세요  (현재 파일 자동 첨부 · Ctrl/⌘+Enter)"></textarea>
             <div class="ide-agent-bar">
               <select id="agentModel" title="AI 모델"></select>
               <button id="agentSend" aria-label="보내기 (Ctrl/Cmd+Enter)" title="보내기 (Ctrl/⌘+Enter)">↑</button>
@@ -558,18 +559,13 @@
           hideWelcome();
           var code = curValue(), l = currentLang();
           if (l === "javascript") {
-            var logs = [], orig = console.log;
-            console.log = function () {
-              logs.push(Array.prototype.map.call(arguments, function (a) {
-                try { return typeof a === "object" ? JSON.stringify(a) : String(a); } catch (e) { return String(a); }
-              }).join(" "));
-              try { orig.apply(console, arguments); } catch (e) {}
-            };
-            var result;
-            try { result = (0, eval)(code); } catch (e) { logs.push("⚠ " + (e && e.message ? e.message : e)); }
-            console.log = orig;
-            if (result !== undefined) { try { logs.push("→ " + (typeof result === "object" ? JSON.stringify(result) : String(result))); } catch (e) {} }
-            out.textContent = logs.join("\n") || "(출력 없음)"; showPanel("output");
+            out.textContent = "실행 중…";
+            showPanel("output");
+            window.QuiloIsolatedJsRunner.run(code).then(function (execution) {
+              out.textContent = window.QuiloIsolatedJsRunner.formatOutput(execution);
+            }).catch(function (error) {
+              out.textContent = "⚠ " + (error && error.message ? error.message : error);
+            });
           } else if (l === "htmlmixed") {
             frame.srcdoc = code; showPanel("preview");
           } else if (l === "python") {

@@ -1,8 +1,7 @@
 // 보고서 파이프라인 회귀: hwpx 렌더 결정 경로.
 //
-// hwpx 는 Node 가 Python(generator)을 spawn 하는 경로라 느리다. 대표로
-// chem-result(공통 chem-pre 헬퍼 기반 신규 문서)와 phys-result(학교 양식
-// 템플릿 기반) 2종만 검사한다. 검사 항목:
+// hwpx 는 Node 가 Python(generator)을 spawn 하는 경로라 느리지만, 출시 핵심
+// 보고서 3종(chem-pre/chem-result/phys-result)은 모두 검사한다. 검사 항목:
 //   (a) PK 매직의 Buffer 반환 + Contents/section0.xml 존재
 //   (b) 본문 XML 에 U+2014 부재
 //   (c) {{EQ 계열 마커 부재 (HWPX 는 postprocess 가 실제 수식 객체로 변환.
@@ -19,6 +18,7 @@ const { describe, it } = require("node:test");
 const H = require("./helpers/content-fixtures");
 
 const HWPX_RENDERERS = {
+  "chem-pre": "lib/pipelines/chem-pre/hwpx-gen",
   "chem-result": "lib/pipelines/chem-result/hwpx-gen",
   "phys-result": "lib/pipelines/phys-result/hwpx-gen",
 };

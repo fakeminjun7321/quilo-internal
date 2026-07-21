@@ -195,7 +195,7 @@
 .app-shell--create .container { padding: 30px 0 60px; }
 .app-shell--create .create-intro { padding-bottom: 22px; border-bottom: 1px solid var(--app-line); }
 .app-shell--create .launch { display: flex; align-items: center; justify-content: space-between; gap: 28px; margin-top: 18px; padding: 22px; border: 1px solid var(--app-line); border-left: 3px solid var(--app-blue); border-radius: 6px; background: var(--app-panel); color: var(--app-ink); }
-.app-shell--create .launch h1 { margin: 0; font-size: 18px; }
+.app-shell--create .launch h2 { margin: 0; font-size: 18px; }
 .app-shell--create .launch p { margin: 5px 0; color: var(--app-muted); font-size: 12px; }
 .app-shell--create .launch-req { color: var(--app-muted); font-size: 10px; }
 .app-shell--create .go { color: var(--app-blue); font-size: 12px; font-weight: 800; white-space: nowrap; }

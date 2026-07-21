@@ -3,6 +3,7 @@ const http = require("http");
 const net = require("net");
 const path = require("path");
 const { spawn } = require("child_process");
+const { isolatedServerEnv } = require("./support/isolated-server-env");
 
 function loadPlaywrightTest() {
   try {
@@ -78,6 +79,7 @@ const USER_ROUTES = Object.freeze([
   "/terms.html",
   "/tools/convert.html",
   "/tools/image-ocr.html",
+  "/tools/pdf-analysis.html",
   "/tools/image.html",
   "/tools/index.html",
   "/tools/pdf-compress.html",
@@ -293,14 +295,9 @@ test.beforeAll(async () => {
   contractServerUrl = `http://127.0.0.1:${port}`;
   contractServer = spawn(process.execPath, [path.join(process.cwd(), "server.js")], {
     cwd: process.cwd(),
-    env: {
-      ...process.env,
+    env: isolatedServerEnv({
       PORT: String(port),
-      NODE_ENV: "test",
-      DEV_FAKE_AUTH: "0",
-      DISABLE_SELF_PING: "1",
-      SITE_CLOSED: "0",
-    },
+    }),
     stdio: ["ignore", "pipe", "pipe"],
   });
   await waitForServer(contractServerUrl, contractServer);
@@ -312,9 +309,9 @@ test.afterAll(async () => {
   expect(unsafeServerRequests, "contract suite must never send write requests").toEqual([]);
 });
 
-test("the explicit inventory contains all 47 user-facing HTML routes", () => {
-  expect(USER_ROUTES).toHaveLength(47);
-  expect(new Set(USER_ROUTES).size).toBe(47);
+test("the explicit inventory contains all 48 user-facing HTML routes", () => {
+  expect(USER_ROUTES).toHaveLength(48);
+  expect(new Set(USER_ROUTES).size).toBe(48);
   expect([...USER_ROUTES].sort()).toEqual(discoverUserHtmlRoutes());
   expect(USER_ROUTES).not.toContain("/admin.html");
   expect(USER_ROUTES).not.toContain("/build.html");
@@ -502,4 +499,37 @@ test("app download endpoint rejects unknown apps and unsupported platforms", asy
 
   const unsupportedPlatform = await request.get(`${contractServerUrl}/api/apps/quilo/download?platform=linux`);
   expect(unsupportedPlatform.status()).toBe(400);
+});
+
+test("directory-style product links redirect directly to canonical HTML", async ({ request }) => {
+  for (const [shortPath, canonicalPath] of [
+    ["/tools", "/tools/index.html"],
+    ["/tools/", "/tools/index.html"],
+    ["/equation", "/equation/index.html"],
+    ["/equation/", "/equation/index.html"],
+  ]) {
+    const response = await request.get(`${contractServerUrl}${shortPath}`, {
+      maxRedirects: 0,
+    });
+    expect(response.status(), shortPath).toBe(308);
+    expect(response.headers().location, shortPath).toBe(canonicalPath);
+  }
+});
+
+test("HTML revalidates while static assets get a short stale-while-revalidate cache", async ({ request }) => {
+  const html = await request.get(`${contractServerUrl}/pricing.html`);
+  expect(html.status()).toBe(200);
+  expect(html.headers()["cache-control"]).toBe("no-cache");
+
+  const asset = await request.get(`${contractServerUrl}/ui/foundation.css`);
+  expect(asset.status()).toBe(200);
+  expect(asset.headers()["cache-control"]).toBe(
+    "public, max-age=300, stale-while-revalidate=86400",
+  );
+
+  const catalog = await request.get(`${contractServerUrl}/api/catalog`);
+  expect(catalog.status()).toBe(200);
+  expect(catalog.headers()["cache-control"]).toBe(
+    "public, max-age=300, stale-while-revalidate=3600",
+  );
 });

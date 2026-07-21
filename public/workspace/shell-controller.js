@@ -59,7 +59,7 @@ export function createShellController({ state, router, hooks }) {
 
   function reveal(id) {
     const node = byId(id);
-    if (node) node.hidden = false;
+    if (node && node.dataset.reportAccessDenied !== "true") node.hidden = false;
   }
 
   function refreshDropdownVisibility() {
@@ -68,9 +68,13 @@ export function createShellController({ state, router, hooks }) {
   }
 
   async function loadEntitlements() {
+    // 프린트 PDF 복원은 구독/베타 entitlement가 아니라 /api/me의 실제 관리자
+    // 플래그로만 공개한다. 직접 URL 진입 시에도 entitlement 요청보다 먼저 열어야
+    // router.consumePending()이 관리자 폼을 정상 선택할 수 있다.
+    const isAdmin = state.get().user?.isAdmin === true;
+    if (isAdmin) reveal("rtPrintPdfRestore");
     loadEntitlementsSnapshot()
       .then(({ subscription, beta }) => {
-        if (subscription?.active) reveal("navBetaTranslate");
         const tier = subscription?.admin || beta?.admin
           ? "Admin"
           : subscription?.active || beta?.tier === "max"
@@ -98,9 +102,10 @@ export function createShellController({ state, router, hooks }) {
           "problem-set": ["problem-set", "rtProblemSet"],
           "vocabulary-book": ["vocabulary-book", "rtVocabularyBook"],
           "form-maker": ["form-maker", "rtFormMaker"],
+          ...(isAdmin ? { "print-pdf-restore": ["print-pdf-restore", "rtPrintPdfRestore"] } : {}),
           "reading-log": ["reading-log", "rtReadingLog"],
         }[requested];
-        if (gated && has(gated[0])) reveal(gated[1]);
+        if (gated && (gated[0] === "print-pdf-restore" ? isAdmin : has(gated[0]))) reveal(gated[1]);
         refreshDropdownVisibility();
       })
       .catch(refreshDropdownVisibility);

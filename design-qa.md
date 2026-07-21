@@ -64,8 +64,6 @@
 
 final result: passed
 
----
-
 # Quilo PDF 통번역·서비스 작업공간 Design QA
 
 - PDF concept: `/Users/minjun/.codex/generated_images/019f4f80-a1c0-7af3-a195-67252e1f1d24/exec-769f899b-81db-4f52-aa73-411f24b7ed22.png`
@@ -160,5 +158,157 @@ final result: passed
 
 - P3: 목표의 업로드 클라우드 아이콘은 프로젝트에 일치하는 검증된 아이콘 패키지가 없어 생략했다. 장식 이모지나 임시 SVG로 대체하지 않았다.
 - P3: 브라우저 기본 날짜 입력의 표기 형식은 OS locale에 따라 목표 이미지와 다를 수 있으나 저장 값과 API 계약은 동일하다.
+
+final result: passed
+
+---
+
+# Quilo launch UI design QA — 2026-07-21
+
+## Comparison target
+
+- Source visual truth: the pre-fix Quilo runtime state, reconstructed at the same route, content, theme, authentication state, viewport, and browser engine used for the post-fix capture.
+- Rendered implementation: `http://127.0.0.1:3210/` and `http://127.0.0.1:3210/?report=chem-pre`.
+- Desktop viewport: 1440 × 900, light theme, authenticated local QA session.
+- Mobile viewport: 390 × 844, light theme, authenticated local QA session.
+- Browser fallback: standalone Playwright Chromium was used because the in-app browser transport repeatedly closed with `Transport closed`; the user explicitly approved Playwright fallback.
+
+## Full-view comparison evidence
+
+- Mobile source + implementation in one comparison image: `/Users/minjun/.codex/visualizations/2026/07/21/019f83bd-c9ff-7ab0-abbd-53238b8e0365/quilo-ui-audit/10-compare-mobile-source-after.png`
+- Desktop source + implementation in one comparison image: `/Users/minjun/.codex/visualizations/2026/07/21/019f83bd-c9ff-7ab0-abbd-53238b8e0365/quilo-ui-audit/11-compare-desktop-source-after.png`
+
+The left half of each image is the matched pre-fix state and the right half is the post-fix implementation.
+
+## Focused comparison evidence
+
+- Desktop report form and styled memo attachment: `/Users/minjun/.codex/visualizations/2026/07/21/019f83bd-c9ff-7ab0-abbd-53238b8e0365/quilo-ui-audit/03-before-chem-pre-desktop-top.png`
+- Desktop model controls: `/Users/minjun/.codex/visualizations/2026/07/21/019f83bd-c9ff-7ab0-abbd-53238b8e0365/quilo-ui-audit/04-before-chem-pre-desktop-models.png`
+- Mobile first task viewport: `/Users/minjun/.codex/visualizations/2026/07/21/019f83bd-c9ff-7ab0-abbd-53238b8e0365/quilo-ui-audit/03-before-chem-pre-mobile-top.png`
+- Mobile model selection before and after interaction: `/Users/minjun/.codex/visualizations/2026/07/21/019f83bd-c9ff-7ab0-abbd-53238b8e0365/quilo-ui-audit/04-before-chem-pre-mobile-models.png`, `/Users/minjun/.codex/visualizations/2026/07/21/019f83bd-c9ff-7ab0-abbd-53238b8e0365/quilo-ui-audit/05-selected-chem-pre-mobile-models.png`
+
+## Comparison history
+
+### Iteration 1
+
+- [P1] Mobile report entry opened with the long required-items/status/file summary before the actual workflow and upload form.
+  - Impact: a user could not start the main task within the first viewport and could reasonably interpret the form as missing.
+  - Fix: at tablet/mobile widths, the existing grid now orders the workflow and active form before the summary without removing summary information.
+  - Post-fix evidence: the right half of `10-compare-mobile-source-after.png` starts with steps and the PDF upload control; the persistent QA assertion also verifies `form.top < summary.top` with zero horizontal overflow.
+
+- [P1] When chat was unavailable, the large home prompt looked interactive but was an inert `div`.
+  - Impact: the primary home affordance had no action in a valid deployment configuration where the optional chat provider is absent.
+  - Fix: the fallback is now a keyboard-operable link into the existing physical result report flow. The chat widget still replaces it when chat is available.
+  - Post-fix evidence: the right half of `11-compare-desktop-source-after.png` exposes a clear `물리 결과보고서 시작` action; Playwright verifies the click opens the physical result form.
+
+- [P2] Optional memo attachment used an unstyled browser-native file input inside an otherwise consistent form.
+  - Impact: it read as unfinished and weakened trust in a production report workflow.
+  - Fix: the existing form tokens now style the control and its file-selector button while preserving native file-picker accessibility.
+  - Post-fix evidence: the desktop focused form capture shows the attachment aligned with the field grid and existing border/radius system.
+
+### Iteration 2
+
+- The same 1440 × 900 and 390 × 844 routes were recaptured after the fixes.
+- Home fallback navigation, report visibility, model radio selection, layout overflow, page errors, and console errors were exercised.
+- Result: no remaining actionable P0/P1/P2 visual or interaction issue was found in these states.
+
+## Required fidelity surfaces
+
+- Fonts and typography: the existing Quilo family, weights, scale, wrapping, and small-label hierarchy were preserved. The new copy uses the existing 13px button weight and does not introduce a new font or display style.
+- Spacing and layout rhythm: desktop grid tracks and the 340px summary rail are unchanged. Mobile now follows task order: header → workflow → form → status summary. Existing 8px/9px radii, field gaps, and section rules were reused.
+- Colors and visual tokens: the changes use `--q-blue`, `--q-line`, `--q-paper`, `--q-paper-soft`, `--q-ink`, and `--q-muted`; no new palette was introduced. Checked, disabled, and focus states retain the existing semantic tokens.
+- Image quality and asset fidelity: no image, logo, illustration, or icon asset was replaced or synthesized. Existing favicon and product-flow imagery remain unchanged and sharp at both viewports.
+- Copy and content: the previously ambiguous fallback now names its destination. Report instructions, model prices, safety wording, and data-handling copy are unchanged.
+
+## Primary interactions and technical evidence
+
+- Home fallback click opens `phys-result`.
+- `chem-pre` is the only visible report form on its route.
+- Model selection changes from Opus 4.8 to GPT-5.4 mini on desktop and mobile.
+- Mobile and desktop document widths equal their viewport widths; no horizontal overflow was observed.
+- Browser `pageerror` and console error collections were empty in the compared states.
+- The optional analytics notice was dismissed for task screenshots after its interaction path was verified separately.
+
+## Residual test gap
+
+- A live paid-provider generation was not sent from local QA because production provider credentials and student uploads were intentionally not used. Server pipeline tests and mocked browser generation/SSE coverage verify the lifecycle; Render still needs the documented credentialed canary after deployment.
+
+## Final result
+
+final result: passed
+
+---
+
+# Quilo 연결 센터 redesign Design QA — 2026-07-21
+
+## Comparison target
+
+- Source visual truth: production `/developers.html` before the redesign, captured at desktop and mobile sizes.
+- Selected visual direction: task-first connection center concept generated from the production capture.
+- Rendered implementation: `http://127.0.0.1:3210/developers.html`.
+- Native comparison viewport: `1487 × 1058`, authenticated developer state, light theme.
+- Mobile verification viewport: `390 × 844`, anonymous state, light theme.
+- Browser fallback: standalone Playwright Chromium was used because the in-app browser transport repeatedly closed with `Transport closed`; the user explicitly approved this fallback.
+
+## Full-view comparison evidence
+
+- Production source, desktop: `/Users/minjun/.codex/visualizations/2026/07/21/019f83bd-c9ff-7ab0-abbd-53238b8e0365/quilo-exhaustive-frontend/01-production-developers-before-desktop.png`
+- Production source, mobile: `/Users/minjun/.codex/visualizations/2026/07/21/019f83bd-c9ff-7ab0-abbd-53238b8e0365/quilo-exhaustive-frontend/02-production-developers-before-mobile.png`
+- Selected task-first direction: `/Users/minjun/.codex/visualizations/2026/07/21/019f83bd-c9ff-7ab0-abbd-53238b8e0365/quilo-exhaustive-frontend/04-concept-task-first.png`
+- Final desktop implementation: `/Users/minjun/.codex/visualizations/2026/07/21/019f83bd-c9ff-7ab0-abbd-53238b8e0365/quilo-exhaustive-frontend/11-implementation-desktop-final.png`
+- Final mobile implementation: `/Users/minjun/.codex/visualizations/2026/07/21/019f83bd-c9ff-7ab0-abbd-53238b8e0365/quilo-exhaustive-frontend/12-implementation-mobile-final.png`
+- Same-state concept + authenticated implementation composite: `/Users/minjun/.codex/visualizations/2026/07/21/019f83bd-c9ff-7ab0-abbd-53238b8e0365/quilo-exhaustive-frontend/16-concept-vs-authenticated-implementation.png`
+
+The selected concept and the authenticated implementation were placed in one composite and inspected together. The implementation keeps the concept's true-white surface, Quilo blue accent, three plain-language connection choices, expanded ChatGPT path, account context, and compact actions while preserving the real token, request-log, and API-catalog functionality below the fold.
+
+## Comparison history
+
+### Iteration 1
+
+- [P1] The prior page opened with token scopes and endpoint terminology before explaining what a non-developer could accomplish.
+  - Fix: introduced a task-first hero and three working connection paths for ChatGPT, Codex, and direct API use.
+- [P1] The mobile title wrapped with a dangling punctuation line.
+  - Fix: reduced the small-screen title scale and adjusted wrapping so the heading remains visually coherent at 390px.
+- [P2] Forty-eight catalog rows and twenty-two scopes formed an undifferentiated wall of controls.
+  - Fix: collapsed catalog categories, moved advanced scopes into disclosure, and added meaningful scope presets and selected-count feedback.
+
+### Iteration 2
+
+- [P2] Paused catalog items still looked clickable.
+  - Fix: paused entries now render as non-links with an explicit paused state.
+- [P2] Token-copy failure and request-log refresh had no visible failure/loading state.
+  - Fix: clipboard errors now surface in the status region; request refresh exposes `aria-busy` and disables duplicate submissions.
+- [P2] The page reported a stale scope total and hard-coded endpoint counts.
+  - Fix: both totals now come from the live scope definitions and OpenAPI document.
+
+### Iteration 3
+
+- The concept and implementation were recaptured in the same authenticated state and native viewport.
+- Desktop and mobile layout, connection accordions, scope presets, disabled/paused controls, copy failure, and request refresh were exercised.
+- Result: no remaining actionable P0/P1/P2 visual or core-interaction issue was found in the inspected states.
+
+## Required fidelity surfaces
+
+- Fonts and typography: the existing Quilo sans-serif stack and weight hierarchy are retained. The concept's compact display scale is matched without introducing a new type family.
+- Spacing and layout rhythm: the open white surface, thin separators, restrained vertical rhythm, and progressively disclosed technical content match the task-first direction.
+- Colors and visual tokens: existing Quilo blue, ink, muted text, lines, and paper tokens are reused; no unrelated palette or decorative gradient was introduced.
+- Borders and radii: controls use the project's existing restrained border/radius language; nested card stacks and heavy shadows were avoided.
+- Image and asset fidelity: the existing brand mark remains unchanged. No placeholder art, improvised SVG, emoji, or fake icon asset was added.
+- Copy and content: above-the-fold labels are ordinary-language tasks. Test/Live behavior, scope limits, plan/role boundaries, idempotency requirements, and token visibility remain technically exact.
+- Responsive behavior: desktop presents the task flow and account context side-by-side where useful; 390px mobile keeps the same task order without horizontal overflow.
+
+## Core interaction and regression evidence
+
+- Each of the three connection choices opens a real, exclusive detail panel and updates `aria-expanded`.
+- ChatGPT uses OAuth guidance and does not ask users to paste a token; Codex and API paths expose the correct Test/Live setup.
+- Anonymous, member, Pro, admin, developer, approval-pending, restricted-model, and API scope states were exercised in isolated local sessions.
+- Developer-page focused Playwright tests passed `6/6`; the complete Playwright QA suite passed `417/417`.
+- Production route baseline passed `64/64` routes at both desktop and mobile (`128/128` page states); the local role matrix passed `92` route-role states and `7/7` special-permission scenarios.
+- No production write, paid generation, email send, token creation, or destructive control was executed during the audit.
+
+## Intentional deviations
+
+- The concept ends after the connection setup. The implementation continues with the existing first-request guide, token manager, request log, and full catalog because those are real product capabilities, not mock content.
+- Decorative concept icons were omitted because the current product has no matching verified icon package for this surface. Existing numeric steps and text hierarchy communicate the flow without synthesized assets.
 
 final result: passed

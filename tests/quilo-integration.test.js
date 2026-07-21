@@ -19,24 +19,70 @@ const { listFeatures } = require("../lib/quilo-catalog");
 test("catalog represents the broad Quilo product, not only reports", () => {
   const features = listFeatures();
   assert.ok(features.length >= 30);
-  for (const id of ["pdf-translate", "cap-translate", "image-ocr", "pdf-analysis", "vibe-coding", "file-chat", "quilo-schedule", "community", "lab", "dropbox", "google-drive", "google-docs", "notion", "email-results", "codex-plugin"]) {
+  for (const id of ["print-pdf-restore", "pdf-translate", "cap-translate", "image-ocr", "pdf-analysis", "vibe-coding", "file-chat", "quilo-schedule", "community", "lab", "dropbox", "google-drive", "google-docs", "notion", "email-results", "codex-plugin"]) {
     assert.ok(features.some((feature) => feature.id === id), `missing ${id}`);
   }
   assert.ok(new Set(features.map((feature) => feature.category)).size >= 6);
   assert.equal(features.find((feature) => feature.id === "chem-pre").execution, "remote");
   assert.equal(features.find((feature) => feature.id === "pdf-translate").execution, "remote");
-  assert.equal(features.find((feature) => feature.id === "word-count").execution, "hybrid");
+  assert.equal(features.find((feature) => feature.id === "word-count").execution, "remote");
   assert.equal(features.find((feature) => feature.id === "lab").execution, "read-only");
   assert.equal(features.find((feature) => feature.id === "phys-inquiry").execution, "paused");
   assert.equal(features.find((feature) => feature.id === "vibe-coding").execution, "remote");
   assert.equal(features.find((feature) => feature.id === "file-chat").execution, "remote");
+  assert.equal(features.find((feature) => feature.id === "pdf-analysis").path, "/tools/pdf-analysis.html");
   assert.equal(features.find((feature) => feature.id === "quilo-schedule").path, "/schedule/");
   assert.equal(features.find((feature) => feature.id === "community").execution, "remote");
   assert.equal(features.find((feature) => feature.id === "cap-translate").status, "pro");
   assert.equal(features.find((feature) => feature.id === "cap-translate").execution, "remote");
+  assert.equal(features.find((feature) => feature.id === "print-pdf-restore").audience, "admin");
+  assert.equal(features.find((feature) => feature.id === "print-pdf-restore").status, "beta");
+  assert.deepEqual(features.find((feature) => feature.id === "print-pdf-restore").formats, ["pdf"]);
   for (const id of ["dropbox", "google-drive", "google-docs", "notion"]) {
     assert.equal(features.find((feature) => feature.id === id).path, "/#integrations");
   }
+});
+
+test("every /?report= link resolves to a reportType radio or a registered alias", async () => {
+  const html = fs.readFileSync(path.join(__dirname, "../public/index.html"), "utf8");
+  const radios = new Set(
+    [...html.matchAll(/<input[^>]*name="reportType"[^>]*value="([^"]+)"/g)].map((m) => m[1]),
+  );
+  assert.ok(radios.size >= 15, "reportType radios missing from index.html");
+
+  // report-registry.js는 자급자족 ESM(import문·최상위 DOM 접근 없음)이라 실제 export를
+  // 그대로 검증한다. 패키지가 "type":"commonjs"라 파일 경로 import는 CJS로 파싱되므로
+  // data: URL로 ESM 강제 로드한다.
+  const registrySource = fs.readFileSync(path.join(__dirname, "../public/workspace/report-registry.js"), "utf8");
+  const { REPORT_ALIASES } = await import(`data:text/javascript,${encodeURIComponent(registrySource)}`);
+  for (const [id, alias] of Object.entries(REPORT_ALIASES)) {
+    assert.ok(!radios.has(id), `${id} must not be both an alias and a radio`);
+    assert.ok(radios.has(alias.base), `alias ${id} points at missing radio "${alias.base}"`);
+  }
+  assert.equal(REPORT_ALIASES["reading-log-bulk"]?.base, "reading-log");
+
+  const resolvable = (id) => radios.has(id) || Object.prototype.hasOwnProperty.call(REPORT_ALIASES, id);
+  const catalogIds = listFeatures()
+    .map((feature) => String(feature.path || ""))
+    .filter((featurePath) => featurePath.startsWith("/?report="))
+    .map((featurePath) => featurePath.slice("/?report=".length));
+  assert.ok(catalogIds.includes("reading-log-bulk"));
+  for (const id of catalogIds) assert.ok(resolvable(id), `catalog link /?report=${id} is dead`);
+
+  const shell = fs.readFileSync(path.join(__dirname, "../public/ui/shell.js"), "utf8");
+  for (const [, id] of shell.matchAll(/\/\?report=([a-z0-9-]+)/g)) {
+    assert.ok(resolvable(id), `shell nav link /?report=${id} is dead`);
+  }
+});
+
+test("PDF analysis is exposed as a real browser workspace instead of a catalog-only link", () => {
+  const page = fs.readFileSync(path.join(__dirname, "../public/tools/pdf-analysis.html"), "utf8");
+  const runtime = fs.readFileSync(path.join(__dirname, "../public/ui/pdf-analysis.js"), "utf8");
+  const shell = fs.readFileSync(path.join(__dirname, "../public/ui/shell.js"), "utf8");
+  assert.match(page, /id="pdfAnalysisFile"/);
+  assert.match(page, /id="pdfAnalysisResult"/);
+  assert.match(runtime, /fetch\("\/api\/tools\/pdf\/analyze"/);
+  assert.match(shell, /"pdf-analysis"[^\n]+"\/tools\/pdf-analysis\.html"/);
 });
 
 test("Quilo schedule stays available by direct URL but is hidden from the Quilo site shell", () => {
@@ -61,6 +107,10 @@ test("public catalog API supports search", async (t) => {
   const { port } = server.address();
   const response = await fetch(`http://127.0.0.1:${port}/api/catalog?q=PDF`);
   assert.equal(response.status, 200);
+  assert.equal(
+    response.headers.get("cache-control"),
+    "public, max-age=300, stale-while-revalidate=3600",
+  );
   const body = await response.json();
   assert.ok(body.features.some((feature) => feature.id === "pdf-translate"));
 });
@@ -176,7 +226,7 @@ test("OpenAPI document is public and generated from the v1 route registry", asyn
   assert.equal(body.paths["/api/v1/jobs/{id}/email"].post["x-quilo-scope"], "jobs:write");
   assert.equal(body.paths["/api/v1/integrations/google-drive/files"].post["x-quilo-scope"], "integrations:write");
   assert.equal(body.paths["/api/v1/integrations/google-drive/reports/{id}"].post["x-quilo-scope"], "integrations:write");
-  assert.equal(body.paths["/api/v1/integrations/google-drive/files/{id}/comments"].get["x-quilo-scope"], "integrations:read");
+  assert.equal(body.paths["/api/v1/integrations/google-drive/files/{id}/comments"].get["x-quilo-scope"], "integrations:data");
   assert.equal(body.paths["/api/v1/integrations/google-drive/files/{id}/comments"].post["x-quilo-scope"], "integrations:write");
   assert.equal(body.paths["/api/v1/integrations/google-docs"].post["x-quilo-scope"], "integrations:write");
   assert.equal(body.paths["/api/v1/integrations/google-docs/{id}/append"].post["x-quilo-scope"], "integrations:write");

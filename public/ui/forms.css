@@ -112,6 +112,34 @@ textarea:focus { border-color: var(--q-blue); box-shadow: 0 0 0 3px color-mix(in
 .dropzone-file { color: #16794b; font-weight: 700; }
 .dropzone-warn { padding: 8px 10px; border-radius: 7px; color: #9a5d00; background: #fff7e8; font-size: 11px; }
 
+.user-notes-field > input[type="file"] {
+  width: min(100%, 560px);
+  min-height: 42px;
+  box-sizing: border-box;
+  padding: 5px;
+  border: 1px solid var(--q-line);
+  border-radius: 8px;
+  color: var(--q-muted);
+  background: var(--q-paper-soft);
+  font: inherit;
+  font-size: 11px;
+}
+.user-notes-field > input[type="file"]::file-selector-button {
+  min-height: 30px;
+  margin-right: 10px;
+  padding: 0 11px;
+  border: 1px solid var(--q-line);
+  border-radius: 6px;
+  color: var(--q-ink);
+  background: var(--q-paper);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.user-notes-field > input[type="file"]:hover::file-selector-button { border-color: #b7c0ce; background: var(--q-blue-soft); }
+.user-notes-field > input[type="file"]:focus-visible { outline: 3px solid color-mix(in srgb, var(--q-blue) 18%, transparent); outline-offset: 2px; }
+
 .segmented { display: flex; flex-wrap: wrap; gap: 8px; }
 .segmented label {
   position: relative;
@@ -130,9 +158,23 @@ textarea:focus { border-color: var(--q-blue); box-shadow: 0 0 0 3px color-mix(in
 }
 .segmented label:hover { border-color: #b7c0ce; color: var(--q-ink); }
 .segmented label:has(input:checked) { border-color: var(--q-blue); color: var(--q-blue); background: var(--q-blue-soft); }
+.segmented label.is-provider-unavailable,
+.segmented label.is-provider-unavailable:hover {
+  border-color: var(--q-line);
+  color: var(--q-muted);
+  background: color-mix(in srgb, var(--q-paper) 90%, var(--q-line));
+  cursor: not-allowed;
+  opacity: .68;
+}
 .segmented input[type="radio"] { position: absolute; width: 1px; height: 1px; opacity: 0; }
 .segmented label[hidden], label.fable-model[hidden], label.beta-model[hidden] { display: none !important; }
 .model-reco { margin-left: 5px; color: var(--q-blue); font-size: 9px; }
+.model-unavailable-note {
+  margin-left: 6px;
+  color: #9a5d00;
+  font-size: 9px;
+  font-weight: 700;
+}
 
 .memo-help { border-top: 1px solid var(--q-line); padding-top: 9px; }
 .memo-help > summary { color: var(--q-blue); font-size: 11px; cursor: pointer; }

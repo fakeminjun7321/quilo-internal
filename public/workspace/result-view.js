@@ -14,7 +14,7 @@ export function createResultView({ appendLine, getLastSubmission, retryLastSubmi
     const headline = inputError
       ? "입력을 확인해 주세요 · 빠진 항목을 채운 뒤 다시 시도하세요"
       : creditError
-        ? "크레딧이 부족합니다 · 무료 모델로 바꾸거나 충전 후 다시 시도하세요"
+        ? "크레딧이 부족합니다 · 더 저렴한 모델로 바꾸거나 충전 후 다시 시도하세요"
         : "생성이 중단됐어요 · 크레딧은 차감되지 않았고 입력은 그대로예요";
     const head = document.createElement("div");
     head.className = "retry-headline";
@@ -64,4 +64,3 @@ export function createResultView({ appendLine, getLastSubmission, retryLastSubmi
 
   return { clearRetryCard, showGenerationError };
 }
-

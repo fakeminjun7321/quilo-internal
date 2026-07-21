@@ -1,5 +1,6 @@
 const path = require("path");
 const { spawn } = require("child_process");
+const { isolatedServerEnv } = require("./support/isolated-server-env");
 
 function loadPlaywrightTest() {
   try { return require("@playwright/test"); }
@@ -43,13 +44,27 @@ async function mockAccountApis(page, options = {}) {
     if (request.method() !== "GET") {
       calls.push({ pathname, method: request.method(), body: request.postDataJSON?.() || null });
     }
-    if (pathname === "/api/me") return route.fulfill({ json: { user: "구민준", studentId: "2402", isAdmin, styleNote: "", blockedReportTypes: [], analyticsConsent: false, analyticsConsentVersion: "2026-07-15" } });
-    if (pathname === "/api/me/balance") return route.fulfill({ json: { credits: isAdmin ? 100000 : 24, unlimited: isAdmin, isAdmin } });
+    if (pathname === "/api/me") return route.fulfill({ json: { user: "구민준", studentId: "2402", isAdmin, styleNote: "", blockedReportTypes: options.blockedReportTypes || [], analyticsConsent: false, analyticsConsentVersion: "2026-07-15" } });
+    if (pathname === "/api/me/balance") {
+      options.onBalance?.();
+      const payload = {
+        credits: isAdmin ? 100000 : 24,
+        unlimited: isAdmin,
+        isAdmin,
+        restrictedModel: options.restrictedModel || null,
+      };
+      if (Object.prototype.hasOwnProperty.call(options, "modelProviders")) {
+        payload.modelProviders = typeof options.modelProviders === "function"
+          ? options.modelProviders()
+          : options.modelProviders;
+      }
+      return route.fulfill({ json: payload });
+    }
     if (pathname === "/api/me/beta") return route.fulfill({
       json: options.tierError ? null : {
         admin: isAdmin,
         tier: role,
-        features: isAdmin || isMax || isPro ? ["code-editor", "create"] : [],
+        features: options.features || (isAdmin || isMax || isPro ? ["code-editor", "create"] : []),
       },
       status: options.tierError ? 500 : 200,
     });
@@ -78,8 +93,14 @@ async function mockAccountApis(page, options = {}) {
       return route.fulfill({ json: { ok: true, granted: !!request.postDataJSON().granted, version: "2026-07-15" } });
     }
     if (pathname === "/api/me/password" && request.method() === "POST") return route.fulfill({ json: { ok: true } });
-    if (pathname === "/api/me/api-keys" && request.method() === "POST") return route.fulfill({ json: { ok: true } });
-    if (pathname.startsWith("/api/me/api-keys/") && request.method() === "DELETE") return route.fulfill({ json: { ok: true } });
+    if (pathname === "/api/me/api-keys" && request.method() === "POST") {
+      options.onKeyMutation?.("save", request.postDataJSON()?.provider);
+      return route.fulfill({ json: { ok: true } });
+    }
+    if (pathname.startsWith("/api/me/api-keys/") && request.method() === "DELETE") {
+      options.onKeyMutation?.("delete", pathname.split("/").pop());
+      return route.fulfill({ json: { ok: true } });
+    }
     if (pathname === "/api/announcements") return route.fulfill({ json: { announcements: [] } });
     if (pathname === "/api/me/files") return route.fulfill({ json: { storage: true, files: [] } });
     if (pathname === "/api/cloud/providers/status") return route.fulfill({ json: { integrations: {} } });
@@ -91,7 +112,11 @@ async function mockAccountApis(page, options = {}) {
 
 test.beforeAll(async () => {
   if (await serverIsUp()) return;
-  serverProcess = spawn("node", ["server.js"], { cwd: process.cwd(), env: { ...process.env, PORT: "3000" }, stdio: "pipe" });
+  serverProcess = spawn("node", ["server.js"], {
+    cwd: process.cwd(),
+    env: isolatedServerEnv({ PORT: "3000" }),
+    stdio: "pipe",
+  });
   await waitForServer();
 });
 
@@ -191,6 +216,252 @@ test("account center exposes empty and error states without blank cards", async 
   await expect(page.locator("#byokStatus")).toContainText("연결 상태 오류");
   await expect(page.locator("#tierStatus")).toHaveAttribute("data-state", "error");
   await expect(page.locator("#tierStatus")).toHaveText("확인할 수 없음");
+});
+
+async function reportModelState(page) {
+  return page.evaluate(() => {
+    const selector = 'input[type="radio"][name="model"], input[type="radio"][name$="Model"]';
+    const groups = {};
+    document.querySelectorAll(selector).forEach((radio) => {
+      const label = radio.closest("label");
+      (groups[radio.name] ||= []).push({
+        value: radio.value,
+        visible: !label?.hidden,
+        disabled: radio.disabled,
+        checked: radio.checked,
+        providerAvailability: label?.dataset.modelProviderAvailability || "",
+        title: label?.title || "",
+        describedBy: radio.getAttribute("aria-describedby") || "",
+        unavailableNote: label?.querySelector('[data-model-provider-note="true"]')?.textContent || "",
+      });
+    });
+    return groups;
+  });
+}
+
+const REPORT_MODEL_GROUPS = [
+  "model", "crModel", "prModel", "piModel", "miModel", "rlModel", "psModel",
+  "vbModel", "fmModel", "engModel", "klModel", "capModel", "pmModel", "frModel",
+];
+
+test("a comma-separated model restriction keeps every allowed model selectable in every report", async ({ page }) => {
+  await mockAccountApis(page, { role: "free", restrictedModel: "gpt-5.4-mini, claude-sonnet-5" });
+  await page.goto(`${BASE_URL}/#settings`, { waitUntil: "networkidle" });
+
+  const state = await reportModelState(page);
+  expect(Object.keys(state).sort()).toEqual([...REPORT_MODEL_GROUPS].sort());
+  for (const name of REPORT_MODEL_GROUPS) {
+    const visible = state[name].filter((model) => model.visible);
+    expect(visible.map((model) => model.value).sort(), name).toEqual(["claude-sonnet-5", "gpt-5.4-mini"]);
+    expect(visible.every((model) => !model.disabled), name).toBeTruthy();
+    expect(visible.filter((model) => model.checked), name).toHaveLength(1);
+  }
+  expect(await page.locator('input[name="reportType"][value="chem-pre"]').evaluate((radio) => !radio.closest("label")?.hidden)).toBeTruthy();
+  expect(await page.locator('input[name="reportType"][value="free"]').evaluate((radio) => !radio.closest("label")?.hidden)).toBeTruthy();
+});
+
+test("a single model restriction selects only that model in every report", async ({ page }) => {
+  await mockAccountApis(page, { role: "free", restrictedModel: "gpt-5.4-mini" });
+  await page.goto(`${BASE_URL}/#settings`, { waitUntil: "networkidle" });
+
+  const state = await reportModelState(page);
+  for (const name of REPORT_MODEL_GROUPS) {
+    const visible = state[name].filter((model) => model.visible);
+    expect(visible.map((model) => model.value), name).toEqual(["gpt-5.4-mini"]);
+    expect(visible[0].disabled, name).toBeFalsy();
+    expect(visible[0].checked, name).toBeTruthy();
+  }
+});
+
+test("accounts without a model restriction keep the normal model choices", async ({ page }) => {
+  await mockAccountApis(page, { role: "free" });
+  await page.goto(`${BASE_URL}/#settings`, { waitUntil: "networkidle" });
+
+  const state = await reportModelState(page);
+  for (const name of REPORT_MODEL_GROUPS) {
+    const visible = state[name].filter((model) => model.visible);
+    expect(visible.map((model) => model.value).sort(), name).toEqual([
+      "claude-opus-4-8", "claude-sonnet-5", "gpt-5.5", "gpt-5.4", "gpt-5.4-mini",
+    ].sort());
+    expect(visible.every((model) => !model.disabled), name).toBeTruthy();
+    expect(visible.filter((model) => model.checked), name).toHaveLength(1);
+  }
+});
+
+test("provider availability disables unavailable models and keeps BYOK-backed models selectable", async ({ page }) => {
+  await mockAccountApis(page, {
+    role: "free",
+    modelProviders: { anthropic: false, openai: true, gemini: false },
+  });
+  await page.goto(`${BASE_URL}/#settings`, { waitUntil: "networkidle" });
+
+  const state = await reportModelState(page);
+  for (const name of REPORT_MODEL_GROUPS) {
+    const visible = state[name].filter((model) => model.visible);
+    const claude = visible.filter((model) => model.value.startsWith("claude-"));
+    const gpt = visible.filter((model) => model.value.startsWith("gpt-"));
+    expect(claude.every((model) => model.disabled), `${name}: Claude disabled`).toBeTruthy();
+    expect(claude.every((model) => model.providerAvailability === "unavailable"), `${name}: unavailable state`).toBeTruthy();
+    expect(claude.every((model) => /Anthropic 연결이 없어/.test(model.title)), `${name}: clear title`).toBeTruthy();
+    expect(claude.every((model) => /Anthropic 연결 필요/.test(model.unavailableNote)), `${name}: accessible copy`).toBeTruthy();
+    expect(claude.every((model) => model.describedBy.includes("model-provider-note-")), `${name}: described by`).toBeTruthy();
+    expect(gpt.every((model) => !model.disabled), `${name}: BYOK-backed GPT enabled`).toBeTruthy();
+    expect(visible.filter((model) => model.checked)).toHaveLength(1);
+    expect(visible.find((model) => model.checked)?.value, `${name}: unavailable default cleared`).toMatch(/^gpt-/);
+  }
+});
+
+test("a restriction that only allows an unavailable provider blocks submission instead of falling through to 503", async ({ page }) => {
+  await mockAccountApis(page, {
+    role: "free",
+    restrictedModel: "claude-opus-4-8",
+    modelProviders: { anthropic: false, openai: true, gemini: false },
+  });
+  await page.goto(`${BASE_URL}/#settings`, { waitUntil: "networkidle" });
+
+  const opus = page.locator('input[name="model"][value="claude-opus-4-8"]');
+  await expect(opus).toBeDisabled();
+  await expect(opus).not.toBeChecked();
+  await expect(page.locator("#btn")).toBeDisabled();
+  await expect(page.locator("#btn")).toHaveAttribute(
+    "title",
+    "현재 연결된 AI 제공자가 없습니다. 모델 연결 상태를 확인해 주세요.",
+  );
+  await expect(page.locator('input[name="model"][value="gpt-5.4"]')).toBeHidden();
+});
+
+test("missing provider availability preserves the existing model behavior", async ({ page }) => {
+  await mockAccountApis(page, { role: "free" });
+  await page.goto(`${BASE_URL}/#settings`, { waitUntil: "networkidle" });
+
+  const state = await reportModelState(page);
+  for (const name of REPORT_MODEL_GROUPS) {
+    const visible = state[name].filter((model) => model.visible);
+    expect(visible.every((model) => !model.disabled), name).toBeTruthy();
+    expect(visible.every((model) => model.providerAvailability === ""), name).toBeTruthy();
+    expect(visible.every((model) => model.unavailableNote === ""), name).toBeTruthy();
+  }
+});
+
+test("saving and deleting BYOK refreshes report model availability", async ({ page }) => {
+  const providers = { anthropic: false, openai: true, gemini: false };
+  let balanceReads = 0;
+  await mockAccountApis(page, {
+    role: "free",
+    modelProviders: () => ({ ...providers }),
+    onBalance: () => { balanceReads += 1; },
+    onKeyMutation: (action, provider) => {
+      if (provider === "anthropic" && action === "save") providers.anthropic = true;
+      if (provider === "openai" && action === "delete") providers.openai = false;
+    },
+  });
+  await page.goto(`${BASE_URL}/#settings`, { waitUntil: "networkidle" });
+
+  const anthropic = page.locator('input[name="model"][value="claude-opus-4-8"]');
+  const openai = page.locator('input[name="model"][value="gpt-5.4"]');
+  await expect(anthropic).toBeDisabled();
+  await expect(openai).toBeEnabled();
+
+  await page.locator('[data-provider="anthropic"] > summary').click();
+  await page.locator("#byokAnthropicInput").fill("sk-ant-test-account-center-refresh");
+  await page.locator("#byokSaveAnthropic").click();
+  await expect(anthropic).toBeEnabled();
+  await expect.poll(() => balanceReads).toBeGreaterThanOrEqual(2);
+
+  await page.locator('[data-provider="openai"] > summary').click();
+  await page.locator("#byokDelOpenai").click();
+  await expect(openai).toBeDisabled();
+  await expect.poll(() => balanceReads).toBeGreaterThanOrEqual(3);
+});
+
+test("an administrator still receives the configured model restriction", async ({ page }) => {
+  await mockAccountApis(page, { role: "admin", restrictedModel: "gpt-5.4-mini" });
+  await page.goto(`${BASE_URL}/#settings`, { waitUntil: "networkidle" });
+
+  const state = await reportModelState(page);
+  for (const name of REPORT_MODEL_GROUPS) {
+    const visible = state[name].filter((model) => model.visible);
+    expect(visible.map((model) => model.value), name).toEqual(["gpt-5.4-mini"]);
+    expect(visible[0].disabled, name).toBeFalsy();
+    expect(visible[0].checked, name).toBeTruthy();
+  }
+});
+
+test("the saved default model applies to all report model groups", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("prefModel", "gpt-5.4"));
+  await mockAccountApis(page, { role: "free" });
+  await page.goto(`${BASE_URL}/#settings`, { waitUntil: "networkidle" });
+
+  const state = await reportModelState(page);
+  for (const name of REPORT_MODEL_GROUPS) {
+    expect(state[name].find((model) => model.checked)?.value, name).toBe("gpt-5.4");
+  }
+});
+
+test("Gemini choices and confirmation metadata remain administrator-only", async ({ page }) => {
+  await mockAccountApis(page, { role: "admin" });
+  await page.goto(BASE_URL, { waitUntil: "networkidle" });
+
+  for (const name of ["model", "crModel", "prModel", "frModel"]) {
+    expect(
+      await page.locator(`input[name="${name}"][value="gemini-3.1-pro"]`).evaluate(
+        (radio) => !radio.closest("label")?.hidden,
+      ),
+      name,
+    ).toBeTruthy();
+  }
+  const contract = await page.evaluate(async () => {
+    const helpers = await import("/workspace/report-helpers.js");
+    return {
+      label: helpers.getModelLabel("gemini-3.1-pro"),
+      credits: helpers.getModelCredits("gemini-3.1-pro"),
+    };
+  });
+  expect(contract).toEqual({ label: "Gemini 3.1 Pro", credits: 2 });
+
+  await page.locator('[data-ui-menu-trigger="0"]').click();
+  await page.locator('#uiSiteMega a[data-report="chem-pre"]').click();
+  await expect(page.locator('[data-report-form="chem-pre"]')).toBeVisible();
+  await page.locator('input[name="model"][value="gemini-3.1-pro"]').check();
+  await page.setInputFiles("#manual", {
+    name: "manual.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("%PDF-1.4\nqa\n%%EOF"),
+  });
+  await page.locator("#form").dispatchEvent("submit");
+  await expect(page.locator(".confirm-card")).toContainText("Gemini 3.1 Pro");
+  await page.locator(".confirm-card button.secondary").click();
+});
+
+test("report access keeps initial, entitlement, retired, blocked and admin-only visibility separate", async ({ page }) => {
+  await mockAccountApis(page, {
+    role: "pro",
+    features: ["form-maker", "phys-inquiry"],
+    blockedReportTypes: ["chem-result", "form-maker"],
+  });
+  await page.goto(`${BASE_URL}/#settings`, { waitUntil: "networkidle" });
+
+  const labelHidden = (value) =>
+    page.locator(`input[name="reportType"][value="${value}"]`).evaluate(
+      (radio) => !!radio.closest("label")?.hidden,
+    );
+
+  await expect.poll(() => labelHidden("chem-pre")).toBe(false);
+  await expect.poll(() => labelHidden("chem-result")).toBe(true);
+  await expect.poll(() => labelHidden("form-maker")).toBe(true);
+  await expect.poll(() => labelHidden("phys-inquiry")).toBe(true);
+  await expect.poll(() => labelHidden("print-pdf-restore")).toBe(true);
+});
+
+test("an allowed Pro entitlement can reveal its initially hidden report label", async ({ page }) => {
+  await mockAccountApis(page, { role: "pro", features: ["form-maker"] });
+  await page.goto(`${BASE_URL}/#settings`, { waitUntil: "networkidle" });
+
+  await expect.poll(() =>
+    page.locator('input[name="reportType"][value="form-maker"]').evaluate(
+      (radio) => !!radio.closest("label")?.hidden,
+    )
+  ).toBe(false);
 });
 
 for (const [role, label] of [["free", "Free"], ["pro", "Pro"], ["max", "Max"], ["admin", "Admin"]]) {

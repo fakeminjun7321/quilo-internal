@@ -599,21 +599,24 @@ test("retention cleanup removes only expired real run directories", (t) => {
   assert.equal(fs.existsSync(newRun), true);
   assert.equal(fs.lstatSync(linkedRun).isSymbolicLink(), true);
   assert.equal(fs.existsSync(outside), true);
-  assert.match(fs.readFileSync(path.join(ROOT, ".gitignore"), "utf8"), /\/output\/pdf\/evals\//);
+  assert.match(fs.readFileSync(path.join(ROOT, ".gitignore"), "utf8"), /^\/output\/$/m);
 });
 
 test("managed process groups escalate from TERM to KILL", async (t) => {
   if (process.platform === "win32") return;
   const child = spawn(
     process.execPath,
-    ["-e", "process.on('SIGTERM',()=>{}); setInterval(()=>{},1000)"],
-    { detached: true, stdio: "ignore" },
+    [
+      "-e",
+      "process.on('SIGTERM',()=>{}); process.send('ready'); setInterval(()=>{},1000)",
+    ],
+    { detached: true, stdio: ["ignore", "ignore", "ignore", "ipc"] },
   );
   t.after(() => {
     try { process.kill(-child.pid, "SIGKILL"); } catch {}
   });
   await new Promise((resolve) => child.once("spawn", resolve));
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  await new Promise((resolve) => child.once("message", resolve));
   let exitSignal = null;
   child.once("exit", (_code, signal) => { exitSignal = signal; });
   await terminateProcessGroup(child, { graceMs: 30 });

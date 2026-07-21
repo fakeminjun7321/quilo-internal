@@ -41,6 +41,7 @@ const CONTENT_TYPES = {
 
 const TOOL_ROUTES = Object.freeze([
   "/tools/convert.html",
+  "/tools/pdf-analysis.html",
   "/tools/image.html",
   "/tools/index.html",
   "/tools/pdf-compress.html",
@@ -418,11 +419,11 @@ test.afterEach(async ({ page }) => {
 });
 
 test("canonical header route inventory and destinations are explicit", () => {
-  expect(TOOL_ROUTES).toHaveLength(13);
+  expect(TOOL_ROUTES).toHaveLength(14);
   expect(GENERAL_PUBLIC_ROUTES).toHaveLength(13);
   expect(DOWNLOAD_APP_ROUTES).toHaveLength(2);
   expect(WORK_APP_ROUTES).toHaveLength(8);
-  expect(HEADER_ROUTES).toHaveLength(38);
+  expect(HEADER_ROUTES).toHaveLength(39);
   expect(new Set(HEADER_ROUTES).size).toBe(HEADER_ROUTES.length);
   expect(COMMON_NAV_DESTINATIONS).toHaveLength(19);
   expect(new Set(COMMON_NAV_DESTINATIONS).size).toBe(COMMON_NAV_DESTINATIONS.length);

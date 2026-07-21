@@ -41,6 +41,7 @@ const CONTENT_TYPES = {
 
 const TOOL_ROUTES = Object.freeze([
   "/tools/convert.html",
+  "/tools/pdf-analysis.html",
   "/tools/image.html",
   "/tools/index.html",
   "/tools/pdf-compress.html",
@@ -361,10 +362,10 @@ test.afterEach(async ({ page }) => {
 });
 
 test("shell matrix inventory is explicit and excludes specialized chrome", () => {
-  expect(TOOL_ROUTES).toHaveLength(13);
+  expect(TOOL_ROUTES).toHaveLength(14);
   expect(GENERAL_PUBLIC_ROUTES).toHaveLength(13);
   expect(APP_ROUTES).toHaveLength(2);
-  expect(COMMON_SHELL_ROUTES).toHaveLength(28);
+  expect(COMMON_SHELL_ROUTES).toHaveLength(29);
   expect(APP_SHELL_ROUTES).toHaveLength(8);
   expect(new Set(COMMON_SHELL_ROUTES).size).toBe(COMMON_SHELL_ROUTES.length);
 
@@ -413,6 +414,90 @@ test("redesigned static pages use only the new independent stylesheet stack", ()
     expect(source, route).not.toMatch(/<style\b|style="/);
     expect(source, route).not.toMatch(/\son(?:click|change|input|submit)\s*=/i);
   }
+});
+
+test("school application connects validation errors to fields and clears them while editing", async ({ page }) => {
+  await page.goto(`${baseUrl}/school-apply.html`, { waitUntil: "networkidle" });
+
+  await page.locator('[data-next-step="2"]').click();
+  await expect(page.locator("#schoolName")).toBeFocused();
+  await expect(page.locator("#schoolName")).toHaveAttribute("aria-invalid", "true");
+  await expect(page.locator("#schoolName")).toHaveAttribute("aria-errormessage", "schoolNameError");
+  await expect(page.locator("#schoolNameError")).toHaveText("학교명을 입력해 주세요.");
+
+  await page.locator("#schoolName").fill("QA과학고등학교");
+  await expect(page.locator("#schoolName")).not.toHaveAttribute("aria-invalid");
+  await expect(page.locator("#schoolName")).not.toHaveAttribute("aria-errormessage");
+  await expect(page.locator("#schoolNameError")).toBeEmpty();
+  await page.locator("#contactName").fill("테스트 담당자");
+  await page.locator("#contactEmail").fill("teacher@qa.hs.kr");
+  await page.locator('[data-next-step="2"]').click();
+
+  await page.locator('[data-next-step="3"]').click();
+  await expect(page.locator("#studentEmailDomain")).toBeFocused();
+  await expect(page.locator("#studentEmailDomain")).toHaveAttribute("aria-invalid", "true");
+  await expect(page.locator("#studentEmailDomain")).toHaveAttribute("aria-errormessage", "studentEmailDomainError");
+  await expect(page.locator("#studentEmailDomainError")).toContainText("도메인을 입력");
+
+  await page.locator("#studentEmailDomain").fill("qa.hs.kr");
+  await expect(page.locator("#studentEmailDomain")).not.toHaveAttribute("aria-invalid");
+  await expect(page.locator("#studentEmailDomain")).not.toHaveAttribute("aria-errormessage");
+  await page.locator('[data-next-step="3"]').click();
+
+  await page.locator("#btn").click();
+  await expect(page.locator("#consent")).toBeFocused();
+  await expect(page.locator("#consent")).toHaveAttribute("aria-invalid", "true");
+  await expect(page.locator("#consent")).toHaveAttribute("aria-errormessage", "consentError");
+  await expect(page.locator("#consentError")).toHaveText("개인정보 수집·이용 동의가 필요합니다.");
+
+  await page.locator("#consent").check();
+  await expect(page.locator("#consent")).not.toHaveAttribute("aria-invalid");
+  await expect(page.locator("#consent")).not.toHaveAttribute("aria-errormessage");
+  await expect(page.locator("#consentError")).toBeEmpty();
+});
+
+test("school application exposes one file picker control and keeps drag-drop capped at eight files", async ({ page }) => {
+  await page.goto(`${baseUrl}/school-apply.html`, { waitUntil: "networkidle" });
+  await page.locator("#schoolName").fill("QA과학고등학교");
+  await page.locator("#contactName").fill("테스트 담당자");
+  await page.locator("#contactEmail").fill("teacher@qa.hs.kr");
+  await page.locator('[data-next-step="2"]').click();
+
+  const dropzone = page.locator("#fileDropzone");
+  const trigger = page.locator("[data-file-trigger]");
+  await expect(dropzone).toHaveAttribute("role", "group");
+  await expect(dropzone).not.toHaveAttribute("role", "button");
+  await expect(dropzone).not.toHaveAttribute("tabindex");
+  await expect(trigger).toHaveAttribute("aria-controls", "files");
+
+  await page.evaluate(() => {
+    const input = document.getElementById("files");
+    window.__qaFileInputClicks = 0;
+    input.addEventListener("click", () => { window.__qaFileInputClicks += 1; });
+  });
+  await trigger.click();
+  await trigger.focus();
+  await trigger.press("Enter");
+  await expect.poll(() => page.evaluate(() => window.__qaFileInputClicks)).toBe(2);
+
+  await dropzone.click({ position: { x: 12, y: 12 } });
+  await expect.poll(() => page.evaluate(() => window.__qaFileInputClicks)).toBe(2);
+
+  await page.evaluate(() => {
+    const transfer = new DataTransfer();
+    for (let index = 1; index <= 9; index += 1) {
+      transfer.items.add(new File([`fixture-${index}`], `fixture-${index}.pdf`, {
+        type: "application/pdf",
+        lastModified: index,
+      }));
+    }
+    const target = document.getElementById("fileDropzone");
+    target.dispatchEvent(new DragEvent("dragenter", { bubbles: true, cancelable: true, dataTransfer: transfer }));
+    target.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: transfer }));
+  });
+  await expect(page.locator("#fileList li")).toHaveCount(8);
+  await expect(page.locator("#fileError")).toHaveText("첨부 파일은 최대 8개까지 접수됩니다.");
+  await expect(dropzone).not.toHaveClass(/is-dragging/);
 });
 
 test("app pages expose first-party platform download endpoints", () => {

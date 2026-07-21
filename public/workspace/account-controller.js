@@ -55,6 +55,248 @@ function applyProfilePresentation(user = {}) {
   if (byId("settingsAvatarRemove")) byId("settingsAvatarRemove").hidden = !hasAvatar;
 }
 
+const REPORT_MODEL_RADIO_SELECTOR =
+  'input[type="radio"][name="model"], input[type="radio"][name$="Model"]';
+const RESTRICTION_ORIGINAL_HIDDEN = "restrictionOriginalHidden";
+const RESTRICTION_ORIGINAL_DISABLED = "restrictionOriginalDisabled";
+const AVAILABILITY_APPLIED = "modelAvailabilityApplied";
+const AVAILABILITY_ORIGINAL_DISABLED = "availabilityOriginalDisabled";
+const AVAILABILITY_ORIGINAL_TITLE = "availabilityOriginalTitle";
+const AVAILABILITY_ORIGINAL_DESCRIBED_BY = "availabilityOriginalDescribedBy";
+const AVAILABILITY_ORIGINAL_LABEL_TITLE = "availabilityOriginalLabelTitle";
+const AVAILABILITY_ORIGINAL_LABEL_ARIA_DISABLED = "availabilityOriginalLabelAriaDisabled";
+const AVAILABILITY_SUBMIT_BLOCKED = "modelProviderBlocked";
+const AVAILABILITY_SUBMIT_ORIGINAL_DISABLED = "providerOriginalDisabled";
+const AVAILABILITY_SUBMIT_ORIGINAL_TITLE = "providerOriginalTitle";
+const RETIRED_REPORT_TYPES = new Set([
+  "eng-exam-prep",
+  "korean-lit-exam",
+  "phys-mock-exam",
+  "phys-inquiry",
+  "math-inquiry",
+]);
+const ACCESS_FORCED_HIDDEN = "reportAccessForcedHidden";
+const ACCESS_PRIOR_HIDDEN = "reportAccessPriorHidden";
+
+function groupReportModelRadios(radios) {
+  const groups = new Map();
+  radios.forEach((radio) => {
+    if (!groups.has(radio.name)) groups.set(radio.name, []);
+    groups.get(radio.name).push(radio);
+  });
+  return groups;
+}
+
+function restoreReportModelAccess(radios) {
+  radios.forEach((radio) => {
+    const label = radio.closest("label");
+    if (label && RESTRICTION_ORIGINAL_HIDDEN in label.dataset) {
+      label.hidden = label.dataset[RESTRICTION_ORIGINAL_HIDDEN] === "true";
+      delete label.dataset[RESTRICTION_ORIGINAL_HIDDEN];
+    }
+    if (RESTRICTION_ORIGINAL_DISABLED in radio.dataset) {
+      radio.disabled = radio.dataset[RESTRICTION_ORIGINAL_DISABLED] === "true";
+      delete radio.dataset[RESTRICTION_ORIGINAL_DISABLED];
+    }
+  });
+}
+
+function ensureVisibleModelSelection(groups) {
+  groups.forEach((group) => {
+    const selectable = group.filter((radio) => {
+      const label = radio.closest("label");
+      return !radio.disabled && (!label || !label.hidden);
+    });
+    group.forEach((radio) => {
+      const label = radio.closest("label");
+      if (radio.checked && (radio.disabled || label?.hidden)) radio.checked = false;
+    });
+    if (!selectable.some((radio) => radio.checked) && selectable[0]) {
+      selectable[0].checked = true;
+    }
+  });
+}
+
+function applyAdminModelVisibility(isAdmin, fableDisabled = false) {
+  document.querySelectorAll("label.fable-model").forEach((node) => {
+    node.hidden = !isAdmin || !!fableDisabled;
+  });
+  document.querySelectorAll("label.beta-model").forEach((node) => {
+    node.hidden = !isAdmin;
+  });
+  ensureVisibleModelSelection(
+    groupReportModelRadios(
+      Array.from(document.querySelectorAll(REPORT_MODEL_RADIO_SELECTOR)),
+    ),
+  );
+}
+
+function applyReportModelRestriction(restrictedModel) {
+  const radios = Array.from(document.querySelectorAll(REPORT_MODEL_RADIO_SELECTOR));
+  restoreReportModelAccess(radios);
+  const groups = groupReportModelRadios(radios);
+  const allowedModels = new Set(
+    String(restrictedModel || "")
+      .split(",")
+      .map((model) => model.trim())
+      .filter(Boolean),
+  );
+  if (!allowedModels.size) {
+    ensureVisibleModelSelection(groups);
+    return;
+  }
+
+  groups.forEach((group) => {
+    let selectable = group.filter((radio) => {
+      const label = radio.closest("label");
+      return allowedModels.has(radio.value) && !radio.disabled && !label?.hidden;
+    });
+    // 서버도 이 보고서에서 제한 모델을 쓸 수 없으면 Sonnet(또는 첫 허용 모델)으로
+    // 안전하게 폴백한다. UI 역시 선택지가 전부 사라지지 않게 같은 계약을 따른다.
+    if (!selectable.length) {
+      selectable = group.filter((radio) => {
+        const label = radio.closest("label");
+        return !radio.disabled && !label?.hidden;
+      });
+      const sonnet = selectable.find((radio) => radio.value === "claude-sonnet-5");
+      selectable = sonnet ? [sonnet] : selectable.slice(0, 1);
+    }
+    const selectableSet = new Set(selectable);
+    group.forEach((radio) => {
+      const label = radio.closest("label");
+      if (label) {
+        label.dataset[RESTRICTION_ORIGINAL_HIDDEN] = String(label.hidden);
+        label.hidden = !selectableSet.has(radio);
+      }
+      radio.dataset[RESTRICTION_ORIGINAL_DISABLED] = String(radio.disabled);
+      radio.disabled = radio.disabled || !selectableSet.has(radio);
+      if (!selectableSet.has(radio)) radio.checked = false;
+    });
+    const selected = selectable.find((radio) => radio.checked && !radio.disabled);
+    if (!selected && selectable[0] && !selectable[0].disabled) selectable[0].checked = true;
+  });
+}
+
+function reportModelProvider(model) {
+  const value = String(model || "");
+  if (/^gpt/i.test(value)) return "openai";
+  if (/^gemini/i.test(value)) return "gemini";
+  return "anthropic";
+}
+
+const REPORT_PROVIDER_COPY = {
+  anthropic: {
+    label: "Anthropic",
+    title: "Anthropic 연결이 없어 현재 사용할 수 없습니다. Account Center에서 Anthropic API 키를 등록해 주세요.",
+  },
+  openai: {
+    label: "OpenAI",
+    title: "OpenAI 연결이 없어 현재 사용할 수 없습니다. Account Center에서 OpenAI API 키를 등록해 주세요.",
+  },
+  gemini: {
+    label: "Gemini",
+    title: "서버에 Gemini 연결이 없어 현재 사용할 수 없습니다. 다른 모델을 선택해 주세요.",
+  },
+};
+
+function restoreReportModelAvailability(radios) {
+  const forms = new Set(radios.map((radio) => radio.closest("form")).filter(Boolean));
+  forms.forEach((form) => {
+    form.querySelectorAll('[data-model-provider-blocked="true"]').forEach((button) => {
+      button.disabled = button.dataset[AVAILABILITY_SUBMIT_ORIGINAL_DISABLED] === "true";
+      const title = button.dataset[AVAILABILITY_SUBMIT_ORIGINAL_TITLE] || "";
+      if (title) button.title = title;
+      else button.removeAttribute("title");
+      delete button.dataset[AVAILABILITY_SUBMIT_BLOCKED];
+      delete button.dataset[AVAILABILITY_SUBMIT_ORIGINAL_DISABLED];
+      delete button.dataset[AVAILABILITY_SUBMIT_ORIGINAL_TITLE];
+    });
+  });
+  radios.forEach((radio) => {
+    if (radio.dataset[AVAILABILITY_APPLIED] !== "true") return;
+    const label = radio.closest("label");
+    radio.disabled = radio.dataset[AVAILABILITY_ORIGINAL_DISABLED] === "true";
+    const radioTitle = radio.dataset[AVAILABILITY_ORIGINAL_TITLE] || "";
+    if (radioTitle) radio.title = radioTitle;
+    else radio.removeAttribute("title");
+    const describedBy = radio.dataset[AVAILABILITY_ORIGINAL_DESCRIBED_BY] || "";
+    if (describedBy) radio.setAttribute("aria-describedby", describedBy);
+    else radio.removeAttribute("aria-describedby");
+    if (label) {
+      const labelTitle = label.dataset[AVAILABILITY_ORIGINAL_LABEL_TITLE] || "";
+      if (labelTitle) label.title = labelTitle;
+      else label.removeAttribute("title");
+      const ariaDisabled = label.dataset[AVAILABILITY_ORIGINAL_LABEL_ARIA_DISABLED] || "";
+      if (ariaDisabled) label.setAttribute("aria-disabled", ariaDisabled);
+      else label.removeAttribute("aria-disabled");
+      label.classList.remove("is-provider-unavailable");
+      delete label.dataset.modelProviderAvailability;
+      label.querySelector('[data-model-provider-note="true"]')?.remove();
+    }
+    delete radio.dataset[AVAILABILITY_APPLIED];
+    delete radio.dataset[AVAILABILITY_ORIGINAL_DISABLED];
+    delete radio.dataset[AVAILABILITY_ORIGINAL_TITLE];
+    delete radio.dataset[AVAILABILITY_ORIGINAL_DESCRIBED_BY];
+    delete radio.dataset[AVAILABILITY_ORIGINAL_LABEL_TITLE];
+    delete radio.dataset[AVAILABILITY_ORIGINAL_LABEL_ARIA_DISABLED];
+  });
+}
+
+function applyReportModelProviderAvailability(modelProviders) {
+  if (!modelProviders || typeof modelProviders !== "object") return;
+  const radios = Array.from(document.querySelectorAll(REPORT_MODEL_RADIO_SELECTOR));
+  radios.forEach((radio, index) => {
+    const provider = reportModelProvider(radio.value);
+    // Only an explicit false disables a provider. This keeps older/partial API
+    // responses backward-compatible instead of guessing that a key is absent.
+    if (modelProviders[provider] !== false) return;
+    const label = radio.closest("label");
+    const copy = REPORT_PROVIDER_COPY[provider];
+    radio.dataset[AVAILABILITY_APPLIED] = "true";
+    radio.dataset[AVAILABILITY_ORIGINAL_DISABLED] = String(radio.disabled);
+    radio.dataset[AVAILABILITY_ORIGINAL_TITLE] = radio.getAttribute("title") || "";
+    radio.dataset[AVAILABILITY_ORIGINAL_DESCRIBED_BY] = radio.getAttribute("aria-describedby") || "";
+    radio.disabled = true;
+    radio.checked = false;
+    radio.title = copy.title;
+    if (!label) return;
+    radio.dataset[AVAILABILITY_ORIGINAL_LABEL_TITLE] = label.getAttribute("title") || "";
+    radio.dataset[AVAILABILITY_ORIGINAL_LABEL_ARIA_DISABLED] = label.getAttribute("aria-disabled") || "";
+    label.classList.add("is-provider-unavailable");
+    label.dataset.modelProviderAvailability = "unavailable";
+    label.setAttribute("aria-disabled", "true");
+    label.title = copy.title;
+    const note = document.createElement("span");
+    note.id = `model-provider-note-${radio.name}-${index}`;
+    note.className = "model-unavailable-note";
+    note.dataset.modelProviderNote = "true";
+    note.textContent = `현재 사용 불가 · ${copy.label} 연결 필요`;
+    label.append(note);
+    const originalDescription = radio.dataset[AVAILABILITY_ORIGINAL_DESCRIBED_BY];
+    radio.setAttribute(
+      "aria-describedby",
+      [originalDescription, note.id].filter(Boolean).join(" "),
+    );
+  });
+  ensureVisibleModelSelection(groupReportModelRadios(radios));
+  groupReportModelRadios(radios).forEach((group) => {
+    const form = group[0]?.closest("form");
+    if (!form) return;
+    const hasSelectableModel = group.some((radio) => {
+      const label = radio.closest("label");
+      return !radio.disabled && !label?.hidden;
+    });
+    if (hasSelectableModel) return;
+    form.querySelectorAll('button[type="submit"], input[type="submit"]').forEach((button) => {
+      button.dataset[AVAILABILITY_SUBMIT_BLOCKED] = "true";
+      button.dataset[AVAILABILITY_SUBMIT_ORIGINAL_DISABLED] = String(button.disabled);
+      button.dataset[AVAILABILITY_SUBMIT_ORIGINAL_TITLE] = button.getAttribute("title") || "";
+      button.disabled = true;
+      button.title = "현재 연결된 AI 제공자가 없습니다. 모델 연결 상태를 확인해 주세요.";
+    });
+  });
+}
+
 export function createAccountController({ state, router, hooks }) {
   const balanceState = { known: false, credits: 0, unlimited: false, isAdmin: false };
 
@@ -110,12 +352,29 @@ export function createAccountController({ state, router, hooks }) {
     hooks.studentIdChanged?.(studentId);
   }
 
-  function applyReportAccess(blocked) {
+  function applyReportAccess(blocked, isAdmin = false) {
     const denied = new Set(Array.isArray(blocked) ? blocked : []);
     document.querySelectorAll('input[name="reportType"]').forEach((radio) => {
       const label = radio.closest("label");
       if (!label) return;
-      label.hidden = denied.has(radio.value);
+      // 이전 로그인/권한 갱신에서 이 함수가 숨긴 상태만 먼저 되돌린다. HTML의
+      // 초기 hidden 또는 entitlement 로더가 정한 현재 상태는 그대로 보존한다.
+      if (label.dataset[ACCESS_FORCED_HIDDEN] === "true") {
+        label.hidden = label.dataset[ACCESS_PRIOR_HIDDEN] === "true";
+      }
+      delete label.dataset[ACCESS_FORCED_HIDDEN];
+      delete label.dataset[ACCESS_PRIOR_HIDDEN];
+      const adminOnly = radio.value === "print-pdf-restore";
+      const accessDenied =
+        RETIRED_REPORT_TYPES.has(radio.value) ||
+        denied.has(radio.value) ||
+        (adminOnly && !isAdmin);
+      label.dataset.reportAccessDenied = String(accessDenied);
+      if (accessDenied) {
+        label.dataset[ACCESS_PRIOR_HIDDEN] = String(label.hidden);
+        label.dataset[ACCESS_FORCED_HIDDEN] = "true";
+        label.hidden = true;
+      }
       if (label.hidden && radio.checked) radio.checked = false;
     });
   }
@@ -151,20 +410,19 @@ export function createAccountController({ state, router, hooks }) {
         unlimited: !!data.unlimited || !!data.isAdmin,
         isAdmin: !!data.isAdmin,
       });
+      const modelRadios = Array.from(document.querySelectorAll(REPORT_MODEL_RADIO_SELECTOR));
+      // Layer model state deterministically: clear the prior provider layer,
+      // recalculate the account restriction, then apply current provider state.
+      restoreReportModelAvailability(modelRadios);
+      applyReportModelRestriction(data.restrictedModel);
+      applyReportModelProviderAvailability(data.modelProviders);
       if (data.isAdmin) return;
-      if (data.restrictedModel) {
-        document.querySelectorAll('input[name="model"],input[name="crModel"],input[name="prModel"]').forEach((radio) => {
-          const allowed = radio.value === data.restrictedModel;
-          radio.closest("label")?.toggleAttribute("hidden", !allowed);
-          radio.checked = allowed;
-        });
-      }
       const credits = balanceState.credits;
       const box = byId("balanceBox");
       if (byId("balCredits")) byId("balCredits").textContent = data.unlimited ? "무제한 (Pro)" : `${credits} 크레딧`;
       if (byId("balConvert")) byId("balConvert").textContent = data.unlimited
         ? ""
-        : `기본(Opus)으로 약 ${Math.floor(credits / 4)}건 · 무료 모델은 무제한`;
+        : `기본(Opus)으로 약 ${Math.floor(credits / 4)}건 · GPT-5.4 mini는 하루 5건 무료 · 이후 1크레딧`;
       box?.classList.toggle("is-low", !data.unlimited && credits < 4);
       if (box) box.hidden = false;
       document.querySelector(".report-toolbar")?.classList.add("has-balance");
@@ -287,7 +545,11 @@ export function createAccountController({ state, router, hooks }) {
     if (!loggedIn) {
       setTelemetryConsent(false, "");
       if (byId("analyticsConsentNotice")) byId("analyticsConsentNotice").hidden = true;
-      applyReportAccess([]);
+      const modelRadios = Array.from(document.querySelectorAll(REPORT_MODEL_RADIO_SELECTOR));
+      restoreReportModelAvailability(modelRadios);
+      restoreReportModelAccess(modelRadios);
+      applyAdminModelVisibility(false);
+      applyReportAccess([], false);
       applyVerification(null);
       const requested = router.requestedReport();
       if (requested) { router.setPending(requested); hooks.shell?.openLogin(); }
@@ -307,13 +569,14 @@ export function createAccountController({ state, router, hooks }) {
     });
     if (byId("adminLink")) byId("adminLink").hidden = !user.isAdmin;
     hooks.shell?.loadEntitlements?.();
-    if (user.isAdmin) {
-      if (!user.fableDisabled) document.querySelectorAll("label.fable-model").forEach((node) => { node.hidden = false; });
-      document.querySelectorAll("label.beta-model").forEach((node) => { node.hidden = false; });
-    }
-    applyReportAccess(user.isAdmin ? [] : user.blockedReportTypes);
+    const modelRadios = Array.from(document.querySelectorAll(REPORT_MODEL_RADIO_SELECTOR));
+    restoreReportModelAvailability(modelRadios);
+    restoreReportModelAccess(modelRadios);
+    applyAdminModelVisibility(user.isAdmin === true, user.fableDisabled === true);
+    window.applyPrefsToForm?.();
+    applyReportAccess(user.isAdmin ? [] : user.blockedReportTypes, user.isAdmin === true);
     applyVerification(user);
-    if (!user.isAdmin) loadBalance();
+    loadBalance();
     hooks.filesController?.loadFiles();
     hooks.filesController?.loadCloudStatus();
     const selected = router.consumePending({ scroll: true });
@@ -325,6 +588,9 @@ export function createAccountController({ state, router, hooks }) {
   }
 
   function bindForms() {
+    document.addEventListener("quilo:model-providers-changed", () => {
+      void loadBalance();
+    });
     byId("analyticsConsentToggle")?.addEventListener("change", (event) => {
       void saveAnalyticsConsent(!!event.currentTarget.checked);
     });
@@ -421,6 +687,7 @@ export function createAccountController({ state, router, hooks }) {
       button.textContent = "로그인 중...";
       try {
         const data = await requestJson("/api/login", jsonOptions("POST", { username, password: byId("li_password").value, remember }));
+        window.QuiloStoragePrivacy?.protect?.(data.id);
         try { remember ? localStorage.setItem("lastUsername", username) : localStorage.removeItem("lastUsername"); } catch (_) {}
         if (data.redirect && String(data.redirect).startsWith("/oauth/authorize?")) location.assign(data.redirect);
         else location.reload();
@@ -432,7 +699,11 @@ export function createAccountController({ state, router, hooks }) {
     });
     byId("logout")?.addEventListener("click", async (event) => {
       event.preventDefault();
-      await fetch("/api/logout", { method: "POST" });
+      try {
+        await fetch("/api/logout", { method: "POST" });
+      } finally {
+        window.QuiloStoragePrivacy?.signOut?.();
+      }
       location.href = "/";
     });
     byId("profileForm")?.addEventListener("submit", async (event) => {

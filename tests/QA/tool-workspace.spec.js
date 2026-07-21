@@ -25,6 +25,7 @@ const TOOL_PAGES = Object.freeze([
   "tools/convert.html",
   "tools/image.html",
   "tools/pdf-compress.html",
+  "tools/pdf-analysis.html",
   "tools/pdf-crop.html",
   "tools/pdf-extract.html",
   "tools/pdf-merge.html",

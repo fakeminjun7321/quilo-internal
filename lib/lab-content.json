@@ -1,6 +1,7 @@
 [
   {
     "id": "overview",
+    "cover_image": "/assets/developer-notes/platform-architecture.svg",
     "date": "2026-06-07",
     "tag": "아키텍처",
     "title": "한 개의 PIPELINES 레지스트리로 4종 보고서를 생성하는 서버 구조",
@@ -19,6 +20,7 @@
   },
   {
     "id": "hwpx-engine",
+    "cover_image": "/assets/developer-notes/document-engine.svg",
     "date": "2026-06-07",
     "tag": "HWPX",
     "title": "HWPX(한컴 한글) 문서를 코드로 생성하는 엔진 — 공통 헬퍼 상속 구조",
@@ -41,6 +43,7 @@
   },
   {
     "id": "equation",
+    "cover_image": "/assets/developer-notes/equation-engine.svg",
     "date": "2026-06-07",
     "tag": "수식",
     "title": "인라인 텍스트 마커를 네이티브 HWPX 한컴 수식 객체로 변환하기",
@@ -59,6 +62,7 @@
   },
   {
     "id": "cap-parser",
+    "cover_image": "/assets/developer-notes/science-pipeline.svg",
     "date": "2026-06-07",
     "tag": "물리",
     "title": "PASCO Capstone .cap 파일 파서 — ZIP 해부부터 LLM 프롬프트 요약까지",
@@ -73,6 +77,7 @@
   },
   {
     "id": "chem-pre",
+    "cover_image": "/assets/developer-notes/science-pipeline.svg",
     "date": "2026-06-07",
     "tag": "화학",
     "title": "화학 사전보고서 생성: PDF 매뉴얼 → 구조화 JSON, 그리고 PubChem 코드 가드",
@@ -91,6 +96,7 @@
   },
   {
     "id": "canonical-data",
+    "cover_image": "/assets/developer-notes/data-grounding.svg",
     "date": "2026-06-07",
     "tag": "신뢰성",
     "title": "Canonical 데이터 방어 — LLM이 바꾼 숫자를 업로드 원본으로 되돌리기",
@@ -109,6 +115,7 @@
   },
   {
     "id": "phys-inquiry",
+    "cover_image": "/assets/developer-notes/science-pipeline.svg",
     "date": "2026-06-07",
     "tag": "물리",
     "title": "물리 수행평가 — 「일반물리학 탐구 및 사고 과정 성찰 보고서」 생성 파이프라인",
@@ -131,6 +138,7 @@
   },
   {
     "id": "docx",
+    "cover_image": "/assets/developer-notes/document-engine.svg",
     "date": "2026-06-07",
     "tag": "문서",
     "title": "리치텍스트 마커 미니 언어와 docx 보고서 렌더링",
@@ -153,6 +161,7 @@
   },
   {
     "id": "style-ref",
+    "cover_image": "/assets/developer-notes/model-routing.svg",
     "date": "2026-06-07",
     "tag": "AI",
     "title": "내 글 스타일 — 문체만 흉내 내고 내용은 절대 새지 않는 공통 모듈",
@@ -167,6 +176,7 @@
   },
   {
     "id": "ai-assist",
+    "cover_image": "/assets/developer-notes/model-routing.svg",
     "date": "2026-06-07",
     "tag": "AI",
     "title": "하나의 /api/chat 엔드포인트로 Groq·OpenAI·Anthropic 세 AI 프로바이더 라우팅하기",
@@ -181,6 +191,7 @@
   },
   {
     "id": "media-prep",
+    "cover_image": "/assets/developer-notes/media-ocr.svg",
     "date": "2026-06-07",
     "tag": "AI",
     "title": "이미지를 Claude vision 입력 크기 제한에 맞춰 전처리하기",
@@ -199,6 +210,7 @@
   },
   {
     "id": "json-defense",
+    "cover_image": "/assets/developer-notes/operations-trust.svg",
     "date": "2026-06-07",
     "tag": "신뢰성",
     "title": "지저분한 LLM 출력 방어: 견고한 JSON 파싱과 출력 정제",
@@ -217,6 +229,7 @@
   },
   {
     "id": "excel",
+    "cover_image": "/assets/developer-notes/data-grounding.svg",
     "date": "2026-06-07",
     "tag": "데이터",
     "title": "엑셀/CSV 파서 — LLM 프롬프트용 Markdown과 보정용 구조화 표를 동시에 뽑아내기",
@@ -231,6 +244,7 @@
   },
   {
     "id": "credits",
+    "cover_image": "/assets/developer-notes/operations-trust.svg",
     "date": "2026-06-07",
     "tag": "인프라",
     "title": "크레딧·비용 계산과 인메모리 레이트 리밋",
@@ -249,6 +263,7 @@
   },
   {
     "id": "pdf-inplace",
+    "cover_image": "/assets/developer-notes/media-ocr.svg",
     "date": "2026-06-07",
     "tag": "PDF 번역",
     "title": "PDF \"빠른 번역\" — 레이아웃·그림은 그대로, 글자만 한국어로 바꾸는 in-place 번역기",
@@ -267,6 +282,7 @@
   },
   {
     "id": "pdf-retypeset",
+    "cover_image": "/assets/developer-notes/document-engine.svg",
     "date": "2026-06-07",
     "tag": "PDF 번역",
     "title": "수식 PDF 재조판 — LaTeX 재생성 + Tectonic 컴파일 + 자동 수리 루프",
@@ -285,6 +301,7 @@
   },
   {
     "id": "moderation",
+    "cover_image": "/assets/developer-notes/operations-trust.svg",
     "date": "2026-06-07",
     "tag": "커뮤니티",
     "title": "커뮤니티 비속어 모더레이션 — 정규화 기반 우회 차단",
@@ -303,6 +320,7 @@
   },
   {
     "id": "dropbox",
+    "cover_image": "/assets/developer-notes/cloud-workspace.svg",
     "date": "2026-06-07",
     "tag": "클라우드",
     "title": "Dropbox 영구 저장 연동 — App secret 없는 PKCE OAuth와 refresh token 암호화",
@@ -317,6 +335,7 @@
   },
   {
     "id": "json-error-fix",
+    "cover_image": "/assets/developer-notes/operations-trust.svg",
     "date": "2026-06-07",
     "tag": "안정성",
     "title": "모든 /api 응답을 항상 JSON으로 — \"Unexpected end of JSON input\" 박멸기",
@@ -331,6 +350,7 @@
   },
   {
     "id": "problem-set",
+    "cover_image": "/assets/developer-notes/learning-tools.svg",
     "date": "2026-06-16",
     "tag": "문제집",
     "title": "문제집 메이커 — 교재 문제 PDF를 영어·한글 문제지와 해설지 3종으로",
@@ -357,6 +377,7 @@
   },
   {
     "id": "problemset-resilience",
+    "cover_image": "/assets/developer-notes/learning-tools.svg",
     "date": "2026-06-16",
     "tag": "안정성",
     "title": "수식 한 줄이 문제집 전체를 깨뜨리지 않게 — LaTeX 블록 단위 안전모드 격리",
@@ -375,6 +396,7 @@
   },
   {
     "id": "gpt-reports",
+    "cover_image": "/assets/developer-notes/model-routing.svg",
     "date": "2026-06-16",
     "tag": "AI",
     "title": "GPT 보고서 통합 — 하나의 파이프라인에서 Claude와 GPT를 갈아끼우기",
@@ -397,6 +419,7 @@
   },
   {
     "id": "chem-result-charts",
+    "cover_image": "/assets/developer-notes/science-pipeline.svg",
     "date": "2026-06-16",
     "tag": "화학",
     "title": "화학 결과보고서 — 차트 렌더링과 PCEI 규칙",
@@ -423,6 +446,7 @@
   },
   {
     "id": "ai-image-gen",
+    "cover_image": "/assets/developer-notes/media-ocr.svg",
     "date": "2026-06-16",
     "tag": "AI",
     "title": "AI 개념도/삽화 생성 — 옵트인 도해는 넣되, 실험 사진·데이터는 절대 만들지 않는다",
@@ -449,6 +473,7 @@
   },
   {
     "id": "free-report",
+    "cover_image": "/assets/developer-notes/document-engine.svg",
     "date": "2026-06-16",
     "tag": "보고서",
     "title": "자유 보고서(type=free) — 임의 주제를 받아내는 범용 파이프라인",
@@ -475,6 +500,7 @@
   },
   {
     "id": "coding-test",
+    "cover_image": "/assets/developer-notes/learning-tools.svg",
     "date": "2026-06-16",
     "tag": "교육",
     "title": "코딩 테스트 — 정답을 서버에 안 두는 100% 클라이언트 채점",

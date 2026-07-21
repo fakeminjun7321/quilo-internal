@@ -166,16 +166,18 @@ HWPX 출력은 Python 의존성이 필요하다. Render 빌드에서 `.venv` 생
 - `style`은 `minimal`일 때만 minimal, 그 외는 default
 - `userNotes`는 `collectUserNotes()`→`normalizeUserNotes()`로 최대 `MAX_USER_NOTES_CHARS`자(기본 12000). `.md`/`.txt` 메모 파일도 합쳐진다.
 
-## 8. 중요한 현재 한계
+## 8. 사전보고서 분석 입력 방식과 한계
 
-사전보고서 입력은 서버에서 `pdf`와 `docx`를 모두 허용하지만, `generate.js`의 분석 입력은 현재 PDF만 Claude document block으로 보낸다.
+사전보고서는 `pdf`와 `docx`를 모두 분석 입력으로 사용한다.
 
 현재 동작:
 
 - `preReport`가 PDF이면 Claude document block으로 첨부
-- `preReport`가 DOCX이면 attachment summary에 `"텍스트 추출 미구현, 빈 사전보고서로 처리"`라고 기록하고 실제 본문 추출은 하지 않음
+- `preReport`가 DOCX이면 `lib/docx-text.js`의 `extractDocxText()`가 `word/document.xml`의 본문 텍스트를 추출하고 Claude text block으로 전달
+- DOCX 추출 본문이 40000자를 넘으면 앞부분 40000자만 전달하고 `[이하 생략]`을 덧붙임
+- DOCX를 열 수 없거나 본문 텍스트가 비어 있으면 warning과 attachment summary를 남기고 빈 사전보고서로 graceful fallback
 
-따라서 결과보고서 품질 검증에서는 **사전보고서 PDF 업로드를 권장**한다. DOCX 사전보고서를 제대로 분석하려면 별도 DOCX text extraction을 구현해야 한다.
+DOCX 경로는 본문과 표 셀의 텍스트를 읽지만 이미지 자체를 분석 입력으로 변환하지는 않는다. 스캔 이미지 위주이거나 도식·사진 해석이 중요한 사전보고서는 PDF를 사용하거나 관련 이미지를 별도로 첨부해 검증한다.
 
 ## 9. Job과 진행 로그
 
@@ -242,7 +244,7 @@ HWPX 출력은 Python 의존성이 필요하다. Render 빌드에서 `.venv` 생
 
 Claude user message는 다음 block들로 구성될 수 있다.
 
-1. 사전보고서 PDF document block
+1. 사전보고서 PDF document block 또는 DOCX 추출 본문 text block
 2. 매뉴얼 PDF document block, 있을 때만
 3. 데이터 파일 block
 4. 실험 사진 image blocks
@@ -270,11 +272,12 @@ PDF:
 
 DOCX:
 
-- 현재 text extraction 미구현
-- Claude에 실제 본문을 보내지 않음
-- summary에 한계만 기록
+- `extractDocxText(preReportBuffer)`로 `word/document.xml`의 문단·표 셀 텍스트를 순서대로 추출
+- 본문이 있으면 `=== 사전보고서 (docx 추출 텍스트) ===`로 시작하는 text block을 Claude에 전달
+- attachment summary에 원문 글자 수와 40000자 이후 생략 여부를 기록
+- 열기 실패, `word/document.xml` 누락, 이미지 전용 문서처럼 추출 본문이 비어 있는 경우 warning을 남기고 빈 사전보고서로 graceful fallback
 
-결과보고서 prompt는 사전보고서에서 실험 목표, 이론, 기구/시약, 과정을 파악하고 5번 이후만 작성하라고 지시한다. 하지만 DOCX 입력에서는 이 분석 근거가 약해지므로 품질 저하가 발생할 수 있다.
+결과보고서 prompt는 사전보고서에서 실험 목표, 이론, 기구/시약, 과정을 파악하고 5번 이후만 작성하라고 지시한다. DOCX 검증 시에는 진행 로그의 본문 추출 글자 수와 생략 여부를 확인하고, 이미지에만 존재하는 정보가 필요하면 별도 이미지 입력으로 보완한다.
 
 ## 12. 데이터 파일 처리
 
@@ -335,10 +338,15 @@ DOCX:
 
 처리:
 
-1. `parseToMarkdown(dataBuffer, dataExt)` 호출
-2. sheet 수, row 수 요약
-3. Markdown table text block으로 Claude에 전달
-4. 평균, 표준편차, 백분율 오차를 직접 계산하라고 지시
+1. `parseSpreadsheet(dataBuffer, dataExt)`를 한 번 호출
+2. 같은 bounded row 결과에서 Claude용 Markdown과 코드 계산용 structured table을 함께 생성
+3. sheet 수, row 수 요약
+4. Markdown table text block과 코드로 계산한 평균·표준편차 digest를 Claude에 전달
+
+`.xlsx`는 SheetJS가 workbook을 열기 전에 ZIP 항목 수, 압축본/실제 해제 크기,
+압축률, 필수 workbook 항목을 검사한다. 선언된 ZIP 크기만 믿지 않고 실제 deflate
+출력을 제한 안에서 확인하며, 비정상 파일은 데이터 없이 생성을 계속하지 않고 명확히
+거부한다. `.xls`는 OLE signature와 원본 크기 상한을 확인한다.
 
 현재 chem-result는 물리 결과보고서처럼 canonical table을 출력 후 강제 보정하는 로직은 없다. 따라서 수치 검증은 Claude 출력과 원본 엑셀을 비교하는 테스트가 필요하다.
 
@@ -733,7 +741,7 @@ Supabase 파일함:
 |---|---|---|
 | `사전보고서 파일을 업로드하세요.` | `preReport` field 누락 | `server.js` |
 | `사전보고서는 PDF 또는 docx만 가능합니다.` | preReport 확장자 오류 | `server.js` |
-| DOCX 사전보고서 입력 시 내용 부실 | DOCX text extraction 미구현 | `generate.js` |
+| DOCX 사전보고서 입력 시 내용 부실 | 손상된 ZIP/본문 XML 누락, 이미지 전용 문서, 40000자 이후 생략 | `generate.js`, `docx-text.js` |
 | `image exceeds 5 MB maximum` | 이미지 압축 전송 실패 또는 제한 초과 | `anthropic-media.js` |
 | 데이터가 반영되지 않음 | data 확장자 미지원, 엑셀 파싱 실패, 사진 제외 | `generate.js`, `excel-parser.js` |
 | JSON 코드 블록 없음 | Claude 출력 형식 위반 | `prompt.md`, `generate.js` |
@@ -793,6 +801,9 @@ rg -n "sk-ant-|SUPABASE_SERVICE_KEY|RESEND_API_KEY|SESSION_SECRET|eyJ|password|�
 최소 테스트 조합:
 
 - 사전보고서 PDF만 사용
+- 사전보고서 DOCX만 사용하고 진행 로그에서 본문 추출 글자 수 확인
+- 40000자를 넘는 DOCX에서 `[이하 생략]`과 attachment summary 확인
+- 이미지 전용 또는 본문이 빈 DOCX에서 warning과 graceful fallback 확인
 - 사전보고서 PDF + 엑셀 데이터
 - 사전보고서 PDF + CSV 데이터
 - 사전보고서 PDF + 텍스트 데이터
@@ -833,7 +844,7 @@ rg -n "sk-ant-|SUPABASE_SERVICE_KEY|RESEND_API_KEY|SESSION_SECRET|eyJ|password|�
 Render dashboard에서 확인할 로그:
 
 - 서버 시작 시 env 경고 여부
-- `사전보고서 PDF` 또는 DOCX 한계 summary
+- `사전보고서 PDF` 첨부 또는 DOCX 본문 추출 글자 수·생략·실패 summary
 - 데이터 파싱 성공/실패 로그
 - 이미지 자동 축소/제외 로그
 - Claude 응답 완료 및 token/cost 로그
@@ -883,14 +894,14 @@ __pycache__/
 - 사진/이미지 오류는 `anthropic-media.js`와 renderer의 image payload 전달을 함께 확인한다.
 - 차트 오류는 Claude chart spec과 `chart-gen.js`를 나눠 확인한다.
 - HWPX 이미지 오류는 BinData 파일과 `content.hpf` 등록을 같이 본다.
-- DOCX 사전보고서 분석 품질 문제를 prompt 문제로 오인하지 않는다. 현재 DOCX text extraction이 없다.
+- DOCX 사전보고서 분석 품질 문제는 먼저 본문 추출 글자 수, 40000자 생략 여부, 이미지 전용 문서 여부를 확인한다.
 - 사용자 메모는 추가 맥락이지 사실 생성 근거가 아니다.
 - `chem-pre/hwpx-gen.py` 공통 helper 수정 전 화학 사전/물리 결과 영향까지 고려한다.
 - 결과 데이터는 원본 파일에 없는 값을 만들어내면 안 된다.
 
 ## 31. 향후 개선 후보
 
-- 사전보고서 DOCX text extraction 구현
+- 사전보고서 DOCX의 내장 이미지·도식 분석 입력 지원
 - chem-result도 여러 data 파일 입력 허용
 - 엑셀/CSV canonical data 기반 출력 후 수치 검증 추가
 - chart spec schema validation 추가

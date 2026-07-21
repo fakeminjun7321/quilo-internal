@@ -15,6 +15,7 @@ dist/
 tmp/
 test-results/
 playwright-report/
+.harness/runs/
 /output/
 __pycache__/
 *.pyc

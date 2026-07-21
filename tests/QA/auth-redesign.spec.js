@@ -259,6 +259,10 @@ test("password recovery preserves a safe return path and confirms success on log
 
   await page.goto(`${baseUrl}/password-reset.html?token=return-token&next=${encodeURIComponent(next)}`);
   await expect(page).toHaveURL(`${baseUrl}/password-reset.html?next=${encodeURIComponent(next)}`);
+  await expect(page.locator("[data-login-return]").first()).toHaveAttribute(
+    "href",
+    `/login.html?next=${encodeURIComponent(next)}`,
+  );
   await page.locator("#newPassword").fill("new-password-123");
   await page.locator("#confirmPassword").fill("new-password-123");
   await page.locator("#confirmForm").evaluate((form) => form.requestSubmit());

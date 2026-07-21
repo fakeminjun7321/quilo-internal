@@ -71,6 +71,8 @@
 - `/api/version` 기본 응답을 최소화하고 상세 노트는 명시적 요청에서만 제공한다.
 - 보안 헤더, sitemap, 키보드 접근성, dropzone 상태, 공통 shell 일관성을 개선했다.
 - 공급망 빌드·배포 구성은 별도 점검 결과와 함께 최종 회귀 테스트로 확정한다.
+- Render가 넓은 `>=18` 범위에서 Node 26 Current를 선택하지 않도록, 로컬에서 최종
+  회귀한 Node `24.18.0`과 `24.x` LTS 계열을 `.node-version`과 package engine에 고정했다.
 - Studio 팝아웃은 생성 HTML을 `document.write`의 script 파서 문맥에 넣지 않고, 정적
   wrapper를 만든 뒤 sandboxed iframe의 `srcdoc` DOM 속성으로만 전달한다.
 - Dropbox 보상 삭제는 `path_lookup/not_found`만 이미 삭제된 성공으로 보고, 권한·제한·

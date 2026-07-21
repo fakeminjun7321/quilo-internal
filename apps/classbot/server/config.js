@@ -30,16 +30,18 @@ function requireProductionHttpsUrl(production, name, value) {
 export function loadConfig(overrides = {}) {
   const env = { ...process.env, ...overrides };
   const production = env.NODE_ENV === "production" || env.RENDER === "true";
+  const embedded = readBoolean(env.CLASSBOT_EMBEDDED, false);
   const storage = env.CLASSBOT_STORAGE || (env.SUPABASE_URL ? "supabase" : "memory");
   const developmentSecret = crypto.createHash("sha256").update("quilo-schedule-local").digest("hex");
 
   const config = {
     nodeEnv: production ? "production" : (env.NODE_ENV || "development"),
     production,
+    embedded,
     port: Number(env.PORT || 4310),
     allowedOrigin: env.CLASSBOT_ALLOWED_ORIGIN ?? (production ? "" : "http://localhost:5173"),
     sessionSecret: env.CLASSBOT_SESSION_SECRET || env.SESSION_SECRET || developmentSecret,
-    adminPassword: env.CLASSBOT_ADMIN_PASSWORD || env.ADMIN_PASSWORD || (production ? "" : "local-admin"),
+    adminPassword: env.CLASSBOT_ADMIN_PASSWORD || (production || embedded ? "" : "local-admin"),
     cronSecret: env.CLASSBOT_CRON_SECRET || (production ? "" : "local-cron-secret"),
     kakaoSkillSecret: env.CLASSBOT_KAKAO_SKILL_SECRET || "",
     storage,
@@ -70,17 +72,19 @@ export function loadConfig(overrides = {}) {
   };
 
   requiredInProduction(production, "CLASSBOT_SESSION_SECRET or SESSION_SECRET", config.sessionSecret, 32);
-  requiredInProduction(production, "CLASSBOT_ADMIN_PASSWORD", config.adminPassword, 16);
+  if (!embedded) {
+    requiredInProduction(production, "CLASSBOT_ADMIN_PASSWORD", config.adminPassword, 16);
+  }
   requiredInProduction(production, "CLASSBOT_CRON_SECRET", config.cronSecret, 32);
   requiredInProduction(production, "CLASSBOT_KAKAO_SKILL_SECRET", config.kakaoSkillSecret, 32);
 
   if (production) {
     const protectedEntries = [
       ["CLASSBOT_SESSION_SECRET", config.sessionSecret],
-      ["CLASSBOT_ADMIN_PASSWORD", config.adminPassword],
       ["CLASSBOT_CRON_SECRET", config.cronSecret],
       ["CLASSBOT_KAKAO_SKILL_SECRET", config.kakaoSkillSecret],
     ];
+    if (!embedded) protectedEntries.push(["CLASSBOT_ADMIN_PASSWORD", config.adminPassword]);
     for (const [name, value] of protectedEntries) {
       if (/^(?:replace-with|change-?me|local-admin|local-cron-secret)/i.test(String(value))) {
         throw new Error(`${name} must not use a placeholder or development default in production`);
@@ -88,7 +92,7 @@ export function loadConfig(overrides = {}) {
     }
     const protectedValues = protectedEntries.map(([, value]) => value);
     if (new Set(protectedValues).size !== protectedValues.length) {
-      throw new Error("Production admin password and secrets must all use distinct values");
+      throw new Error("Production secrets must all use distinct values");
     }
     const origins = String(config.allowedOrigin).split(",").map((item) => item.trim()).filter(Boolean);
     for (const origin of origins) requireProductionHttpsUrl(true, "CLASSBOT_ALLOWED_ORIGIN", origin);

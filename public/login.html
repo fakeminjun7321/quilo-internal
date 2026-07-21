@@ -96,6 +96,11 @@
                 <span>이 기기에서 로그인 유지</span>
               </label>
 
+              <div class="auth-form__meta">
+                <a id="passwordResetLink" href="/password-reset.html">비밀번호를 잊으셨나요?</a>
+              </div>
+
+              <p id="loginNotice" class="auth-status" role="status" aria-live="polite"></p>
               <button type="submit" id="li_btn" class="ui-button ui-button--primary auth-submit">로그인</button>
               <p id="li_err" class="auth-error" role="alert" aria-live="polite"></p>
             </form>
@@ -128,6 +133,8 @@
         const remember = document.getElementById("li_remember");
         const button = document.getElementById("li_btn");
         const error = document.getElementById("li_err");
+        const notice = document.getElementById("loginNotice");
+        const passwordResetLink = document.getElementById("passwordResetLink");
 
         // 로그인 화면은 세션이 끝난 공유 기기일 수 있다. 이전 principal의 자동완성용
         // 아이디·초안·코드가 보이기 전에 계정 브라우저 상태를 먼저 정리한다. 보고서
@@ -153,6 +160,13 @@
 
         const params = new URLSearchParams(location.search);
         const returnPath = safeReturnPath(params.get("next") || params.get("returnTo"));
+        if (returnPath !== "/") {
+          passwordResetLink.href = `/password-reset.html?next=${encodeURIComponent(returnPath)}`;
+        }
+        if (params.get("passwordReset") === "1") {
+          notice.className = "auth-status is-success";
+          notice.textContent = "비밀번호가 변경되었습니다. 새 비밀번호로 로그인하세요.";
+        }
 
         function announceAuthChange() {
           const message = { action: "login", at: Date.now() };

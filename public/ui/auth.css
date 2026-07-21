@@ -324,6 +324,24 @@ html[data-theme="dark"] .context-theme__icon--sun { display: inline; }
   margin-top: 2px;
 }
 
+.auth-form__meta {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: -8px;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.auth-recovery-action {
+  width: fit-content;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+#resetPanel:focus {
+  outline: none;
+}
+
 .auth-consent {
   display: grid;
   gap: 11px;
@@ -546,6 +564,20 @@ html[data-theme="dark"] .context-theme__icon--sun { display: inline; }
     display: block;
     min-height: 0;
     border: 0;
+  }
+
+  .auth-frame--recovery {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .auth-frame--recovery .auth-content {
+    order: 1;
+    padding-top: 34px;
+  }
+
+  .auth-frame--recovery .auth-context {
+    order: 2;
   }
 
   .auth-context {

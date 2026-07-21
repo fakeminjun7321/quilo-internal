@@ -4,9 +4,23 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
+  buildPasswordResetHtml,
+  buildPasswordResetText,
   classifySchoolEmailDomain,
   normalizeSchoolEmail,
 } = require("../lib/mailer");
+
+test("비밀번호 재설정 메일은 이름과 링크를 안전하게 이스케이프한다", () => {
+  const html = buildPasswordResetHtml({
+    name: '<script>alert("x")</script>',
+    link: "https://quilolab.com/password-reset.html?token=a&next=b",
+  });
+  const text = buildPasswordResetText({ name: "사용자", link: "https://quilolab.com/reset" });
+  assert.doesNotMatch(html, /<script>alert/);
+  assert.match(html, /&lt;script&gt;/);
+  assert.match(html, /token=a&amp;next=b/);
+  assert.match(text, /30분/);
+});
 
 test("명시 허용된 학교 도메인과 하위 도메인을 허용한다", () => {
   assert.equal(classifySchoolEmailDomain("ts.hs.kr").accepted, true);

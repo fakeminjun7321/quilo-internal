@@ -1,7 +1,5 @@
 const DISABLED_EXTERNAL_ENV = Object.freeze({
-  ADMIN_NAME: "",
   ADMIN_EMAIL: "",
-  ADMIN_PASSWORD: "",
   ANTHROPIC_BASE_URL: "",
   ANTHROPIC_API_KEY: "",
   CHAT_API_KEY: "",

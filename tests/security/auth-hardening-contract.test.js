@@ -18,6 +18,35 @@ test("browser login rejects a cross-origin POST before authentication", () => {
   assert.match(source, /code: "UNTRUSTED_LOGIN_ORIGIN"/);
 });
 
+test("password recovery uses the same trusted-origin boundary and hides account existence", () => {
+  assert.match(
+    source,
+    /app\.post\("\/api\/password-reset\/request", requireTrustedLoginOrigin/,
+  );
+  assert.match(
+    source,
+    /app\.post\("\/api\/password-reset\/confirm", requireTrustedLoginOrigin/,
+  );
+  assert.match(source, /계정에 인증된 이메일이 있으면 비밀번호 재설정 링크를 보냈습니다/);
+  assert.match(source, /\[user\?\.username, user\?\.name\]\.some/);
+});
+
+test("server startup cannot create, promote, or re-password an administrator from environment variables", () => {
+  assert.doesNotMatch(
+    source,
+    /ensureAdminFromEnv|ADMIN_NAME|ADMIN_PASSWORD|ADMIN_SYNC_PASSWORD|ADMIN_ALLOW_EXISTING_PROMOTION/,
+  );
+});
+
+test("password changes invalidate markerless legacy browser sessions", () => {
+  assert.match(source, /if \(!u\.pwMark \|\| pwMarkOf\(fresh\.password_hash\) !== u\.pwMark\)/);
+});
+
+test("administrator self-demotion cannot bypass boolean validation", () => {
+  assert.match(source, /isAdmin !== undefined && typeof isAdmin !== "boolean"/);
+  assert.match(source, /actor\?\.id === req\.params\.id && isAdmin === false/);
+});
+
 test("the account response exposes an immutable principal id for browser storage isolation", () => {
   const route = source.match(/app\.get\("\/api\/me"[\s\S]*?\n\}\);/)?.[0] || "";
   assert.match(route, /id: u\.id/);

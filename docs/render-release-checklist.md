@@ -18,14 +18,11 @@
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_KEY`
 - `SESSION_SECRET`
-- `ADMIN_NAME`
-- `ADMIN_PASSWORD`
 
-`ADMIN_NAME`은 로그인 아이디(username)로 먼저 조회한다. 기존 관리자 비밀번호를
-Render의 `ADMIN_PASSWORD`로 복구해야 할 때만 `ADMIN_SYNC_PASSWORD=1`을 일시적으로
-설정하고, 로그인 성공을 확인한 즉시 제거한다. 같은 아이디의 일반 사용자를 승격하는
-복구는 `ADMIN_ALLOW_EXISTING_PROMOTION=1`도 함께 설정해야 하며 두 플래그 모두 상시
-활성화하지 않는다.
+관리자도 일반 Quilo 계정으로 로그인하고 최신 `users.is_admin` 권한으로만 판정한다.
+Render에는 별도 관리자 아이디·비밀번호를 저장하지 않는다. 최초 관리자 지정은 정확한
+계정 UUID/username을 확인한 뒤 Supabase SQL Editor에서 `is_admin=true`만 변경한다.
+비밀번호 분실은 `/password-reset.html`의 인증 이메일 흐름으로 복구한다.
 
 `SESSION_SECRET`은 32자 이상인 별도 랜덤 값이어야 한다. 운영 서버는 누락되거나
 짧으면 시작을 거부하며, 공개 URL 같은 값에서 세션 키를 파생하지 않는다.
@@ -45,12 +42,18 @@ Quilo Bot 비용 제어 권장값:
 Supabase SQL Editor에서 아래 운영 마이그레이션이 적용됐는지 먼저 확인한다.
 
 - `db/migrations/20260721_add_credit_reservation_ledger.sql` — 재시작 안전 크레딧 예약·정산·환불 원장
+- `db/migrations/20260722_add_password_reset.sql` — 단일 사용 비밀번호 재설정 토큰
 - `db/migrations/20260715_add_product_telemetry.sql` — 서비스 품질·감사 로그
 - `db/migrations/20260702_add_user_api_keys.sql` — 사용자 BYOK
 - `db/migrations/20260705_add_artifact_owner_id.sql` — 불변 사용자 ID 소유권과 신규 null 소유자 차단
 
 크레딧 원장 마이그레이션이 빠지면 서버는 안전을 위해 유료 생성을 `503`으로 차단한다.
 따라서 코드 배포보다 먼저 적용해야 하는 정식 운영 배포의 필수 조건이다.
+
+기존 관리자 계정에 인증 이메일이 저장되어 있지 않다면, 비밀번호 재설정 마이그레이션을
+먼저 적용한 다음 `db/operations/set_admin_recovery_email.sql`의 두 placeholder를 로컬에서
+바꾸어 한 번만 실행한다. 이 운영 SQL은 `is_admin=true`인 정확히 한 계정만 갱신하며,
+실제 아이디나 이메일은 저장소 또는 채팅에 남기지 않는다.
 
 ```bash
 node -c server.js

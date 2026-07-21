@@ -59,7 +59,7 @@ POST /schedule/api/admin/drive/sync
 
 서버는 기본적으로 이름이 정확히 `구민준`인 Quilo 계정의 UUID를 내부에서 찾아 사용한다. 동명이인 등으로 이름 조회를 쓸 수 없을 때만 `CLASSBOT_GOOGLE_DRIVE_OWNER_USER_ID`를 override로 지정한다. `connected: true`가 아니면 owner 이름, Quilo의 Google 연결 상태, 세 OAuth 환경변수를 먼저 확인한다. Drive 연결이 실패해도 기존 Supabase 자료실은 계속 작동한다.
 
-`SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SESSION_SECRET`, `ADMIN_PASSWORD`는 기존 Quilo 값을 재사용한다. 기존 `ADMIN_PASSWORD`가 16자 미만이면 `CLASSBOT_ADMIN_PASSWORD`를 16자 이상으로 별도 설정한다. 각 secret은 서로 다른 값이어야 한다. 운영 관리 화면은 별도 classbot 쿠키나 비밀번호 로그인을 만들지 않고, 기존 Quilo 관리자 세션을 매 요청 다시 검증한다.
+내장 운영에서는 `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SESSION_SECRET`을 기존 Quilo 값으로 재사용한다. 운영 관리 화면은 별도 Classbot 관리자 비밀번호나 쿠키를 만들지 않고, 기존 Quilo 계정의 최신 `users.is_admin` 값을 매 요청 다시 검증한다. `CLASSBOT_ADMIN_PASSWORD`는 Classbot을 독립 서비스로 실행할 때만 필요하다.
 
 첫 배포에서는 `KAKAO_EVENT_ENABLED=false`를 유지한다. `/schedule/api/health`가 다음 조건을 만족해야 한다.
 

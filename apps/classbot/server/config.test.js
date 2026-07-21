@@ -59,9 +59,10 @@ test("Render에서는 production 검증을 강제하고 placeholder와 미지원
   );
 });
 
-test("기존 Quilo 서버의 Supabase·세션·관리자 환경변수를 그대로 재사용한다", () => {
+test("기존 Quilo 서버의 Supabase·세션 환경변수를 재사용하고 관리자 비밀번호는 재사용하지 않는다", () => {
   const config = loadConfig({
     ...validProduction,
+    CLASSBOT_EMBEDDED: "1",
     CLASSBOT_SESSION_SECRET: "",
     CLASSBOT_ADMIN_PASSWORD: "",
     SUPABASE_SERVICE_ROLE_KEY: "",
@@ -70,8 +71,21 @@ test("기존 Quilo 서버의 Supabase·세션·관리자 환경변수를 그대�
     SUPABASE_SERVICE_KEY: "existing-service-key",
   });
   assert.equal(config.sessionSecret, "q".repeat(32));
-  assert.equal(config.adminPassword, "existing-quilo-admin-password");
+  assert.equal(config.adminPassword, "");
+  assert.equal(config.embedded, true);
   assert.equal(config.supabaseServiceRoleKey, "existing-service-key");
+});
+
+test("embedded 운영은 별도 관리자 비밀번호 없이 로드되고 standalone 운영은 계속 요구한다", () => {
+  assert.doesNotThrow(() => loadConfig({
+    ...validProduction,
+    CLASSBOT_EMBEDDED: "1",
+    CLASSBOT_ADMIN_PASSWORD: "",
+  }));
+  assert.throws(
+    () => loadConfig({ ...validProduction, CLASSBOT_ADMIN_PASSWORD: "" }),
+    /CLASSBOT_ADMIN_PASSWORD/,
+  );
 });
 
 test("Google Drive 자료실은 Quilo 사용자와 앱 소유 폴더 override만 허용한다", () => {

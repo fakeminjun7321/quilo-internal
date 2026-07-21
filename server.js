@@ -901,6 +901,7 @@ const {
 } = require("./lib/feedback-mailer");
 const {
   sendVerificationEmail,
+  sendPasswordResetEmail,
   sendEmail,
   allowedEmailDomains,
   normalizeSchoolEmail,
@@ -1484,11 +1485,13 @@ async function refreshSessionUser(req, { failClosed = false } = {}) {
         else req.session = null;
         return null;
       }
-      // L12: 세션 발급 이후 비밀번호가 바뀌었으면(마커 불일치) 이 세션을 무효화한다.
-      // 마커가 없는 예전 세션(u.pwMark 미보유)은 건드리지 않는다(하위호환 — 다음 로그인부터 적용).
-      if (!req.apiUser && u.pwMark && fresh.password_hash && pwMarkOf(fresh.password_hash) !== u.pwMark) {
-        req.session = null;
-        return null;
+      // L12: marker 없는 레거시 브라우저 세션은 한 번 로그아웃시킨다. 현재 hash로
+      // marker를 뒤늦게 채우면 비밀번호 재설정 전에 탈취된 세션까지 살려둘 수 있다.
+      if (!req.apiUser && fresh.password_hash) {
+        if (!u.pwMark || pwMarkOf(fresh.password_hash) !== u.pwMark) {
+          req.session = null;
+          return null;
+        }
       }
       const refreshed = {
         ...u,
@@ -2298,6 +2301,7 @@ const EMAIL_VERIFY_TTL_HOURS = Math.max(
   1,
   Number(process.env.EMAIL_VERIFY_TTL_HOURS) || 24,
 );
+const PASSWORD_RESET_TTL_MINUTES = 30;
 
 // 인증 링크 절대주소의 베이스. **서버가 신뢰하는** 환경변수를 최우선으로 쓴다.
 // x-forwarded-host 는 스푸핑 가능(trust proxy 도 sanitize 안 함)하므로, 토큰이 든
@@ -2342,6 +2346,29 @@ async function issueVerificationEmail(req, user, email) {
   return { result, link };
 }
 
+async function issuePasswordResetEmail(base, user, recipient, returnPath = "/") {
+  const token = generateToken(32);
+  const tokenHash = hashToken(token);
+  const expiresAt = Date.now() + PASSWORD_RESET_TTL_MINUTES * 60 * 1000;
+  const issued = await supa.setPasswordReset(user.id, {
+    tokenHash,
+    expiresAt,
+    expectedRecoveryEmail: recipient,
+  });
+  if (!issued.issued) return { sent: false, reason: issued.reason };
+  const nextQuery = returnPath === "/" ? "" : `&next=${encodeURIComponent(returnPath)}`;
+  const link = `${base}/password-reset.html?token=${encodeURIComponent(token)}${nextQuery}`;
+  const result = await sendPasswordResetEmail({
+    to: recipient,
+    name: user.name,
+    link,
+  });
+  if (!result.sent) {
+    await supa.clearPasswordReset(user.id, tokenHash).catch(() => {});
+  }
+  return result;
+}
+
 // ── Login routes ─────────────────────────────────────────────────────────────
 
 function requireTrustedLoginOrigin(req, res, next) {
@@ -2359,6 +2386,79 @@ function requireTrustedLoginOrigin(req, res, next) {
     code: "UNTRUSTED_LOGIN_ORIGIN",
   });
 }
+
+// 로그인 여부와 무관한 계정 복구 요청. 존재 여부·메일 인증 여부는 항상 같은 응답으로
+// 숨기고, 실제 발송은 응답 뒤 비동기로 수행해 메일 API 지연으로 계정을 추측하지 못하게 한다.
+app.post("/api/password-reset/request", requireTrustedLoginOrigin, (req, res) => {
+  const ip = req.ip || "unknown";
+  const limit = rateLimit.checkLoginLimit(ip);
+  if (!limit.allowed) {
+    return res.status(429).json({
+      error: `요청이 너무 많습니다 (분당 ${rateLimit.LOGIN_LIMIT}회 제한). 1분 후 다시 시도하세요.`,
+    });
+  }
+  rateLimit.recordLoginAttempt(ip);
+  const username = String(req.body?.username || "").trim().slice(0, 50);
+  const returnPath = safeLocalReturnPath(req.body?.next, "/");
+  if (!username) return res.status(400).json({ error: "아이디를 입력하세요." });
+  if (!supa.isEnabled()) {
+    return res.status(503).json({ error: "계정 서비스를 일시적으로 사용할 수 없습니다." });
+  }
+
+  const base = publicBaseUrl(req);
+  void (async () => {
+    try {
+      const user = await supa.findUserByUsername(username);
+      // Login still supports legacy rows whose username has not been backfilled and
+      // therefore falls back to the exact display name; recovery must match that contract.
+      const exactUsername = [user?.username, user?.name].some(
+        (candidate) => String(candidate || "").toLowerCase() === username.toLowerCase(),
+      );
+      const recoveryEmail = String(user?.recovery_email || user?.email || "").trim().toLowerCase();
+      if (!exactUsername || !recoveryEmail || !user.email_verified) return;
+      const result = await issuePasswordResetEmail(base, user, recoveryEmail, returnPath);
+      if (!result.sent && result.reason !== "cooldown") {
+        console.warn(`[password-reset/request] mail not sent: ${result.reason || "unknown"}`);
+      }
+    } catch (error) {
+      console.error("[password-reset/request] error:", error.message);
+    }
+  })();
+
+  return res.json({
+    ok: true,
+    message: "계정에 인증된 이메일이 있으면 비밀번호 재설정 링크를 보냈습니다.",
+  });
+});
+
+app.post("/api/password-reset/confirm", requireTrustedLoginOrigin, async (req, res) => {
+  if (!supa.isEnabled()) {
+    return res.status(503).json({ error: "계정 서비스를 일시적으로 사용할 수 없습니다." });
+  }
+  const ip = req.ip || "unknown";
+  const limit = rateLimit.checkLoginLimit(ip);
+  if (!limit.allowed) {
+    return res.status(429).json({ error: "요청이 너무 많습니다. 1분 후 다시 시도하세요." });
+  }
+  rateLimit.recordLoginAttempt(ip);
+
+  const token = String(req.body?.token || "").trim();
+  const newPassword = String(req.body?.newPassword || "");
+  if (!token) return res.status(400).json({ error: "유효하지 않은 재설정 링크입니다." });
+  if (newPassword.length < 8 || newPassword.length > 256) {
+    return res.status(400).json({ error: "새 비밀번호는 8~256자로 입력하세요." });
+  }
+  try {
+    const out = await supa.consumePasswordReset(hashToken(token), newPassword);
+    if (!out.ok) return res.status(400).json({ error: out.reason });
+    req.session = null;
+    console.log(`[password-reset] completed user=${out.user.id}`);
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error("[password-reset/confirm] error:", error.message);
+    return res.status(500).json({ error: "비밀번호를 재설정하지 못했습니다. 잠시 후 다시 시도하세요." });
+  }
+});
 
 app.post("/api/login", requireTrustedLoginOrigin, async (req, res) => {
   // 브루트포스 방어: 동일 IP에서 분당 10회 초과 시 차단
@@ -2622,7 +2722,10 @@ app.post("/api/verify-email/request", requireAuth, async (req, res) => {
   try {
     const fresh = await supa.findUserById(u.id);
     if (!fresh) return res.status(401).json({ error: "로그인이 필요합니다." });
-    if (fresh.email_verified && fresh.email === emailCheck.email) {
+    if (
+      fresh.email_verified &&
+      String(fresh.recovery_email || fresh.email || "").toLowerCase() === emailCheck.email
+    ) {
       return res.json({ ok: true, alreadyVerified: true, email: emailCheck.email });
     }
     // 다른 계정이 이미 인증한 이메일이면 거부. 단, 다회 인증 허용 이메일은 건너뛴다.
@@ -2718,7 +2821,7 @@ app.get("/api/me", requireAuth, async (req, res) => {
           ? supa.normalizeBlockedTypes(freshUser.blocked_report_types)
           : [];
         username = freshUser.username || freshUser.name || username;
-        email = String(freshUser.email || "");
+        email = String(freshUser.recovery_email || freshUser.email || "");
         pendingEmail = String(freshUser.email_verify_email || "");
         emailVerified = !!freshUser.email_verified;
         approved = !!freshUser.approved;
@@ -3843,8 +3946,8 @@ app.post("/api/admin/action/execute", requireAdmin, async (req, res) => {
       const name = String(p.name || "").trim();
       const password = String((req.body && req.body.password) || "");
       if (!name) return res.status(400).json({ error: "이름 필요." });
-      if (password.length < 5)
-        return res.status(400).json({ error: "비밀번호는 5자 이상이어야 합니다." });
+      if (password.length < 8)
+        return res.status(400).json({ error: "비밀번호는 8자 이상이어야 합니다." });
       const credits = Math.max(0, Math.trunc(Number(p.credits) || 0));
       const created = await supa.createUser({
         name,
@@ -7307,7 +7410,7 @@ async function notifyBgJobDone(job) {
   let email = null;
   try {
     const u = await supa.findUserById(job.userInfo.id);
-    email = u && u.email ? u.email : null;
+    email = u ? u.recovery_email || u.email || null : null;
   } catch (_) {}
   if (!email) return;
   const esc = (s) =>
@@ -9215,10 +9318,13 @@ app.post("/api/admin/users", requireAdmin, async (req, res) => {
   if (!name || !password) {
     return res.status(400).json({ error: "이름·비밀번호 필수" });
   }
-  if (String(password).length < 5) {
+  if (isAdmin !== undefined && typeof isAdmin !== "boolean") {
+    return res.status(400).json({ error: "관리자 권한 값은 boolean이어야 합니다." });
+  }
+  if (String(password).length < 8) {
     return res
       .status(400)
-      .json({ error: "비밀번호는 최소 5자 이상이어야 합니다." });
+      .json({ error: "비밀번호는 최소 8자 이상이어야 합니다." });
   }
   // 아이디 미지정 시 이름으로. 형식 검증(영문/숫자/._- 3~30자)은 지정된 경우만.
   const uname = normalizeUsername(username || name);
@@ -9303,10 +9409,22 @@ app.patch("/api/admin/users/:id", requireAdmin, async (req, res) => {
       .status(400)
       .json({ error: "아이디는 영문/숫자/._- 조합 3~30자여야 합니다." });
   }
-  if (password != null && password !== "" && String(password).length < 5) {
+  if (password != null && password !== "" && String(password).length < 8) {
     return res
       .status(400)
-      .json({ error: "비밀번호는 최소 5자 이상이어야 합니다." });
+      .json({ error: "비밀번호는 최소 8자 이상이어야 합니다." });
+  }
+  if (isAdmin !== undefined && typeof isAdmin !== "boolean") {
+    return res.status(400).json({ error: "관리자 권한 값은 boolean이어야 합니다." });
+  }
+  for (const [label, value] of [["승인", approved], ["무제한", unlimited]]) {
+    if (value !== undefined && typeof value !== "boolean") {
+      return res.status(400).json({ error: `${label} 값은 boolean이어야 합니다.` });
+    }
+  }
+  const actor = getSessionUser(req);
+  if (actor?.id === req.params.id && isAdmin === false) {
+    return res.status(400).json({ error: "본인의 관리자 권한은 해제할 수 없습니다." });
   }
   // 모델 제한: "" = 전체 허용. 그 외엔 허용 모델 id들(여러 개 = 쉼표구분 문자열 또는 배열).
   // 사용자는 이 허용 목록 안에서 자유롭게 선택할 수 있다(중복 선택 가능).
@@ -9748,6 +9866,7 @@ function getClassbotApp() {
       .then(([{ createApp }, { loadConfig }]) => createApp({
         embedded: true,
         config: loadConfig({
+          CLASSBOT_EMBEDDED: "1",
           // Production startup already requires an explicit strong SESSION_SECRET;
           // classbot may use a separate secret or inherit that validated value.
           CLASSBOT_SESSION_SECRET: process.env.CLASSBOT_SESSION_SECRET || SESSION_SECRET,
@@ -9758,7 +9877,6 @@ function getClassbotApp() {
             RENDER: "false",
             CLASSBOT_STORAGE: "memory",
             CLASSBOT_ALLOWED_ORIGIN: process.env.RENDER_EXTERNAL_URL || "",
-            CLASSBOT_ADMIN_PASSWORD: process.env.CLASSBOT_ADMIN_PASSWORD || stagingClassbotSecret("admin"),
             CLASSBOT_CRON_SECRET: process.env.CLASSBOT_CRON_SECRET || stagingClassbotSecret("cron"),
             CLASSBOT_KAKAO_SKILL_SECRET:
               process.env.CLASSBOT_KAKAO_SKILL_SECRET || stagingClassbotSecret("kakao"),
@@ -10020,14 +10138,6 @@ const httpServer = JOB_MEMORY_TEST_HOOKS_ENABLED
     console.warn("⚠ ANTHROPIC_API_KEY가 없습니다.");
   }
   if (supa.isEnabled()) {
-    try {
-      const admin = await supa.ensureAdminFromEnv();
-      if (admin) {
-        console.log(`  ✓ Admin 사용자 보장: ${admin.name}`);
-      }
-    } catch (e) {
-      console.warn(`  ⚠ Admin bootstrap 실패: ${e.message}`);
-    }
     // 코드 내장 베타(물리 수행평가)를 관리자 베타 패널에 자동 등록 → 테스터 지정 가능.
     try {
       const seeded = await supa.ensureBetaFeature("phys-inquiry", "물리 수행평가");

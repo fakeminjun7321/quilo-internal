@@ -116,7 +116,7 @@ const APP_SHELL_ROUTE_SET = new Set(APP_SHELL_ROUTES);
 // These surfaces keep dedicated authentication or administration chrome, or
 // share the canonical header above a desktop-first work surface.
 const EXCLUDED_ROUTES = Object.freeze({
-  auth: Object.freeze(["/login.html", "/signup.html", "/verify-email.html"]),
+  auth: Object.freeze(["/login.html", "/password-reset.html", "/signup.html", "/verify-email.html"]),
   admin: Object.freeze(["/admin.html"]),
   fullscreenApps: Object.freeze([
     "/create.html",
@@ -372,6 +372,7 @@ test("shell matrix inventory is explicit and excludes specialized chrome", () =>
   const excluded = Object.values(EXCLUDED_ROUTES).flat();
   expect(excluded).toEqual([
     "/login.html",
+    "/password-reset.html",
     "/signup.html",
     "/verify-email.html",
     "/admin.html",

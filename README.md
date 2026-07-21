@@ -175,17 +175,18 @@ Render Web Service 설정 예시:
 | `ANTHROPIC_API_KEY` | Claude API 호출용 키 |
 | `SUPABASE_URL` | Supabase Project URL |
 | `SUPABASE_SERVICE_KEY` | Supabase service role key |
-| `ADMIN_NAME` | 서버 시작 시 보장할 관리자 로그인 아이디(username 우선) |
-| `ADMIN_PASSWORD` | 서버 시작 시 관리자 생성에 사용할 초기 비밀번호 |
 | `SESSION_SECRET` | Express session 서명용 32자 이상 랜덤 문자열 |
 | `NODE_ENV` | `production` |
+
+관리자도 일반 Quilo 계정으로 가입·로그인하며, 권한은 Supabase `users.is_admin`으로만
+판정한다. 서버 시작 시 관리자 계정을 만들거나 비밀번호를 환경변수와 동기화하지 않는다.
+최초 관리자는 정확한 계정을 확인한 뒤 Supabase SQL Editor에서 `is_admin=true`만 지정하고,
+비밀번호 분실 시 로그인 화면의 이메일 재설정 흐름을 사용한다.
 
 선택 환경변수:
 
 | Key | 설명 |
 |---|---|
-| `ADMIN_SYNC_PASSWORD` | `1`이면 기존 관리자 비밀번호를 `ADMIN_PASSWORD`로 1회 동기화. 확인 후 제거 |
-| `ADMIN_ALLOW_EXISTING_PROMOTION` | 기존 일반 계정 승격을 명시적으로 허용. 비밀번호 분실 복구는 sync 플래그도 필요 |
 | `OPENAI_API_KEY` | GPT 보고서 모델과 Quilo Bot 사용 시 |
 | `OPENAI_CHAT_MODEL` | Quilo Bot 저비용 모델, 기본 `gpt-4o-mini` |
 | `OPENAI_CHAT_MEMO_MODEL` | 메모 작성 도우미 모델, 기본 `gpt-4o-mini` |

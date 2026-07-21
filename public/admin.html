@@ -150,9 +150,9 @@
           <div class="field">
             <label>
               <span class="field-label">임시 비밀번호</span>
-              <input id="password" type="password" required minlength="5" autocomplete="new-password" />
+              <input id="password" type="password" required minlength="8" autocomplete="new-password" />
             </label>
-            <small>서버에서 해시되어 저장됩니다. 최소 5자.</small>
+            <small>서버에서 해시되어 저장됩니다. 최소 8자.</small>
           </div>
           <label class="check-line"><input id="isAdmin" type="checkbox" /> 관리자 권한</label>
           <div class="form-actions">
@@ -1705,7 +1705,7 @@
             if (a.needsPassword) {
               pw = document.createElement("input");
               pw.type = "password";
-              pw.placeholder = "새 계정 비밀번호 (5자 이상)";
+              pw.placeholder = "새 계정 비밀번호 (8자 이상)";
               pw.autocomplete = "new-password";
               pw.className = "admin-action-card__password";
               card.appendChild(pw);
@@ -1733,9 +1733,9 @@
               st.textContent = "취소됨";
             });
             ok.addEventListener("click", function () {
-              if (a.needsPassword && (!pw.value || pw.value.length < 5)) {
+              if (a.needsPassword && (!pw.value || pw.value.length < 8)) {
                 st.className = "admin-action-card__status tone-danger";
-                st.textContent = "비밀번호 5자 이상";
+                st.textContent = "비밀번호 8자 이상";
                 pw.focus();
                 return;
               }

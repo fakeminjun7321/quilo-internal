@@ -87,6 +87,7 @@ test("school application dropzone has one keyboard-operable file picker", () => 
 test("authentication pages expose one page-level heading without changing the context title styling", () => {
   const cases = [
     ["login.html", "loginTitle"],
+    ["password-reset.html", "resetTitle"],
     ["signup.html", "signupTitle"],
     ["verify-email.html", "verifyPageTitle"],
   ];

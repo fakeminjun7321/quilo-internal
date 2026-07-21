@@ -11,12 +11,16 @@ create table if not exists users (
   password_hash text not null,
   -- 학생 인증(2단계): 학교 이메일 인증 + 관리자 승인. 보고서 생성 게이트.
   email text,
+  recovery_email text,
   email_verified boolean not null default false,
   approved boolean not null default false,
   email_verify_token_hash text,
   email_verify_email text,
   email_verify_expires_at timestamptz,
   email_verify_sent_at timestamptz,
+  password_reset_token_hash text,
+  password_reset_expires_at timestamptz,
+  password_reset_sent_at timestamptz,
   approved_at timestamptz,
   approved_by uuid references users(id) on delete set null,
   -- 선택형 서비스 개선 분석 동의. 미동의여도 보고서 생성 등 핵심 기능은 동일하다.
@@ -45,6 +49,8 @@ create unique index if not exists users_email_lower_key
   on users (lower(email)) where email is not null and email <> '';
 create index if not exists users_email_verify_token_idx
   on users (email_verify_token_hash) where email_verify_token_hash is not null;
+create unique index if not exists users_password_reset_token_idx
+  on users (password_reset_token_hash) where password_reset_token_hash is not null;
 
 -- ── 사용량 로그 ──────────────────────────────────────────────────────────────
 create table if not exists usage_logs (

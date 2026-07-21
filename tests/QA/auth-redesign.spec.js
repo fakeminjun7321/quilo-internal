@@ -49,9 +49,14 @@ test.beforeAll(async () => {
       const raw = await readBody(request);
       const body = raw ? JSON.parse(raw) : {};
       apiRequests.push({ pathname: url.pathname, body });
+      const expiredReset = url.pathname === "/api/password-reset/confirm" && body.token === "expired-token";
       const payload =
         url.pathname === "/api/login"
           ? { redirect: loginRedirect }
+          : url.pathname === "/api/password-reset/request"
+            ? { ok: true, message: "계정에 인증된 이메일이 있으면 비밀번호 재설정 링크를 보냈습니다." }
+            : url.pathname === "/api/password-reset/confirm"
+              ? { ok: true }
           : url.pathname === "/api/signup"
             ? {
                 emailSent: true,
@@ -60,9 +65,11 @@ test.beforeAll(async () => {
               }
             : url.pathname === "/api/verify-email/confirm"
               ? { ok: true, staffGranted: body.token === "staff-token" }
-              : {};
-      response.writeHead(200, { "Content-Type": "application/json" });
-      response.end(JSON.stringify(payload));
+            : {};
+      response.writeHead(expiredReset ? 400 : 200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify(expiredReset
+        ? { error: "이미 사용했거나 만료된 재설정 링크입니다. 다시 요청하세요." }
+        : payload));
       return;
     }
     if (url.pathname === "/oauth/authorize") {
@@ -102,7 +109,7 @@ test.beforeEach(() => {
 });
 
 test("auth pages load only the new isolated stylesheets", async ({ page }) => {
-  for (const pathname of ["/login.html", "/signup.html", "/verify-email.html?token=qa"]) {
+  for (const pathname of ["/login.html", "/signup.html", "/verify-email.html?token=qa", "/password-reset.html"]) {
     await page.goto(baseUrl + pathname);
     const styles = await page.locator('link[rel="stylesheet"]').evaluateAll((links) =>
       links.map((link) => new URL(link.href).pathname),
@@ -112,7 +119,7 @@ test("auth pages load only the new isolated stylesheets", async ({ page }) => {
 });
 
 test("auth theme controls use icon-only moon/sun states and keep accessible labels synchronized", async ({ page }) => {
-  for (const pathname of ["/login.html", "/signup.html", "/verify-email.html?token=qa"]) {
+  for (const pathname of ["/login.html", "/signup.html", "/verify-email.html?token=qa", "/password-reset.html"]) {
     await page.goto(baseUrl + pathname);
     const toggle = page.locator("#themeToggle");
     await expect(toggle).toHaveText(/☾\s*☀/);
@@ -199,6 +206,90 @@ test("mobile login submits and returns to the requested page without horizontal 
       body: { username: "mobile-qa", password: "mobile-password", remember: true },
     },
   ]);
+});
+
+test("login exposes account recovery and reset requests keep a generic response", async ({ page }) => {
+  await page.goto(`${baseUrl}/login.html`);
+  await expect(page.locator('a[href="/password-reset.html"]')).toHaveText("비밀번호를 잊으셨나요?");
+  await page.locator('a[href="/password-reset.html"]').click();
+  await page.locator("#resetUsername").fill("qa-admin");
+  await page.locator("#requestForm").evaluate((form) => form.requestSubmit());
+  await expect(page.locator("#requestStatus")).toContainText("인증된 이메일이 있으면");
+  expect(apiRequests).toEqual([
+    { pathname: "/api/password-reset/request", body: { username: "qa-admin" } },
+  ]);
+});
+
+test("password reset never consumes the token before explicit matching-password submit", async ({ page }) => {
+  await page.goto(`${baseUrl}/password-reset.html?token=reset-token-123`);
+  await expect(page).toHaveURL(`${baseUrl}/password-reset.html`);
+  expect(apiRequests).toEqual([]);
+  await expect(page.locator("#resetTitle")).toHaveText("새 비밀번호 설정");
+  await page.locator("#newPassword").fill("new-password-123");
+  await page.locator("#confirmPassword").fill("different-password");
+  await page.locator("#confirmForm").evaluate((form) => form.requestSubmit());
+  await expect(page.locator("#confirmStatus")).toContainText("일치하지 않습니다");
+  expect(apiRequests).toEqual([]);
+
+  await page.locator("#confirmPassword").fill("new-password-123");
+  await page.locator("#confirmForm").evaluate((form) => form.requestSubmit());
+  await expect(page.locator("#confirmStatus")).toContainText("변경되었습니다");
+  expect(apiRequests).toEqual([
+    {
+      pathname: "/api/password-reset/confirm",
+      body: { token: "reset-token-123", newPassword: "new-password-123" },
+    },
+  ]);
+});
+
+test("password recovery preserves a safe return path and confirms success on login", async ({ page }) => {
+  const next = "/developer-notes.html#latest";
+  await page.goto(`${baseUrl}/login.html?next=${encodeURIComponent(next)}`);
+  await expect(page.locator("#passwordResetLink")).toHaveAttribute(
+    "href",
+    `/password-reset.html?next=${encodeURIComponent(next)}`,
+  );
+  await page.locator("#passwordResetLink").click();
+  await page.locator("#resetUsername").fill("qa-return-user");
+  await page.locator("#requestForm").evaluate((form) => form.requestSubmit());
+  expect(apiRequests.at(-1)).toEqual({
+    pathname: "/api/password-reset/request",
+    body: { username: "qa-return-user", next },
+  });
+
+  await page.goto(`${baseUrl}/password-reset.html?token=return-token&next=${encodeURIComponent(next)}`);
+  await expect(page).toHaveURL(`${baseUrl}/password-reset.html?next=${encodeURIComponent(next)}`);
+  await page.locator("#newPassword").fill("new-password-123");
+  await page.locator("#confirmPassword").fill("new-password-123");
+  await page.locator("#confirmForm").evaluate((form) => form.requestSubmit());
+  await expect(page).toHaveURL(
+    `${baseUrl}/login.html?passwordReset=1&next=${encodeURIComponent(next)}`,
+    { timeout: 4000 },
+  );
+  await expect(page.locator("#loginNotice")).toContainText("비밀번호가 변경되었습니다");
+});
+
+test("expired reset tokens expose an accessible new-link recovery action", async ({ page }) => {
+  await page.goto(`${baseUrl}/password-reset.html?token=expired-token`);
+  await page.locator("#newPassword").fill("new-password-123");
+  await page.locator("#confirmPassword").fill("new-password-123");
+  await page.locator("#confirmForm").evaluate((form) => form.requestSubmit());
+  await expect(page.locator("#confirmStatus")).toHaveAttribute("role", "alert");
+  await expect(page.locator("#confirmStatus")).toContainText("만료된 재설정 링크");
+  await expect(page.locator("#requestAgain")).toBeVisible();
+  await expect(page.locator("#requestAgain")).toBeFocused();
+});
+
+test("password recovery remains usable without horizontal overflow on mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${baseUrl}/password-reset.html`);
+  await expect(page.locator("#requestForm")).toBeVisible();
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(overflow).toBeLessThanOrEqual(1);
+  const formBox = await page.locator("#requestForm").boundingBox();
+  const submitBox = await page.locator("#requestBtn").boundingBox();
+  expect(formBox?.y).toBeLessThan(500);
+  expect((submitBox?.y || 0) + (submitBox?.height || 0)).toBeLessThan(844);
 });
 
 test("signup preserves validation and exact API payload", async ({ page }) => {

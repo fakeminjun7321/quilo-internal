@@ -186,7 +186,12 @@ export const api = {
     return this.fileDownloadUrl(item);
   },
   portalSession() { return request("/api/portal/session"); },
-  portalLogin({ display_name, invite_code }) { return request("/api/portal/login", { method: "POST", body: { display_name, invite_code } }); },
+  portalLogin({ display_name, invite_code }) {
+    return request("/api/portal/login", {
+      method: "POST",
+      body: EMBEDDED_IN_QUILO ? { invite_code } : { display_name, invite_code },
+    });
+  },
   portalLogout() { return request("/api/portal/logout", { method: "POST" }); },
   quiloLogout() {
     return EMBEDDED_IN_QUILO

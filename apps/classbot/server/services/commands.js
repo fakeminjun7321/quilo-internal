@@ -170,7 +170,7 @@ function noticeText(notices) {
 function helpText({ registered = false, displayName = "" } = {}) {
   const registration = registered
     ? `${displayName || "구성원"}님으로 등록되어 있어요. 이제 명령 뒤에 이름을 붙이지 않아도 됩니다.`
-    : "먼저 명단의 이름 그대로 ‘이름 등록 구민준’처럼 입력해 주세요. 초대 코드는 필요하지 않습니다.";
+    : "관리자에게 받은 1회용 초대 코드로 ‘가입 ABCD-EFGH’처럼 입력해 주세요.";
   return [
     "Quilo schedule 사용법",
     registration,
@@ -502,28 +502,21 @@ export async function handleKakaoCommand({ payload, store, now = new Date(), mak
   try {
     const registrationName = readNameRegistration(payload, command);
     if (registrationName !== null) {
-      if (!user) return simpleTextResponse("카카오 사용자 식별값을 확인할 수 없어 이름을 등록할 수 없습니다.", helpQuickReplies());
-      if (!registrationName) return simpleTextResponse("명단의 이름을 정확히 입력해 주세요. 예: ‘이름 등록 구민준’", helpQuickReplies());
-      if (registrationName.length > 40) return simpleTextResponse("명단의 이름을 40자 이내로 정확히 입력해 주세요.", helpQuickReplies());
-      if (typeof store.claimMemberByName !== "function") return simpleTextResponse("현재 이름 등록 기능을 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.", helpQuickReplies());
-      const member = await store.claimMemberByName({ displayName: registrationName, userKey: user.id, userKeyType: user.type });
-      const isFriend = String(payload.userRequest?.user?.properties?.isFriend ?? "").toLowerCase();
-      const friendGuide = isFriend === "false" ? "\n알림을 받으려면 이 카카오톡 채널을 친구 추가해 주세요." : "";
       return simpleTextResponse(
-        `${member.display_name}님, 이름 등록이 완료되었습니다.\n이제 ‘오늘 일정’, ‘시간표 전체’, ‘파일 리스트’처럼 이름 없이 바로 물어보세요.${friendGuide}\n\n‘도움말’을 보내면 전체 사용법을 다시 볼 수 있습니다.`,
-        registeredQuickReplies(),
+        "이름만으로는 본인 확인을 할 수 없어 ‘이름 등록’은 지원하지 않습니다. 관리자에게 받은 1회용 초대 코드로 ‘가입 ABCD-EFGH’처럼 입력해 주세요.",
+        helpQuickReplies(),
       );
     }
 
     if (/^(가입|초대)/.test(command)) {
       const code = extractInviteCode(payload, command);
       if (!user) return simpleTextResponse("카카오 사용자 식별값을 확인할 수 없어 가입할 수 없습니다.");
-      if (!code) return simpleTextResponse("이름 등록에는 초대 코드가 필요하지 않습니다. ‘이름 등록 구민준’처럼 명단의 이름을 입력해 주세요.", helpQuickReplies());
+      if (!code) return simpleTextResponse("가입에는 관리자에게 받은 1회용 초대 코드가 필요합니다. 예: ‘가입 ABCD-EFGH’", helpQuickReplies());
       const member = await store.claimInvite({ code, userKey: user.id, userKeyType: user.type });
       const isFriend = String(payload.userRequest?.user?.properties?.isFriend ?? "").toLowerCase();
       const friendGuide = isFriend === "false" ? "\n알림을 받으려면 이 카카오톡 채널을 친구 추가해 주세요." : "";
       return simpleTextResponse(
-        `${member.display_name}님, 이름 등록과 2학년 4반 가입이 완료되었습니다.\n이제 ‘오늘 일정’처럼 이름 없이 물어볼 수 있어요. 알림 설정에서 수신 여부도 바꿀 수 있습니다.${friendGuide}`,
+        `${member.display_name}님, 초대 코드 확인과 2학년 4반 가입이 완료되었습니다.\n이제 ‘오늘 일정’처럼 이름 없이 물어볼 수 있어요. 알림 설정에서 수신 여부도 바꿀 수 있습니다.${friendGuide}`,
         registeredQuickReplies(),
       );
     }
@@ -556,7 +549,7 @@ export async function handleKakaoCommand({ payload, store, now = new Date(), mak
 
     if (isTodayBriefingCommand(command)) {
       if (!confirmingRequester || confirmingRequester.status !== "active") {
-        return simpleTextResponse("오늘 브리핑은 2학년 4반 구성원만 볼 수 있습니다. 먼저 ‘이름 등록 구민준’처럼 명단의 이름으로 등록해 주세요.", helpQuickReplies());
+        return simpleTextResponse("오늘 브리핑은 2학년 4반 구성원만 볼 수 있습니다. 관리자에게 받은 초대 코드로 먼저 가입해 주세요.", helpQuickReplies());
       }
       return simpleTextResponse(
         await buildTodayBriefing({ store, member: confirmingRequester, now }),
@@ -577,7 +570,7 @@ export async function handleKakaoCommand({ payload, store, now = new Date(), mak
       const text = normalizedText(command);
       const requesterName = normalizedText(requester?.display_name);
       if (!requester || requester.status !== "active" || !requesterName) {
-        return simpleTextResponse("자료를 조회할 권한이 없습니다. 먼저 ‘이름 등록 구민준’처럼 명단의 이름으로 등록해 주세요.", helpQuickReplies());
+        return simpleTextResponse("자료를 조회할 권한이 없습니다. 관리자에게 받은 초대 코드로 먼저 가입해 주세요.", helpQuickReplies());
       }
       const registered = (await store.listMembers()).filter((member) => member.status !== "left");
       const trailingMatches = registered.filter((member) => {
@@ -617,7 +610,7 @@ export async function handleKakaoCommand({ payload, store, now = new Date(), mak
     const member = await getRequester();
     const requiresMembership = normalized.includes("알림") || normalized.includes("공지");
     if (requiresMembership && !member) {
-      return simpleTextResponse("2학년 4반 구성원만 조회할 수 있습니다. 먼저 ‘이름 등록 구민준’처럼 명단의 이름으로 등록해 주세요.", helpQuickReplies());
+      return simpleTextResponse("2학년 4반 구성원만 조회할 수 있습니다. 관리자에게 받은 초대 코드로 먼저 가입해 주세요.", helpQuickReplies());
     }
 
     const memberReplies = member ? registeredQuickReplies() : undefined;

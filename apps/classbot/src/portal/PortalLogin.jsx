@@ -6,18 +6,29 @@ export default function PortalLogin({ busy, error, onLogin, session, embedded = 
   const [name, setName] = useState("");
   const [inviteCode, setInviteCode] = useState("");
   if (embedded) {
-    const mismatched = session?.reason === "roster_mismatch";
+    const inviteRequired = session?.reason === "invite_required";
     return (
       <main className="portal-login-page">
         <section className="portal-login-card">
           <Brand />
           <div className="portal-login-icon"><UserRoundCheck size={27} /></div>
-          <h1>{mismatched ? "학급 구성원 확인 필요" : "Quilo 로그인이 필요합니다"}</h1>
-          <p>{mismatched
-            ? "현재 Quilo 계정 이름이 2학년 4반 명단과 일치하지 않습니다. 가입한 계정의 이름을 확인해 주세요."
-            : "Quilo에 로그인하면 등록된 학급 이름을 자동으로 확인해 바로 입장합니다."}</p>
-          <div className="portal-privacy"><ShieldCheck size={18} /><p>별도의 이름·초대 코드 입력 없이 기존 Quilo 로그인 세션만 사용합니다.</p></div>
-          <a className="primary-button wide" href={mismatched ? "/#settings" : (session?.login_url || "/login.html?next=/schedule/")}>{mismatched ? "Quilo 계정 확인" : "Quilo 로그인"}<ArrowRight size={18} /></a>
+          <h1>{inviteRequired ? "학급 초대 코드 입력" : "Quilo 로그인이 필요합니다"}</h1>
+          <p>{inviteRequired
+            ? "관리자에게 받은 1회용 초대 코드로 이 Quilo 계정을 학급 구성원과 연결해 주세요."
+            : "Quilo에 로그인한 뒤 초대 코드로 본인 명단을 한 번 연결하면 입장할 수 있습니다."}</p>
+          {inviteRequired ? (
+            <form onSubmit={(event) => { event.preventDefault(); if (inviteCode.trim() && !busy) onLogin({ invite_code: inviteCode.trim() }); }}>
+              <label>초대 코드<input value={inviteCode} onChange={(event) => setInviteCode(event.target.value)} autoComplete="one-time-code" inputMode="text" placeholder="관리자에게 받은 초대 코드" required autoFocus disabled={busy} /></label>
+              {error && <p className="form-error"><AlertTriangle size={16} />{error}</p>}
+              <div className="portal-privacy"><ShieldCheck size={18} /><p>표시 이름이 아니라 로그인된 Quilo 계정의 고유 식별값에 연결됩니다.</p></div>
+              <button className="primary-button wide" disabled={busy || !inviteCode.trim()}>{busy ? "연결 중" : "내 계정 연결"}<ArrowRight size={18} /></button>
+            </form>
+          ) : (
+            <>
+              <div className="portal-privacy"><ShieldCheck size={18} /><p>로그인 후에도 본인 확인에는 관리자 초대 코드가 필요합니다.</p></div>
+              <a className="primary-button wide" href={session?.login_url || "/login.html?next=/schedule/"}>Quilo 로그인<ArrowRight size={18} /></a>
+            </>
+          )}
         </section>
       </main>
     );

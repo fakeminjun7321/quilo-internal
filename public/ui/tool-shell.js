@@ -52,15 +52,13 @@
     "/tools/pdf-pagenum.html": { assets: ["pdfLib"], actions: ["pnRun"] },
     "/tools/pdf-watermark.html": { assets: ["pdfLib"], actions: ["wmApply"] },
     "/tools/pdf-crop.html": { assets: ["pdfLib"], actions: ["pcCrop"] },
-    "/tools/pdf-compress.html": { assets: ["pdfLib", "pdfJs"], actions: ["pcRun"] },
-    "/equation/index.html": { assets: ["equationZip"], actions: ["convertBtn"] }
+    "/tools/pdf-compress.html": { assets: ["pdfLib", "pdfJs"], actions: ["pcRun"] }
   };
 
   var assetDefinitions = {
     pdfLib: { src: "/tools/vendor/pdf-lib.min.js", ready: function () { return !!window.PDFLib; } },
     pdfJs: { src: "/tools/vendor/pdf.min.js", ready: function () { return !!window.pdfjsLib; } },
-    toolZip: { src: "/tools/vendor/jszip.min.js", ready: function () { return !!window.JSZip; } },
-    equationZip: { src: "/equation/vendor/jszip.min.js", ready: function () { return !!window.JSZip; } }
+    toolZip: { src: "/tools/vendor/jszip.min.js", ready: function () { return !!window.JSZip; } }
   };
   var assetPromises = Object.create(null);
 

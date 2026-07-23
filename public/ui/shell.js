@@ -101,7 +101,7 @@
     ["pdf-translate", "PDF 통번역", "문서 구조를 지키며 번역하고 재조판합니다.", "/translate.html", "max", "max"],
     ["cap-translate", "Capstone 번역", "측정 구조를 보존해 Capstone 파일을 번역합니다.", "/?report=cap-translate", "pro", "pro"],
     ["file-convert", "파일 및 PDF 도구", "파일, 이미지, PDF를 브라우저에서 처리합니다.", "/tools/index.html", "public", "active"],
-    ["equation", "LaTeX 한글 수식", "수식을 한글 수식 객체로 변환합니다.", "/equation/index.html", "public", "active"],
+    ["equation", "LaTeX 한글 수식", "공개 가능한 독립 구현 기여를 기다리고 있습니다.", "/equation/index.html", "public", "paused"],
     ["image-ocr", "이미지 OCR", "4중 교차 검증 후 보기·병합 표·그림을 Word·한글·HTML·TXT로 복원합니다.", "/tools/image-ocr.html", "pro", "pro"],
     ["pdf-analysis", "PDF 분석", "페이지와 텍스트층, 수식 밀도를 분석합니다.", "/tools/pdf-analysis.html", "member", "active"],
   ].map(([id, title, summary, path, audience, status]) => ({ id, title, summary, path, audience, status })));
@@ -934,7 +934,7 @@
   document.querySelectorAll(".ui-site-footer, body.home-page > footer.site-footer").forEach((footer) => {
     footer.className = "ui-site-footer";
     footer.innerHTML = `<div class="ui-site-footer__inner">
-      <section class="ui-site-footer__brand"><a href="/" class="ui-site-footer__logo">Quilo</a><p>학습과 연구의 전 과정을 연결하는 AI Workspace.</p><nav aria-label="Quilo 외부 채널"><a href="https://www.instagram.com/quilo._.official/" target="_blank" rel="noopener">Instagram ↗</a><a href="https://github.com/fakeminjun7321/lab-report-generator-web" target="_blank" rel="noopener">GitHub ↗</a><a href="https://blog.naver.com/physicjun1905" target="_blank" rel="noopener">블로그 ↗</a></nav></section>
+      <section class="ui-site-footer__brand"><a href="/" class="ui-site-footer__logo">Quilo</a><p>학습과 연구의 전 과정을 연결하는 AI Workspace.</p><nav aria-label="Quilo 외부 채널"><a href="https://www.instagram.com/quilo._.official/" target="_blank" rel="noopener">Instagram ↗</a><a href="https://github.com/fakeminjun7321/Quilo" target="_blank" rel="noopener">GitHub ↗</a><a href="https://blog.naver.com/physicjun1905" target="_blank" rel="noopener">블로그 ↗</a></nav></section>
       <nav class="ui-site-footer__nav" aria-label="푸터 메뉴">
         <section><h2>제품</h2><a href="/?report=chem-pre">화학 사전보고서</a><a href="/?report=phys-result">물리 결과보고서</a><a href="/?report=free">자유 보고서</a><a href="/translate.html">PDF 통번역</a></section>
         <section><h2>학습 및 창작</h2><a href="/?report=problem-set">문제집 메이커</a><a href="/?report=reading-log">독서활동 기록지</a><a href="/create.html">창작 스튜디오</a><a href="/editor.html">Quilo Code</a></section>

@@ -14,7 +14,7 @@ function redactAuditData(value) {
   return Object.fromEntries(
     Object.entries(value).map(([key, item]) => [
       key,
-      key === "kakao_user_key" || key === "code_hash" ? "[redacted]" : redactAuditData(item),
+      key === "kakao_user_key" || key === "quilo_user_id" || key === "code_hash" ? "[redacted]" : redactAuditData(item),
     ]),
   );
 }
@@ -153,7 +153,7 @@ export class SupabaseStore {
   async healthCheck() {
     await this.ensureClassroom();
     const version = unwrap(await this.client.rpc("classbot_health_check"), "학급 저장소 상태 확인 실패");
-    if (Number(version) !== 6) throw new Error("지원하지 않는 Classbot 데이터베이스 스키마입니다.");
+    if (Number(version) !== 7) throw new Error("지원하지 않는 Classbot 데이터베이스 스키마입니다.");
     return { ok: true, storage: "supabase" };
   }
 
@@ -194,6 +194,19 @@ export class SupabaseStore {
     return unwrap(
       await this.client.from("classbot_members").select("*").eq("class_id", classroom.id).eq("id", memberId).maybeSingle(),
       "구성원 조회 실패",
+    );
+  }
+
+  async findMemberByQuiloUserId(userId) {
+    const classroom = await this.ensureClassroom();
+    return unwrap(
+      await this.client
+        .from("classbot_members")
+        .select("*")
+        .eq("class_id", classroom.id)
+        .eq("quilo_user_id", String(userId || "").trim())
+        .maybeSingle(),
+      "Quilo 구성원 조회 실패",
     );
   }
 
@@ -294,20 +307,19 @@ export class SupabaseStore {
     return member;
   }
 
-  async claimMemberByName({ displayName, userKey, userKeyType = "botUserKey" }) {
+  async claimQuiloInvite({ code, userId }) {
     const classroom = await this.ensureClassroom();
     const claimed = unwrap(
-      await this.client.rpc("classbot_claim_member_by_name", {
+      await this.client.rpc("classbot_claim_quilo_invite", {
         p_class_id: classroom.id,
-        p_display_name: String(displayName || "").trim(),
-        p_user_key: String(userKey || "").trim(),
-        p_user_key_type: userKeyType,
+        p_code_hash: hashInviteCode(code),
+        p_quilo_user_id: String(userId || "").trim(),
       }),
-      "이름 등록 처리 실패",
+      "Quilo 계정 연결 실패",
     );
     const member = claimed?.[0];
-    if (!member) throw new Error("명단에서 이름을 찾을 수 없습니다. 이름을 정확히 입력해 주세요.");
-    await this.appendAudit({ actor: member.id, action: "member.name_claim", entityType: "member", entityId: member.id, after: { status: "active" } });
+    if (!member) throw new Error("초대 코드가 올바르지 않거나 만료되었습니다.");
+    await this.appendAudit({ actor: member.id, action: "member.quilo_claim", entityType: "member", entityId: member.id, after: { status: "active" } });
     return member;
   }
 

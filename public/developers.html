@@ -127,7 +127,7 @@ codex plugin add quilo@personal</code></pre>
           <div class="dev-code-window" aria-label="API 첫 요청 예시">
             <div class="dev-code-window__head"><span>첫 요청</span><button type="button" data-copy-target="heroCode">복사</button></div>
             <pre id="heroCode"><code>curl https://quilolab.com/api/v1/account \
-  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"</code></pre>
+  -H "Authorization: Bearer $QUILO_ACCESS_TOKEN"</code></pre>
             <div class="dev-code-window__result"><span>200 OK</span><code>{ "plan": "pro", "credits": 12 }</code></div>
           </div>
         </div>
@@ -165,7 +165,7 @@ codex plugin add quilo@personal</code></pre>
           <h3>첫 요청</h3>
           <p>모든 계정 API 요청의 <code>Authorization</code> 헤더에 Bearer 토큰을 포함합니다.</p>
           <div class="dev-copy-field dev-copy-field--stacked">
-            <span>Request header</span><code id="authHeader">Authorization: Bearer YOUR_ACCESS_TOKEN</code><button type="button" data-copy-target="authHeader">복사</button>
+            <span>Request header</span><code id="authHeader">Authorization: Bearer $QUILO_ACCESS_TOKEN</code><button type="button" data-copy-target="authHeader">복사</button>
           </div>
           <div class="dev-reference-actions">
             <a class="dev-btn dev-btn--secondary" href="/api/openapi.json" target="_blank" rel="noopener">전체 OpenAPI 문서 열기</a>

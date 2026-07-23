@@ -36,6 +36,11 @@
         "name": "Harness contract",
         "argv": ["node", "--test", "tests/agent-harness.test.js"],
         "timeoutMs": 300000
+      },
+      {
+        "name": "Open-source distribution boundary",
+        "argv": ["npm", "run", "release:oss-check"],
+        "timeoutMs": 300000
       }
     ],
     "core": [

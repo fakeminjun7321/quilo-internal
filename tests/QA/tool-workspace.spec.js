@@ -60,7 +60,7 @@ test.describe("browser tool workspace contract", () => {
     expect(runtime).toContain("/tools/vendor/pdf-lib.min.js");
     expect(runtime).toContain("/tools/vendor/pdf.min.js");
     expect(runtime).toContain("/tools/vendor/jszip.min.js");
-    expect(runtime).toContain("/equation/vendor/jszip.min.js");
+    expect(runtime).not.toContain("/equation/vendor/jszip.min.js");
   });
 
   test("workspace runtime owns navigation, task stage and result rail", () => {

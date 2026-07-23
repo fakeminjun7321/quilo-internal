@@ -173,6 +173,30 @@ test.afterEach(async ({ page }) => {
   expect(unsafeBrowserRequests.get(page), "Shell smoke tests must not initiate write requests").toEqual([]);
 });
 
+test("open-source equation boundary renders without the excluded vendor engine", async ({ page }) => {
+  const responses = [];
+  page.on("response", (response) => responses.push({
+    path: new URL(response.url()).pathname,
+    status: response.status(),
+  }));
+
+  await page.goto(`${baseUrl}/equation/index.html`, { waitUntil: "networkidle" });
+
+  await expect(page.getByRole("heading", { name: "한글 수식 변환기", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "왜 제외되었나요?" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "GitHub Issues" })).toHaveAttribute(
+    "href",
+    "https://github.com/fakeminjun7321/Quilo/issues",
+  );
+  expect(responses.some(({ path }) => path.startsWith("/equation/src/"))).toBe(false);
+  expect(responses.some(({ path }) => path === "/equation/vendor/jszip.min.js")).toBe(false);
+  expect(
+    responses.filter(
+      ({ path, status }) => status >= 400 && !(path === "/api/me" && status === 401),
+    ),
+  ).toEqual([]);
+});
+
 test("guide desktop shell renders with real navigation destinations", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${baseUrl}/guide.html`, { waitUntil: "domcontentloaded" });

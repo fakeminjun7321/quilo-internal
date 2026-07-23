@@ -26,7 +26,6 @@ test("core AI textareas expose stable accessible names", () => {
     ["admin.html", "aaInput", "AI 관리자 보조 질문"],
     ["admin.html", "ceArea", "코드 편집기"],
     ["admin.html", "caPrompt", "코드 AI 도우미 요청"],
-    ["equation/index.html", "latexInput", "변환할 LaTeX 수식"],
     ["index.html", "settingsStyleNote", "내 기본 글 스타일"],
   ];
 

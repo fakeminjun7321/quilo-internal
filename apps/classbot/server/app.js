@@ -231,8 +231,17 @@ function publicNotifications(items) {
 }
 
 function publicMember(member) {
-  const { kakao_user_key: kakaoUserKey, kakao_user_key_type: _keyType, ...safe } = member;
-  return { ...safe, kakao_connected: Boolean(kakaoUserKey) };
+  const {
+    kakao_user_key: kakaoUserKey,
+    kakao_user_key_type: _keyType,
+    quilo_user_id: quiloUserId,
+    ...safe
+  } = member;
+  return {
+    ...safe,
+    kakao_connected: Boolean(kakaoUserKey),
+    quilo_connected: Boolean(quiloUserId),
+  };
 }
 
 function publicMembers(items) {
@@ -325,13 +334,9 @@ export async function createApp(options = {}) {
   const resolvePortalMember = async (req) => {
     if (embedded) {
       const identity = req.classbotExternalUser;
-      if (!identity?.id || typeof identity.name !== "string" || !identity.name) return null;
-      const members = await store.listMembers();
-      const matches = members.filter((member) => (
-        member.display_name === identity.name
-        && !new Set(["left", "disabled"]).has(member.status)
-      ));
-      return matches.length === 1 ? matches[0] : null;
+      if (!identity?.id || !/^[A-Za-z0-9_-]{8,300}$/.test(String(identity.id))) return null;
+      const member = await store.findMemberByQuiloUserId(identity.id);
+      return member && !new Set(["left", "disabled"]).has(member.status) ? member : null;
     }
     const token = readPortalCookie(req.get("cookie"));
     if (!token) return null;
@@ -471,7 +476,17 @@ export async function createApp(options = {}) {
 
   app.post("/api/portal/login", createPortalLoginLimiter(), asyncRoute(async (req, res) => {
     if (embedded) {
-      throw new HttpError(410, "별도 학급 로그인이 없어졌습니다. Quilo 계정으로 로그인해 주세요.");
+      const identity = req.classbotExternalUser;
+      const inviteCode = typeof req.body?.invite_code === "string" ? req.body.invite_code.trim() : "";
+      if (!identity?.id) throw new HttpError(401, "Quilo 로그인이 필요합니다.");
+      if (!inviteCode || inviteCode.length > 40) throw new HttpError(401, PORTAL_LOGIN_ERROR);
+      let member;
+      try {
+        member = await store.claimQuiloInvite({ code: inviteCode, userId: identity.id });
+      } catch {
+        throw new HttpError(401, PORTAL_LOGIN_ERROR);
+      }
+      return res.json({ authenticated: true, member: portalMember(member) });
     }
     const displayName = typeof req.body?.display_name === "string" ? req.body.display_name.trim() : "";
     const inviteCode = typeof req.body?.invite_code === "string" ? req.body.invite_code.trim() : "";
@@ -502,7 +517,7 @@ export async function createApp(options = {}) {
       return res.json({
         authenticated: false,
         ...(embedded ? {
-          reason: req.classbotExternalUser ? "roster_mismatch" : "login_required",
+          reason: req.classbotExternalUser ? "invite_required" : "login_required",
           login_url: "/login.html?next=/schedule/",
         } : {}),
       });

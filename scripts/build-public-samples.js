@@ -69,6 +69,36 @@ function xmlText(xml) {
     .replace(/&amp;/g, "&");
 }
 
+async function scrubDocxMetadata(buffer) {
+  const zip = await JSZip.loadAsync(buffer);
+  const core = zip.file("docProps/core.xml");
+  if (core) {
+    const xml = await core.async("string");
+    zip.file(
+      "docProps/core.xml",
+      xml
+        .replace(/<dc:creator>[\s\S]*?<\/dc:creator>/g, "<dc:creator></dc:creator>")
+        .replace(
+          /<cp:lastModifiedBy>[\s\S]*?<\/cp:lastModifiedBy>/g,
+          "<cp:lastModifiedBy></cp:lastModifiedBy>",
+        ),
+    );
+  }
+  const app = zip.file("docProps/app.xml");
+  if (app) {
+    const xml = await app.async("string");
+    zip.file(
+      "docProps/app.xml",
+      xml.replace(/<Company>[\s\S]*?<\/Company>/g, "<Company></Company>"),
+    );
+  }
+  return zip.generateAsync({
+    type: "nodebuffer",
+    compression: "DEFLATE",
+    compressionOptions: { level: 6 },
+  });
+}
+
 async function verifyDocx(buffer, sample, expectedText) {
   if (!Buffer.isBuffer(buffer) || buffer.length < 2_000) {
     throw new Error(`${sample.output}: DOCX buffer가 비정상적으로 작습니다.`);
@@ -94,6 +124,19 @@ async function verifyDocx(buffer, sample, expectedText) {
   if (/\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b/.test(text)) {
     throw new Error(`${sample.output}: 공개 샘플에 이메일 형태 문자열이 있습니다.`);
   }
+  const metadata = await Promise.all(
+    ["docProps/core.xml", "docProps/app.xml"]
+      .filter((name) => zip.file(name))
+      .map((name) => zip.file(name).async("string")),
+  );
+  if (
+    metadata.some(
+      (xml) =>
+        /<(?:dc:creator|cp:lastModifiedBy|Company)>\s*[^<\s][^<]*<\//.test(xml),
+    )
+  ) {
+    throw new Error(`${sample.output}: 공개 샘플에 작성자 메타데이터가 남았습니다.`);
+  }
 }
 
 async function buildSample(sample) {
@@ -101,7 +144,7 @@ async function buildSample(sample) {
   markAsPublicSample(sample.type, content);
   fixtures.prepareContentForRender(content, PUBLIC_RENDER);
   const { generateDocx } = require(sample.renderer);
-  const buffer = await generateDocx(content);
+  const buffer = await scrubDocxMetadata(await generateDocx(content));
   await verifyDocx(buffer, sample, meta.expect?.docxIncludes || []);
 
   const destination = path.join(OUTPUT_DIR, sample.output);

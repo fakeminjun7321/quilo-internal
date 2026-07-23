@@ -34,7 +34,7 @@ test("스키마 버전 health RPC와 전체 RLS가 운영 준비 상태를 검�
   assert.match(schema, /create table if not exists public\.classbot_schema_meta/);
   assert.match(schema, /create or replace function public\.classbot_health_check\(\)/);
   assert.match(schema, /grant execute on function public\.classbot_health_check\(\) to service_role/);
-  assert.match(schema, /values \(1, 6, now\(\)\)/);
+  assert.match(schema, /values \(1, 7, now\(\)\)/);
   for (const table of ["schema_meta", "classes", "members", "invites", "timetable", "member_timetable", "events", "notices", "files", "kakao_states", "kakao_pending_actions", "notifications", "audit_logs"]) {
     assert.match(schema, new RegExp(`alter table public\\.classbot_${table} enable row level security`));
   }
@@ -51,17 +51,17 @@ test("개인별 시간표는 학급-구성원 복합 경계와 원자적 전체 
   assert.match(replaceFunction, /class_id = p_class_id[\s\S]*id = p_member_id[\s\S]*for update/);
   assert.match(replaceFunction, /delete from public\.classbot_member_timetable/);
   assert.match(storeSource, /\.rpc\("classbot_replace_member_timetable"/);
-  assert.match(storeSource, /Number\(version\) !== 6/);
+  assert.match(storeSource, /Number\(version\) !== 7/);
 });
 
-test("이름 등록 RPC는 학급 lock과 정확 일치로 key 탈취·재바인딩을 막는다", () => {
-  const claimFunction = schema.match(/create or replace function public\.classbot_claim_member_by_name[\s\S]*?\$\$;/)?.[0] || "";
-  assert.match(claimFunction, /from public\.classbot_classes[\s\S]*for update/);
-  assert.match(claimFunction, /display_name = trim\(p_display_name\)/);
-  assert.match(claimFunction, /matching_count > 1/);
-  assert.match(claimFunction, /kakao_user_key = trim\(p_user_key\)[\s\S]*id <> selected_member\.id/);
-  assert.match(claimFunction, /selected_member\.kakao_user_key is not null[\s\S]*selected_member\.kakao_user_key <> trim\(p_user_key\)/);
-  assert.match(storeSource, /\.rpc\("classbot_claim_member_by_name"/);
+test("Quilo 포털 가입 RPC는 초대 코드와 불변 사용자 ID를 원자적으로 묶는다", () => {
+  const claimFunction = schema.match(/create or replace function public\.classbot_claim_quilo_invite[\s\S]*?\$\$;/)?.[0] || "";
+  assert.match(claimFunction, /class_id = p_class_id[\s\S]*code_hash = p_code_hash[\s\S]*for update/);
+  assert.match(claimFunction, /portal_used_at is not null/);
+  assert.match(claimFunction, /quilo_user_id = trim\(p_quilo_user_id\)[\s\S]*id <> selected_invite\.member_id/);
+  assert.match(claimFunction, /set quilo_user_id = trim\(p_quilo_user_id\)/);
+  assert.match(schema, /drop function if exists public\.classbot_claim_member_by_name/);
+  assert.match(storeSource, /\.rpc\("classbot_claim_quilo_invite"/);
 });
 
 test("카카오 파일 후보 상태는 구성원 경계·최대 3개·만료 시각과 RLS를 강제한다", () => {

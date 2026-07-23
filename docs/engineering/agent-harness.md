@@ -223,6 +223,11 @@ UI는 headless 통과만으로 완료하지 않는다. 실제 화면에서 최�
 - parser 보안은 문자열 regex 하나로 끝내지 않는다. lexical gate → parser → normalized AST/schema → renderer 각 경계에 fixture를 둔다.
 - 민감 보안 보고서와 공격 payload는 공개 저장소에 커밋하지 않는다.
 
+공개 릴리스에서는 과거 비공개 Git 이력을 공개 원격에 연결하지 않는다. 정제된 현재
+스냅샷만 기존 공개 이력 위에 반영하고, `npm run release:oss-check`와 Gitleaks를
+모두 통과시킨다. 라이선스·권리 제한 경로 검사는 비밀값 검사를 대신하지 않으며,
+두 결과를 따로 기록한다.
+
 ## 10. 체크포인트와 중단 조건
 
 ```bash

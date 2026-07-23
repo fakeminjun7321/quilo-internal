@@ -30,3 +30,14 @@ xcuserdata/
 *.pdf
 *.hwpx
 ios/
+
+# Open-source distribution boundaries
+/videos/
+/SYNC.md
+/scripts/quilo-sync.sh
+/lib/equation/vendor/
+/public/equation/src/
+/public/equation/CONVERSION_RULES.md
+/lib/pipelines/phys-inquiry/templates/inquiry-template.hwpx
+/lib/pipelines/phys-result/templates/result-report-template.hwpx
+/lib/pipelines/reading-log/templates/reading-log-template.hwpx

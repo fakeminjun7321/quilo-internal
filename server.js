@@ -10063,9 +10063,9 @@ async function attachClassbotExternalUser(req, _res, next) {
   }
 }
 
-// The child app receives only a freshly verified, minimal Quilo identity. It
-// performs the authoritative exact-name roster match itself for every portal
-// request, while admin/Drive routes can reuse the stable Quilo user id.
+// The child app receives only a freshly verified, minimal Quilo identity. The
+// student portal binds this immutable user id to one roster entry with a
+// one-time invite code; display names never act as authentication.
 app.use(["/schedule/api/portal", "/schedule/api/admin"], attachClassbotExternalUser);
 
 app.use("/schedule/api/admin/session", (req, _res, next) => {

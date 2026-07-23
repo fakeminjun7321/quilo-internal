@@ -48,4 +48,3 @@ export function buildChemResultFormData(input, finalModel = input.model) {
   appendPolicy(data);
   return data;
 }
-

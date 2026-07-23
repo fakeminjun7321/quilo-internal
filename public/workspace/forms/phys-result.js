@@ -45,4 +45,3 @@ export function buildPhysResultFormData(input, finalModel = input.model) {
   appendPolicy(data);
   return data;
 }
-

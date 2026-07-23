@@ -41,7 +41,7 @@ function SettingsView({ member, classroom, onLogout }) {
     <section className="page portal-simple-page">
       <div className="page-heading"><h1>설정</h1><p>Quilo 계정과 학급 연결 상태를 확인합니다.</p></div>
       <div className="content-panel portal-account-settings">
-        <div className="portal-settings-copy"><span className="portal-simple-icon"><ShieldCheck size={21} /></span><span><small>로그인 계정</small><strong>{member?.display_name || "학생"}</strong><p>{classroom?.name || "2학년 4반"} 명단과 이름이 일치해 자동으로 연결되었습니다.</p></span></div>
+        <div className="portal-settings-copy"><span className="portal-simple-icon"><ShieldCheck size={21} /></span><span><small>로그인 계정</small><strong>{member?.display_name || "학생"}</strong><p>1회용 초대 코드로 {classroom?.name || "2학년 4반"} 명단과 안전하게 연결되었습니다.</p></span></div>
         <div className="portal-settings-actions"><a className="outline-button" href="/#settings"><Settings size={18} />Quilo 계정 설정</a><button className="secondary-button" onClick={onLogout}><LogOut size={18} />로그아웃</button></div>
       </div>
     </section>

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { MemoryStore } from "../store/memory-store.js";
+import { hashInviteCode } from "../security.js";
 import { handleKakaoCommand } from "./commands.js";
 
 const config = { classCode: "2-4", className: "2학년 4반", timezone: "Asia/Seoul" };
@@ -25,6 +26,14 @@ async function ask(store, utterance, options = {}) {
 
 function text(response) {
   return response.template.outputs[0].simpleText.text;
+}
+
+async function createInvite(store, member, code) {
+  await store.createInvite({
+    memberId: member.id,
+    codeHash: hashInviteCode(code),
+    expiresAt: "2099-07-16T12:00:00.000Z",
+  });
 }
 
 test("익명 그룹챗 이름 조회는 반 전체 일정만 반환하고 개인 일정은 숨긴다", async () => {
@@ -210,11 +219,11 @@ test("이번 주 남은 일정은 현재 시각 이후 일정만 유지한다", 
   assert.doesNotMatch(text(response), /오늘 지난 일정|다음 주 일정/);
 });
 
-test("첫 인사와 도움말은 코드 없는 이름 등록, 파일 후보 확인과 주요 quick reply를 안내한다", async () => {
+test("첫 인사와 도움말은 1회용 초대 코드 가입, 파일 후보 확인과 주요 quick reply를 안내한다", async () => {
   const store = fixture();
   const help = await ask(store, "도움말");
-  assert.match(text(help), /이름 등록 구민준/);
-  assert.match(text(help), /초대 코드는 필요하지 않습니다/);
+  assert.match(text(help), /가입 ABCD-EFGH/);
+  assert.match(text(help), /1회용 초대 코드/);
   assert.match(text(help), /오늘 브리핑/);
   assert.match(text(help), /수학 수행평가 추가/);
   assert.match(text(help), /일정 완료/);
@@ -233,14 +242,15 @@ test("첫 인사와 도움말은 코드 없는 이름 등록, 파일 후보 확�
   assert.equal(response.template.quickReplies.every((item) => item.messageText.endsWith("홍길동")), true);
 });
 
-test("이름 등록은 명단의 정확한 이름을 현재 Kakao key에 묶고 이후 이름 없이 본인 일정을 조회한다", async () => {
+test("1회용 초대 코드 가입은 현재 Kakao key를 명단에 묶고 이후 이름 없이 본인 일정을 조회한다", async () => {
   const store = fixture();
   const member = store.members[0];
   await store.createEvent({ title: "반 전체 일정", due_at: "2026-07-15T16:00:00" });
   await store.createEvent({ member_id: member.id, title: "홍길동 개인 일정", due_at: "2026-07-15T17:00:00" });
+  await createInvite(store, member, "ABCD-EFGH");
 
-  const registration = await ask(store, "이름 등록 홍길동", { userId: "new-hong-user" });
-  assert.match(text(registration), /홍길동님, 이름 등록이 완료/);
+  const registration = await ask(store, "가입 ABCD-EFGH", { userId: "new-hong-user" });
+  assert.match(text(registration), /홍길동님.*가입이 완료/);
   assert.equal(store.members[0].kakao_user_key, "new-hong-user");
   assert.equal(registration.template.quickReplies[0].messageText, "오늘 브리핑");
 
@@ -251,17 +261,17 @@ test("이름 등록은 명단의 정확한 이름을 현재 Kakao key에 묶고 
   assert.equal(response.template.quickReplies.every((item) => !item.messageText.includes("홍길동")), true);
 });
 
-test("이름 등록은 없는 이름·동명이인·다른 key의 이름 탈취·한 key의 재바인딩을 거절한다", async () => {
+test("표시 이름만으로는 Kakao key를 연결할 수 없고 초대 코드는 일회성이다", async () => {
   const store = fixture();
-  assert.match(text(await ask(store, "이름 등록 없는학생", { userId: "new-user" })), /명단에서.*찾을 수 없습니다/);
+  assert.match(text(await ask(store, "이름 등록 홍길동", { userId: "attacker-key" })), /이름만으로는 본인 확인을 할 수 없어/);
+  assert.equal(store.members[0].kakao_user_key, null);
 
-  await ask(store, "이름 등록 홍길동", { userId: "hong-key" });
-  assert.match(text(await ask(store, "이름 등록 홍길동", { userId: "attacker-key" })), /이미 다른 카카오 계정/);
-  assert.match(text(await ask(store, "이름 등록 김학생", { userId: "hong-key" })), /이미 다른 구성원/);
+  await createInvite(store, store.members[0], "WXYZ-1234");
+  assert.match(text(await ask(store, "가입 WXYZ-1234", { userId: "hong-key" })), /가입이 완료/);
+  assert.match(text(await ask(store, "가입 WXYZ-1234", { userId: "attacker-key" })), /초대 코드가 올바르지 않거나 만료/);
 
-  const duplicateStore = fixture();
-  duplicateStore.members[2].display_name = "홍길동";
-  assert.match(text(await ask(duplicateStore, "이름 등록 홍길동", { userId: "new-user" })), /동명이인/);
+  await createInvite(store, store.members[1], "IJKL-5678");
+  assert.match(text(await ask(store, "가입 IJKL-5678", { userId: "hong-key" })), /이미 다른 구성원/);
 });
 
 test("정확한 파일명·별칭은 바로 열고 오타는 후보 확인 뒤 네/응으로 첫 후보를 연다", async () => {

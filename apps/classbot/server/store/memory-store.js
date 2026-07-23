@@ -10,7 +10,7 @@ function redactAuditData(value) {
   return Object.fromEntries(
     Object.entries(value).map(([key, item]) => [
       key,
-      key === "kakao_user_key" || key === "code_hash" ? "[redacted]" : redactAuditData(item),
+      key === "kakao_user_key" || key === "quilo_user_id" || key === "code_hash" ? "[redacted]" : redactAuditData(item),
     ]),
   );
 }
@@ -232,6 +232,7 @@ export class MemoryStore {
       class_id: classId,
       display_name: `학생 ${index + 1}`,
       role: index < 2 ? "admin" : "student",
+      quilo_user_id: null,
       kakao_user_key: null,
       kakao_user_key_type: "botUserKey",
       notification_enabled: true,
@@ -296,6 +297,12 @@ export class MemoryStore {
     return member ? clone(member) : null;
   }
 
+  async findMemberByQuiloUserId(userId) {
+    const normalized = String(userId || "").trim();
+    const member = this.members.find((item) => item.quilo_user_id === normalized);
+    return member ? clone(member) : null;
+  }
+
   async createMember(input, actor = "admin") {
     if (this.members.filter((member) => member.status !== "left").length >= this.classroom.max_members) throw new Error("학급 정원 16명을 초과할 수 없습니다.");
     const member = {
@@ -303,6 +310,7 @@ export class MemoryStore {
       class_id: this.classroom.id,
       display_name: String(input.display_name || "").trim(),
       role: input.role === "admin" ? "admin" : "student",
+      quilo_user_id: null,
       kakao_user_key: null,
       kakao_user_key_type: "botUserKey",
       notification_enabled: true,
@@ -326,6 +334,7 @@ export class MemoryStore {
       class_id: this.classroom.id,
       display_name: String(item.display_name || "").trim(),
       role: item.role === "admin" ? "admin" : "student",
+      quilo_user_id: null,
       kakao_user_key: null,
       kakao_user_key_type: "botUserKey",
       notification_enabled: true,
@@ -401,33 +410,22 @@ export class MemoryStore {
     return clone(member);
   }
 
-  async claimMemberByName({ displayName, userKey, userKeyType = "botUserKey" }) {
-    const name = String(displayName || "").trim();
-    const normalizedKey = String(userKey || "").trim();
-    if (!name) throw new Error("명단의 이름을 정확히 입력해 주세요.");
-    if (name.length > 40) throw new Error("명단의 이름을 40자 이내로 정확히 입력해 주세요.");
-    if (!normalizedKey) throw new Error("카카오 사용자 식별값이 필요합니다.");
-    if (!["botUserKey", "plusfriendUserKey", "appUserId"].includes(userKeyType)) throw new Error("올바른 카카오 사용자 식별값 유형이 아닙니다.");
-
-    const matches = this.members.filter((item) => item.status !== "left" && String(item.display_name || "").trim() === name);
-    if (matches.length !== 1) {
-      throw new Error(matches.length > 1
-        ? `명단에 '${name}' 동명이인이 있어 이름만으로 등록할 수 없습니다.`
-        : `명단에서 '${name}'을(를) 찾을 수 없습니다. 이름을 정확히 입력해 주세요.`);
-    }
-    const member = matches[0];
-    if (member.status === "disabled") throw new Error("비활성 구성원은 이름을 등록할 수 없습니다.");
-    const boundToKey = this.members.find((item) => item.kakao_user_key === normalizedKey);
-    if (boundToKey && boundToKey.id !== member.id) throw new Error("이미 다른 구성원으로 등록된 카카오 계정입니다.");
-    if (member.kakao_user_key && member.kakao_user_key !== normalizedKey) throw new Error("이미 다른 카카오 계정에 등록된 이름입니다. 관리자에게 문의해 주세요.");
-    if (member.kakao_user_key === normalizedKey && member.status === "active") return clone(member);
-
-    member.kakao_user_key = normalizedKey;
-    member.kakao_user_key_type = userKeyType;
+  async claimQuiloInvite({ code, userId }) {
+    const normalizedUserId = String(userId || "").trim();
+    if (!/^[A-Za-z0-9_-]{8,300}$/.test(normalizedUserId)) throw new Error("Quilo 사용자 식별값이 올바르지 않습니다.");
+    const codeHash = hashInviteCode(code);
+    const invite = this.invites.find((item) => item.code_hash === codeHash && !item.portal_used_at);
+    if (!invite || new Date(invite.expires_at) < new Date()) throw new Error("초대 코드가 올바르지 않거나 만료되었습니다.");
+    const duplicate = this.members.find((item) => item.quilo_user_id === normalizedUserId);
+    if (duplicate && duplicate.id !== invite.member_id) throw new Error("이미 다른 구성원에 연결된 Quilo 계정입니다.");
+    const member = this.members.find((item) => item.id === invite.member_id && !["disabled", "left"].includes(item.status));
+    if (!member) throw new Error("초대 대상 구성원을 찾을 수 없습니다.");
+    member.quilo_user_id = normalizedUserId;
     member.status = "active";
     member.joined_at ||= nowIso();
     member.updated_at = nowIso();
-    await this.appendAudit({ actor: member.id, action: "member.name_claim", entityType: "member", entityId: member.id, after: { status: "active" } });
+    invite.portal_used_at = nowIso();
+    await this.appendAudit({ actor: member.id, action: "member.quilo_claim", entityType: "member", entityId: member.id, after: { status: "active" } });
     return clone(member);
   }
 

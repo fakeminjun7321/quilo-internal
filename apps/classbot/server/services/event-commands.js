@@ -228,7 +228,7 @@ export async function answerPendingEventMutation({ command, member, store }) {
 export async function answerEventMutation({ command, member, store, now = new Date() }) {
   if (!looksLikeMutation(command)) return null;
   if (!member || member.status !== "active") {
-    return simpleTextResponse("개인 일정을 바꾸려면 먼저 ‘이름 등록 구민준’처럼 명단의 이름으로 등록해 주세요.");
+    return simpleTextResponse("개인 일정을 바꾸려면 관리자에게 받은 1회용 초대 코드로 먼저 가입해 주세요.");
   }
   const mutation = await parseMutation(command, member, store, now);
   if (!mutation) return null;

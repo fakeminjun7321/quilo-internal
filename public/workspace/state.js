@@ -47,4 +47,3 @@ export function storeStyleNote(value) {
   try { localStorage.setItem("quiloStyleNote", value || ""); }
   catch (_) {}
 }
-

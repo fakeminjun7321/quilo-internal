@@ -103,4 +103,3 @@ export function createDraftController() {
 
   return { init, clear, restore, ensureBanner };
 }
-

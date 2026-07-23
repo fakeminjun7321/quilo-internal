@@ -1,8 +1,17 @@
 {
-  "name": "lab-report-generator-web",
+  "name": "quilo",
   "version": "1.0.0",
   "private": true,
-  "description": "AI-assisted lab report generator web app",
+  "description": "Open-source AI workspace for evidence-grounded reports, research, data, translation, and document generation",
+  "license": "AGPL-3.0-or-later",
+  "homepage": "https://github.com/fakeminjun7321/Quilo#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fakeminjun7321/Quilo.git"
+  },
+  "bugs": {
+    "url": "https://github.com/fakeminjun7321/Quilo/issues"
+  },
   "main": "server.js",
   "type": "commonjs",
   "scripts": {
@@ -17,6 +26,7 @@
     "verify:quick": "node scripts/agent-harness.mjs verify quick",
     "verify:core": "node scripts/agent-harness.mjs verify core",
     "verify:release": "node scripts/agent-harness.mjs verify release",
+    "release:oss-check": "node scripts/check-open-source-release.mjs",
     "test:unit": "node --test tests/*.test.js",
     "test:security": "node --test tests/security/*.test.js",
     "test:pipelines": "node --test tests/pipelines/",
@@ -26,10 +36,6 @@
     "fixtures:pdf-translate": ".venv/bin/python tests/pdf-translate/generate_fixtures.py && .venv/bin/python tests/pdf-translate/verify_fixtures.py",
     "eval:pdf-translate": "node scripts/eval_pdf_translation.js",
     "eval:pdf-translate:subscription": "node scripts/eval_pdf_translation_subscription.js",
-    "sync": "bash scripts/quilo-sync.sh status",
-    "sync:setup": "bash scripts/quilo-sync.sh setup",
-    "sync:start": "bash scripts/quilo-sync.sh start",
-    "sync:end": "bash scripts/quilo-sync.sh end",
     "postinstall": "npm ci --prefix apps/classbot --include=dev && npm run build --prefix apps/classbot && ((python3 -m venv .venv && .venv/bin/pip install --upgrade pip && .venv/bin/pip install -r requirements.txt || echo 'WARN: python venv setup failed — hwpx output will be unavailable, docx still works'); bash scripts/install-tectonic.sh; bash scripts/install-pandoc.sh || echo 'WARN: pandoc setup failed — docx→hwpx unavailable')"
   },
   "engines": {

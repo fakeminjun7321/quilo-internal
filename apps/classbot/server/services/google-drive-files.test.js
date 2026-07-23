@@ -102,75 +102,25 @@ test("Quilo OAuth로 전용 Drive 폴더를 만들고 PDF·이미지만 class-wi
   assert.equal(calls.filter(([kind]) => kind === "folder").length, 1, "한 프로세스에서는 폴더를 중복 생성하지 않는다");
 });
 
-test("owner UUID가 없어도 기존 Quilo 계정의 정확한 이름으로 Drive 연결을 찾는다", async () => {
+test("owner UUID가 없으면 표시 이름으로 운영 계정을 추측하지 않고 fail-closed한다", async () => {
   const { dependencies, calls } = fixture();
-  dependencies.findUserByName = async (name) => {
-    calls.push(["owner", name]);
-    return { id: "resolved-owner-user", name: "구민준" };
-  };
+  dependencies.findUserByName = async () => ({ id: "resolved-owner-user", name: "구민준" });
+  dependencies.findUsersByExactName = async () => [{ id: "resolved-owner-user", name: "구민준" }];
   const provider = new GoogleDriveFileProvider({
-    ownerName: "구민준",
     secret: "drive-provider-test-secret",
     dependencies,
   });
 
-  const items = await provider.listFiles();
-  assert.equal(items.length, 1);
-  assert.deepEqual(calls.find(([kind]) => kind === "owner"), ["owner", "구민준"]);
-  assert.deepEqual(calls.find(([kind]) => kind === "connection"), ["connection", "resolved-owner-user", "google"]);
-  assert.equal(provider.ownerUserId, "resolved-owner-user");
-});
-
-test("동명이인 계정 중 Google 연결이 정확히 하나인 후보를 운영 계정으로 선택한다", async () => {
-  const { dependencies, calls } = fixture();
-  dependencies.findUsersByExactName = async (name) => {
-    calls.push(["owners", name]);
-    return [
-      { id: "duplicate-without-drive", name: "구민준" },
-      { id: "connected-owner", name: "구민준" },
-      { id: "different-name", name: "구민준2" },
-    ];
-  };
-  dependencies.getCloudConnection = async (userId, provider) => {
-    calls.push(["connection", userId, provider]);
-    return userId === "connected-owner" ? { refresh_token: "connected-refresh" } : null;
-  };
-  const provider = new GoogleDriveFileProvider({
-    ownerName: "구민준",
-    secret: "drive-provider-test-secret",
-    dependencies,
+  assert.equal(provider.configured, false);
+  assert.deepEqual(await provider.listFiles(), []);
+  assert.deepEqual(await provider.status(), {
+    configured: false,
+    connected: false,
+    reason: "owner_user_missing",
+    connect_url: null,
   });
-
-  const items = await provider.listFiles();
-  assert.equal(items.length, 1);
-  assert.equal(provider.ownerUserId, "connected-owner");
-  assert.deepEqual(calls.find(([kind]) => kind === "owners"), ["owners", "구민준"]);
-  assert.equal(calls.some((call) => call[0] === "connection" && call[1] === "duplicate-without-drive"), true);
-  assert.equal(calls.some((call) => call[0] === "connection" && call[1] === "connected-owner"), true);
-  assert.equal(calls.some((call) => call[0] === "connection" && call[1] === "different-name"), false);
-});
-
-test("동명이인 중 Google 연결 후보가 0개 또는 여러 개면 fail-closed한다", async () => {
-  for (const connectedIds of [[], ["owner-1", "owner-2"]]) {
-    const { dependencies } = fixture();
-    dependencies.findUsersByExactName = async () => [
-      { id: "owner-1", name: "구민준" },
-      { id: "owner-2", name: "구민준" },
-    ];
-    dependencies.getCloudConnection = async (userId) => (
-      connectedIds.includes(userId) ? { refresh_token: `refresh:${userId}` } : null
-    );
-    const provider = new GoogleDriveFileProvider({
-      ownerName: "구민준",
-      secret: "drive-provider-test-secret",
-      dependencies,
-    });
-    await assert.rejects(
-      () => provider.listFiles(),
-      connectedIds.length ? /여러 개라 운영 계정을 자동 선택/ : /연결된 자료실 운영 계정을 찾을 수 없습니다/,
-    );
-    assert.equal(provider.ownerUserId, "");
-  }
+  await assert.rejects(() => provider.resolveOwnerUserId(), /OWNER_USER_ID/);
+  assert.equal(calls.some(([kind]) => kind === "connection"), false);
 });
 
 test("Drive 다운로드는 서명된 provider ID와 설정 폴더 parent를 모두 검증한다", async () => {

@@ -12,4 +12,3 @@ lib/pipelines/phys-result/templates/result-report-template.hwpx
 
 If the file is missing, the generator falls back to creating a generic HWPX
 document from scratch.
-

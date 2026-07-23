@@ -74,4 +74,3 @@ export function createChecklistController({ getStudentId, setFlowStep, showTab }
 
   return { init, decorate };
 }
-

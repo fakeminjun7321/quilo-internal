@@ -1,6 +1,18 @@
 # Quilo | 학습과 연구의 전 과정을 연결하는 AI Workspace
 
-> **Private production repository** — 이 저장소는 Quilo 운영 소스의 기준본입니다. 공개 저장소는 제품 소개와 고수준 구조만 담으며, 서버·프롬프트·데이터베이스·문서 엔진 구현은 이 저장소에서만 관리합니다. 경계와 공개 절차는 [`docs/repository-boundaries.md`](./docs/repository-boundaries.md)를 따릅니다.
+[![License: AGPL v3 or later](https://img.shields.io/badge/License-AGPL_v3_or_later-blue.svg)](./LICENSE)
+[![Open source release guard](https://github.com/fakeminjun7321/Quilo/actions/workflows/open-source-guard.yml/badge.svg)](https://github.com/fakeminjun7321/Quilo/actions/workflows/open-source-guard.yml)
+
+Quilo의 웹·Render 서버 파이프라인을 공개합니다. 문제 제보뿐 아니라 구조, 보안,
+라이선스, HWPX/DOCX 생성, 데이터 무결성에 관한 조언과 기여를 환영합니다.
+혼자 만든 프로젝트라 부족한 부분이 많습니다. “이 설계는 위험하다”, “이렇게 나누면
+더 유지보수하기 쉽다” 같은 솔직한 리뷰도 큰 도움이 됩니다.
+
+> **공개 경계:** 비밀값, 사용자 업로드, 권리 제한 학교 양식, 데스크톱/iPad 앱은
+> 포함하지 않습니다. 비영리 전용 제3자 코드가 포함됐던 브라우저 수식 변환기는
+> OSI 오픈소스가 아니어서 구현을 제외했습니다. 자세한 기준은
+> [`docs/repository-boundaries.md`](./docs/repository-boundaries.md)와
+> [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md)를 확인해 주세요.
 
 **Quilo**는 보고서, 리서치, 데이터 분석, 문서, 번역과 코딩을 하나의 흐름으로 연결하는 AI Workspace입니다. 고등학생부터 대학생까지 자신이 실제로 수행한 실험과 학습 자료를 바탕으로 결과물을 완성할 수 있게 돕습니다. 업로드한 실제 자료를 우선하고, 없는 사실을 임의로 만들지 않는 것을 핵심 원칙으로 삼습니다.
 
@@ -75,7 +87,7 @@
 - **PDF 통번역** (`/translate.html`, 베타) — 그림·레이아웃을 최대한 보존하며 텍스트를 한국어로 번역(빠른 번역은 추출 텍스트, 재조판·OCR은 PDF 또는 페이지 이미지를 번역 제공자 및 설정된 OCR 제공자에 전송할 수 있음)
   - **변환 방식 자동 선택** — 일반 텍스트 문서는 **빠른 번역**(in-place, PyMuPDF), 수식 많은 문서·스캔본/이미지 PDF는 **재조판**(Claude → 한국어 LaTeX → Tectonic)
   - 스캔본·글자 깨진 PDF는 고해상도 타일 **OCR**로 읽고 원본 그림도 복원해 재조판, 대용량은 자동 분할·병렬·병합
-- **도구 모음** (`/tools`, 브라우저 전용) — 글자수 세기, 선형회귀·추세선, 그래프 생성기, 파일 변환기(표·이미지·이미지↔PDF), **PDF 도구 10종**(병합/분할/추출/삭제/정렬/회전/페이지번호/워터마크/여백자르기/압축), LaTeX→한글 수식 변환. 모든 처리는 브라우저 안에서만 이뤄지며 별도 정적 사이트 [`lab-report-tools`](https://github.com/fakeminjun7321/lab-report-tools)로도 배포
+- **도구 모음** (`/tools`, 브라우저 전용) — 글자수 세기, 선형회귀·추세선, 그래프 생성기, 파일 변환기(표·이미지·이미지↔PDF), **PDF 도구 10종**(병합/분할/추출/삭제/정렬/회전/페이지번호/워터마크/여백자르기/압축). 브라우저 LaTeX→한글 수식 변환은 비영리 전용 구현을 제거해 clean-room 대체 구현 전까지 일시 중지했습니다.
 - **창작 스튜디오** (`/create.html`, `/studio.html`) — 대화형 "바이브 코딩" 스튜디오. 미리보기·체크포인트로 웹 아티팩트 제작
 - **바이브 코딩 생성기** (`/vibe-coding.html`) / **고급 물리 문제 스튜디오** (`/physics-studio.html`) — 아이디어·주제로 프로젝트 설계 또는 심화 물리 문제·풀이 생성
 - **수행평가 도움 허브** (`/exam-prep.html`, 베타) — 백준식 코딩 테스트(브라우저 Pyodide 채점, 소크라테스식 GPT 튜터) + 물리 수행평가
@@ -119,7 +131,7 @@ GET /api/apps/live-translator/download?platform=windows
 유지보수와 배포 전 점검은 아래 문서를 먼저 확인하세요. 운영 기준서(`CLAUDE.md`/`AGENTS.md`)와 파이프라인 문서는 웹/Render 서버의 화학·물리 핵심 보고서 흐름을 다룹니다.
 
 - 전체 운영 기준: [`CLAUDE.md`](./CLAUDE.md) · [`AGENTS.md`](./AGENTS.md)
-- 비공개 운영본과 공개 개요 저장소의 경계: [`docs/repository-boundaries.md`](./docs/repository-boundaries.md)
+- 공개 소스와 내부 운영·권리 제한 자산의 경계: [`docs/repository-boundaries.md`](./docs/repository-boundaries.md)
 - 다른 AI에게 Quilo를 설명하는 컨텍스트 문서: [`QUILO.md`](./QUILO.md)
 - Codex 플러그인·외부 API: [`docs/codex-plugin-api.md`](./docs/codex-plugin-api.md)
 - 화학 사전보고서 파이프라인: [`docs/chem-pre-pipeline.md`](./docs/chem-pre-pipeline.md)
@@ -156,6 +168,24 @@ npm start
 ```text
 http://localhost:3000
 ```
+
+API 키가 없어도 정적 화면과 다수의 단위·계약 테스트를 살펴볼 수 있습니다. 실제 AI,
+Supabase, 이메일, 외부 저장소 연동은 각 서비스의 본인 자격 증명이 필요하며
+`.env` 파일은 절대 커밋하지 마세요.
+
+## 함께 도와주세요
+
+처음 기여한다면 [`CONTRIBUTING.md`](./CONTRIBUTING.md)를 읽고 작은 이슈부터
+시작해 주세요. 특히 아래 영역의 설계 리뷰와 테스트 기여를 찾고 있습니다.
+
+- 업로드·인증·권한·크레딧 경계의 보안 검토
+- 원본 측정값을 보존하는 보고서 데이터 파이프라인
+- macOS/Windows 한컴에서 재현 가능한 HWPX 호환성 픽스처
+- 비영리 전용 구현을 대체할 clean-room 한글 수식 변환기
+- 한국어/영어 문서와 초보 기여자 온보딩
+
+보안 취약점은 공개 이슈 대신 [`SECURITY.md`](./SECURITY.md)의 비공개 제보 절차를
+사용해 주세요.
 
 ## Render 배포
 
@@ -331,11 +361,16 @@ rg -n "sk-ant-|SUPABASE_SERVICE_KEY|RESEND_API_KEY|SESSION_SECRET|eyJ|password|�
 - API 키, Supabase service role key, session secret은 Render 환경변수로만 관리합니다.
 - 실제 사용자 업로드 파일, 예시 보고서 PDF/HWP, 개인 계정 정보는 GitHub에 올리지 않습니다.
 - `.gitignore`에서 `.env`, `.claude/`, `.pdf`, `.hwp`, `.hwpx`, 예시 보고서 폴더, 테스트 산출물(`test-results/`)을 제외합니다.
-- 공개 개요 저장소에는 운영 코드, 학교/기관 전용 양식 PDF/HWPX, 실제 사용자 예시 보고서를 포함하지 않습니다.
+- 공개 저장소에는 학교/기관 전용 양식 PDF/HWPX와 실제 사용자 업로드·보고서를 포함하지 않습니다.
 - 생성물은 학습 보조 초안이며 제출 전 반드시 직접 검토해야 합니다.
 
 ## 라이선스
 
-이 저장소는 비공개 운영 저장소입니다. 저장소에 접근 권한이 있다는 사실만으로 재배포 권한이 부여되지는 않으며, 파일별 라이선스와 [`LICENSE`](./LICENSE)를 함께 확인해야 합니다.
+별도 고지가 없는 Quilo 소스는
+[`AGPL-3.0-or-later`](./LICENSE)로 배포됩니다. 네트워크를 통해 수정본을 제공하는
+경우에도 해당 사용자에게 그 수정본의 대응 소스를 제공해야 합니다. SDK처럼
+자체 디렉터리에 별도 라이선스가 명시된 구성요소는 그 라이선스를 따릅니다.
 
-포함된 제3자 폰트와 의존성은 각각의 라이선스를 따릅니다. 공개 배포 전 확인 사항은 [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md)에 정리했습니다.
+포함된 제3자 폰트와 의존성은 각각의 라이선스를 따릅니다. 공개 배포 전 확인 사항과
+제외된 구성요소는 [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md)에
+정리했습니다. 이 문서는 법률 자문이 아닙니다.

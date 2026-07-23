@@ -12,4 +12,3 @@ export function jsonOptions(method, body) {
     body: JSON.stringify(body),
   };
 }
-

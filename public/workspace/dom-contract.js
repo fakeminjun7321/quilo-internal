@@ -19,4 +19,3 @@ export function assertWorkspaceDom() {
     "filesPanel",
   ].forEach(required);
 }
-

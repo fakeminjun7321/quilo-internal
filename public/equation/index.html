@@ -1,396 +1,55 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
-<head>
-<meta charset="UTF-8" />
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="canonical" href="https://quilolab.com/equation/index.html" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>HWPX LaTeX → 한글 수식 변환기</title>
-<meta name="description" content="HWPX 문서 안의 LaTeX 수식($...$, $$...$$, \(...\), \[...\])만 한글(HWP) 수식 개체로 바꿔 줍니다. 모든 처리는 브라우저에서 이루어지며 파일은 외부로 전송되지 않습니다." />
-<script>
-  // 파일 변환기 탭 안 iframe(?embed=1)일 때 자체 상단바/푸터 숨김
-  if (new URLSearchParams(location.search).has("embed"))
-    document.documentElement.classList.add("embed");
-</script>
-
+    <title>한글 수식 변환기 — 공개본 안내</title>
+    <meta
+      name="description"
+      content="Quilo 공개 저장소에서 제외된 한글 수식 변환 컴포넌트의 라이선스 안내"
+    />
     <link rel="stylesheet" href="/ui/foundation.css" />
     <link rel="stylesheet" href="/ui/shell.css" />
     <link rel="stylesheet" href="/ui/pages.css" />
     <link rel="stylesheet" href="/ui/tool-shell.css" />
   </head>
-<body class="q-shell-page ui-page">
+  <body class="q-shell-page ui-page">
     <a class="ui-skip-link" href="#main-content">본문으로 건너뛰기</a>
     <header class="ui-site-header" data-ui-shell></header>
-<main class="wrap" id="main-content">
-  <header>
-    <h1>HWP·HWPX LaTeX → 한글 수식 변환기</h1>
-    <p>LaTeX 수식을 한글(HWP) 수식으로 바꿔 줍니다. 아래에 <b>텍스트를 붙여넣어</b> 한글 수식 스크립트를 받거나, <b>HWP·HWPX 파일</b> 속 수식을 한 번에 변환할 수 있습니다.</p>
-  </header>
-
-  <div class="card">
-    <h2>텍스트 → 한글 수식</h2>
-    <p class="card-desc">LaTeX 수식을 붙여넣으면 한글 수식 편집기에 그대로 넣을 수 있는 한글 수식 스크립트로 바꿔 줍니다. <code>$…$</code>·<code>$$…$$</code>·<code>\(…\)</code>·<code>\[…\]</code> 구분자가 있으면 그 부분만, 없으면 전체를 하나의 수식으로 변환합니다.</p>
-    <textarea id="latexInput" aria-label="변환할 LaTeX 수식" placeholder="예: \frac{-b \pm \sqrt{b^2-4ac}}{2a}&#10;또는: 운동에너지는 $E_k = \frac{1}{2}mv^2$ 이고 $\int_0^1 x^2 dx = \frac{1}{3}$ 이다."></textarea>
-    <div class="actions">
-      <button class="btn-primary" id="latexBtn">한글 수식으로 변환</button>
-      <button class="btn-ghost" id="latexClear">지우기</button>
-    </div>
-    <div class="result" id="latexResult"></div>
-  </div>
-
-  <div class="card">
-    <h2>파일 속 수식 변환 (HWP·HWPX)</h2>
-    <div class="drop" id="drop" role="button" tabindex="0" aria-label="HWPX 파일 선택">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M12 16V4M12 4l-4 4M12 4l4 4"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
-      </svg>
-      <div class="big">HWP·HWPX 파일을 여기에 끌어다 놓기</div>
-      <div class="sub">또는 클릭해서 파일 선택 · <code>.hwp</code> · <code>.hwpx</code> 지원</div>
-    </div>
-    <input type="file" id="file" accept=".hwp,.hwpx" />
-
-    <div class="file-row ui-inline-equation-index-1" id="fileRow">
-      <span class="name" id="fileName"></span>
-      <span class="size" id="fileSize"></span>
-    </div>
-
-    <div class="actions ui-inline-equation-index-2" id="actions">
-      <button class="btn-primary" id="convertBtn">수식 변환</button>
-      <button class="btn-ghost" id="resetBtn">다른 파일</button>
-    </div>
-
-    <div class="result" id="result"></div>
-  </div>
-
-  <p class="note">
-    <b>개인정보:</b> 변환은 전부 <b>브라우저 안에서</b> 실행됩니다. 업로드한 파일은 어떤 서버로도 전송되지 않습니다.<br />
-    <b>HWP(.hwp):</b> 이진 형식이라 오픈소스 <a href="https://github.com/edwardkim/rhwp" target="_blank" rel="noopener">rhwp</a>(WebAssembly)를 빌려 브라우저 안에서 <code>.hwpx</code>로 먼저 바꾼 뒤 수식을 변환합니다(역시 서버 업로드 없음, rhwp 페이지를 불러옵니다). <b>결과물은 <code>.hwpx</code>로 받습니다.</b><br />
-    <b>변환 대상:</b> 텍스트로 들어간 LaTeX 구간만 수식 개체로 바꿉니다. <code>$100$</code>처럼 숫자뿐인 달러 표기는 금액으로 보고 건드리지 않습니다. 이미 수식 개체이거나 이미지로 들어간 수식은 대상이 아닙니다.<br />
-    <b>확인:</b> 한글 수식 문법은 공식 레퍼런스가 빈약해, 복잡한 수식은 한글에서 직접 열어 확인하길 권합니다.
-  </p>
-</main>
+    <main class="wrap" id="main-content">
+      <header>
+        <h1>한글 수식 변환기</h1>
+        <p>이 컴포넌트의 구현은 현재 Quilo 오픈소스 배포본에 포함되지 않습니다.</p>
+      </header>
+      <section class="card" aria-labelledby="license-boundary-title">
+        <h2 id="license-boundary-title">왜 제외되었나요?</h2>
+        <p>
+          기존 브라우저 변환기는 비영리 사용 조건이 붙은 제3자 코드를 포함합니다.
+          이 조건은 OSI 오픈소스 정의와 맞지 않아, 재라이선스 허락을 받거나 독립 구현으로
+          교체하기 전까지 공개 소스에서 분리했습니다.
+        </p>
+        <p>
+          서버의 HWPX 생성 경로는 공개된 자체 변환기로 폴백할 수 있습니다. 공개본에서
+          누락된 권리 제한 파일을 복원하지 말아 주세요.
+        </p>
+        <p>
+          독립 구현, 테스트 코퍼스 설계 또는 라이선스 검토를 도와주실 분은
+          <a href="https://github.com/fakeminjun7321/Quilo/issues">GitHub Issues</a>에서
+          의견을 남겨 주세요.
+        </p>
+      </section>
+    </main>
     <footer class="ui-site-footer">
       <div class="ui-site-footer__inner">
-        <nav class="ui-site-footer__links" aria-label="푸터 메뉴"><a href="/terms.html">이용약관</a><a href="/privacy.html">개인정보처리방침</a><a href="/refund.html">환불정책</a><a href="/guide.html">이용 가이드</a><a href="/community.html">커뮤니티</a><a href="https://github.com/fakeminjun7321/lab-report-generator-web" target="_blank" rel="noopener">GitHub</a></nav>
-        <div class="ui-site-footer__copy">© 2026 Quilo · <span data-site-version>버전 확인 중...</span></div>
+        <nav class="ui-site-footer__links" aria-label="푸터 메뉴">
+          <a href="/">Quilo</a>
+          <a href="https://github.com/fakeminjun7321/Quilo">GitHub</a>
+        </nav>
+        <div class="ui-site-footer__copy">© 2026 Quilo contributors</div>
       </div>
     </footer>
-
-<script src="src/converter.js"></script>
-<script src="src/hwpx-convert.js"></script>
-<script>
-(function () {
-  'use strict';
-  var fileInput = document.getElementById('file');
-  var drop = document.getElementById('drop');
-  var fileRow = document.getElementById('fileRow');
-  var fileName = document.getElementById('fileName');
-  var fileSize = document.getElementById('fileSize');
-  var actions = document.getElementById('actions');
-  var convertBtn = document.getElementById('convertBtn');
-  var resetBtn = document.getElementById('resetBtn');
-  var result = document.getElementById('result');
-
-  var currentFile = null;
-  var lastUrl = null;
-
-  function fmtSize(bytes) {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / 1024 / 1024).toFixed(2) + ' MB';
-  }
-
-  function clearResult() {
-    result.style.display = 'none';
-    result.innerHTML = '';
-    if (lastUrl) { URL.revokeObjectURL(lastUrl); lastUrl = null; }
-  }
-
-  function showError(msg) {
-    clearResult();
-    result.style.display = 'block';
-    result.innerHTML = '<div class="badge err">⚠ ' + escapeHtml(msg) + '</div>';
-  }
-
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, function (c) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-    });
-  }
-
-  function pickFile(file) {
-    clearResult();
-    if (!file) return;
-    if (!/\.hwpx?$/i.test(file.name)) {
-      currentFile = null;
-      fileRow.style.display = 'none';
-      actions.style.display = 'none';
-      showError('HWP(.hwp) 또는 HWPX(.hwpx) 파일만 변환할 수 있습니다. 선택한 파일: ' + file.name);
-      return;
-    }
-    currentFile = file;
-    fileName.textContent = file.name;
-    fileSize.textContent = fmtSize(file.size);
-    fileRow.style.display = 'flex';
-    actions.style.display = 'flex';
-  }
-
-  function reset() {
-    currentFile = null;
-    fileInput.value = '';
-    fileRow.style.display = 'none';
-    actions.style.display = 'none';
-    clearResult();
-  }
-
-  // .hwp(이진) → 오픈소스 rhwp(WebAssembly) 공개 인스턴스를 숨긴 iframe으로 띄워
-  // .hwpx로 변환한 뒤, 기존 HWPX 파이프라인(HwpxConvert.convertFile)으로 수식을 바꾼다.
-  // 모든 처리는 브라우저 안에서 일어나며(서버 업로드 없음), 결과물은 .hwpx 다.
-  // postMessage 프로토콜은 rhwp의 임베드 에디터(npm/editor) 규약을 따른다.
-  function confirmRhwpTransfer(file) {
-    return window.confirm(
-      '.hwp 파일은 브라우저 안에서 변환하기 위해 외부 rhwp 페이지(https://edwardkim.github.io) iframe으로 파일 바이트를 전달합니다.\n\n' +
-      'Quilo 서버에는 업로드하지 않지만, 문서에 개인정보나 민감한 내용이 있으면 전송 전 꼭 확인하세요.\n\n' +
-      '선택한 파일: ' + file.name + '\n\n계속할까요?'
-    );
-  }
-
-  function convertHwpViaRhwp(file) {
-    var RHWP_URL = 'https://edwardkim.github.io/rhwp/';
-    var RHWP_ORIGIN = new URL(RHWP_URL).origin;
-    if (!confirmRhwpTransfer(file)) {
-      return Promise.reject(new Error('외부 rhwp 변환 전송이 취소되었습니다.'));
-    }
-    return file.arrayBuffer().then(function (buf) {
-      return new Promise(function (resolve, reject) {
-        var iframe = document.createElement('iframe');
-        iframe.src = RHWP_URL;
-        iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1280px;height:900px;border:none;';
-        document.body.appendChild(iframe);
-
-        var reqId = 0;
-        var pending = new Map();
-        function sendRequest(method, params) {
-          return new Promise(function (res, rej) {
-            var id = ++reqId;
-            pending.set(id, { resolve: res, reject: rej });
-            iframe.contentWindow.postMessage({ type: 'rhwp-request', id: id, method: method, params: params || {} }, RHWP_ORIGIN);
-            setTimeout(function () {
-              if (pending.has(id)) { pending.delete(id); rej(new Error('rhwp 응답 시간 초과: ' + method)); }
-            }, 30000);
-          });
-        }
-        function onMessage(e) {
-          if (e.origin !== RHWP_ORIGIN || e.source !== iframe.contentWindow) return;
-          if (e.data && e.data.type === 'rhwp-response' && e.data.id != null) {
-            var r = pending.get(e.data.id);
-            if (r) {
-              pending.delete(e.data.id);
-              if (e.data.error) r.reject(new Error('rhwp 변환 오류: ' + e.data.error));
-              else r.resolve(e.data.result);
-            }
-          }
-        }
-        window.addEventListener('message', onMessage);
-        function cleanup() {
-          window.removeEventListener('message', onMessage);
-          if (iframe.parentNode) document.body.removeChild(iframe);
-        }
-
-        iframe.addEventListener('load', function () {
-          sendRequest('ready')
-            .then(function () { return sendRequest('loadFile', { data: new Uint8Array(buf), fileName: file.name }); })
-            .then(function () { return sendRequest('exportHwpx'); })
-            .then(function (rhwpResult) {
-              cleanup();
-              var bytes = rhwpResult instanceof Uint8Array ? rhwpResult : new Uint8Array(rhwpResult);
-              var hwpxFile = new File(
-                [new Blob([bytes], { type: 'application/vnd.hancom.hwpx' })],
-                file.name.replace(/\.hwp$/i, '.hwpx'),
-                { type: 'application/vnd.hancom.hwpx' }
-              );
-              return window.HwpxConvert.convertFile(hwpxFile);
-            })
-            .then(resolve)
-            .catch(function (err) { cleanup(); reject(err); });
-        });
-      });
-    });
-  }
-
-  function runConvert() {
-    if (!currentFile) return;
-    convertBtn.disabled = true;
-    resetBtn.disabled = true;
-    clearResult();
-    result.style.display = 'block';
-    var isHwp = /\.hwp$/i.test(currentFile.name) && !/\.hwpx$/i.test(currentFile.name);
-    result.innerHTML = '<div class="badge ok"><span class="spinner"></span> ' +
-      (isHwp ? 'rhwp로 .hwp → .hwpx 변환 후 수식 변환 중… (수십 초 걸릴 수 있어요)' : '변환 중…') + '</div>';
-
-    var task = isHwp ? convertHwpViaRhwp(currentFile) : window.HwpxConvert.convertFile(currentFile);
-    task.then(function (out) {
-      var s = out.stats;
-      lastUrl = URL.createObjectURL(out.blob);
-
-      var html = '';
-      if (s.equations > 0) {
-        html += '<div class="badge ok">✓ 변환 완료</div>';
-      } else {
-        html += '<div class="badge warn">변환할 LaTeX 수식을 찾지 못했습니다</div>';
-      }
-      html += '<ul class="stat-list">';
-      html += '<li>수식 개체로 변환: <b>' + s.equations + '</b>개</li>';
-      if (s.skippedNumericDollars > 0) {
-        html += '<li>숫자뿐인 <code>$…$</code> 건너뜀: <b>' + s.skippedNumericDollars + '</b>개</li>';
-      }
-      html += '<li>수정된 본문(section): <b>' + s.sectionsChanged + '</b>개</li>';
-      html += '</ul>';
-
-      if (s.equations > 0) {
-        html += '<a id="dl" class="btn-primary runtime-download-link" ' +
-          'href="' + lastUrl + '" download="' + escapeHtml(out.filename) + '">' +
-          '↓ ' + escapeHtml(out.filename) + ' 내려받기</a>';
-      } else {
-        html += '<p class="muted runtime-small-muted">' +
-          '이 문서에는 <code>$…$</code> 형태의 LaTeX 텍스트가 없거나, 이미 수식 개체로 들어가 있을 수 있습니다.</p>';
-      }
-      result.innerHTML = html;
-    }).catch(function (err) {
-      showError((err && err.message) ? err.message : String(err));
-    }).then(function () {
-      convertBtn.disabled = false;
-      resetBtn.disabled = false;
-    });
-  }
-
-  // 이벤트
-  drop.addEventListener('click', function () { fileInput.click(); });
-  drop.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); }
-  });
-  fileInput.addEventListener('change', function () { pickFile(fileInput.files[0]); });
-
-  ['dragenter', 'dragover'].forEach(function (ev) {
-    drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.add('over'); });
-  });
-  ['dragleave', 'drop'].forEach(function (ev) {
-    drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove('over'); });
-  });
-  drop.addEventListener('drop', function (e) {
-    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-    if (f) pickFile(f);
-  });
-
-  convertBtn.addEventListener('click', runConvert);
-  resetBtn.addEventListener('click', reset);
-})();
-</script>
-<script>
-// 텍스트(LaTeX) → 한글 수식 스크립트. 변환 엔진은 converter.js(window.LatexToHwp.convert)를 재사용한다.
-(function () {
-  'use strict';
-  var input = document.getElementById('latexInput');
-  var btn = document.getElementById('latexBtn');
-  var clearBtn = document.getElementById('latexClear');
-  var out = document.getElementById('latexResult');
-  if (!input || !btn) return;
-
-  function esc(s) {
-    return String(s).replace(/[&<>"']/g, function (c) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-    });
-  }
-
-  // $$..$$ , \[..\] , \(..\) , $..$ 안의 LaTeX만 변환. 구분자가 없으면 입력 전체를 식으로 본다.
-  var SEG = /\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)|\$([^$\n]+?)\$/g;
-
-  var lastReplaced = '';
-  var lastItems = [];
-
-  function run() {
-    var raw = input.value;
-    if (!raw.trim()) { out.style.display = 'none'; out.innerHTML = ''; return; }
-    if (!window.LatexToHwp || typeof window.LatexToHwp.convert !== 'function') {
-      out.style.display = 'block';
-      out.innerHTML = '<div class="badge err">⚠ 변환 엔진을 불러오지 못했습니다. 새로고침 해주세요.</div>';
-      return;
-    }
-
-    var items = [];
-    var hasDelim = /\$|\\\(|\\\[/.test(raw);
-    var replaced;
-    try {
-      if (hasDelim) {
-        replaced = raw.replace(SEG, function (m, a, b, c, d) {
-          var body = (a != null ? a : b != null ? b : c != null ? c : d) || '';
-          var script = window.LatexToHwp.convert(body.trim());
-          items.push({ src: body.trim(), script: script });
-          return script;
-        });
-      } else {
-        var s = window.LatexToHwp.convert(raw.trim());
-        items.push({ src: raw.trim(), script: s });
-        replaced = s;
-      }
-    } catch (e) {
-      out.style.display = 'block';
-      out.innerHTML = '<div class="badge err">⚠ ' + esc(e && e.message ? e.message : String(e)) + '</div>';
-      return;
-    }
-
-    lastReplaced = replaced;
-    lastItems = items;
-
-    if (!items.length) {
-      out.style.display = 'block';
-      out.innerHTML = '<div class="badge warn">변환할 LaTeX 수식을 찾지 못했습니다. <code>$…$</code> 같은 구분자를 넣거나 LaTeX 식만 입력해 보세요.</div>';
-      return;
-    }
-
-    var html = '<div class="badge ok">✓ 수식 ' + items.length + '개 변환</div>';
-    if (items.length > 1) {
-      html += '<div class="eq-item"><p class="eq-src">전체 (수식 자리에 한글 수식 삽입)</p>' +
-        '<div class="eq-row"><pre class="eq-script">' + esc(replaced) + '</pre>' +
-        '<button class="btn-primary copy-btn" data-copy="all">복사</button></div></div>';
-    }
-    html += '<div class="eq-out">';
-    items.forEach(function (it, i) {
-      html += '<div class="eq-item"><p class="eq-src">' +
-        (items.length > 1 ? ('수식 ' + (i + 1) + ': ') : '') + esc(it.src) + '</p>' +
-        '<div class="eq-row"><pre class="eq-script">' + esc(it.script) + '</pre>' +
-        '<button class="btn-primary copy-btn" data-copy="' + i + '">복사</button></div></div>';
-    });
-    html += '</div>';
-    html += '<p class="note runtime-note-top">한글에서 <b>입력 → 개체 → 수식</b> (또는 <code>Ctrl+N, M</code>)을 열고, 위 스크립트를 수식 편집기 입력칸에 <b>붙여넣기</b> 하면 수식으로 렌더링됩니다.</p>';
-
-    out.style.display = 'block';
-    out.innerHTML = html;
-
-    out.querySelectorAll('.copy-btn').forEach(function (b) {
-      b.addEventListener('click', function () {
-        var key = b.getAttribute('data-copy');
-        var text = key === 'all' ? lastReplaced : lastItems[+key].script;
-        var done = function () { var t = b.textContent; b.textContent = '복사됨'; setTimeout(function () { b.textContent = t; }, 1200); };
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(text).then(done, done);
-        } else {
-          var ta = document.createElement('textarea');
-          ta.value = text; document.body.appendChild(ta); ta.select();
-          try { document.execCommand('copy'); } catch (e) {}
-          document.body.removeChild(ta); done();
-        }
-      });
-    });
-  }
-
-  btn.addEventListener('click', run);
-  clearBtn.addEventListener('click', function () { input.value = ''; out.style.display = 'none'; out.innerHTML = ''; input.focus(); });
-  input.addEventListener('keydown', function (e) {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); run(); }
-  });
-})();
-</script>
-<script src="/ui/shell.js"></script>
-<script src="/ui/tool-shell.js"></script>
-</body>
+    <script src="/ui/tool-shell.js"></script>
+    <script type="module" src="/ui/shell.js"></script>
+  </body>
 </html>

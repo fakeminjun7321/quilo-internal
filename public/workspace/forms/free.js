@@ -47,4 +47,3 @@ export function buildFreeFormData(input, finalModel = input.model) {
   appendPolicy(data);
   return data;
 }
-

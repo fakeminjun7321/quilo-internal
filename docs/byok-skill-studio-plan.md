@@ -189,4 +189,4 @@ problem-set는 기존 존재. 신규 4종을 `lib/pipelines/<name>/`에 자체�
 2. physics-mock-exam의 멀티에이전트를 단일 서버 프로세스에서 BYOK 키로 순차/병렬 호출하는 비용·시간(타임아웃) — JOB_TIMEOUT 별도 지정 필요.
 3. "나만의 GPT" 프리셋의 범위(스킬별 옵션 저장만 vs 시스템프롬프트 커스터마이즈까지).
 4. 키 미보유 사용자 UX — 실행 누르면 키 등록 모달 → 안내 페이지 링크.
-5. 공개 저장소(lab-report-generator-web) 동기화 시 키/PII 누출 점검.
+5. 공개 저장소(Quilo) 동기화 시 키/PII 누출 점검.

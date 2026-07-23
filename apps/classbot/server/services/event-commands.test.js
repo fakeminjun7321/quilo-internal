@@ -55,7 +55,7 @@ test("채팅 개인 일정 추가는 확인 전 저장하지 않고 10분 pendin
 test("미등록 사용자는 개인 일정 변경을 시작할 수 없다", async () => {
   const store = fixture();
   const response = await ask(store, "내일 수학 시험 추가", { userId: "anonymous" });
-  assert.match(text(response), /먼저.*이름 등록/);
+  assert.match(text(response), /초대 코드로 먼저 가입/);
   assert.equal(store.events.length, 0);
 });
 

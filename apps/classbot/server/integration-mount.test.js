@@ -50,8 +50,13 @@ test("기존 Express 4 Quilo 서버의 /schedule namespace에서 API가 동작�
   assert.equal(uploaded.status, 201);
   assert.match(new URL(uploaded.body.item.share_url).pathname, /^\/schedule\/api\/files\//);
 
-  const portalLogin = await request(parent).post("/schedule/api/portal/login").send({ display_name: student.display_name, invite_code: "unused" });
-  assert.equal(portalLogin.status, 410);
+  const unboundSession = await request(parent).get("/schedule/api/portal/session");
+  assert.equal(unboundSession.body.authenticated, false);
+  assert.equal(unboundSession.body.reason, "invite_required");
+  const invitation = await request(parent).post(`/schedule/api/admin/members/${student.id}/invite`).send({ expires_in_hours: 24 });
+  assert.equal(invitation.status, 201);
+  const portalLogin = await request(parent).post("/schedule/api/portal/login").send({ invite_code: invitation.body.code });
+  assert.equal(portalLogin.status, 200);
   const portalSession = await request(parent).get("/schedule/api/portal/session");
   assert.equal(portalSession.body.authenticated, true);
   assert.equal(portalSession.body.member.id, student.id);
@@ -79,14 +84,14 @@ test("기존 Express 4 Quilo 서버의 /schedule namespace에서 API가 동작�
     login_url: "/login.html?next=/schedule/",
   });
 
-  const mismatchedParent = express4();
-  mismatchedParent.use("/schedule/api/portal", (req, _res, next) => {
-    req.classbotExternalUser = { id: "quilo-outsider", name: `${student.display_name}님`, isAdmin: false };
+  const collidingNameParent = express4();
+  collidingNameParent.use("/schedule/api/portal", (req, _res, next) => {
+    req.classbotExternalUser = { id: "quilo-outsider", name: student.display_name, isAdmin: false };
     next();
   });
-  mismatchedParent.use("/schedule", child);
-  const mismatchedSession = await request(mismatchedParent).get("/schedule/api/portal/session");
+  collidingNameParent.use("/schedule", child);
+  const mismatchedSession = await request(collidingNameParent).get("/schedule/api/portal/session");
   assert.equal(mismatchedSession.body.authenticated, false);
-  assert.equal(mismatchedSession.body.reason, "roster_mismatch");
-  assert.equal((await request(mismatchedParent).get("/schedule/api/portal/overview")).status, 401);
+  assert.equal(mismatchedSession.body.reason, "invite_required");
+  assert.equal((await request(collidingNameParent).get("/schedule/api/portal/overview")).status, 401);
 });

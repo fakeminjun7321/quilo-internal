@@ -4,11 +4,17 @@ import { DrawerShell } from "./AppShell.jsx";
 import { createIdempotencyKey } from "../api/client.js";
 import { categoryLabels, fromLocalInput, toLocalInput } from "../lib/format.js";
 
-const initialEvent = { category: "assessment", subject: "", title: "", description: "", due_at: "", member_id: null, reminder_offsets: [1440], notify_on_change: true, status: "scheduled" };
+const assessmentOffsets = [10080, 2880, 1440, 0];
+const standardOffsets = [4320, 1440, 0];
+const initialEvent = { category: "assessment", subject: "", title: "", description: "", due_at: "", member_id: null, reminder_offsets: assessmentOffsets, notify_on_change: true, status: "scheduled" };
 
 export function EventDrawer({ open, item, members = [], onClose, onSave, onDelete, busy }) {
   const [form, setForm] = useState(initialEvent);
-  useEffect(() => setForm(item ? { ...initialEvent, ...item, due_at: toLocalInput(item.due_at) } : { ...initialEvent, request_key: createIdempotencyKey("event") }), [item, open]);
+  useEffect(() => {
+    const next = item ? { ...initialEvent, ...item, due_at: toLocalInput(item.due_at) } : { ...initialEvent, request_key: createIdempotencyKey("event") };
+    if (next.category === "assessment") next.reminder_offsets = assessmentOffsets;
+    setForm(next);
+  }, [item, open]);
   const set = (key, value) => setForm((current) => ({ ...current, [key]: value }));
   const targetOptions = members
     .filter((member) => member.status !== "left")
@@ -23,13 +29,13 @@ export function EventDrawer({ open, item, members = [], onClose, onSave, onDelet
   return (
     <DrawerShell open={open} title={item ? "일정 수정" : "일정 추가"} onClose={onClose} footer={footer}>
       <form id="event-form" className="editor-form" onSubmit={submit}>
-        <label>유형 <span>*</span><select value={form.category} onChange={(e) => set("category", e.target.value)}>{Object.entries(categoryLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        <label>유형 <span>*</span><select value={form.category} onChange={(e) => setForm((current) => ({ ...current, category: e.target.value, reminder_offsets: e.target.value === "assessment" ? assessmentOffsets : standardOffsets }))}>{Object.entries(categoryLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
         <label>대상 <span>*</span><select value={form.member_id || ""} onChange={(e) => set("member_id", e.target.value || null)}><option value="">반 전체</option>{selectedTargetMissing && <option value={form.member_id}>학생 정보 없음</option>}{targetOptions.map((member) => <option key={member.id} value={member.id}>{member.display_name}</option>)}</select></label>
         <label>과목 <span>*</span><input value={form.subject} onChange={(e) => set("subject", e.target.value)} placeholder="예: 화학" required /></label>
         <label>제목 <span>*</span><input value={form.title} onChange={(e) => set("title", e.target.value)} placeholder="제목을 입력하세요" required /></label>
         <label>마감일 <span>*</span><span className="input-icon"><CalendarDays size={18} /><input type="datetime-local" value={form.due_at} onChange={(e) => set("due_at", e.target.value)} required /></span></label>
         <label>설명<textarea value={form.description || ""} onChange={(e) => set("description", e.target.value)} placeholder="일정에 필요한 내용을 적어 주세요" rows="4" /></label>
-        <fieldset><legend>알림</legend><label className="check-row"><input type="checkbox" checked={form.notify_on_change} onChange={(e) => set("notify_on_change", e.target.checked)} /><span>카카오톡 알림 보내기</span></label><select value={form.reminder_offsets?.[0] ?? 1440} onChange={(e) => set("reminder_offsets", [Number(e.target.value)])}><option value="0">마감 시각</option><option value="180">3시간 전</option><option value="1440">하루 전</option><option value="4320">3일 전</option></select><p className="help-text">알림은 지정한 시각에 전송을 요청하며, 실제 결과는 알림 기록에서 확인할 수 있습니다.</p></fieldset>
+        <fieldset><legend>알림</legend><label className="check-row"><input type="checkbox" checked={form.notify_on_change} onChange={(e) => set("notify_on_change", e.target.checked)} /><span>카카오톡 알림 보내기</span></label>{form.category === "assessment" ? <div className="reminder-policy"><strong>수행평가 기본 알림</strong><span>1주일 전 · 2일 전 · 1일 전 · 당일</span></div> : <select value={form.reminder_offsets?.[0] ?? 1440} onChange={(e) => set("reminder_offsets", [Number(e.target.value)])}><option value="0">마감 시각</option><option value="180">3시간 전</option><option value="1440">하루 전</option><option value="4320">3일 전</option></select>}<p className="help-text">알림은 지정한 시각에 전송을 요청하며, 실제 결과는 알림 기록에서 확인할 수 있습니다.</p></fieldset>
       </form>
     </DrawerShell>
   );

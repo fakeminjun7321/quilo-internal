@@ -34,8 +34,8 @@ test("스키마 버전 health RPC와 전체 RLS가 운영 준비 상태를 검�
   assert.match(schema, /create table if not exists public\.classbot_schema_meta/);
   assert.match(schema, /create or replace function public\.classbot_health_check\(\)/);
   assert.match(schema, /grant execute on function public\.classbot_health_check\(\) to service_role/);
-  assert.match(schema, /values \(1, 6, now\(\)\)/);
-  for (const table of ["schema_meta", "classes", "members", "invites", "timetable", "member_timetable", "events", "notices", "files", "kakao_states", "kakao_pending_actions", "notifications", "audit_logs"]) {
+  assert.match(schema, /values \(1, 7, now\(\)\)/);
+  for (const table of ["schema_meta", "classes", "members", "invites", "timetable", "member_timetable", "events", "notices", "files", "kakao_states", "kakao_pending_actions", "notifications", "audit_logs", "token_accounts", "token_ledger", "market_positions", "market_trades"]) {
     assert.match(schema, new RegExp(`alter table public\\.classbot_${table} enable row level security`));
   }
   assert.match(storeSource, /\.rpc\("classbot_health_check"\)/);
@@ -51,7 +51,25 @@ test("개인별 시간표는 학급-구성원 복합 경계와 원자적 전체 
   assert.match(replaceFunction, /class_id = p_class_id[\s\S]*id = p_member_id[\s\S]*for update/);
   assert.match(replaceFunction, /delete from public\.classbot_member_timetable/);
   assert.match(storeSource, /\.rpc\("classbot_replace_member_timetable"/);
-  assert.match(storeSource, /Number\(version\) !== 6/);
+  assert.match(storeSource, /Number\(version\) !== 7/);
+});
+
+test("가상 주식은 RLS 테이블과 구성원별 lock 기반 RPC에서만 잔액·보유량을 변경한다", () => {
+  assert.match(schema, /update public\.classbot_events[\s\S]*category = 'assessment'[\s\S]*array\[10080, 2880, 1440, 0\]/);
+  assert.match(schema, /create trigger enforce_assessment_reminders_insert[\s\S]*classbot_enforce_assessment_reminders/);
+  assert.match(schema, /create trigger enforce_assessment_reminders_update[\s\S]*classbot_enforce_assessment_reminders/);
+  assert.match(schema, /create table if not exists public\.classbot_token_accounts/);
+  assert.match(schema, /create table if not exists public\.classbot_market_positions/);
+  assert.match(schema, /unique \(class_id, member_id, request_key\)/);
+  const reward = schema.match(/create or replace function public\.classbot_claim_daily_market_reward[\s\S]*?\$\$;/)?.[0] || "";
+  assert.match(reward, /for update/);
+  assert.match(reward, /reference_key = reward_key/);
+  const trade = schema.match(/create or replace function public\.classbot_execute_market_trade[\s\S]*?\$\$;/)?.[0] || "";
+  assert.match(trade, /for update/);
+  assert.match(trade, /보유 토큰이 부족/);
+  assert.match(trade, /보유 수량이 부족/);
+  assert.match(storeSource, /\.rpc\("classbot_claim_daily_market_reward"/);
+  assert.match(storeSource, /\.rpc\("classbot_execute_market_trade"/);
 });
 
 test("이름 등록 RPC는 학급 lock과 정확 일치로 key 탈취·재바인딩을 막는다", () => {

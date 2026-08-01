@@ -1,4 +1,6 @@
-import { endOfSeoulDay, getSeoulParts, startOfSeoulDay } from "../time.js";
+import { endOfSeoulDay, startOfSeoulDay } from "../time.js";
+import { getTimetableForDate } from "./schedule.js";
+import { formatTimetableSubject } from "./timetable-policy.js";
 
 const FILE_COMMAND_WORDS = new Set([
   "찾기", "찾아줘", "찾아주세요", "검색", "검색해줘", "검색해주세요",
@@ -131,12 +133,15 @@ export function rankBrowseFileCandidates(files, spec) {
     .map(({ file, score }) => ({ file, score }));
 }
 
-function compactTimetable(rows) {
+function compactTimetable(bundle) {
+  if (bundle.academicDay?.noRegularClasses) return `학사일정: ${bundle.academicDay.label}`;
+  const rows = bundle.timetable || [];
   if (!rows.length) return "없음";
-  return rows
-    .slice(0, 8)
-    .map((row) => `${row.period}교시 ${row.subject}`)
+  const rowsText = rows
+    .slice(0, 9)
+    .map((row) => `${row.period}교시 ${formatTimetableSubject(row)}`)
     .join(" · ");
+  return bundle.academicDay ? `학사일정: ${bundle.academicDay.label} · ${rowsText}` : rowsText;
 }
 
 function eventDday(event, now) {
@@ -176,17 +181,8 @@ async function optionalList(loader) {
 }
 
 export async function buildTodayBriefing({ store, member, now = new Date() }) {
-  const parts = getSeoulParts(now);
-  const [timetable, events, notices, files] = await Promise.all([
-    parts.weekday >= 1 && parts.weekday <= 5
-      ? (async () => {
-          if (typeof store.listMemberTimetable === "function") {
-            const personal = await store.listMemberTimetable(member.id, { weekday: parts.weekday, date: parts.dateKey });
-            if (personal.length) return personal;
-          }
-          return store.listTimetable({ weekday: parts.weekday });
-        })()
-      : Promise.resolve([]),
+  const [timetableBundle, events, notices, files] = await Promise.all([
+    getTimetableForDate(store, now, { targetMemberId: member.id }),
     store.listEvents({
       from: startOfSeoulDay(now).toISOString(),
       to: endOfSeoulDay(new Date(startOfSeoulDay(now).getTime() + 2 * 86_400_000)).toISOString(),
@@ -212,7 +208,7 @@ export async function buildTodayBriefing({ store, member, now = new Date() }) {
   return [
     `${member.display_name}님의 오늘 브리핑`,
     "",
-    `시간표: ${compactTimetable(timetable)}`,
+    `시간표: ${compactTimetable(timetableBundle)}`,
     "",
     "오늘·임박 일정",
     compactEvents(events, now),

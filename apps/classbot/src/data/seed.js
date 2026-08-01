@@ -31,8 +31,8 @@ export function createSeedOverview() {
   const now = new Date().toISOString();
   const roster = Array.from({ length: 16 }, (_, index) => `학생 ${index + 1}`);
   const events = [
-    { id: "seed-event-1", category: "assessment", subject: "화학", title: "화학 실험 보고서", description: "실험 결과와 오차 분석을 포함해 제출", due_at: isoAfter(1), member_id: null, status: "scheduled", reminder_offsets: [4320, 1440, 0], notify_on_change: true },
-    { id: "seed-event-2", category: "assessment", subject: "영어", title: "영어 발표", description: "3분 개인 발표", due_at: isoAfter(3, 9, 0), member_id: "seed-member-3", status: "scheduled", reminder_offsets: [4320, 1440, 0], notify_on_change: true },
+    { id: "seed-event-1", category: "assessment", subject: "화학", title: "화학 실험 보고서", description: "실험 결과와 오차 분석을 포함해 제출", due_at: isoAfter(1), member_id: null, status: "scheduled", reminder_offsets: [10080, 2880, 1440, 0], notify_on_change: true },
+    { id: "seed-event-2", category: "assessment", subject: "영어", title: "영어 발표", description: "3분 개인 발표", due_at: isoAfter(3, 9, 0), member_id: "seed-member-3", status: "scheduled", reminder_offsets: [10080, 2880, 1440, 0], notify_on_change: true },
     { id: "seed-event-3", category: "assignment", subject: "수학", title: "수학 탐구 과제", description: "탐구 주제 개요 제출", due_at: isoAfter(7), member_id: null, status: "scheduled", reminder_offsets: [10080, 4320, 1440], notify_on_change: true },
   ];
   const notices = [

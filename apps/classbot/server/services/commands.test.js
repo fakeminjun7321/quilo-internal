@@ -369,6 +369,32 @@ test("시간표도 이름을 맨 뒤에 요구하며 요청자 가입 없이 일
   assert.match(text(nextWeek), /7월 20일 월요일/);
 });
 
+test("특정 날짜 시간표를 연도 포함·월일·슬래시 형식으로 조회하고 잘못된 날짜는 거부한다", async () => {
+  const store = fixture();
+  for (const utterance of ["2026년 9월 23일 시간표 홍길동", "9월 23일 시간표 홍길동", "9/23 시간표 홍길동"]) {
+    const response = await ask(store, utterance);
+    assert.match(text(response), /홍길동님의 9월 23일 수요일 시간표/);
+    assert.match(text(response), /학사일정: 금요일 수업 · 퇴사/);
+  }
+  assert.match(text(await ask(store, "2월 30일 시간표 홍길동")), /날짜가 올바르지 않습니다/);
+});
+
+test("카카오 시간표 응답은 과목명을 통일하고 선생님을 과목명 뒤에 T로 표시한다", async () => {
+  const store = fileFixture();
+  await store.replaceMemberTimetable({
+    memberId: store.members[0].id,
+    rows: [
+      { weekday: 3, period: 1, subject: "수Ⅰ", teacher: "류상욱", effective_from: "2026-07-01" },
+      { weekday: 3, period: 2, subject: "공2", teacher: "공3", effective_from: "2026-07-01" },
+    ],
+  });
+
+  const response = await ask(store, "오늘 시간표", { userId: "joined-hong" });
+  assert.match(text(response), /1교시 수학\(류상욱T\)/);
+  assert.match(text(response), /2교시 공강/);
+  assert.doesNotMatch(text(response), /공2|공3T/);
+});
+
 test("이름 누락·후행 규칙 위반·미등록·동명이인을 명확히 안내한다", async () => {
   const store = fixture();
   assert.match(text(await ask(store, "오늘 일정")), /이름.*맨 뒤/);

@@ -29,10 +29,12 @@ select
   to_regprocedure('public.classbot_claim_invite(uuid,text,text,text)') is not null as invite_rpc,
   to_regprocedure('public.classbot_claim_member_by_name(uuid,text,text,text)') is not null as name_claim_rpc,
   to_regprocedure('public.classbot_replace_timetable_day(uuid,integer,jsonb)') is not null as timetable_rpc,
-  to_regprocedure('public.classbot_replace_member_timetable(uuid,uuid,jsonb)') is not null as member_timetable_rpc;
+  to_regprocedure('public.classbot_replace_member_timetable(uuid,uuid,jsonb)') is not null as member_timetable_rpc,
+  to_regprocedure('public.classbot_claim_daily_market_reward(uuid,uuid,date,integer)') is not null as market_reward_rpc,
+  to_regprocedure('public.classbot_execute_market_trade(uuid,uuid,text,text,integer,bigint,text)') is not null as market_trade_rpc;
 ```
 
-기대값은 schema version `6`와 모든 RPC의 `true`다. 기존 v5 운영 DB에는 전체 스키마 대신 [`006_kakao_personal_event_actions.sql`](../db/migrations/006_kakao_personal_event_actions.sql)을 적용할 수 있다. 모든 일정 관리 테이블은 RLS가 활성화되고 anon/authenticated 정책은 만들지 않는다. 서버만 service role key로 접근한다.
+기대값은 schema version `7`과 모든 RPC의 `true`다. 기존 v6 운영 DB에는 전체 스키마 대신 [`007_assessment_reminders_virtual_market.sql`](../db/migrations/007_assessment_reminders_virtual_market.sql)을 적용할 수 있다. 모든 일정·토큰·가상 주식 테이블은 RLS가 활성화되고 anon/authenticated 정책은 만들지 않는다. 서버만 service role key로 접근한다.
 
 ## 3. 기존 Render 서비스 설정
 
@@ -86,9 +88,11 @@ Smoke test는 관리자 로그인을 시도하거나 데이터를 생성하지 �
 2. 챗봇 생성·채널 연결과 봇 배포를 완료한다. 단톡방에서 직접 호출하는 조회 기능만 쓸 때는 사업자 인증이나 월렛이 필요하지 않다.
 3. 카카오 스킬에 공개 HTTPS `/schedule/api/kakao/skill` 엔드포인트와 `X-Classbot-Skill-Secret` 헤더를 연결하고 폴백 블록이 스킬 응답을 사용하게 한다.
 4. `KAKAO_BOT_ID=6a57ace9fd013545b6416293`을 설정하고, `KAKAO_REST_API_KEY`는 Render에 직접 입력한다.
-5. 개발봇 또는 테스트 채널에서 `이름 등록 구민준`처럼 명단의 정확한 이름을 한 번 입력한 뒤 `오늘 일정`, `시간표 전체`, `파일 리스트`를 이름 없이 조회하고 개인 일정·개인 자료 격리를 확인한다.
+5. 개발봇 또는 테스트 채널에서 `이름 등록 구민준`처럼 명단의 정확한 이름을 한 번 입력한 뒤 `오늘 일정`, `9월 23일 시간표`, `시간표 전체`, `파일 리스트`를 이름 없이 조회하고 개인 일정·개인 자료 격리를 확인한다.
 
 학생 웹 포털은 `https://quilolab.com/schedule/`에서 기존 Quilo 계정으로 로그인한다. 계정 이름이 16명 명단 중 한 명과 정확히 일치해야 열리며, 학생은 본인 일정만 추가할 수 있고 관리자 역할만 반 전체 공개 범위를 선택할 수 있는지 확인한다.
+
+학생 포털의 `가상 주식` 탭에서는 실제 종목이 아닌 `QLR`, `BLW`, `NXT`, `GCR`, `SPW`만 노출되어야 한다. 같은 날 접속 보상을 두 번 눌러도 100 TKN이 한 번만 지급되는지, 같은 `Idempotency-Key` 주문이 한 번만 체결되는지, 다른 학생의 잔액·보유·거래 내역이 섞이지 않는지 확인한다. TKN은 현금 교환이나 실제 금융 상품과 연결하지 않는다.
 
 자동 알림을 추가로 켜는 경우에만 비즈니스 채널 인증, 비즈앱, 카카오 로그인, 월렛과 Event 블록을 준비하고 이벤트명을 `quilo_schedule_notification`으로 설정한다. 테스트 구성원 한 명만 활성 수신자로 둔 상태에서 `KAKAO_EVENT_ENABLED=true`로 바꾸고 한 건만 시험 발송한다. POST 접수 후 task 결과가 `sent`로 확정되면 운영 Cron을 활성화하고, 실패하면 즉시 `KAKAO_EVENT_ENABLED=false`로 되돌린다.
 

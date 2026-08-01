@@ -6,6 +6,12 @@ import {
   getSeoulParts,
   startOfSeoulDay,
 } from "../time.js";
+import {
+  applyTimetablePolicy,
+  formatTimetableSubject,
+  getAcademicDayPolicy,
+  normalizeTimetableRow,
+} from "./timetable-policy.js";
 
 const CATEGORY_LABELS = {
   assessment: "수행평가",
@@ -27,18 +33,32 @@ async function timetableForMemberOrClass(store, { targetMemberId, weekday, date 
   return store.listTimetable({ weekday });
 }
 
-export async function getDaySchedule(store, date = new Date(), { targetMemberId } = {}) {
+export async function getTimetableForDate(
+  store,
+  date = new Date(),
+  { targetMemberId, respectAcademicCalendar = true } = {},
+) {
   const parts = getSeoulParts(date);
-  const timetable = parts.weekday >= 1 && parts.weekday <= 5
-    ? await timetableForMemberOrClass(store, { targetMemberId, weekday: parts.weekday, date: parts.dateKey })
+  const academicDay = respectAcademicCalendar ? getAcademicDayPolicy(parts.dateKey) : null;
+  const timetableWeekday = academicDay?.timetableWeekday ?? parts.weekday;
+  const rawTimetable = !academicDay?.noRegularClasses && timetableWeekday >= 1 && timetableWeekday <= 5
+    ? await timetableForMemberOrClass(store, { targetMemberId, weekday: timetableWeekday, date: parts.dateKey })
     : [];
+  const timetable = academicDay?.noRegularClasses
+    ? []
+    : applyTimetablePolicy(rawTimetable, { dateKey: parts.dateKey, timetableWeekday });
+  return { date, parts, timetable, academicDay, timetableWeekday };
+}
+
+export async function getDaySchedule(store, date = new Date(), { targetMemberId } = {}) {
+  const timetableBundle = await getTimetableForDate(store, date, { targetMemberId });
   const events = await store.listEvents({
     from: startOfSeoulDay(date).toISOString(),
     to: endOfSeoulDay(date).toISOString(),
     status: "scheduled",
     targetMemberId,
   });
-  return { date, parts, timetable, events };
+  return { ...timetableBundle, events };
 }
 
 export function getWeekBounds(date = new Date(), weekOffset = 0) {
@@ -68,21 +88,18 @@ export async function getUpcomingEvents(store, date = new Date(), days = 30, { t
   });
 }
 
-export async function getWeekTimetable(store, date = new Date(), { weekOffset = 0, targetMemberId } = {}) {
+export async function getWeekTimetable(
+  store,
+  date = new Date(),
+  { weekOffset = 0, targetMemberId, respectAcademicCalendar = true } = {},
+) {
   const { monday } = getWeekBounds(date, weekOffset);
-  const [classRows, memberRows] = await Promise.all([
-    store.listTimetable(),
-    targetMemberId && typeof store.listMemberTimetable === "function"
-      ? store.listMemberTimetable(targetMemberId, { date: getSeoulParts(monday).dateKey })
-      : Promise.resolve([]),
-  ]);
-  const days = Array.from({ length: 5 }, (_, index) => ({
-    date: dateForSeoulOffset(monday, index),
-    weekday: index + 1,
-    rows: (() => {
-      const personal = memberRows.filter((row) => row.weekday === index + 1);
-      return personal.length ? personal : classRows.filter((row) => row.weekday === index + 1);
-    })(),
+  const days = await Promise.all(Array.from({ length: 5 }, async (_, index) => {
+    const day = await getTimetableForDate(store, dateForSeoulOffset(monday, index), {
+      targetMemberId,
+      respectAcademicCalendar,
+    });
+    return { ...day, weekday: index + 1, rows: day.timetable };
   }));
   return { monday, days };
 }
@@ -91,15 +108,26 @@ export function formatTimetableRows(rows) {
   if (!rows.length) return "등록된 수업이 없습니다.";
   return rows
     .map((row) => {
-      const detail = [row.activity, row.room].filter(Boolean).join(" · ");
-      return `${row.period}교시 ${row.subject}${detail ? ` — ${detail}` : ""}${row.memo ? `\n  준비: ${row.memo}` : ""}`;
+      const normalized = normalizeTimetableRow(row);
+      const detail = [normalized.activity, normalized.room].filter(Boolean).join(" · ");
+      return `${normalized.period}교시 ${formatTimetableSubject(normalized)}${detail ? ` — ${detail}` : ""}${normalized.memo ? `\n  준비: ${normalized.memo}` : ""}`;
     })
     .join("\n");
 }
 
+export function formatDayTimetable(bundle) {
+  const timetable = formatTimetableRows(bundle.timetable || bundle.rows || []);
+  if (!bundle.academicDay) return timetable;
+  const notice = `학사일정: ${bundle.academicDay.label}`;
+  if (bundle.academicDay.noRegularClasses) {
+    return `${notice}\n${bundle.academicDay.emptyText || "정규 수업이 없습니다."}`;
+  }
+  return `${notice}\n${timetable}`;
+}
+
 export function formatWeekTimetable(bundle) {
   return bundle.days
-    .map((day) => `${formatKoreanDate(day.date)}\n${formatTimetableRows(day.rows)}`)
+    .map((day) => `${formatKoreanDate(day.date)}\n${formatDayTimetable(day)}`)
     .join("\n\n");
 }
 
@@ -118,7 +146,7 @@ export function formatEventRows(events, baseDate = new Date(), emptyText = "예�
 
 export function buildDailyDigestText(bundle) {
   const title = `[Quilo] ${formatKoreanDate(bundle.date)}`;
-  const timetable = formatTimetableRows(bundle.timetable);
+  const timetable = formatDayTimetable(bundle);
   const events = bundle.events.length ? `\n\n오늘 마감\n${formatEventRows(bundle.events, bundle.date)}` : "";
   return `${title}\n\n${timetable}${events}`;
 }

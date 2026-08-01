@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { getSeoulParts, parseKoreaDateTime, startOfSeoulDay } from "../time.js";
 import { hashInviteCode } from "../security.js";
+import { defaultReminderOffsets } from "../services/event-policy.js";
 
 const clone = (value) => structuredClone(value);
 
@@ -172,7 +173,7 @@ function seedEvents(classId) {
       description: "실험 결과와 오차 분석을 포함해 제출",
       due_at: at(1),
       status: "scheduled",
-      reminder_offsets: [4320, 1440, 0],
+      reminder_offsets: [10080, 2880, 1440, 0],
       notify_on_change: true,
       created_by: "demo-admin",
       created_at: nowIso(),
@@ -188,7 +189,7 @@ function seedEvents(classId) {
       description: "3분 개인 발표",
       due_at: at(3, 9, 0),
       status: "scheduled",
-      reminder_offsets: [4320, 1440, 0],
+      reminder_offsets: [10080, 2880, 1440, 0],
       notify_on_change: true,
       created_by: "demo-admin",
       created_at: nowIso(),
@@ -267,6 +268,16 @@ export class MemoryStore {
     this.fileBodies = new Map();
     this.kakaoStates = new Map();
     this.kakaoActionStates = new Map();
+    this.marketAccounts = new Map(this.members.map((member) => [member.id, {
+      class_id: this.classroom.id,
+      member_id: member.id,
+      balance: 1000,
+      created_at: nowIso(),
+      updated_at: nowIso(),
+    }]));
+    this.marketPositions = [];
+    this.marketTrades = [];
+    this.marketLedger = [];
   }
 
   async healthCheck() {
@@ -617,7 +628,11 @@ export class MemoryStore {
       description: String(input.description || "").trim(),
       due_at: dueAt.toISOString(),
       status: "scheduled",
-      reminder_offsets: Array.isArray(input.reminder_offsets) ? input.reminder_offsets.map(Number) : [4320, 1440, 0],
+      reminder_offsets: (input.category || "assessment") === "assessment"
+        ? defaultReminderOffsets("assessment")
+        : Array.isArray(input.reminder_offsets)
+        ? input.reminder_offsets.map(Number)
+        : defaultReminderOffsets(input.category),
       notify_on_change: input.notify_on_change !== false,
       request_key: input.request_key || null,
       created_by: actor,
@@ -642,7 +657,8 @@ export class MemoryStore {
       if (patch[key] !== undefined) event[key] = patch[key];
     }
     if (patch.due_at !== undefined) event.due_at = parseKoreaDateTime(patch.due_at).toISOString();
-    if (patch.reminder_offsets !== undefined) event.reminder_offsets = patch.reminder_offsets.map(Number);
+    if (event.category === "assessment") event.reminder_offsets = defaultReminderOffsets("assessment");
+    else if (patch.reminder_offsets !== undefined) event.reminder_offsets = patch.reminder_offsets.map(Number);
     event.updated_at = nowIso();
     await this.appendAudit({ actor, action: "event.update", entityType: "event", entityId: event.id, before, after: event });
     return clone(event);
@@ -801,6 +817,113 @@ export class MemoryStore {
     const body = this.fileBodies.get(fileId);
     if (!file || !body) throw new Error("파일을 찾을 수 없습니다.");
     return Buffer.from(body);
+  }
+
+  async getMarketState(memberId) {
+    const member = this.members.find((item) => item.id === memberId && item.class_id === this.classroom.id && item.status !== "left");
+    if (!member) throw new Error("가상 주식 계정을 조회할 구성원을 찾을 수 없습니다.");
+    if (!this.marketAccounts.has(memberId)) {
+      this.marketAccounts.set(memberId, {
+        class_id: this.classroom.id,
+        member_id: memberId,
+        balance: 1000,
+        created_at: nowIso(),
+        updated_at: nowIso(),
+      });
+    }
+    return clone({
+      account: this.marketAccounts.get(memberId),
+      positions: this.marketPositions.filter((item) => item.member_id === memberId && item.quantity > 0),
+      trades: this.marketTrades
+        .filter((item) => item.member_id === memberId)
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at)),
+      ledger: this.marketLedger
+        .filter((item) => item.member_id === memberId)
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at)),
+    });
+  }
+
+  async claimDailyMarketReward({ memberId, dateKey, amount }) {
+    await this.getMarketState(memberId);
+    const referenceKey = `daily:${dateKey}`;
+    const existing = this.marketLedger.find((item) => item.member_id === memberId && item.reference_key === referenceKey);
+    if (existing) return clone({ claimed: false, ledger: existing });
+    const account = this.marketAccounts.get(memberId);
+    account.balance += Number(amount);
+    account.updated_at = nowIso();
+    const ledger = {
+      id: id("token"),
+      class_id: this.classroom.id,
+      member_id: memberId,
+      kind: "daily_reward",
+      amount: Number(amount),
+      balance_after: account.balance,
+      reference_key: referenceKey,
+      metadata: { reward_date: dateKey },
+      created_at: nowIso(),
+    };
+    this.marketLedger.push(ledger);
+    return clone({ claimed: true, ledger });
+  }
+
+  async executeMarketTrade({ memberId, symbol, side, quantity, price, requestKey }) {
+    await this.getMarketState(memberId);
+    const existing = this.marketTrades.find((item) => item.member_id === memberId && item.request_key === requestKey);
+    if (existing) return clone(existing);
+    const account = this.marketAccounts.get(memberId);
+    let position = this.marketPositions.find((item) => item.member_id === memberId && item.symbol === symbol);
+    if (!position) {
+      position = {
+        class_id: this.classroom.id,
+        member_id: memberId,
+        symbol,
+        quantity: 0,
+        average_cost: 0,
+        created_at: nowIso(),
+        updated_at: nowIso(),
+      };
+      this.marketPositions.push(position);
+    }
+    const total = Number(quantity) * Number(price);
+    if (side === "buy") {
+      if (account.balance < total) throw new Error("보유 토큰이 부족해 매수할 수 없습니다.");
+      const nextQuantity = position.quantity + Number(quantity);
+      position.average_cost = Math.round((position.average_cost * position.quantity + total) / nextQuantity);
+      position.quantity = nextQuantity;
+      account.balance -= total;
+    } else {
+      if (position.quantity < Number(quantity)) throw new Error("보유 수량이 부족해 매도할 수 없습니다.");
+      position.quantity -= Number(quantity);
+      if (!position.quantity) position.average_cost = 0;
+      account.balance += total;
+    }
+    account.updated_at = nowIso();
+    position.updated_at = nowIso();
+    const trade = {
+      id: id("trade"),
+      class_id: this.classroom.id,
+      member_id: memberId,
+      symbol,
+      side,
+      quantity: Number(quantity),
+      price: Number(price),
+      total,
+      request_key: requestKey,
+      created_at: nowIso(),
+    };
+    this.marketTrades.push(trade);
+    this.marketLedger.push({
+      id: id("token"),
+      class_id: this.classroom.id,
+      member_id: memberId,
+      kind: side,
+      amount: side === "buy" ? -total : total,
+      balance_after: account.balance,
+      reference_key: `trade:${requestKey}`,
+      metadata: { trade_id: trade.id, symbol, quantity: Number(quantity), price: Number(price) },
+      created_at: trade.created_at,
+    });
+    return clone(trade);
   }
 
   async listNotifications({ limit = 50, status } = {}) {

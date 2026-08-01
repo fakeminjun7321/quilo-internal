@@ -1,15 +1,25 @@
 import {
   CalendarDays, ChevronDown, Clock3,
-  FolderOpen, LayoutDashboard, Megaphone, Plus, Settings, Users, X,
+  FolderOpen, LayoutDashboard, Megaphone, Menu, Plus, Settings, TrendingUp, Users, X,
 } from "lucide-react";
 
-const navItems = [
+const adminNavItems = [
   ["today", "오늘", LayoutDashboard],
   ["events", "일정", CalendarDays],
   ["notices", "공지", Megaphone],
   ["files", "자료실", FolderOpen],
   ["members", "구성원", Users],
   ["settings", "설정", Settings],
+];
+const portalSidebarItems = [
+  ...adminNavItems.slice(0, 4),
+  ["market", "가상 주식", TrendingUp],
+  ...adminNavItems.slice(4),
+];
+const portalBottomItems = [
+  ...adminNavItems.slice(0, 4),
+  ["market", "가상주식", TrendingUp],
+  ["more", "더보기", Menu],
 ];
 
 export function Brand() {
@@ -24,7 +34,9 @@ export function Sidebar({
   profileName = "구민준",
   profileRole = "관리자",
   menuLabel = "Quilo schedule 메뉴",
+  portal = false,
 }) {
+  const navItems = portal ? portalSidebarItems : adminNavItems;
   return (
     <aside className="sidebar">
       <Brand />
@@ -56,11 +68,12 @@ export function Topbar({ classroom, action, onAction, demoMode = false }) {
   );
 }
 
-export function BottomNavigation({ active, onNavigate }) {
+export function BottomNavigation({ active, onNavigate, portal = false }) {
+  const navItems = portal ? portalBottomItems : adminNavItems;
   return (
-    <nav className="bottom-nav" aria-label="모바일 메뉴">
+    <nav className={`bottom-nav ${portal ? "portal-bottom-nav" : ""}`} aria-label="모바일 메뉴">
       {navItems.map(([id, label, Icon]) => (
-        <button key={id} className={active === id ? "active" : ""} onClick={() => onNavigate(id)}><Icon size={20} /><span>{label}</span></button>
+        <button key={id} className={active === id || (id === "more" && new Set(["members", "settings"]).has(active)) ? "active" : ""} onClick={() => onNavigate(id)}><Icon size={20} /><span>{label}</span></button>
       ))}
     </nav>
   );

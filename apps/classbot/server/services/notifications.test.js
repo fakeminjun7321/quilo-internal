@@ -140,6 +140,28 @@ test("개인 일정 알림은 대상 한 명에게만, 반 전체 일정은 활�
   );
 });
 
+test("수행평가 기본 알림은 D-7·D-2·D-1·당일에 각각 예약된다", async () => {
+  const store = new MemoryStore(config);
+  activateTwo(store);
+  store.events = [];
+  const dueAt = new Date("2026-08-08T12:00:00+09:00");
+  const event = await store.createEvent({ category: "assessment", title: "수학 수행평가", due_at: dueAt.toISOString() });
+  assert.deepEqual(event.reminder_offsets, [10080, 2880, 1440, 0]);
+  const service = new NotificationService({ store, kakaoClient: { enabled: false } });
+  const checks = [
+    [7, /D-7/],
+    [2, /D-2/],
+    [1, /D-1/],
+    [0, /오늘 마감/],
+  ];
+  for (const [days, label] of checks) {
+    const now = new Date(dueAt.getTime() - days * 86_400_000);
+    const batch = (await service.buildDueBatches(now)).find((item) => item.eventId === event.id);
+    assert.ok(batch);
+    assert.match(batch.message, label);
+  }
+});
+
 test("아침 시간표 요약은 반 전체와 본인 개인 일정만 포함해 구성원별로 만든다", async () => {
   const store = new MemoryStore(config);
   activateTwo(store);
@@ -160,6 +182,20 @@ test("아침 시간표 요약은 반 전체와 본인 개인 일정만 포함해
   assert.match(second, /공통 준비/);
   assert.match(second, /김학생 준비/);
   assert.doesNotMatch(second, /홍길동 준비/);
+});
+
+test("공휴일 아침 알림은 정규 시간표 대신 학사일정을 안내한다", async () => {
+  const store = new MemoryStore(config);
+  activateTwo(store);
+  store.events = [];
+  const service = new NotificationService({ store, kakaoClient: { enabled: false } });
+  const now = new Date("2026-09-24T07:00:00+09:00");
+  const daily = (await service.buildDueBatches(now)).filter((batch) => batch.kind === "daily_digest");
+
+  assert.equal(daily.length, 2);
+  assert.match(daily[0].message, /학사일정: 추석 연휴/);
+  assert.match(daily[0].message, /정규 수업이 없습니다/);
+  assert.doesNotMatch(daily[0].message, /1교시/);
 });
 
 test("taskId 없는 오래된 reserved 알림을 orphan으로 노출하고 failed로 전환한다", async () => {

@@ -34,6 +34,9 @@ export function runPreflight({ env = process.env } = {}) {
     "classbot_create_member",
     "classbot_claim_invite",
     "classbot_replace_timetable_day",
+    "classbot_claim_daily_market_reward",
+    "classbot_execute_market_trade",
+    "classbot_market_trades",
   ], "db/schema.sql");
   requireIncludes(rootPackage, [
     "npm ci --prefix apps/classbot --include=dev",

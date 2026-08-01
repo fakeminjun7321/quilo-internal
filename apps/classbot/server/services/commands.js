@@ -7,8 +7,8 @@ import {
   textCardResponse,
 } from "./kakao.js";
 import {
+  formatDayTimetable,
   formatEventRows,
-  formatTimetableRows,
   formatWeekTimetable,
   getDaySchedule,
   getUpcomingEvents,
@@ -105,8 +105,53 @@ function readIntent(command) {
   return null;
 }
 
-function readPeriod(command, intent) {
+function explicitDatePeriod(command, now) {
+  const text = normalizedText(command);
+  const currentYear = getSeoulParts(now).year;
+  const patterns = [
+    /(?:(\d{4})\s*년\s*)?(\d{1,2})\s*월\s*(\d{1,2})\s*일/u,
+    /(?:^|\s)(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?=\s|$|시간표)/u,
+    /(?:^|\s)(\d{1,2})[/.](\d{1,2})(?=\s|$|시간표)/u,
+  ];
+  let year;
+  let month;
+  let day;
+  const korean = text.match(patterns[0]);
+  if (korean) {
+    year = Number(korean[1] || currentYear);
+    month = Number(korean[2]);
+    day = Number(korean[3]);
+  } else {
+    const full = text.match(patterns[1]);
+    if (full) {
+      year = Number(full[1]);
+      month = Number(full[2]);
+      day = Number(full[3]);
+    } else {
+      const short = text.match(patterns[2]);
+      if (!short) return null;
+      year = currentYear;
+      month = Number(short[1]);
+      day = Number(short[2]);
+    }
+  }
+  if (year < 2000 || year > 2100 || month < 1 || month > 12 || day < 1 || day > 31) {
+    throw new Error("조회할 날짜가 올바르지 않습니다. 예: ‘9월 23일 시간표’");
+  }
+  const dateKey = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  const target = new Date(`${dateKey}T12:00:00+09:00`);
+  if (Number.isNaN(target.getTime()) || getSeoulParts(target).dateKey !== dateKey) {
+    throw new Error("조회할 날짜가 올바르지 않습니다. 예: ‘9월 23일 시간표’");
+  }
+  return { kind: "date", target };
+}
+
+function readPeriod(command, intent, now = new Date()) {
   const compact = compactText(command);
+  if (intent === "timetable") {
+    const explicit = explicitDatePeriod(command, now);
+    if (explicit) return explicit;
+  }
   if (intent === "timetable" && (compact.includes("전체") || compact.includes("월금"))) {
     return { kind: "full-timetable", label: "전체" };
   }
@@ -411,13 +456,13 @@ async function answerPendingFileConfirmation({ command, requester, store, makeFi
 }
 
 async function answerReadQuery({ command, intent, member, store, now, quickReplies, privateAccess = false }) {
-  const period = readPeriod(command, intent);
+  const period = readPeriod(command, intent, now);
   const replies = quickReplies || personalizedQuickReplies(member.display_name);
   const targetMemberId = privateAccess ? member.id : undefined;
 
   if (intent === "timetable") {
     if (period.kind === "full-timetable") {
-      const bundle = await getWeekTimetable(store, now, { targetMemberId });
+      const bundle = await getWeekTimetable(store, now, { targetMemberId, respectAcademicCalendar: false });
       return simpleTextResponse(
         `${member.display_name}님의 월~금 전체 시간표\n\n${formatWeekTimetable(bundle)}`,
         replies,
@@ -430,10 +475,10 @@ async function answerReadQuery({ command, intent, member, store, now, quickRepli
         replies,
       );
     }
-    const target = dateForSeoulOffset(now, period.offset);
+    const target = period.kind === "date" ? period.target : dateForSeoulOffset(now, period.offset);
     const bundle = await getDaySchedule(store, target, { targetMemberId });
     return simpleTextResponse(
-      `${member.display_name}님의 ${formatKoreanDate(target)} 시간표\n\n${formatTimetableRows(bundle.timetable)}`,
+      `${member.display_name}님의 ${formatKoreanDate(target)} 시간표\n\n${formatDayTimetable(bundle)}`,
       replies,
     );
   }

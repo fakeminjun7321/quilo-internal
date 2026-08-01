@@ -24,6 +24,8 @@ import { KakaoEventClient, simpleTextResponse } from "./services/kakao.js";
 import { handleKakaoCommand } from "./services/commands.js";
 import { NotificationService } from "./services/notifications.js";
 import { getUpcomingEvents } from "./services/schedule.js";
+import { defaultReminderOffsets } from "./services/event-policy.js";
+import { claimMarketReward, executeMarketOrder, marketSnapshot } from "./services/virtual-market.js";
 import { parseKoreaDateTime } from "./time.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -149,7 +151,9 @@ function eventInput(body, { partial = false } = {}) {
   }
   if (body.notify_on_change !== undefined || !partial) input.notify_on_change = booleanValue(body.notify_on_change, true);
   const offsets = validateReminderOffsets(body.reminder_offsets);
-  if (offsets !== undefined) input.reminder_offsets = offsets;
+  if (input.category === "assessment") input.reminder_offsets = defaultReminderOffsets("assessment");
+  else if (offsets !== undefined) input.reminder_offsets = offsets;
+  else if (!partial) input.reminder_offsets = defaultReminderOffsets(input.category);
   return input;
 }
 
@@ -553,6 +557,25 @@ export async function createApp(options = {}) {
     });
   }));
 
+  app.get("/api/portal/market", requirePortal, asyncRoute(async (req, res) => {
+    res.json(await marketSnapshot(store, req.portalMember.id, now()));
+  }));
+
+  app.post("/api/portal/market/reward", requirePortal, asyncRoute(async (req, res) => {
+    res.json(await claimMarketReward(store, req.portalMember.id, now()));
+  }));
+
+  app.post("/api/portal/market/orders", requirePortal, asyncRoute(async (req, res) => {
+    const key = requestKey(req);
+    if (!key) throw new HttpError(400, "안전한 주문 처리를 위해 Idempotency-Key가 필요합니다.");
+    res.status(201).json(await executeMarketOrder(store, req.portalMember.id, {
+      symbol: req.body?.symbol,
+      side: req.body?.side,
+      quantity: req.body?.quantity,
+      requestKey: key,
+    }, now()));
+  }));
+
   app.post("/api/portal/events", requirePortal, asyncRoute(async (req, res) => {
     const requestedScope = String(req.body?.scope || "personal");
     const scope = requestedScope === "self" ? "personal" : requestedScope;
@@ -905,9 +928,9 @@ export async function createApp(options = {}) {
   app.use((error, _req, res, _next) => {
     const inferredStatus = /찾을 수 없습니다/.test(error.message)
       ? 404
-      : /초과|이미|중복|두 번/.test(error.message)
+      : /초과|이미|중복|두 번|부족/.test(error.message)
         ? 409
-        : /입력|올바른|선택|만료|초대 코드|게시된 공지|재시도|활성 구성원|원본 알림/.test(error.message)
+        : /입력|올바른|선택|만료|초대 코드|게시된 공지|재시도|활성 구성원|원본 알림|존재하지|주문 수량/.test(error.message)
           ? 400
           : 500;
     const status = error.status || (error.type === "entity.parse.failed" ? 400 : inferredStatus);

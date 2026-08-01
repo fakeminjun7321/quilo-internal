@@ -80,7 +80,7 @@ test("오늘 브리핑은 개인 시간표·3일 이내 일정·최신 공지와
   const { store, member } = fixture();
   store.memberTimetable = [{
     id: "personal-timetable", class_id: store.classroom.id, member_id: member.id,
-    weekday: 3, period: 1, subject: "개인수학", activity: "심화", teacher: "", room: "", memo: "",
+    weekday: 3, period: 1, subject: "수Ⅰ", activity: "심화", teacher: "류상욱", room: "", memo: "",
     effective_from: "2026-03-01", effective_to: null,
   }];
   await store.createEvent({ member_id: member.id, subject: "영어", title: "개인 과제", due_at: "2026-07-16T18:00:00+09:00" });
@@ -97,7 +97,7 @@ test("오늘 브리핑은 개인 시간표·3일 이내 일정·최신 공지와
 
   const briefing = await buildTodayBriefing({ store, member, now });
   assert.match(briefing, /홍길동님의 오늘 브리핑/);
-  assert.match(briefing, /1교시 개인수학/);
+  assert.match(briefing, /1교시 수학\(류상욱T\)/);
   assert.match(briefing, /개인 과제 \(내일\)/);
   assert.doesNotMatch(briefing, /타인 과제|나흘 뒤 일정/);
   assert.match(briefing, /새 공지: 최신 공지/);

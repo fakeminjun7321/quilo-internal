@@ -206,3 +206,34 @@ test("Supabase 스키마 오류는 연결 재시도 대상으로 숨기지 않�
   await assert.rejects(store.initialize(), /relation classbot_classes does not exist/);
   assert.equal(attempts, 1);
 });
+
+test("가상 주식 보상과 주문은 학급·구성원 scope의 원자적 RPC만 호출한다", async () => {
+  const { store, calls } = fixture({ ok: true });
+  await store.claimDailyMarketReward({ memberId: "member-1", dateKey: "2026-08-01", amount: 100 });
+  await store.executeMarketTrade({
+    memberId: "member-1",
+    symbol: "QLR",
+    side: "buy",
+    quantity: 2,
+    price: 126,
+    requestKey: "order-safe-1",
+  });
+  assert.deepEqual(calls, [
+    {
+      name: "classbot_claim_daily_market_reward",
+      args: { p_class_id: "class-private", p_member_id: "member-1", p_reward_date: "2026-08-01", p_amount: 100 },
+    },
+    {
+      name: "classbot_execute_market_trade",
+      args: {
+        p_class_id: "class-private",
+        p_member_id: "member-1",
+        p_symbol: "QLR",
+        p_side: "buy",
+        p_quantity: 2,
+        p_price: 126,
+        p_request_key: "order-safe-1",
+      },
+    },
+  ]);
+});

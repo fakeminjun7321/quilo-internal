@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { hashInviteCode } from "../security.js";
 import { getSeoulParts, parseKoreaDateTime } from "../time.js";
+import { defaultReminderOffsets } from "../services/event-policy.js";
 
 function unwrap(result, message) {
   if (result.error) throw new Error(`${message}: ${result.error.message}`);
@@ -153,7 +154,7 @@ export class SupabaseStore {
   async healthCheck() {
     await this.ensureClassroom();
     const version = unwrap(await this.client.rpc("classbot_health_check"), "학급 저장소 상태 확인 실패");
-    if (Number(version) !== 6) throw new Error("지원하지 않는 Classbot 데이터베이스 스키마입니다.");
+    if (Number(version) !== 7) throw new Error("지원하지 않는 Classbot 데이터베이스 스키마입니다.");
     return { ok: true, storage: "supabase" };
   }
 
@@ -593,7 +594,9 @@ export class SupabaseStore {
           title: String(input.title || "").trim(),
           description: String(input.description || "").trim(),
           due_at: parseKoreaDateTime(input.due_at).toISOString(),
-          reminder_offsets: input.reminder_offsets || [4320, 1440, 0],
+          reminder_offsets: (input.category || "assessment") === "assessment"
+            ? defaultReminderOffsets("assessment")
+            : input.reminder_offsets || defaultReminderOffsets(input.category),
           notify_on_change: input.notify_on_change !== false,
           request_key: input.request_key || null,
           created_by: actor,
@@ -614,6 +617,8 @@ export class SupabaseStore {
 
   async updateEvent(eventId, patch, actor = "admin") {
     const classroom = await this.ensureClassroom();
+    const current = await this.getEvent(eventId);
+    if (!current) throw new Error("일정을 찾을 수 없습니다.");
     if (patch.member_id) {
       const member = await this.getMember(patch.member_id);
       if (!member || member.status === "left") throw new Error("개인 일정을 등록할 구성원을 찾을 수 없습니다.");
@@ -621,6 +626,9 @@ export class SupabaseStore {
     const allowed = Object.fromEntries(
       Object.entries(patch).filter(([key]) => ["member_id", "category", "subject", "title", "description", "status", "notify_on_change", "reminder_offsets"].includes(key)),
     );
+    if ((patch.category ?? current.category) === "assessment") {
+      allowed.reminder_offsets = defaultReminderOffsets("assessment");
+    }
     if (patch.due_at !== undefined) allowed.due_at = parseKoreaDateTime(patch.due_at).toISOString();
     const event = unwrap(
       await this.client.from("classbot_events").update(allowed).eq("class_id", classroom.id).eq("id", eventId).select("*").single(),
@@ -869,6 +877,55 @@ export class SupabaseStore {
     const downloaded = await this.client.storage.from(file.bucket).download(file.object_path);
     if (downloaded.error) throw new Error(`파일 다운로드 실패: ${downloaded.error.message}`);
     return Buffer.from(await downloaded.data.arrayBuffer());
+  }
+
+  async getMarketState(memberId) {
+    const classroom = await this.ensureClassroom();
+    const member = await this.getMember(memberId);
+    if (!member || member.status === "left") throw new Error("가상 주식 계정을 조회할 구성원을 찾을 수 없습니다.");
+    const [accountResult, positionsResult, tradesResult, ledgerResult] = await Promise.all([
+      this.client.from("classbot_token_accounts").select("*").eq("class_id", classroom.id).eq("member_id", memberId).maybeSingle(),
+      this.client.from("classbot_market_positions").select("*").eq("class_id", classroom.id).eq("member_id", memberId).gt("quantity", 0).order("symbol"),
+      this.client.from("classbot_market_trades").select("*").eq("class_id", classroom.id).eq("member_id", memberId).order("created_at", { ascending: false }).limit(50),
+      this.client.from("classbot_token_ledger").select("*").eq("class_id", classroom.id).eq("member_id", memberId).order("created_at", { ascending: false }).limit(50),
+    ]);
+    const account = unwrap(accountResult, "토큰 계정 조회 실패");
+    if (!account) throw new Error("가상 주식 계정이 준비되지 않았습니다. 데이터베이스 마이그레이션을 확인해 주세요.");
+    return {
+      account,
+      positions: unwrap(positionsResult, "가상 주식 보유 현황 조회 실패"),
+      trades: unwrap(tradesResult, "가상 주식 거래 내역 조회 실패"),
+      ledger: unwrap(ledgerResult, "토큰 내역 조회 실패"),
+    };
+  }
+
+  async claimDailyMarketReward({ memberId, dateKey, amount }) {
+    const classroom = await this.ensureClassroom();
+    return unwrap(
+      await this.client.rpc("classbot_claim_daily_market_reward", {
+        p_class_id: classroom.id,
+        p_member_id: memberId,
+        p_reward_date: dateKey,
+        p_amount: Number(amount),
+      }),
+      "접속 보상 지급 실패",
+    );
+  }
+
+  async executeMarketTrade({ memberId, symbol, side, quantity, price, requestKey }) {
+    const classroom = await this.ensureClassroom();
+    return unwrap(
+      await this.client.rpc("classbot_execute_market_trade", {
+        p_class_id: classroom.id,
+        p_member_id: memberId,
+        p_symbol: symbol,
+        p_side: side,
+        p_quantity: Number(quantity),
+        p_price: Number(price),
+        p_request_key: requestKey,
+      }),
+      "가상 주식 주문 처리 실패",
+    );
   }
 
   async listNotifications({ limit = 50, status } = {}) {

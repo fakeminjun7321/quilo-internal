@@ -267,6 +267,35 @@ test("학생 포털 파일 목록은 반 전체와 본인 자료만 15분 열기
   assert.match(downloaded.headers["content-disposition"], /^attachment/);
 });
 
+test("가상 주식 API는 포털 본인 계정만 사용하고 보상·주문을 멱등 처리한다", async () => {
+  const { app, store } = await fixture();
+  const member = (await store.listMembers()).find((item) => item.role === "student");
+  assert.equal((await request(app).get("/api/portal/market")).status, 401);
+
+  const agent = request.agent(app);
+  assert.equal((await loginPortal(agent, store, member, "MARK-ET01")).status, 200);
+  const initial = await agent.get("/api/portal/market");
+  assert.equal(initial.status, 200);
+  assert.equal(initial.body.account.balance, 1000);
+  assert.equal(initial.body.play_money_only, true);
+  assert.deepEqual(initial.body.instruments.map((item) => item.symbol), ["QLR", "BLW", "NXT", "GCR", "SPW"]);
+
+  const rewarded = await agent.post("/api/portal/market/reward");
+  assert.equal(rewarded.status, 200);
+  assert.equal(rewarded.body.account.balance, 1100);
+  assert.equal((await agent.post("/api/portal/market/reward")).body.account.balance, 1100);
+
+  const bought = await agent.post("/api/portal/market/orders").set("Idempotency-Key", "portal-market-buy-1").send({ symbol: "QLR", side: "buy", quantity: 1 });
+  assert.equal(bought.status, 201);
+  assert.equal(bought.body.positions.find((item) => item.symbol === "QLR").owned_quantity, 1);
+  const duplicate = await agent.post("/api/portal/market/orders").set("Idempotency-Key", "portal-market-buy-1").send({ symbol: "QLR", side: "buy", quantity: 1 });
+  assert.equal(duplicate.body.positions.find((item) => item.symbol === "QLR").owned_quantity, 1);
+
+  assert.equal((await agent.post("/api/portal/market/orders").send({ symbol: "QLR", side: "buy", quantity: 1 })).status, 400);
+  assert.equal((await agent.post("/api/portal/market/orders").set("Idempotency-Key", "real-stock").send({ symbol: "AAPL", side: "buy", quantity: 1 })).status, 400);
+  assert.equal((await agent.post("/api/portal/market/orders").set("Idempotency-Key", "too-many").send({ symbol: "QLR", side: "sell", quantity: 2 })).status, 409);
+});
+
 test("학생 포털 일정 쓰기는 본인 소유를 강제하고 포털 admin만 반 전체 일정을 관리한다", async () => {
   const { app, store } = await fixture();
   const members = await store.listMembers();
@@ -417,7 +446,20 @@ test("동일 Idempotency-Key 일정 생성은 한 번만 저장한다", async ()
   assert.equal(second.status, 201);
   assert.equal(first.body.item.id, second.body.item.id);
   assert.equal((await store.listEvents()).filter((item) => item.title === payload.title).length, 1);
-  assert.deepEqual(first.body.item.reminder_offsets, [1440, 0]);
+  assert.deepEqual(first.body.item.reminder_offsets, [10080, 2880, 1440, 0]);
+});
+
+test("수행평가를 기본값으로 등록하면 1주일·2일·1일·당일 알림을 저장한다", async () => {
+  const { agent } = await fixture();
+  await login(agent);
+  const response = await agent.post("/api/admin/events").send({
+    category: "assessment",
+    subject: "화학",
+    title: "화학 수행평가",
+    due_at: "2026-08-08T12:00:00",
+  });
+  assert.equal(response.status, 201);
+  assert.deepEqual(response.body.item.reminder_offsets, [10080, 2880, 1440, 0]);
 });
 
 test("시간표 중복 교시와 잘못된 일정 날짜를 거부한다", async () => {
@@ -534,6 +576,54 @@ test("이름이 맨 뒤인 시간표와 오늘·내일·주간 일정 질의는 
     assert.equal(response.status, 200);
     assert.equal(response.body.version, "2.0");
   }
+});
+
+test("카카오 스킬 실제 경로는 동아리일·금요일 대체수업·추석 연휴를 날짜별로 반영한다", async () => {
+  const store = new MemoryStore(config);
+  const member = store.members[0];
+  member.status = "active";
+  member.kakao_user_key = "kakao-calendar-user";
+  member.kakao_user_key_type = "botUserKey";
+  await store.replaceMemberTimetable({
+    memberId: member.id,
+    rows: [
+      { weekday: 2, period: 1, subject: "수Ⅰ", teacher: "류상욱", effective_from: "2026-08-01" },
+      { weekday: 3, period: 1, subject: "수요일 원본", teacher: "수요일교사", effective_from: "2026-08-01" },
+      { weekday: 5, period: 1, subject: "영Ⅱ", teacher: "김선옥", effective_from: "2026-08-01" },
+    ],
+  });
+  let current = new Date("2026-09-22T12:00:00+09:00");
+  const app = await createApp({ config, store, now: () => current });
+  const payload = { userRequest: { utterance: "오늘 시간표", user: { properties: { botUserKey: "kakao-calendar-user" } } } };
+
+  const club = await request(app).post("/api/kakao/skill").send(payload);
+  const clubText = club.body.template.outputs[0].simpleText.text;
+  assert.match(clubText, /1교시 수학\(류상욱T\)/);
+  assert.match(clubText, /7교시 창체/);
+  assert.match(clubText, /8교시 동아리/);
+  assert.match(clubText, /9교시 동아리/);
+
+  current = new Date("2026-09-23T12:00:00+09:00");
+  const replacement = await request(app).post("/api/kakao/skill").send(payload);
+  const replacementText = replacement.body.template.outputs[0].simpleText.text;
+  assert.match(replacementText, /학사일정: 금요일 수업 · 퇴사/);
+  assert.match(replacementText, /1교시 영어\(김선옥T\)/);
+  assert.doesNotMatch(replacementText, /수요일 원본/);
+
+  current = new Date("2026-09-24T12:00:00+09:00");
+  const holiday = await request(app).post("/api/kakao/skill").send(payload);
+  const holidayText = holiday.body.template.outputs[0].simpleText.text;
+  assert.match(holidayText, /학사일정: 추석 연휴/);
+  assert.match(holidayText, /정규 수업이 없습니다/);
+  assert.doesNotMatch(holidayText, /1교시/);
+
+  const explicitDate = await request(app).post("/api/kakao/skill").send({
+    userRequest: { utterance: "2026년 9월 23일 시간표", user: payload.userRequest.user },
+  });
+  const explicitText = explicitDate.body.template.outputs[0].simpleText.text;
+  assert.match(explicitText, /9월 23일 수요일 시간표/);
+  assert.match(explicitText, /학사일정: 금요일 수업 · 퇴사/);
+  assert.match(explicitText, /1교시 영어\(김선옥T\)/);
 });
 
 test("관리자 일정 API는 개인 대상 member_id를 검증하고 반 전체 일정으로 되돌릴 수 있다", async () => {

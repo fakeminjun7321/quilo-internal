@@ -1,9 +1,10 @@
-import { LogOut, Megaphone, Settings, ShieldCheck, Users } from "lucide-react";
+import { ChevronRight, LogOut, Megaphone, Settings, ShieldCheck, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BottomNavigation, Sidebar, Topbar } from "../components/AppShell.jsx";
 import { dateLabel } from "../lib/format.js";
 import PortalCalendar from "./PortalCalendar.jsx";
 import PortalDrive from "./PortalDrive.jsx";
+import PortalMarket from "./PortalMarket.jsx";
 
 function NoticesView({ notices }) {
   const ordered = useMemo(() => [...(notices || [])].sort((a, b) => (
@@ -48,6 +49,10 @@ function SettingsView({ member, classroom, onLogout }) {
   );
 }
 
+function MoreView({ onNavigate, onLogout }) {
+  return <section className="page portal-simple-page"><div className="page-heading"><h1>더보기</h1><p>구성원과 계정 설정을 확인합니다.</p></div><div className="content-panel portal-more-list"><button onClick={() => onNavigate("members")}><Users size={21} /><span><strong>구성원</strong><small>우리 반 구성원 확인</small></span><ChevronRight size={19} /></button><button onClick={() => onNavigate("settings")}><Settings size={21} /><span><strong>설정</strong><small>계정 연결과 로그아웃</small></span><ChevronRight size={19} /></button><button onClick={onLogout}><LogOut size={21} /><span><strong>로그아웃</strong><small>현재 기기에서 Quilo 로그아웃</small></span><ChevronRight size={19} /></button></div></section>;
+}
+
 export default function StudentPortal({ session, onLogout }) {
   const [active, setActive] = useState("today");
   const [identity, setIdentity] = useState({ member: session?.member || null, classroom: session?.classroom || null, members: [], notices: [] });
@@ -67,14 +72,16 @@ export default function StudentPortal({ session, onLogout }) {
   else if (active === "events") screen = <PortalCalendar key="events" initialView="month" onOverview={receiveOverview} />;
   else if (active === "notices") screen = <NoticesView notices={identity.notices} />;
   else if (active === "files") screen = <PortalDrive />;
+  else if (active === "market") screen = <PortalMarket />;
   else if (active === "members") screen = <MembersView members={identity.members} />;
-  else screen = <SettingsView member={identity.member} classroom={classroom} onLogout={onLogout} />;
+  else if (active === "settings") screen = <SettingsView member={identity.member} classroom={classroom} onLogout={onLogout} />;
+  else screen = <MoreView onNavigate={setActive} onLogout={onLogout} />;
 
   return (
     <div className="app-shell portal-member-shell">
-      <Sidebar active={active} onNavigate={setActive} classroom={classroom} memberCount={identity.members.length} profileName={memberName} profileRole={profileRole} menuLabel="학생 메뉴" />
+      <Sidebar active={active} onNavigate={setActive} classroom={classroom} memberCount={identity.members.length} profileName={memberName} profileRole={profileRole} menuLabel="학생 메뉴" portal />
       <div className="workspace"><Topbar classroom={classroom} /><main className="main-content portal-member-main">{screen}</main></div>
-      <BottomNavigation active={active} onNavigate={setActive} />
+      <BottomNavigation active={active} onNavigate={setActive} portal />
     </div>
   );
 }

@@ -198,6 +198,15 @@ export const api = {
     return request(`/api/portal/overview?${query.toString()}`);
   },
   portalFiles() { return request("/api/portal/files"); },
+  portalMarket() { return request("/api/portal/market"); },
+  portalClaimMarketReward() { return request("/api/portal/market/reward", { method: "POST" }); },
+  portalMarketOrder(input, options = {}) {
+    return request("/api/portal/market/orders", {
+      method: "POST",
+      headers: idempotencyHeaders("market-order", input, options),
+      body: input,
+    });
+  },
   portalFileUrl(value) {
     if (!value) return "";
     const url = new URL(value, location.href);

@@ -19,6 +19,7 @@ Codex와 Claude Code의 Quilo 관련 로컬 작업 기록에서 반복적으로 
 - 보고서·Studio·PDF 번역의 일반 사용자 진행 화면에는 raw server/model log를 기본 노출하지 않는다. 단계와 현재 작업만 보여주고 관리자 debug는 별도 경계로 둔다.
 - “기능 코드가 있다”와 “사용자가 들어갈 수 있다”는 다르다. 메뉴, 검색, query/hash, 직접 ID, 폼의 라디오·서브모드까지 실제 연결을 확인한다.
 - 실제 screenshot을 기준 화면과 같은 viewport·상태로 비교하고, padding·잘림·가로 스크롤·font weight·border·button hierarchy를 직접 본다.
+- 워크스페이스 필수 항목의 `checked` 판정을 hidden input에 연결하면 항목이 영구 미완료로 남고 제출 버튼까지 잠긴다(독서록 rlFormat 회귀). 고정값이라도 보이는 컨트롤(기본 선택 라디오)로 두고, 요구 selector와 폼 실컨트롤의 일치는 `tests/workspace-checklist-contract.test.js`로 강제한다.
 
 ## 기능 노출 surface
 

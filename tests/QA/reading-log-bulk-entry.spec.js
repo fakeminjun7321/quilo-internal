@@ -147,3 +147,52 @@ test("in-page 독서록 대량 생성 nav link selects bulk mode", async ({ page
   });
   await expectBulkModeOpen(page);
 });
+
+// ── 회귀: 출력 형식 필수 항목 ────────────────────────────────────────────────
+// rlFormat 이 hidden input 이던 시절, 체크리스트 '출력 형식'(checked 판정)이 영원히
+// 미완료라 화면에 고를 것이 없는데도 필수 미충족으로 남고 생성 버튼이 잠겼다.
+// 폼에 보이는 .hwpx 고정 라디오가 기본 선택되어 항목이 즉시 완료되어야 한다.
+
+const checklistItem = (page, label) =>
+  page.locator("#reportChecklist li").filter({ hasText: label });
+
+test("독서록 출력 형식 항목은 열자마자 완료 상태다 (보이는 .hwpx 라디오)", async ({ page }) => {
+  await mockLoggedIn(page);
+  await page.goto(`${baseUrl}/?report=reading-log`, { waitUntil: "load" });
+  await expect(page.locator("#readingLogForm")).toBeVisible();
+
+  const formatRadio = page.locator('#readingLogForm input[name="rlFormat"][value="hwpx"]');
+  await expect(formatRadio).toBeVisible();
+  await expect(formatRadio).toBeChecked();
+  await expect(checklistItem(page, "출력 형식")).toHaveClass(/chk-done/);
+});
+
+test("독서록 필수 입력을 채우면 생성 버튼이 실제로 활성화된다", async ({ page }) => {
+  await mockLoggedIn(page);
+  await page.goto(`${baseUrl}/?report=reading-log`, { waitUntil: "load" });
+  await expect(page.locator("#readingLogForm")).toBeVisible();
+
+  // 한 권씩 모드: 도서명 + 정책 동의만 남는다 (기록 영역·출력 형식·모델은 기본값).
+  await expect(page.locator("#rlBtn")).toBeDisabled();
+  await page.fill("#rlTitle", "코스모스");
+  await page.check('#readingLogForm .policy-check input[type="checkbox"]');
+  await expect(checklistItem(page, "도서명 또는 책 목록")).toHaveClass(/chk-done/);
+  await expect(page.locator("#rlBtn")).toBeEnabled();
+});
+
+test("대량 모드에서 책 목록 파일을 올리면 생성 버튼이 활성화된다", async ({ page }) => {
+  await mockLoggedIn(page);
+  await page.goto(`${baseUrl}/?report=reading-log-bulk`, { waitUntil: "load" });
+  await expectBulkModeOpen(page);
+
+  await expect(page.locator("#rlBtn")).toBeDisabled();
+  await page.setInputFiles("#rlExcel", {
+    name: "책목록.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from("분야,책이름,출판사,작가\n물리,부분과 전체,서커스,하이젠베르크\n문학,1984,민음사,조지 오웰\n", "utf8"),
+  });
+  await page.check('#readingLogForm .policy-check input[type="checkbox"]');
+  await expect(checklistItem(page, "도서명 또는 책 목록")).toHaveClass(/chk-done/);
+  await expect(checklistItem(page, "출력 형식")).toHaveClass(/chk-done/);
+  await expect(page.locator("#rlBtn")).toBeEnabled();
+});

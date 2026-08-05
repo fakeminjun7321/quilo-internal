@@ -645,7 +645,6 @@
 
     <!-- ── 독서록 폼 — 학교 '독서활동 기록지' 양식(.hwpx) 채우기 (크레딧 과금) ──────── -->
     <form id="readingLogForm" class="report-form" data-report-form="reading-log" hidden>
-      <input type="hidden" name="rlFormat" value="hwpx" />
       <div class="notice">
         <strong>독서록 「독서활동 기록지」 초안.</strong>
         읽은 책의 정보를 입력하면, AI가 <strong>선택 계기·내용 요약·느낀 점</strong>을 써서 학교 양식(.hwpx)에 채워 줍니다.
@@ -825,17 +824,25 @@
           </div>
           <small>표시 크레딧은 <b>예약(최대)</b>이며, 실제로는 생성에 <b>실제 사용한 토큰만큼만</b> 차감되고 차액은 환불됩니다(보통 표시보다 적음). 독서록은 책 내용을 정확히 써야 해 <b>Claude</b>를 권합니다(GPT는 책 내용을 일반론으로 뭉뚱그려 부정확).</small>
         </div>
-        <div class="field">
-          <label><span class="field-label">글꼴</span>
-            <select id="rlFontFace" name="fontFace">
-              <option value="malgun-gothic" selected>맑은 고딕</option>
-              <option value="nanum-gothic">나눔고딕</option>
-              <option value="nanum-myeongjo">나눔명조</option>
-              <option value="hamchorom-batang" data-hwpx-only="true" hidden disabled>함초롬바탕</option>
-            </select>
-          </label>
-          <small>학교 '독서활동 기록지' 양식 그대로 한글(.hwpx)로만 생성됩니다.</small>
+        <div class="field-grid">
+          <div class="seg-group">
+            <span class="field-label">출력 형식</span>
+            <div class="segmented">
+              <label><input type="radio" name="rlFormat" value="hwpx" checked /> .hwpx (한글)</label>
+            </div>
+          </div>
+          <div class="field">
+            <label><span class="field-label">글꼴</span>
+              <select id="rlFontFace" name="fontFace">
+                <option value="malgun-gothic" selected>맑은 고딕</option>
+                <option value="nanum-gothic">나눔고딕</option>
+                <option value="nanum-myeongjo">나눔명조</option>
+                <option value="hamchorom-batang" data-hwpx-only="true" hidden disabled>함초롬바탕</option>
+              </select>
+            </label>
+          </div>
         </div>
+        <small>학교 '독서활동 기록지' 양식 그대로 한글(.hwpx)로만 생성됩니다.</small>
       </div>
 
       <div class="policy-check">
